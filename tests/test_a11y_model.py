@@ -1,6 +1,6 @@
 import unittest
 
-from a11y_model import build_focus_payload, object_id
+from a11y_model import action_names, build_focus_payload, object_id, perform_action
 
 
 class FakeState:
@@ -46,6 +46,23 @@ class FakeValue:
         return self.current
 
 
+class FakeAction:
+    def __init__(self, names, results=None):
+        self.names = list(names)
+        self.results = list(results) if results is not None else [True] * len(self.names)
+        self.performed = []
+
+    def get_n_actions(self):
+        return len(self.names)
+
+    def get_action_name(self, index):
+        return self.names[index]
+
+    def do_action(self, index):
+        self.performed.append(index)
+        return self.results[index]
+
+
 class FakeAccessible:
     _next_hash = 100
 
@@ -59,6 +76,7 @@ class FakeAccessible:
         states=(),
         value_iface=None,
         component_iface=None,
+        action_iface=None,
     ):
         self.name = name
         self.role = role
@@ -70,6 +88,7 @@ class FakeAccessible:
         self.states = states
         self.value_iface = value_iface
         self.component_iface = component_iface
+        self.action_iface = action_iface
         self._hash = FakeAccessible._next_hash
         FakeAccessible._next_hash += 1
 
@@ -102,6 +121,9 @@ class FakeAccessible:
 
     def get_component_iface(self):
         return self.component_iface
+
+    def get_action_iface(self):
+        return self.action_iface
 
 
 class A11yModelTests(unittest.TestCase):
@@ -292,6 +314,51 @@ class A11yModelTests(unittest.TestCase):
         ids = {item["id"] for item in payload["objects"]}
         for item in payload["objects"]:
             self.assertTrue(set(item["child_ids"]) <= ids)
+
+    def test_action_names_are_serialized_in_order(self):
+        actions = FakeAction(["click", "show menu"])
+        button = FakeAccessible("More", "push button", action_iface=actions)
+        payload = build_focus_payload("object:state-changed:focused", 1, button)
+        self.assertEqual(payload["objects"][0]["actions"], ["click", "show menu"])
+
+    def test_blank_action_name_gets_stable_fallback(self):
+        actions = FakeAction([""])
+        button = FakeAccessible("Action", "push button", action_iface=actions)
+        self.assertEqual(action_names(button), ["action 1"])
+
+    def test_perform_action_calls_requested_atspi_action(self):
+        actions = FakeAction(["click", "show menu"])
+        button = FakeAccessible("More", "push button", action_iface=actions)
+        self.assertTrue(perform_action(button, 1))
+        self.assertEqual(actions.performed, [1])
+
+    def test_perform_action_rejects_invalid_or_failed_actions(self):
+        actions = FakeAction(["click"], results=[False])
+        button = FakeAccessible("More", "push button", action_iface=actions)
+        self.assertFalse(perform_action(button, -1))
+        self.assertFalse(perform_action(button, 1))
+        self.assertFalse(perform_action(button, 0))
+        self.assertEqual(actions.performed, [0])
+
+    def test_object_registry_contains_only_serialized_snapshot(self):
+        app = FakeAccessible("App", "application")
+        dialog = FakeAccessible("Dialog", "dialog", app)
+        focused = FakeAccessible("Focused", "push button", dialog)
+        omitted = FakeAccessible("Omitted", "push button", dialog)
+        registry = {"stale": object()}
+
+        payload = build_focus_payload(
+            "object:state-changed:focused",
+            1,
+            focused,
+            max_objects=3,
+            object_registry=registry,
+        )
+        ids = {item["id"] for item in payload["objects"]}
+        self.assertEqual(set(registry), ids)
+        self.assertIs(registry[object_id(focused)], focused)
+        self.assertNotIn(object_id(omitted), registry)
+        self.assertNotIn("stale", registry)
 
     def test_focus_loss_is_not_sent(self):
         self.assertIsNone(build_focus_payload("object:state-changed:focused", 0, self.button))
