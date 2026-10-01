@@ -170,6 +170,7 @@ def _selection_offsets(iface) -> tuple[int, int] | None:
 
 def _text_snapshot(obj, *, focused: bool) -> dict[str, Any]:
     empty = {
+        "text_supported": False,
         "text": "",
         "text_truncated": False,
         "caret_offset": None,
@@ -211,6 +212,7 @@ def _text_snapshot(obj, *, focused: bool) -> dict[str, Any]:
             selection_start, selection_end = start, finish
 
     return {
+        "text_supported": True,
         "text": text,
         "text_truncated": character_count > visible_length,
         "caret_offset": caret,
