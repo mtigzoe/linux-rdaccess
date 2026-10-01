@@ -207,28 +207,30 @@ class A11yModelTests(unittest.TestCase):
         self.assertIsNone(payload["objects"][0]["bounds"])
 
     def test_focus_neighborhood_includes_siblings_and_focus_children(self):
-        before = FakeAccessible("Before", "push button", self.dialog)
-        self.button = FakeAccessible(
-            "Save 2",
+        app = FakeAccessible("App", "application")
+        dialog = FakeAccessible("Dialog", "dialog", app)
+        before = FakeAccessible("Before", "push button", dialog)
+        focused = FakeAccessible(
+            "Save",
             "push button",
-            self.dialog,
+            dialog,
             states=("focusable",),
         )
-        after = FakeAccessible("After", "push button", self.dialog)
-        child = FakeAccessible("Inner", "label", self.button)
+        after = FakeAccessible("After", "push button", dialog)
+        child = FakeAccessible("Inner", "label", focused)
 
-        payload = build_focus_payload("object:state-changed:focused", 1, self.button)
+        payload = build_focus_payload("object:state-changed:focused", 1, focused)
         by_id = {item["id"]: item for item in payload["objects"]}
 
         self.assertIn(object_id(before), by_id)
         self.assertIn(object_id(after), by_id)
         self.assertIn(object_id(child), by_id)
         self.assertEqual(
-            by_id[object_id(self.dialog)]["child_ids"],
-            [object_id(before), object_id(self.button), object_id(after)],
+            by_id[object_id(dialog)]["child_ids"],
+            [object_id(before), object_id(focused), object_id(after)],
         )
         self.assertEqual(
-            by_id[object_id(self.button)]["child_ids"],
+            by_id[object_id(focused)]["child_ids"],
             [object_id(child)],
         )
 
