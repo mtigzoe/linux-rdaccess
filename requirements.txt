@@ -1,0 +1,16 @@
+# linux-rdaccess Python requirements
+#
+# The bridge has no PyPI-only runtime dependencies.
+#
+# PyGObject/AT-SPI (import gi) and Liblouis (import louis) should be installed
+# from the Linux distribution so they match the system accessibility stack.
+#
+# Debian / Ubuntu / Linux Mint:
+#   sudo apt update
+#   sudo apt install python3-pip python3-gi gir1.2-atspi-2.0 python3-louis liblouis-data
+#
+# After installing the system packages, this command is safe to run:
+#   python3 -m pip install -r requirements.txt
+#
+# Standard-library modules such as argparse, ctypes, glob, json, logging,
+# os, signal, sys, and time do not need to be installed with pip.
