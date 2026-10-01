@@ -63,6 +63,36 @@ class FakeAction:
         return self.results[index]
 
 
+class FakeSelection:
+    def __init__(self, start_offset, end_offset):
+        self.start_offset = start_offset
+        self.end_offset = end_offset
+
+
+class FakeText:
+    def __init__(self, text, *, caret=0, selection=None):
+        self.text = text
+        self.caret = caret
+        self.selection = selection
+
+    def get_character_count(self):
+        return len(self.text)
+
+    def get_text(self, start, end):
+        return self.text[start:end]
+
+    def get_caret_offset(self):
+        return self.caret
+
+    def get_n_selections(self):
+        return 1 if self.selection is not None else 0
+
+    def get_selection(self, index):
+        if index != 0 or self.selection is None:
+            raise IndexError(index)
+        return FakeSelection(*self.selection)
+
+
 class FakeAccessible:
     _next_hash = 100
 
@@ -77,6 +107,7 @@ class FakeAccessible:
         value_iface=None,
         component_iface=None,
         action_iface=None,
+        text_iface=None,
     ):
         self.name = name
         self.role = role
@@ -89,6 +120,7 @@ class FakeAccessible:
         self.value_iface = value_iface
         self.component_iface = component_iface
         self.action_iface = action_iface
+        self.text_iface = text_iface
         self._hash = FakeAccessible._next_hash
         FakeAccessible._next_hash += 1
 
@@ -124,6 +156,9 @@ class FakeAccessible:
 
     def get_action_iface(self):
         return self.action_iface
+
+    def get_text_iface(self):
+        return self.text_iface
 
 
 class A11yModelTests(unittest.TestCase):
@@ -314,6 +349,50 @@ class A11yModelTests(unittest.TestCase):
         ids = {item["id"] for item in payload["objects"]}
         for item in payload["objects"]:
             self.assertTrue(set(item["child_ids"]) <= ids)
+
+    def test_focused_text_caret_and_selection_are_serialized(self):
+        text = FakeText("hello world", caret=5, selection=(1, 4))
+        field = FakeAccessible("Editor", "text", text_iface=text)
+        payload = build_focus_payload("object:state-changed:focused", 1, field)
+        item = payload["objects"][0]
+        self.assertEqual(item["text"], "hello world")
+        self.assertFalse(item["text_truncated"])
+        self.assertEqual(item["caret_offset"], 5)
+        self.assertEqual(item["selection_start"], 1)
+        self.assertEqual(item["selection_end"], 4)
+
+    def test_nonfocused_neighbors_do_not_serialize_text(self):
+        app = FakeAccessible("App", "application")
+        dialog = FakeAccessible("Dialog", "dialog", app)
+        focused = FakeAccessible("Save", "push button", dialog)
+        neighbor = FakeAccessible(
+            "Editor",
+            "text",
+            dialog,
+            text_iface=FakeText("secret neighbor text", caret=3),
+        )
+        payload = build_focus_payload("object:state-changed:focused", 1, focused)
+        by_id = {item["id"]: item for item in payload["objects"]}
+        self.assertIn(object_id(neighbor), by_id)
+        self.assertEqual(by_id[object_id(neighbor)]["text"], "")
+        self.assertIsNone(by_id[object_id(neighbor)]["caret_offset"])
+
+    def test_focused_text_is_bounded_and_marks_truncation(self):
+        text = FakeText("x" * 9000, caret=9000)
+        field = FakeAccessible("Editor", "text", text_iface=text)
+        payload = build_focus_payload("object:state-changed:focused", 1, field)
+        item = payload["objects"][0]
+        self.assertEqual(len(item["text"]), 8192)
+        self.assertTrue(item["text_truncated"])
+        self.assertIsNone(item["caret_offset"])
+
+    def test_invalid_selection_outside_bounded_text_is_dropped(self):
+        text = FakeText("abcdef", caret=2, selection=(2, 99))
+        field = FakeAccessible("Editor", "text", text_iface=text)
+        payload = build_focus_payload("object:state-changed:focused", 1, field)
+        item = payload["objects"][0]
+        self.assertIsNone(item["selection_start"])
+        self.assertIsNone(item["selection_end"])
 
     def test_action_names_are_serialized_in_order(self):
         actions = FakeAction(["click", "show menu"])
