@@ -37,6 +37,8 @@ WTS_CHANNEL_OPTION_DYNAMIC = 0x00000001
 XON = 0x11
 XOFF = 0x13
 LEGACY_DRIVER_TYPES = (ord("S"), ord("B"))
+LEGACY_GENERIC_ATTRIBUTE = ord("@")
+LEGACY_ATTRIBUTE_SEPARATOR = bytes((96,))
 
 # long-running fix: bound the buffer so a peer that never sends "\n" cannot
 # grow memory forever.
@@ -198,11 +200,45 @@ class Receiver:
             elif b in LEGACY_DRIVER_TYPES:
                 if len(self.buf) < 4:
                     return
+                driver_type = b
+                command = self.buf[1]
                 length = int.from_bytes(self.buf[2:4], "little")
                 if len(self.buf) < 4 + length:
                     return
-                del self.buf[: 4 + length]  # skip; payload may be a pickle
+                payload = bytes(self.buf[4 : 4 + length])
+                del self.buf[: 4 + length]
                 self.legacy_frames += 1
+                # rdAccess can ask for focus-sensitive attributes before the
+                # protocol-v2 handshake completes. Decode only the safe,
+                # non-pickled legacy attribute envelope; all other legacy
+                # payloads remain skipped and are never unpickled.
+                if command == LEGACY_GENERIC_ATTRIBUTE and payload.startswith(
+                    LEGACY_ATTRIBUTE_SEPARATOR
+                ):
+                    try:
+                        attribute, raw_value = payload[1:].split(
+                            LEGACY_ATTRIBUTE_SEPARATOR, 1
+                        )
+                        attribute_name = attribute.decode("ascii")
+                    except (ValueError, UnicodeDecodeError):
+                        continue
+                    if not raw_value:
+                        self.messages.append(
+                            {
+                                "type": "attribute_request",
+                                "attribute": attribute_name,
+                                "_legacy_driver_type": driver_type,
+                            }
+                        )
+                    elif attribute_name == "timeSinceInput" and len(raw_value) == 4:
+                        self.messages.append(
+                            {
+                                "type": "attribute_value",
+                                "attribute": attribute_name,
+                                "value": int.from_bytes(raw_value, "little"),
+                                "_legacy_driver_type": driver_type,
+                            }
+                        )
             else:
                 del self.buf[0]
                 self.junk_bytes += 1
@@ -211,6 +247,33 @@ class Receiver:
 def send_json(ch, msg_type: str, **payload) -> None:
     payload["type"] = msg_type
     ch.write(json.dumps(payload, separators=(",", ":")).encode("utf-8") + b"\n")
+
+
+def send_legacy_attribute_value(
+    ch,
+    driver_type: int,
+    attribute: str,
+    value: int,
+) -> None:
+    """Send a safe legacy integer attribute value without pickle."""
+    widths = {
+        "protocolVersion": 1,
+        "timeSinceInput": 4,
+    }
+    try:
+        width = widths[attribute]
+    except KeyError:
+        raise ValueError(f"unsupported legacy integer attribute: {attribute}") from None
+    raw_value = int(value).to_bytes(width, "little", signed=False)
+    payload = (
+        LEGACY_ATTRIBUTE_SEPARATOR
+        + attribute.encode("ascii")
+        + LEGACY_ATTRIBUTE_SEPARATOR
+        + raw_value
+    )
+    frame = bytes((driver_type, LEGACY_GENERIC_ATTRIBUTE))
+    frame += len(payload).to_bytes(2, "little")
+    ch.write(frame + payload)
 
 
 def pump(ch, rx: Receiver, seconds: float, until=lambda: False) -> None:

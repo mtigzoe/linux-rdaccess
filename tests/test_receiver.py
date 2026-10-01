@@ -1,7 +1,14 @@
 import json
 import unittest
 
-from rdaccess_dvc import MAX_PENDING_BYTES, XOFF, XON, Receiver
+from rdaccess_dvc import (
+    LEGACY_GENERIC_ATTRIBUTE,
+    MAX_PENDING_BYTES,
+    XOFF,
+    XON,
+    Receiver,
+    send_legacy_attribute_value,
+)
 
 
 def line(**obj) -> bytes:
@@ -42,6 +49,91 @@ class ReceiverTests(unittest.TestCase):
         rx.feed(frame[3:] + line(type="ping"))
         self.assertEqual(rx.legacy_frames, 1)
         self.assertEqual(rx.drain(), [{"type": "ping"}])
+
+    def test_legacy_attribute_request_is_decoded_without_unpickling(self):
+        rx = Receiver()
+        sep = bytes((96,))
+        payload = sep + b"timeSinceInput" + sep
+        frame = (
+            b"B"
+            + bytes((LEGACY_GENERIC_ATTRIBUTE,))
+            + len(payload).to_bytes(2, "little")
+            + payload
+        )
+        rx.feed(frame)
+        self.assertEqual(
+            rx.drain(),
+            [
+                {
+                    "type": "attribute_request",
+                    "attribute": "timeSinceInput",
+                    "_legacy_driver_type": ord("B"),
+                }
+            ],
+        )
+
+    def test_legacy_time_since_input_value_is_decoded(self):
+        rx = Receiver()
+        sep = bytes((96,))
+        payload = sep + b"timeSinceInput" + sep + (123).to_bytes(4, "little")
+        frame = (
+            b"B"
+            + bytes((LEGACY_GENERIC_ATTRIBUTE,))
+            + len(payload).to_bytes(2, "little")
+            + payload
+        )
+        rx.feed(frame)
+        self.assertEqual(
+            rx.drain(),
+            [
+                {
+                    "type": "attribute_value",
+                    "attribute": "timeSinceInput",
+                    "value": 123,
+                    "_legacy_driver_type": ord("B"),
+                }
+            ],
+        )
+
+    def test_send_legacy_protocol_version_value(self):
+        class Channel:
+            def __init__(self):
+                self.written = b""
+
+            def write(self, data):
+                self.written += data
+
+        ch = Channel()
+        send_legacy_attribute_value(ch, ord("B"), "protocolVersion", 2)
+        sep = bytes((96,))
+        expected_payload = sep + b"protocolVersion" + sep + bytes((2,))
+        expected = (
+            b"B"
+            + bytes((LEGACY_GENERIC_ATTRIBUTE,))
+            + len(expected_payload).to_bytes(2, "little")
+            + expected_payload
+        )
+        self.assertEqual(ch.written, expected)
+
+    def test_send_legacy_time_since_input_value(self):
+        class Channel:
+            def __init__(self):
+                self.written = b""
+
+            def write(self, data):
+                self.written += data
+
+        ch = Channel()
+        send_legacy_attribute_value(ch, ord("B"), "timeSinceInput", 0)
+        sep = bytes((96,))
+        expected_payload = sep + b"timeSinceInput" + sep + (0).to_bytes(4, "little")
+        expected = (
+            b"B"
+            + bytes((LEGACY_GENERIC_ATTRIBUTE,))
+            + len(expected_payload).to_bytes(2, "little")
+            + expected_payload
+        )
+        self.assertEqual(ch.written, expected)
 
     def test_xon_between_messages(self):
         rx = Receiver()
