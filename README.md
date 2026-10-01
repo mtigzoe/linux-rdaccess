@@ -37,3 +37,8 @@ For best results, start the launcher immediately after logging in to xrdp, befor
 The older speech-only bridge remains available:
 
     DISPLAY=:10 python3 atspi_nvda_bridge.py --debug
+
+DISPLAY=:10 ./run_braille_bridge.sh --debug                                                                             
+
+DISPLAY=:10 ~/linux-rdaccess/run_braille_bridge.sh                                                                      
+ 
