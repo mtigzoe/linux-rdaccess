@@ -10,6 +10,20 @@ from rdaccess_dvc import PROTOCOL_VERSION, Receiver, send_json
 
 log = logging.getLogger("a11yLink")
 A11Y_CHANNEL = "NVDA-A11Y"
+MAX_ACTIONS = 32
+MAX_OBJECT_ID_CHARS = 256
+
+
+def decode_action_request(msg: dict) -> tuple[str, int] | None:
+    if msg.get("type") != "a11y_action":
+        return None
+    object_id = msg.get("object_id")
+    action_index = msg.get("action_index")
+    if not isinstance(object_id, str) or not object_id or len(object_id) > MAX_OBJECT_ID_CHARS:
+        return None
+    if type(action_index) is not int or action_index < 0 or action_index >= MAX_ACTIONS:
+        return None
+    return object_id, action_index
 
 
 class NvdaA11yLink:
@@ -72,14 +86,11 @@ class NvdaA11yLink:
     def _handle_action_message(self, msg: dict) -> None:
         if not self.ready or self._on_action is None:
             return
-        object_id = msg.get("object_id")
-        action_index = msg.get("action_index")
-        if not isinstance(object_id, str) or not object_id or len(object_id) > 256:
-            log.warning("ignoring invalid A11Y action object id")
+        decoded = decode_action_request(msg)
+        if decoded is None:
+            log.warning("ignoring invalid remote A11Y action request")
             return
-        if type(action_index) is not int or action_index < 0 or action_index >= 32:
-            log.warning("ignoring invalid A11Y action index for %s", object_id)
-            return
+        object_id, action_index = decoded
         try:
             self._on_action(object_id, action_index)
         except Exception:
