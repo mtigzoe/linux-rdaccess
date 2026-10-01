@@ -96,7 +96,35 @@ def _value(obj) -> str:
     return _clean(current)
 
 
-def _snapshot(obj, *, parent_id: str | None, focused: bool) -> dict[str, Any]:
+def _bounds(obj, coord_type) -> list[int] | None:
+    if coord_type is None:
+        return None
+    try:
+        component = obj.get_component_iface()
+    except Exception:
+        component = None
+    if component is None:
+        try:
+            component = obj.get_component()
+        except Exception:
+            return None
+    try:
+        rect = component.get_extents(coord_type)
+        values = [int(rect.x), int(rect.y), int(rect.width), int(rect.height)]
+    except Exception:
+        return None
+    if values[2] < 0 or values[3] < 0:
+        return None
+    return values
+
+
+def _snapshot(
+    obj,
+    *,
+    parent_id: str | None,
+    focused: bool,
+    coord_type=None,
+) -> dict[str, Any]:
     try:
         description = _clean(obj.get_description())
     except Exception:
@@ -109,10 +137,19 @@ def _snapshot(obj, *, parent_id: str | None, focused: bool) -> dict[str, Any]:
         "description": description,
         "value": _value(obj),
         "states": _states(obj, focused=focused),
+        "bounds": _bounds(obj, coord_type),
     }
 
 
-def build_focus_payload(event_type: str, detail1: int, source, any_data=None, *, max_depth: int = 24):
+def build_focus_payload(
+    event_type: str,
+    detail1: int,
+    source,
+    any_data=None,
+    *,
+    max_depth: int = 24,
+    coord_type=None,
+):
     """Build a focused object + ancestor snapshot, or None for a non-focus event."""
     if event_type not in A11Y_FOCUS_EVENTS:
         return None
@@ -142,7 +179,12 @@ def build_focus_payload(event_type: str, detail1: int, source, any_data=None, *,
     return {
         "focus_id": focus_id,
         "objects": [
-            _snapshot(obj, parent_id=parent_id, focused=object_id(obj) == focus_id)
+            _snapshot(
+                obj,
+                parent_id=parent_id,
+                focused=object_id(obj) == focus_id,
+                coord_type=coord_type,
+            )
             for obj, parent_id in chain
         ],
     }
