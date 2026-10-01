@@ -106,7 +106,13 @@ class Bridge:
         try:
             any_data = getattr(event, "any_data", None)
             if self.a11y_link is not None:
-                payload = build_focus_payload(event.type, event.detail1, event.source, any_data)
+                payload = build_focus_payload(
+                    event.type,
+                    event.detail1,
+                    event.source,
+                    any_data,
+                    coord_type=Atspi.CoordType.SCREEN,
+                )
                 if payload is not None:
                     self.a11y_link.send_focus(**payload)
             announcement = self.announcer.handle(
