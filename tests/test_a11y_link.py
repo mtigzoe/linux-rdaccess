@@ -1,7 +1,7 @@
 import json
 import unittest
 
-from a11y_link import A11Y_CHANNEL, NvdaA11yLink
+from a11y_link import A11Y_CHANNEL, NvdaA11yLink, decode_action_request
 from rdaccess_dvc import XOFF, XON
 
 
@@ -21,6 +21,29 @@ class FakeChannel:
 
     def close(self):
         self.closed = True
+
+
+class ActionRequestDecodeTests(unittest.TestCase):
+    def test_valid_request_decodes(self):
+        self.assertEqual(
+            decode_action_request(
+                {"type": "a11y_action", "object_id": "abc", "action_index": 2},
+            ),
+            ("abc", 2),
+        )
+
+    def test_non_action_message_is_ignored(self):
+        self.assertIsNone(decode_action_request({"type": "ping"}))
+
+    def test_invalid_request_is_rejected(self):
+        for message in (
+            {"type": "a11y_action", "object_id": "", "action_index": 0},
+            {"type": "a11y_action", "object_id": "abc", "action_index": -1},
+            {"type": "a11y_action", "object_id": "abc", "action_index": 32},
+            {"type": "a11y_action", "object_id": "abc", "action_index": True},
+        ):
+            with self.subTest(message=message):
+                self.assertIsNone(decode_action_request(message))
 
 
 class A11yLinkTests(unittest.TestCase):
