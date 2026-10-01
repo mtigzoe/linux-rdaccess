@@ -3,9 +3,8 @@
 
 Run inside the xrdp session. Needs NVDA + rdAccess on the Windows client.
 
-    python3 atspi_nvda_bridge.py            # speak through NVDA
-    python3 atspi_nvda_bridge.py --dry-run  # no NVDA: print what would be spoken
-    python3 atspi_nvda_bridge.py --debug    # also log every handled event
+    ./run_braille_bridge.sh            # speech + braille through NVDA
+    ./run_braille_bridge.sh --debug    # also log handled events and DVC detail
 
 Architecture: one GLib main loop does everything, on one thread.
   * AT-SPI events arrive as GLib callbacks (Atspi dispatches on the default context).
