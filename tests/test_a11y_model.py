@@ -16,6 +16,24 @@ class FakeStateSet:
         return self.states
 
 
+class FakeRect:
+    def __init__(self, x, y, width, height):
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+
+
+class FakeComponent:
+    def __init__(self, rect):
+        self.rect = rect
+        self.last_coord_type = None
+
+    def get_extents(self, coord_type):
+        self.last_coord_type = coord_type
+        return self.rect
+
+
 class FakeValue:
     def __init__(self, current=None, text=""):
         self.current = current
@@ -40,6 +58,7 @@ class FakeAccessible:
         *,
         states=(),
         value_iface=None,
+        component_iface=None,
     ):
         self.name = name
         self.role = role
@@ -47,6 +66,7 @@ class FakeAccessible:
         self.description = description
         self.states = states
         self.value_iface = value_iface
+        self.component_iface = component_iface
         self._hash = FakeAccessible._next_hash
         FakeAccessible._next_hash += 1
 
@@ -70,6 +90,9 @@ class FakeAccessible:
 
     def get_value_iface(self):
         return self.value_iface
+
+    def get_component_iface(self):
+        return self.component_iface
 
 
 class A11yModelTests(unittest.TestCase):
@@ -133,6 +156,46 @@ class A11yModelTests(unittest.TestCase):
         )
         payload = build_focus_payload("object:state-changed:focused", 1, slider)
         self.assertEqual(payload["objects"][0]["value"], "75")
+
+    def test_screen_bounds_are_serialized_when_requested(self):
+        component = FakeComponent(FakeRect(10, 20, 300, 40))
+        button = FakeAccessible(
+            "Save",
+            "push button",
+            component_iface=component,
+        )
+        payload = build_focus_payload(
+            "object:state-changed:focused",
+            1,
+            button,
+            coord_type=0,
+        )
+        self.assertEqual(payload["objects"][0]["bounds"], [10, 20, 300, 40])
+        self.assertEqual(component.last_coord_type, 0)
+
+    def test_missing_component_has_null_bounds(self):
+        payload = build_focus_payload(
+            "object:state-changed:focused",
+            1,
+            self.button,
+            coord_type=0,
+        )
+        self.assertIsNone(payload["objects"][0]["bounds"])
+
+    def test_negative_component_size_is_ignored(self):
+        component = FakeComponent(FakeRect(10, 20, -1, -1))
+        button = FakeAccessible(
+            "Hidden",
+            "push button",
+            component_iface=component,
+        )
+        payload = build_focus_payload(
+            "object:state-changed:focused",
+            1,
+            button,
+            coord_type=0,
+        )
+        self.assertIsNone(payload["objects"][0]["bounds"])
 
     def test_focus_loss_is_not_sent(self):
         self.assertIsNone(build_focus_payload("object:state-changed:focused", 0, self.button))
