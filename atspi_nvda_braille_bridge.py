@@ -30,7 +30,7 @@ from gi.repository import Atspi, GLib
 
 from announcer import HANDLED, Announcer
 from a11y_link import A11Y_CHANNEL, NvdaA11yLink
-from a11y_model import build_focus_payload
+from a11y_model import build_focus_payload, perform_action
 from braille_link import NvdaBrailleLink
 from rdaccess_dvc import CHANNEL, DvcChannel, NvdaSpeechLink, load_xrdpapi
 
@@ -83,6 +83,7 @@ class Bridge:
         self.announcer = Announcer(is_focused=is_focused)
         self.listener = Atspi.EventListener.new(self._on_event)
         self._registered: list[str] = []
+        self._a11y_objects: dict[str, object] = {}
 
     def start(self) -> None:
         for event_type in LISTEN_TO:
@@ -112,6 +113,7 @@ class Bridge:
                     event.source,
                     any_data,
                     coord_type=Atspi.CoordType.SCREEN,
+                    object_registry=self._a11y_objects,
                 )
                 if payload is not None:
                     self.a11y_link.send_focus(**payload)
@@ -132,6 +134,16 @@ class Bridge:
         if self.braille_link is not None:
             cells = text_to_braille_cells(announcement.text, self.braille_link.num_cells)
             self.braille_link.display(cells)
+
+    def perform_remote_action(self, object_id: str, action_index: int) -> None:
+        obj = self._a11y_objects.get(object_id)
+        if obj is None:
+            log.warning("remote A11Y action target %s is not in the current snapshot", object_id)
+            return
+        if perform_action(obj, action_index):
+            log.debug("performed remote A11Y action %d on %s", action_index, object_id)
+        else:
+            log.warning("remote A11Y action %d failed for %s", action_index, object_id)
 
     def say_ready(self) -> None:
         self.link.speak(READY_TEXT)
@@ -181,6 +193,10 @@ def main() -> int:
         )
         a11y_link = NvdaA11yLink(
             lambda: DvcChannel(lib, A11Y_CHANNEL, attempts=1),
+            on_action=lambda object_id, action_index: bridge.perform_remote_action(
+                object_id,
+                action_index,
+            ),
         )
     bridge = Bridge(
         link,
