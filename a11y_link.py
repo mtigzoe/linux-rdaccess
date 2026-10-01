@@ -13,8 +13,9 @@ A11Y_CHANNEL = "NVDA-A11Y"
 
 
 class NvdaA11yLink:
-    def __init__(self, open_channel: Callable[[], object], *, retry_interval: float = 3.0, clock=time.monotonic):
+    def __init__(self, open_channel: Callable[[], object], *, channel_name: str = A11Y_CHANNEL, retry_interval: float = 3.0, clock=time.monotonic):
         self._open_channel = open_channel
+        self.channel_name = channel_name
         self._retry_interval = retry_interval
         self._clock = clock
         self._channel = None
@@ -74,7 +75,7 @@ class NvdaA11yLink:
 
     def _handshake(self) -> None:
         try:
-            send_json(self._channel, "protocol_version", version=PROTOCOL_VERSION, channel=A11Y_CHANNEL)
+            send_json(self._channel, "protocol_version", version=PROTOCOL_VERSION, channel=self.channel_name)
         except (ConnectionError, TimeoutError, OSError) as exc:
             self._drop(f"handshake failed: {exc}")
             return
