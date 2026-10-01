@@ -1,6 +1,6 @@
 import unittest
 
-from a11y_model import action_names, build_focus_payload, object_id, perform_action
+from a11y_model import action_names, build_focus_payload, build_text_update, object_id, perform_action
 
 
 class FakeState:
@@ -403,6 +403,87 @@ class A11yModelTests(unittest.TestCase):
         item = payload["objects"][0]
         self.assertIsNone(item["selection_start"])
         self.assertIsNone(item["selection_end"])
+
+    def test_caret_event_builds_text_update_for_registered_object(self):
+        text = FakeText("hello world", caret=6, selection=None)
+        field = FakeAccessible("Editor", "text", text_iface=text)
+        registry = {}
+        build_focus_payload(
+            "object:state-changed:focused",
+            1,
+            field,
+            object_registry=registry,
+        )
+        update = build_text_update(
+            "object:text-caret-moved",
+            field,
+            object_registry=registry,
+        )
+        self.assertEqual(update["object_id"], object_id(field))
+        self.assertEqual(update["event"], "caret")
+        self.assertEqual(update["text"], "hello world")
+        self.assertEqual(update["caret_offset"], 6)
+
+    def test_selection_event_builds_caret_update(self):
+        text = FakeText("hello", caret=4, selection=(1, 4))
+        field = FakeAccessible("Editor", "text", text_iface=text)
+        registry = {object_id(field): field}
+        update = build_text_update(
+            "object:text-selection-changed",
+            field,
+            object_registry=registry,
+        )
+        self.assertEqual(update["event"], "caret")
+        self.assertEqual(update["selection_start"], 1)
+        self.assertEqual(update["selection_end"], 4)
+
+    def test_text_change_builds_text_change_update(self):
+        text = FakeText("hello!", caret=6, selection=None)
+        field = FakeAccessible("Editor", "text", text_iface=text)
+        registry = {object_id(field): field}
+        update = build_text_update(
+            "object:text-changed:insert",
+            field,
+            object_registry=registry,
+        )
+        self.assertEqual(update["event"], "textChange")
+        self.assertEqual(update["text"], "hello!")
+
+    def test_text_update_rejects_stale_or_non_text_objects(self):
+        text_field = FakeAccessible(
+            "Editor",
+            "text",
+            text_iface=FakeText("hello", caret=1, selection=None),
+        )
+        self.assertIsNone(
+            build_text_update(
+                "object:text-caret-moved",
+                text_field,
+                object_registry={},
+            ),
+        )
+        button = FakeAccessible("Save", "push button")
+        self.assertIsNone(
+            build_text_update(
+                "object:text-caret-moved",
+                button,
+                object_registry={object_id(button): button},
+            ),
+        )
+
+    def test_unrelated_event_does_not_build_text_update(self):
+        field = FakeAccessible(
+            "Editor",
+            "text",
+            text_iface=FakeText("hello", caret=1, selection=None),
+        )
+        self.assertIsNone(
+            build_text_update(
+                "object:state-changed:focused",
+                field,
+                object_registry={object_id(field): field},
+            ),
+        )
 
     def test_action_names_are_serialized_in_order(self):
         actions = FakeAction(["click", "show menu"])
