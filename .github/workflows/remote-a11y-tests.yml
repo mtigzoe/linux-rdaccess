@@ -9,6 +9,8 @@ on:
       - "tests/test_a11y_link.py"
       - "tests/test_a11y_model.py"
       - "tools/generate_remote_a11y_fixture.py"
+      - "tools/generate_remote_a11y_role_matrix.py"
+      - "tools/generate_remote_a11y_state_matrix.py"
       - ".github/workflows/remote-a11y-tests.yml"
   push:
     branches:
@@ -20,6 +22,8 @@ on:
       - "tests/test_a11y_link.py"
       - "tests/test_a11y_model.py"
       - "tools/generate_remote_a11y_fixture.py"
+      - "tools/generate_remote_a11y_role_matrix.py"
+      - "tools/generate_remote_a11y_state_matrix.py"
       - ".github/workflows/remote-a11y-tests.yml"
 
 jobs:
@@ -44,6 +48,7 @@ jobs:
         run: |
           python tools/generate_remote_a11y_fixture.py > linux-a11y-fixture.json
           python tools/generate_remote_a11y_role_matrix.py > linux-a11y-role-matrix.json
+          python tools/generate_remote_a11y_state_matrix.py > linux-a11y-state-matrix.json
       - name: Verify Linux to rdAccess semantic contract
         run: |
-          python rdAccess/tests/remote_a11y_contract.py linux-a11y-fixture.json linux-a11y-role-matrix.json
+          python rdAccess/tests/remote_a11y_contract.py linux-a11y-fixture.json linux-a11y-role-matrix.json linux-a11y-state-matrix.json
