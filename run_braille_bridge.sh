@@ -58,6 +58,13 @@ echo "DISPLAY=$DISPLAY"
 echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS"
 echo "AT_SPI_BUS_ADDRESS=$AT_SPI_BUS_ADDRESS (X root AT_SPI_BUS matches)"
 
+if ! xprop -root _NET_SUPPORTING_WM_CHECK >/dev/null 2>&1; then
+  echo "error: no X11 window manager is active on $DISPLAY." >&2
+  echo "       Keyboard focus may remain PointerRoot, so Tab can reach X without producing AT-SPI focus events." >&2
+  exit 5
+fi
+echo "WINDOW_MANAGER=present (_NET_SUPPORTING_WM_CHECK)"
+
 if [[ "$check_only" == 1 ]]; then
   exit 0
 fi

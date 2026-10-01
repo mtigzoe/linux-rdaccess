@@ -28,6 +28,11 @@ if [ "$1" = "-root" ] && [ "$2" = "AT_SPI_BUS" ]; then
   [ -s "$store" ] && printf 'AT_SPI_BUS(STRING) = "%s"\\n' "$(cat "$store")"
   exit 0
 fi
+if [ "$1" = "-root" ] && [ "$2" = "_NET_SUPPORTING_WM_CHECK" ]; then
+  [ -n "$FAKE_NO_WM" ] && exit 1
+  printf '_NET_SUPPORTING_WM_CHECK(WINDOW): window id # 0x200001\n'
+  exit 0
+fi
 exit 1
 """
 
@@ -124,6 +129,14 @@ class LauncherTests(unittest.TestCase):
         r = self.run_launcher()
         self.assertIn("DISPLAY=:10", r.stdout)
         self.assertIn("DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/session-bus", r.stdout)
+        self.assertIn("WINDOW_MANAGER=present", r.stdout)
+
+    def test_missing_window_manager_is_a_clear_error(self):
+        """Regression: xrdp can accept Tab at X while PointerRoot owns focus, producing no AT-SPI event."""
+        r = self.run_launcher(FAKE_NO_WM="1")
+        self.assertEqual(r.returncode, 5)
+        self.assertIn("no X11 window manager", r.stderr)
+        self.assertIn("PointerRoot", r.stderr)
 
 
 if __name__ == "__main__":
