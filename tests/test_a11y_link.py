@@ -26,7 +26,8 @@ class FakeChannel:
 class A11yLinkTests(unittest.TestCase):
     def setUp(self):
         self.channels = []
-        self.link = NvdaA11yLink(self._open)
+        self.actions = []
+        self.link = NvdaA11yLink(self._open, on_action=lambda object_id, index: self.actions.append((object_id, index)))
 
     def _open(self):
         ch = FakeChannel()
@@ -87,6 +88,51 @@ class A11yLinkTests(unittest.TestCase):
         self.assertEqual(len(ch.written), 2)
         self.assertEqual(ch.written[1]["focus_id"], "2")
         self.assertEqual(ch.written[1]["objects"], second)
+
+    def test_valid_action_message_is_dispatched_after_handshake(self):
+        ch = self.connect()
+        ch.incoming.append(
+            b'{"type":"a11y_action","object_id":"abc","action_index":1}\n'
+        )
+        self.link.poll()
+        self.assertEqual(self.actions, [("abc", 1)])
+
+    def test_action_before_xon_is_ignored(self):
+        self.link.poll()
+        ch = self.channels[-1]
+        ch.incoming.append(
+            b'{"type":"a11y_action","object_id":"abc","action_index":0}\n'
+        )
+        self.link.poll()
+        self.assertEqual(self.actions, [])
+
+    def test_invalid_action_messages_are_ignored(self):
+        ch = self.connect()
+        for payload in (
+            b'{"type":"a11y_action","object_id":"","action_index":0}\n',
+            b'{"type":"a11y_action","object_id":"abc","action_index":-1}\n',
+            b'{"type":"a11y_action","object_id":"abc","action_index":32}\n',
+            b'{"type":"a11y_action","object_id":"abc","action_index":true}\n',
+        ):
+            ch.incoming.append(payload)
+        self.link.poll()
+        self.assertEqual(self.actions, [])
+
+    def test_action_callback_exception_does_not_drop_channel(self):
+        def fail(_object_id, _index):
+            raise RuntimeError("boom")
+
+        link = NvdaA11yLink(self._open, on_action=fail)
+        link.poll()
+        ch = self.channels[-1]
+        ch.incoming.append(bytes([XON]))
+        link.poll()
+        ch.incoming.append(
+            b'{"type":"a11y_action","object_id":"abc","action_index":0}\n'
+        )
+        link.poll()
+        self.assertTrue(link.ready)
+        self.assertFalse(ch.closed)
 
     def test_xoff_queues_latest_focus_until_next_xon(self):
         ch = self.connect()
