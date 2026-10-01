@@ -11,10 +11,12 @@ on:
       - "tools/generate_remote_a11y_fixture.py"
       - "tools/generate_remote_a11y_role_matrix.py"
       - "tools/generate_remote_a11y_state_matrix.py"
+      - "tools/generate_remote_a11y_navigation_fixture.py"
       - ".github/workflows/remote-a11y-tests.yml"
   push:
     branches:
       - "feature/remote-a11y-objects"
+      - "feature/remote-a11y-navigation"
     paths:
       - "a11y_link.py"
       - "a11y_model.py"
@@ -36,7 +38,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: mtigzoe/rdAccess
-          ref: feature/remote-a11y-objects
+          ref: feature/remote-a11y-navigation
           path: rdAccess
       - uses: actions/setup-python@v5
         with:
@@ -49,6 +51,7 @@ jobs:
           python tools/generate_remote_a11y_fixture.py > linux-a11y-fixture.json
           python tools/generate_remote_a11y_role_matrix.py > linux-a11y-role-matrix.json
           python tools/generate_remote_a11y_state_matrix.py > linux-a11y-state-matrix.json
+          python tools/generate_remote_a11y_navigation_fixture.py > linux-a11y-navigation.json
       - name: Verify Linux to rdAccess semantic contract
         run: |
-          python rdAccess/tests/remote_a11y_contract.py linux-a11y-fixture.json linux-a11y-role-matrix.json linux-a11y-state-matrix.json
+          python rdAccess/tests/remote_a11y_contract.py linux-a11y-fixture.json linux-a11y-role-matrix.json linux-a11y-state-matrix.json linux-a11y-navigation.json
