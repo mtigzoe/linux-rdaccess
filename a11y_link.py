@@ -13,7 +13,14 @@ A11Y_CHANNEL = "NVDA-A11Y"
 
 
 class NvdaA11yLink:
-    def __init__(self, open_channel: Callable[[], object], *, channel_name: str = A11Y_CHANNEL, retry_interval: float = 3.0, clock=time.monotonic):
+    def __init__(
+        self,
+        open_channel: Callable[[], object],
+        *,
+        channel_name: str = A11Y_CHANNEL,
+        retry_interval: float = 3.0,
+        clock=time.monotonic,
+    ):
         self._open_channel = open_channel
         self.channel_name = channel_name
         self._retry_interval = retry_interval
@@ -22,6 +29,7 @@ class NvdaA11yLink:
         self._rx = Receiver()
         self._seen_xon_count = 0
         self._next_open_at = 0.0
+        self._pending_focus: tuple[str, list[dict]] | None = None
 
     @property
     def ready(self) -> bool:
@@ -48,14 +56,14 @@ class NvdaA11yLink:
             self._handshake()
 
     def send_focus(self, *, focus_id: str, objects: list[dict]) -> bool:
+        # Keep the newest semantic focus snapshot even while the DVC is still
+        # negotiating.  Focus often arrives before rdAccess has opened its
+        # named pipe, and losing that first snapshot leaves NVDA stuck on the
+        # RDP Input Capture Window until the user moves focus again.
+        self._pending_focus = (focus_id, objects)
         if not self.ready:
             return False
-        try:
-            send_json(self._channel, "a11y_focus", focus_id=focus_id, objects=objects)
-            return True
-        except (ConnectionError, TimeoutError, OSError) as exc:
-            self._drop(f"write failed: {exc}")
-            return False
+        return self._send_pending_focus()
 
     def close(self) -> None:
         self._drop("closing", quiet=True)
@@ -75,11 +83,34 @@ class NvdaA11yLink:
 
     def _handshake(self) -> None:
         try:
-            send_json(self._channel, "protocol_version", version=PROTOCOL_VERSION, channel=self.channel_name)
+            send_json(
+                self._channel,
+                "protocol_version",
+                version=PROTOCOL_VERSION,
+                channel=self.channel_name,
+            )
         except (ConnectionError, TimeoutError, OSError) as exc:
             self._drop(f"handshake failed: {exc}")
             return
         log.info("a11y XON received; announced protocol v%d", PROTOCOL_VERSION)
+        self._send_pending_focus()
+
+    def _send_pending_focus(self) -> bool:
+        if not self.ready or self._pending_focus is None:
+            return False
+        focus_id, objects = self._pending_focus
+        try:
+            send_json(
+                self._channel,
+                "a11y_focus",
+                focus_id=focus_id,
+                objects=objects,
+            )
+        except (ConnectionError, TimeoutError, OSError) as exc:
+            self._drop(f"write failed: {exc}")
+            return False
+        self._pending_focus = None
+        return True
 
     def _drop(self, reason: str, quiet: bool = False) -> None:
         if self._channel is not None:
