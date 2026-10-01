@@ -149,5 +149,71 @@ class AnnouncerTests(unittest.TestCase):
         self.assertLessEqual(len(self.a._recent), 130)
 
 
+class IdentityDedupeTests(unittest.TestCase):
+    """Regression: dedupe was keyed on (name, role), so distinct controls sharing a label were merged."""
+
+    def setUp(self):
+        self.clock = Clock()
+        self.a = Announcer(is_focused=lambda o: o.focused, clock=self.clock)
+
+    def test_two_different_controls_with_the_same_label_are_both_spoken(self):
+        first, second = Obj("Browse", "push button"), Obj("Browse", "push button")
+        self.clock.now += 0.1
+        r1 = self.a.handle(A.FOCUS, 1, first)
+        self.clock.now += 0.25  # Tab pressed again a quarter of a second later
+        r2 = self.a.handle(A.FOCUS, 1, second)
+        self.assertEqual((r1.text, r2.text), ("Browse, push button", "Browse, push button"))
+
+    def test_two_unnamed_text_fields_are_both_spoken(self):
+        first, second = Obj("", "text"), Obj("", "text")
+        self.assertEqual(self.a.handle(A.FOCUS, 1, first).text, "text")
+        self.clock.now += 0.25
+        self.assertEqual(self.a.handle(A.FOCUS, 1, second).text, "text")
+
+    def test_same_accessible_through_different_python_wrappers_is_still_one_announcement(self):
+        """PyGObject creates a new wrapper per event; hash() is what stays stable, id() is not."""
+
+        class Wrapper(Obj):
+            def __hash__(self):
+                return 4242
+
+            def __eq__(self, other):
+                return isinstance(other, Wrapper)
+
+        self.assertIsNotNone(self.a.handle(A.FOCUS, 1, Wrapper("Save", "push button")))
+        self.clock.now += 0.05
+        self.assertIsNone(self.a.handle(A.SELECTED, 1, Wrapper("Save", "push button")))
+
+    def test_unhashable_source_falls_back_to_id(self):
+        class Unhashable(Obj):
+            __hash__ = None
+
+        o = Unhashable("Save", "push button")
+        self.assertIsNotNone(self.a.handle(A.FOCUS, 1, o))
+        self.clock.now += 0.05
+        self.assertIsNone(self.a.handle(A.FOCUS, 1, o))
+
+
+class ComboBoxTests(unittest.TestCase):
+    """Regression: GTK3 never reports FOCUSED for a combo box, so changing its value was silent."""
+
+    def setUp(self):
+        self.clock = Clock()
+        self.a = Announcer(is_focused=lambda o: o.focused, clock=self.clock)
+
+    def test_combo_box_name_change_is_spoken_without_the_focused_state(self):
+        combo = Obj("Green", "combo box", focused=False)
+        r = self.a.handle(A.NAME_CHANGED, 0, combo)
+        self.assertEqual((r.text, r.interrupt), ("Green, combo box", False))
+
+    def test_other_unfocused_roles_stay_silent(self):
+        label = Obj("12:41", "label", focused=False)
+        self.assertIsNone(self.a.handle(A.NAME_CHANGED, 0, label))
+
+    def test_combo_box_description_change_is_spoken(self):
+        combo = Obj("Colour", "combo box", description="pick one", focused=False)
+        self.assertEqual(self.a.handle(A.DESCRIPTION_CHANGED, 0, combo, any_data="pick one").text, "pick one")
+
+
 if __name__ == "__main__":
     unittest.main()

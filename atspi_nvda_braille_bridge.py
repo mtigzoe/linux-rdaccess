@@ -36,7 +36,10 @@ log = logging.getLogger("bridge")
 
 POLL_MS = 50
 READY_TEXT = "Linux accessibility bridge ready"
-LISTEN_TO = tuple(sorted(HANDLED))
+# Broad on purpose, same as atspi_nvda_bridge.py. Narrow per-event registrations were found to be
+# unreliable in the xrdp session; _on_event() rejects everything outside HANDLED with a string
+# compare, before any D-Bus call, so the extra callbacks are cheap.
+LISTEN_TO = ("object", "window")
 BRAILLE_CHANNEL = "NVDA-BRAILLE"
 BRAILLE_TABLE = ["en-ueb-g2.ctb"]
 

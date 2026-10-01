@@ -14,8 +14,9 @@ Rules:
   * Name and description changes are only spoken for the focused object, otherwise a
     clock label or a window title changing would talk constantly. They queue and do not
     interrupt.
-  * Repeats are dropped if the same (name, role) was spoken less than `dedupe_seconds`
-    ago. GTK often emits focus, selected and active-descendant for one keypress.
+  * Repeats are dropped if the same accessible (same object, name and role) was spoken less
+    than `dedupe_seconds` ago. GTK often emits focus, selected and active-descendant for one
+    keypress. Two different controls that merely share a label are never merged.
 """
 
 from __future__ import annotations
@@ -34,6 +35,7 @@ WINDOW_ACTIVATE = "window:activate"
 HANDLED = frozenset(
     {FOCUS, SELECTED, ACTIVE_DESCENDANT, NAME_CHANGED, DESCRIPTION_CHANGED, WINDOW_ACTIVATE}
 )
+FOCUS_IMPLIED_ROLES = frozenset({"combo box"})
 _NEEDS_DETAIL1 = frozenset({FOCUS, SELECTED})  # detail1 == 0 means "lost", not "gained"
 
 
@@ -45,6 +47,21 @@ class Announcement:
 
 def _clean(text: Optional[str]) -> str:
     return " ".join((text or "").split())
+
+
+def _identity(obj) -> object:
+    """Stable key for "the same accessible".
+
+    libatspi hands back the same GObject for the same accessible while it is alive, and
+    hash() of the PyGObject wrapper follows that GObject (id() of the wrapper does not:
+    it differs on every event). Keying the dedupe on name+role alone silently dropped the
+    second of two identical controls ("Browse" next to "Browse", two unlabelled text fields)
+    whenever they were tabbed through faster than the dedupe window.
+    """
+    try:
+        return hash(obj)
+    except TypeError:
+        return id(obj)
 
 
 class Announcer:
@@ -81,17 +98,25 @@ class Announcer:
         if event_type == WINDOW_ACTIVATE:
             return self._describe(source, interrupt=True)
         if event_type == NAME_CHANGED:
-            if not self._is_focused(source):
+            if not self._counts_as_focused(source):
                 return None
             return self._describe(source, interrupt=False)
         # DESCRIPTION_CHANGED
-        if not self._is_focused(source):
+        if not self._counts_as_focused(source):
             return None
         description = any_data if isinstance(any_data, str) else source.get_description()
         description = _clean(description)
         if not description or self._is_repeat(("description", description)):
             return None
         return Announcement(description, interrupt=False)
+
+    def _counts_as_focused(self, obj) -> bool:
+        if self._is_focused(obj):
+            return True
+        # GTK3 keeps keyboard focus inside a combo box but never reports the FOCUSED state
+        # for it, so its value changes (the Down arrow) were silent. Only the user changes a
+        # combo box's value in practice, so treat it as focused.
+        return _clean(obj.get_role_name()) in FOCUS_IMPLIED_ROLES
 
     def _describe(
         self, obj, *, interrupt: bool, allow_role_only: bool = False, suffix: str = ""
@@ -100,7 +125,7 @@ class Announcer:
         role = _clean(obj.get_role_name())
         if not name and not (allow_role_only and role):
             return None
-        if self._is_repeat(("object", name, role)):
+        if self._is_repeat(("object", _identity(obj), name, role)):
             return None
         parts = [p for p in (name, role, suffix) if p]
         return Announcement(", ".join(parts), interrupt)
