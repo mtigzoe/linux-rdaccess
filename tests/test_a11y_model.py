@@ -63,6 +63,9 @@ class FakeAccessible:
         self.name = name
         self.role = role
         self.parent = parent
+        self.children = []
+        if parent is not None and hasattr(parent, "children"):
+            parent.children.append(self)
         self.description = description
         self.states = states
         self.value_iface = value_iface
@@ -84,6 +87,12 @@ class FakeAccessible:
 
     def get_parent(self):
         return self.parent
+
+    def get_child_count(self):
+        return len(self.children)
+
+    def get_child_at_index(self, index):
+        return self.children[index]
 
     def get_state_set(self):
         return FakeStateSet(*self.states)
@@ -196,6 +205,91 @@ class A11yModelTests(unittest.TestCase):
             coord_type=0,
         )
         self.assertIsNone(payload["objects"][0]["bounds"])
+
+    def test_focus_neighborhood_includes_siblings_and_focus_children(self):
+        before = FakeAccessible("Before", "push button", self.dialog)
+        self.button = FakeAccessible(
+            "Save 2",
+            "push button",
+            self.dialog,
+            states=("focusable",),
+        )
+        after = FakeAccessible("After", "push button", self.dialog)
+        child = FakeAccessible("Inner", "label", self.button)
+
+        payload = build_focus_payload("object:state-changed:focused", 1, self.button)
+        by_id = {item["id"]: item for item in payload["objects"]}
+
+        self.assertIn(object_id(before), by_id)
+        self.assertIn(object_id(after), by_id)
+        self.assertIn(object_id(child), by_id)
+        self.assertEqual(
+            by_id[object_id(self.dialog)]["child_ids"],
+            [object_id(before), object_id(self.button), object_id(after)],
+        )
+        self.assertEqual(
+            by_id[object_id(self.button)]["child_ids"],
+            [object_id(child)],
+        )
+
+    def test_child_ids_preserve_atspi_child_order(self):
+        dialog = FakeAccessible("Dialog", "dialog", self.app)
+        first = FakeAccessible("First", "push button", dialog)
+        focused = FakeAccessible("Focused", "push button", dialog)
+        third = FakeAccessible("Third", "push button", dialog)
+        payload = build_focus_payload("object:state-changed:focused", 1, focused)
+        by_id = {item["id"]: item for item in payload["objects"]}
+        self.assertEqual(
+            by_id[object_id(dialog)]["child_ids"],
+            [object_id(first), object_id(focused), object_id(third)],
+        )
+
+    def test_focus_child_ids_are_serialized(self):
+        container = FakeAccessible("Group", "panel", self.dialog)
+        first = FakeAccessible("One", "label", container)
+        second = FakeAccessible("Two", "label", container)
+        payload = build_focus_payload("object:state-changed:focused", 1, container)
+        by_id = {item["id"]: item for item in payload["objects"]}
+        self.assertEqual(
+            by_id[object_id(container)]["child_ids"],
+            [object_id(first), object_id(second)],
+        )
+        self.assertEqual(by_id[object_id(first)]["parent_id"], object_id(container))
+        self.assertEqual(by_id[object_id(second)]["parent_id"], object_id(container))
+
+    def test_max_objects_truncates_neighborhood_not_focus_chain(self):
+        dialog = FakeAccessible("Dialog", "dialog", self.app)
+        focused = FakeAccessible("Focused", "push button", dialog)
+        for index in range(20):
+            FakeAccessible(f"Sibling {index}", "push button", dialog)
+
+        payload = build_focus_payload(
+            "object:state-changed:focused",
+            1,
+            focused,
+            max_objects=4,
+        )
+        ids = {item["id"] for item in payload["objects"]}
+        self.assertEqual(len(payload["objects"]), 4)
+        self.assertIn(object_id(focused), ids)
+        self.assertIn(object_id(dialog), ids)
+        self.assertIn(object_id(self.app), ids)
+
+    def test_child_ids_never_reference_truncated_objects(self):
+        dialog = FakeAccessible("Dialog", "dialog", self.app)
+        focused = FakeAccessible("Focused", "push button", dialog)
+        for index in range(10):
+            FakeAccessible(f"Sibling {index}", "push button", dialog)
+
+        payload = build_focus_payload(
+            "object:state-changed:focused",
+            1,
+            focused,
+            max_objects=5,
+        )
+        ids = {item["id"] for item in payload["objects"]}
+        for item in payload["objects"]:
+            self.assertTrue(set(item["child_ids"]) <= ids)
 
     def test_focus_loss_is_not_sent(self):
         self.assertIsNone(build_focus_payload("object:state-changed:focused", 0, self.button))
