@@ -10,6 +10,7 @@ A11Y_FOCUS_EVENTS = frozenset({
     "window:activate",
 })
 DEFAULT_MAX_OBJECTS = 64
+MAX_ACTIONS = 32
 
 
 def _clean(value: Any) -> str:
@@ -81,6 +82,58 @@ def _states(obj, *, focused: bool) -> list[str]:
     if focused:
         states.add("focused")
     return sorted(states)
+
+
+def _action_iface(obj):
+    try:
+        iface = obj.get_action_iface()
+    except Exception:
+        iface = None
+    if iface is not None:
+        return iface
+    try:
+        return obj.get_action()
+    except Exception:
+        return None
+
+
+def action_names(obj) -> list[str]:
+    """Return the bounded ordered AT-SPI action names for an accessible object."""
+    iface = _action_iface(obj)
+    if iface is None:
+        return []
+    try:
+        count = min(MAX_ACTIONS, max(0, int(iface.get_n_actions())))
+    except Exception:
+        return []
+    names = []
+    for index in range(count):
+        try:
+            name = _clean(iface.get_action_name(index))
+        except Exception:
+            name = ""
+        names.append(name or f"action {index + 1}")
+    return names
+
+
+def perform_action(obj, index: int) -> bool:
+    """Perform one bounded AT-SPI action by index."""
+    if type(index) is not int or index < 0 or index >= MAX_ACTIONS:
+        return False
+    iface = _action_iface(obj)
+    if iface is None:
+        return False
+    try:
+        count = int(iface.get_n_actions())
+    except Exception:
+        return False
+    if index >= count:
+        return False
+    try:
+        result = iface.do_action(index)
+    except Exception:
+        return False
+    return result is not False
 
 
 def _value(obj) -> str:
@@ -155,6 +208,7 @@ def _snapshot(
         "role": _clean(obj.get_role_name()),
         "description": description,
         "value": _value(obj),
+        "actions": action_names(obj),
         "states": _states(obj, focused=focused),
         "bounds": _bounds(obj, coord_type),
     }
@@ -169,6 +223,7 @@ def build_focus_payload(
     max_depth: int = 24,
     max_objects: int = DEFAULT_MAX_OBJECTS,
     coord_type=None,
+    object_registry: dict[str, object] | None = None,
 ):
     """Build a bounded focus-neighborhood snapshot.
 
@@ -252,6 +307,10 @@ def build_focus_payload(
                 coord_type=coord_type,
             )
         )
+
+    if object_registry is not None:
+        object_registry.clear()
+        object_registry.update({object_id(obj): obj for obj in selected})
 
     return {
         "focus_id": focus_id,

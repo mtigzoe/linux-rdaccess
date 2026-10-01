@@ -10,6 +10,20 @@ from rdaccess_dvc import PROTOCOL_VERSION, Receiver, send_json
 
 log = logging.getLogger("a11yLink")
 A11Y_CHANNEL = "NVDA-A11Y"
+MAX_ACTIONS = 32
+MAX_OBJECT_ID_CHARS = 256
+
+
+def decode_action_request(msg: dict) -> tuple[str, int] | None:
+    if msg.get("type") != "a11y_action":
+        return None
+    object_id = msg.get("object_id")
+    action_index = msg.get("action_index")
+    if not isinstance(object_id, str) or not object_id or len(object_id) > MAX_OBJECT_ID_CHARS:
+        return None
+    if type(action_index) is not int or action_index < 0 or action_index >= MAX_ACTIONS:
+        return None
+    return object_id, action_index
 
 
 class NvdaA11yLink:
@@ -20,6 +34,7 @@ class NvdaA11yLink:
         channel_name: str = A11Y_CHANNEL,
         retry_interval: float = 3.0,
         clock=time.monotonic,
+        on_action: Callable[[str, int], None] | None = None,
     ):
         self._open_channel = open_channel
         self.channel_name = channel_name
@@ -30,6 +45,7 @@ class NvdaA11yLink:
         self._seen_xon_count = 0
         self._next_open_at = 0.0
         self._pending_focus: tuple[str, list[dict]] | None = None
+        self._on_action = on_action
 
     @property
     def ready(self) -> bool:
@@ -51,6 +67,8 @@ class NvdaA11yLink:
         for msg in self._rx.drain():
             if msg.get("type") != "ping":
                 log.debug("a11y rx %s", msg)
+            if msg.get("type") == "a11y_action":
+                self._handle_action_message(msg)
         if self._rx.xon_count != self._seen_xon_count:
             self._seen_xon_count = self._rx.xon_count
             self._handshake()
@@ -64,6 +82,19 @@ class NvdaA11yLink:
         if not self.ready:
             return False
         return self._send_pending_focus()
+
+    def _handle_action_message(self, msg: dict) -> None:
+        if not self.ready or self._on_action is None:
+            return
+        decoded = decode_action_request(msg)
+        if decoded is None:
+            log.warning("ignoring invalid remote A11Y action request")
+            return
+        object_id, action_index = decoded
+        try:
+            self._on_action(object_id, action_index)
+        except Exception:
+            log.exception("failed to handle remote A11Y action for %s", object_id)
 
     def close(self) -> None:
         self._drop("closing", quiet=True)
