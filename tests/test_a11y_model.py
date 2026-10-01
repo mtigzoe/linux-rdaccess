@@ -3,14 +3,50 @@ import unittest
 from a11y_model import build_focus_payload, object_id
 
 
+class FakeState:
+    def __init__(self, value_nick):
+        self.value_nick = value_nick
+
+
+class FakeStateSet:
+    def __init__(self, *states):
+        self.states = [FakeState(state) for state in states]
+
+    def get_states(self):
+        return self.states
+
+
+class FakeValue:
+    def __init__(self, current=None, text=""):
+        self.current = current
+        self.text = text
+
+    def get_text(self):
+        return self.text
+
+    def get_current_value(self):
+        return self.current
+
+
 class FakeAccessible:
     _next_hash = 100
 
-    def __init__(self, name, role, parent=None, description=""):
+    def __init__(
+        self,
+        name,
+        role,
+        parent=None,
+        description="",
+        *,
+        states=(),
+        value_iface=None,
+    ):
         self.name = name
         self.role = role
         self.parent = parent
         self.description = description
+        self.states = states
+        self.value_iface = value_iface
         self._hash = FakeAccessible._next_hash
         FakeAccessible._next_hash += 1
 
@@ -29,12 +65,24 @@ class FakeAccessible:
     def get_parent(self):
         return self.parent
 
+    def get_state_set(self):
+        return FakeStateSet(*self.states)
+
+    def get_value_iface(self):
+        return self.value_iface
+
 
 class A11yModelTests(unittest.TestCase):
     def setUp(self):
         self.app = FakeAccessible("Test App", "application")
         self.dialog = FakeAccessible("Settings", "dialog", self.app)
-        self.button = FakeAccessible("Save", "push button", self.dialog, "Save changes")
+        self.button = FakeAccessible(
+            "Save",
+            "push button",
+            self.dialog,
+            "Save changes",
+            states=("focusable", "enabled"),
+        )
 
     def test_focus_payload_contains_focus_and_ancestors(self):
         payload = build_focus_payload("object:state-changed:focused", 1, self.button)
@@ -46,7 +94,45 @@ class A11yModelTests(unittest.TestCase):
         self.assertEqual(by_id[object_id(self.button)]["name"], "Save")
         self.assertEqual(by_id[object_id(self.button)]["role"], "push button")
         self.assertEqual(by_id[object_id(self.button)]["description"], "Save changes")
-        self.assertEqual(by_id[object_id(self.button)]["states"], ["focused", "focusable"])
+        self.assertEqual(
+            by_id[object_id(self.button)]["states"],
+            ["enabled", "focusable", "focused"],
+        )
+
+    def test_focus_event_adds_focused_if_state_set_lags(self):
+        button = FakeAccessible("Save", "push button", states=("focusable",))
+        payload = build_focus_payload("object:state-changed:focused", 1, button)
+        self.assertEqual(payload["objects"][0]["states"], ["focusable", "focused"])
+
+    def test_state_names_are_normalized(self):
+        button = FakeAccessible(
+            "Choice",
+            "check box",
+            states=("half-checked", "READ_ONLY", "Atspi_State_Selected"),
+        )
+        payload = build_focus_payload("object:state-changed:focused", 1, button)
+        self.assertEqual(
+            payload["objects"][0]["states"],
+            ["focused", "half checked", "read only", "selected"],
+        )
+
+    def test_human_readable_value_text_wins(self):
+        slider = FakeAccessible(
+            "Volume",
+            "slider",
+            value_iface=FakeValue(current=75.0, text="75 percent"),
+        )
+        payload = build_focus_payload("object:state-changed:focused", 1, slider)
+        self.assertEqual(payload["objects"][0]["value"], "75 percent")
+
+    def test_numeric_value_is_serialized(self):
+        slider = FakeAccessible(
+            "Volume",
+            "slider",
+            value_iface=FakeValue(current=75.0),
+        )
+        payload = build_focus_payload("object:state-changed:focused", 1, slider)
+        self.assertEqual(payload["objects"][0]["value"], "75")
 
     def test_focus_loss_is_not_sent(self):
         self.assertIsNone(build_focus_payload("object:state-changed:focused", 0, self.button))
