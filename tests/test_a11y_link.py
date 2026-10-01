@@ -138,6 +138,96 @@ class A11yLinkTests(unittest.TestCase):
         self.assertEqual(ch.written[1]["focus_id"], "2")
         self.assertEqual(ch.written[1]["objects"], second)
 
+    def test_text_update_is_sent_after_xon(self):
+        ch = self.connect()
+        ch.written.clear()
+        self.assertTrue(
+            self.link.send_text_update(
+                object_id="editor",
+                event="caret",
+                text_supported=True,
+                text="hello",
+                text_truncated=False,
+                caret_offset=3,
+                selection_start=None,
+                selection_end=None,
+            ),
+        )
+        self.assertEqual(
+            ch.written,
+            [
+                {
+                    "type": "a11y_text",
+                    "object_id": "editor",
+                    "event": "caret",
+                    "text_supported": True,
+                    "text": "hello",
+                    "text_truncated": False,
+                    "caret_offset": 3,
+                    "selection_start": None,
+                    "selection_end": None,
+                },
+            ],
+        )
+
+    def test_latest_text_update_is_replayed_after_handshake(self):
+        self.link.poll()
+        ch = self.channels[-1]
+        self.assertFalse(
+            self.link.send_text_update(
+                object_id="editor",
+                event="caret",
+                text_supported=True,
+                text="one",
+                text_truncated=False,
+                caret_offset=1,
+                selection_start=None,
+                selection_end=None,
+            ),
+        )
+        self.assertFalse(
+            self.link.send_text_update(
+                object_id="editor",
+                event="caret",
+                text_supported=True,
+                text="two",
+                text_truncated=False,
+                caret_offset=2,
+                selection_start=None,
+                selection_end=None,
+            ),
+        )
+        ch.incoming.append(bytes([XON]))
+        self.link.poll()
+
+        self.assertEqual(ch.written[0]["type"], "protocol_version")
+        self.assertEqual(ch.written[-1]["type"], "a11y_text")
+        self.assertEqual(ch.written[-1]["text"], "two")
+        self.assertEqual(ch.written[-1]["caret_offset"], 2)
+
+    def test_text_update_replays_after_xoff_xon(self):
+        ch = self.connect()
+        ch.written.clear()
+        ch.incoming.append(bytes([XOFF]))
+        self.link.poll()
+        self.assertFalse(
+            self.link.send_text_update(
+                object_id="editor",
+                event="textChange",
+                text_supported=True,
+                text="changed",
+                text_truncated=False,
+                caret_offset=7,
+                selection_start=None,
+                selection_end=None,
+            ),
+        )
+        ch.incoming.append(bytes([XON]))
+        self.link.poll()
+        self.assertEqual(ch.written[0]["type"], "protocol_version")
+        self.assertEqual(ch.written[1]["type"], "a11y_text")
+        self.assertEqual(ch.written[1]["event"], "textChange")
+
     def test_valid_action_message_is_dispatched_after_handshake(self):
         ch = self.connect()
         ch.incoming.append(
