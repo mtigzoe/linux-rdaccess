@@ -52,18 +52,58 @@ class A11yLinkTests(unittest.TestCase):
         ch.written.clear()
         objects = [{"id": "1", "parent_id": None, "name": "Save", "role": "push button"}]
         self.assertTrue(self.link.send_focus(focus_id="1", objects=objects))
-        self.assertEqual(ch.written, [{"focus_id": "1", "objects": objects, "type": "a11y_focus"}])
+        self.assertEqual(
+            ch.written,
+            [{"focus_id": "1", "objects": objects, "type": "a11y_focus"}],
+        )
 
-    def test_focus_is_dropped_until_xon(self):
+    def test_focus_before_xon_is_replayed_after_handshake(self):
         self.link.poll()
-        self.assertFalse(self.link.send_focus(focus_id="1", objects=[]))
+        ch = self.channels[-1]
+        objects = [{"id": "1", "parent_id": None, "name": "Save", "role": "push button"}]
+        self.assertFalse(self.link.send_focus(focus_id="1", objects=objects))
+        self.assertEqual(ch.written, [])
 
-    def test_xoff_stops_object_updates(self):
+        ch.incoming.append(bytes([XON]))
+        self.link.poll()
+
+        self.assertEqual(ch.written[0]["type"], "protocol_version")
+        self.assertEqual(
+            ch.written[1],
+            {"focus_id": "1", "objects": objects, "type": "a11y_focus"},
+        )
+
+    def test_only_latest_focus_is_replayed_after_handshake(self):
+        self.link.poll()
+        ch = self.channels[-1]
+        first = [{"id": "1", "parent_id": None, "name": "First", "role": "push button"}]
+        second = [{"id": "2", "parent_id": None, "name": "Second", "role": "push button"}]
+        self.assertFalse(self.link.send_focus(focus_id="1", objects=first))
+        self.assertFalse(self.link.send_focus(focus_id="2", objects=second))
+
+        ch.incoming.append(bytes([XON]))
+        self.link.poll()
+
+        self.assertEqual(len(ch.written), 2)
+        self.assertEqual(ch.written[1]["focus_id"], "2")
+        self.assertEqual(ch.written[1]["objects"], second)
+
+    def test_xoff_queues_latest_focus_until_next_xon(self):
         ch = self.connect()
+        ch.written.clear()
         ch.incoming.append(bytes([XOFF]))
         self.link.poll()
         self.assertFalse(self.link.ready)
-        self.assertFalse(self.link.send_focus(focus_id="1", objects=[]))
+
+        objects = [{"id": "2", "parent_id": None, "name": "Reconnect", "role": "push button"}]
+        self.assertFalse(self.link.send_focus(focus_id="2", objects=objects))
+        self.assertEqual(ch.written, [])
+
+        ch.incoming.append(bytes([XON]))
+        self.link.poll()
+
+        self.assertEqual(ch.written[0]["type"], "protocol_version")
+        self.assertEqual(ch.written[1]["focus_id"], "2")
 
 
 if __name__ == "__main__":
