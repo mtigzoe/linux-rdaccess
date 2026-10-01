@@ -11,6 +11,7 @@ A11Y_FOCUS_EVENTS = frozenset({
 })
 DEFAULT_MAX_OBJECTS = 64
 MAX_ACTIONS = 32
+MAX_FOCUS_TEXT_CHARS = 8192
 
 
 def _clean(value: Any) -> str:
@@ -136,6 +137,88 @@ def perform_action(obj, index: int) -> bool:
     return result is not False
 
 
+def _text_iface(obj):
+    try:
+        return obj.get_text_iface()
+    except Exception:
+        return None
+
+
+def _selection_offsets(iface) -> tuple[int, int] | None:
+    try:
+        if int(iface.get_n_selections()) <= 0:
+            return None
+        selection = iface.get_selection(0)
+    except Exception:
+        return None
+
+    start = getattr(selection, "start_offset", None)
+    end = getattr(selection, "end_offset", None)
+    if start is None or end is None:
+        if isinstance(selection, tuple) and len(selection) >= 2:
+            start, end = selection[-2], selection[-1]
+        else:
+            return None
+    try:
+        start, end = int(start), int(end)
+    except (TypeError, ValueError):
+        return None
+    if start < 0 or end < start:
+        return None
+    return start, end
+
+
+def _text_snapshot(obj, *, focused: bool) -> dict[str, Any]:
+    empty = {
+        "text": "",
+        "text_truncated": False,
+        "caret_offset": None,
+        "selection_start": None,
+        "selection_end": None,
+    }
+    if not focused:
+        return empty
+
+    iface = _text_iface(obj)
+    if iface is None:
+        return empty
+    try:
+        character_count = max(0, int(iface.get_character_count()))
+    except Exception:
+        return empty
+
+    end = min(character_count, MAX_FOCUS_TEXT_CHARS)
+    try:
+        text = str(iface.get_text(0, end) or "")
+    except Exception:
+        return empty
+    # Guard against a broken provider returning more text than requested.
+    text = text[:MAX_FOCUS_TEXT_CHARS]
+    visible_length = len(text)
+
+    try:
+        caret = int(iface.get_caret_offset())
+    except Exception:
+        caret = None
+    if caret is not None and not 0 <= caret <= visible_length:
+        caret = None
+
+    selection_start = selection_end = None
+    selection = _selection_offsets(iface)
+    if selection is not None:
+        start, finish = selection
+        if 0 <= start <= finish <= visible_length:
+            selection_start, selection_end = start, finish
+
+    return {
+        "text": text,
+        "text_truncated": character_count > visible_length,
+        "caret_offset": caret,
+        "selection_start": selection_start,
+        "selection_end": selection_end,
+    }
+
+
 def _value(obj) -> str:
     """Return the human-readable AT-SPI Value text/current value when exposed."""
     try:
@@ -200,6 +283,7 @@ def _snapshot(
         description = _clean(obj.get_description())
     except Exception:
         description = ""
+    text_snapshot = _text_snapshot(obj, focused=focused)
     return {
         "id": object_id(obj),
         "parent_id": parent_id,
@@ -209,6 +293,7 @@ def _snapshot(
         "description": description,
         "value": _value(obj),
         "actions": action_names(obj),
+        **text_snapshot,
         "states": _states(obj, focused=focused),
         "bounds": _bounds(obj, coord_type),
     }
