@@ -355,6 +355,7 @@ class A11yModelTests(unittest.TestCase):
         field = FakeAccessible("Editor", "text", text_iface=text)
         payload = build_focus_payload("object:state-changed:focused", 1, field)
         item = payload["objects"][0]
+        self.assertTrue(item["text_supported"])
         self.assertEqual(item["text"], "hello world")
         self.assertFalse(item["text_truncated"])
         self.assertEqual(item["caret_offset"], 5)
@@ -374,8 +375,17 @@ class A11yModelTests(unittest.TestCase):
         payload = build_focus_payload("object:state-changed:focused", 1, focused)
         by_id = {item["id"]: item for item in payload["objects"]}
         self.assertIn(object_id(neighbor), by_id)
+        self.assertFalse(by_id[object_id(neighbor)]["text_supported"])
         self.assertEqual(by_id[object_id(neighbor)]["text"], "")
         self.assertIsNone(by_id[object_id(neighbor)]["caret_offset"])
+
+    def test_empty_focused_text_still_reports_text_support(self):
+        field = FakeAccessible("Editor", "text", text_iface=FakeText("", caret=0))
+        payload = build_focus_payload("object:state-changed:focused", 1, field)
+        item = payload["objects"][0]
+        self.assertTrue(item["text_supported"])
+        self.assertEqual(item["text"], "")
+        self.assertEqual(item["caret_offset"], 0)
 
     def test_focused_text_is_bounded_and_marks_truncation(self):
         text = FakeText("x" * 9000, caret=9000)
