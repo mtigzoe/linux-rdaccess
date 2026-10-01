@@ -31,6 +31,71 @@ def _parent(obj):
         return None
 
 
+def _state_name(state: object) -> str:
+    """Normalize a GI enum/state token into the wire-format spelling."""
+    for attr in ("value_nick", "value_name", "name"):
+        raw = getattr(state, attr, None)
+        if raw:
+            text = str(raw)
+            break
+    else:
+        text = str(state)
+    text = text.strip().lower()
+    for prefix in ("atspi_state_", "state_"):
+        if text.startswith(prefix):
+            text = text[len(prefix) :]
+            break
+    return text.replace("-", " ").replace("_", " ")
+
+
+def _states(obj, *, focused: bool) -> list[str]:
+    states: set[str] = set()
+    try:
+        state_set = obj.get_state_set()
+        raw_states = state_set.get_states()
+    except Exception:
+        raw_states = ()
+    for state in raw_states or ():
+        name = _state_name(state)
+        if name and name != "invalid":
+            states.add(name)
+    # The event itself is authoritative for the focus target and covers
+    # toolkits that lag when their state set is queried during notification.
+    if focused:
+        states.add("focused")
+    return sorted(states)
+
+
+def _value(obj) -> str:
+    """Return the human-readable AT-SPI Value text/current value when exposed."""
+    try:
+        iface = obj.get_value_iface()
+    except Exception:
+        iface = None
+    if iface is None:
+        try:
+            iface = obj.get_value()
+        except Exception:
+            return ""
+
+    try:
+        text = _clean(iface.get_text())
+    except Exception:
+        text = ""
+    if text:
+        return text
+
+    try:
+        current = iface.get_current_value()
+    except Exception:
+        return ""
+    if current is None:
+        return ""
+    if isinstance(current, float) and current.is_integer():
+        return str(int(current))
+    return _clean(current)
+
+
 def _snapshot(obj, *, parent_id: str | None, focused: bool) -> dict[str, Any]:
     try:
         description = _clean(obj.get_description())
@@ -42,8 +107,8 @@ def _snapshot(obj, *, parent_id: str | None, focused: bool) -> dict[str, Any]:
         "name": _clean(obj.get_name()),
         "role": _clean(obj.get_role_name()),
         "description": description,
-        "value": "",
-        "states": ["focused", "focusable"] if focused else [],
+        "value": _value(obj),
+        "states": _states(obj, focused=focused),
     }
 
 
