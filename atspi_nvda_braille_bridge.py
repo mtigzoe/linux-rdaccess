@@ -29,6 +29,8 @@ gi.require_version("Atspi", "2.0")
 from gi.repository import Atspi, GLib
 
 from announcer import HANDLED, Announcer
+from a11y_link import A11Y_CHANNEL, NvdaA11yLink
+from a11y_model import build_focus_payload
 from braille_link import NvdaBrailleLink
 from rdaccess_dvc import CHANNEL, DvcChannel, NvdaSpeechLink, load_xrdpapi
 
@@ -73,9 +75,10 @@ def text_to_braille_cells(text: str, width: int) -> list[int]:
 
 
 class Bridge:
-    def __init__(self, link, *, braille_link=None, interrupt: bool = True):
+    def __init__(self, link, *, braille_link=None, a11y_link=None, interrupt: bool = True):
         self.link = link
         self.braille_link = braille_link
+        self.a11y_link = a11y_link
         self.interrupt = interrupt
         self.announcer = Announcer(is_focused=is_focused)
         self.listener = Atspi.EventListener.new(self._on_event)
@@ -101,8 +104,19 @@ class Bridge:
         if event.type not in HANDLED:
             return
         try:
+            any_data = getattr(event, "any_data", None)
+            if self.a11y_link is not None:
+                payload = build_focus_payload(
+                    event.type,
+                    event.detail1,
+                    event.source,
+                    any_data,
+                    coord_type=Atspi.CoordType.SCREEN,
+                )
+                if payload is not None:
+                    self.a11y_link.send_focus(**payload)
             announcement = self.announcer.handle(
-                event.type, event.detail1, event.source, getattr(event, "any_data", None)
+                event.type, event.detail1, event.source, any_data
             )
         except GLib.Error as exc:
             # The application usually exited between the event and our query.
@@ -153,6 +167,7 @@ def main() -> int:
 
     bridge: Bridge  # assigned below; the on_ready lambda only runs later, from poll()
     braille_link = None
+    a11y_link = None
     if args.dry_run:
         link = DryRunLink()
     else:
@@ -164,9 +179,13 @@ def main() -> int:
         braille_link = NvdaBrailleLink(
             lambda: DvcChannel(lib, BRAILLE_CHANNEL, attempts=1),
         )
+        a11y_link = NvdaA11yLink(
+            lambda: DvcChannel(lib, A11Y_CHANNEL, attempts=1),
+        )
     bridge = Bridge(
         link,
         braille_link=braille_link,
+        a11y_link=a11y_link,
         interrupt=not args.no_interrupt,
     )
 
@@ -177,6 +196,8 @@ def main() -> int:
         link.poll()
         if braille_link is not None:
             braille_link.poll()
+        if a11y_link is not None:
+            a11y_link.poll()
         return GLib.SOURCE_CONTINUE
 
     try:
@@ -194,6 +215,8 @@ def main() -> int:
         link.close()
         if braille_link is not None:
             braille_link.close()
+        if a11y_link is not None:
+            a11y_link.close()
 
 
 if __name__ == "__main__":
