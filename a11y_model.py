@@ -9,6 +9,12 @@ A11Y_FOCUS_EVENTS = frozenset({
     "object:active-descendant-changed",
     "window:activate",
 })
+A11Y_TEXT_EVENTS = frozenset({
+    "object:text-caret-moved",
+    "object:text-selection-changed",
+    "object:text-changed:insert",
+    "object:text-changed:delete",
+})
 DEFAULT_MAX_OBJECTS = 64
 MAX_ACTIONS = 32
 MAX_FOCUS_TEXT_CHARS = 8192
@@ -298,6 +304,31 @@ def _snapshot(
         **text_snapshot,
         "states": _states(obj, focused=focused),
         "bounds": _bounds(obj, coord_type),
+    }
+
+
+def build_text_update(
+    event_type: str,
+    source,
+    *,
+    object_registry: dict[str, object],
+):
+    """Build a focused text/caret update for an object in the current snapshot."""
+    if event_type not in A11Y_TEXT_EVENTS or source is None or not hasattr(source, "get_name"):
+        return None
+    oid = object_id(source)
+    if oid not in object_registry:
+        return None
+    snapshot = _text_snapshot(source, focused=True)
+    if not snapshot["text_supported"]:
+        return None
+    return {
+        "object_id": oid,
+        "event": "caret" if event_type in {
+            "object:text-caret-moved",
+            "object:text-selection-changed",
+        } else "textChange",
+        **snapshot,
     }
 
 
