@@ -62,4 +62,7 @@ The older speech-only bridge remains available:
 DISPLAY=:10 ./run_braille_bridge.sh --debug                                                                             
 
 DISPLAY=:10 ~/linux-rdaccess/run_braille_bridge.sh                                                                      
- 
+ DISPLAY=:10
+ DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+ AT_SPI_BUS_ADDRESS=... (X root AT_SPI_BUS matches)
+ WINDOW_MANAGER=present (_NET_SUPPORTING_WM_CHECK)
