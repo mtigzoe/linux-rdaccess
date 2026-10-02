@@ -15,6 +15,21 @@ On Windows: NVDA, the rdAccess add-on, and a braille display configured in NVDA 
 
 On Linux: xrdp with drdynvc=true, Python 3, PyGObject/AT-SPI, Liblouis Python bindings and liblouis-data, gdbus, and xprop.
 
+## Windows development folders
+
+When developing or testing this project on Windows, the repositories are normally kept as sibling folders, for example:
+
+    C:\Users\Miriam\Personal_Coding\rdp\rdAccess
+    C:\Users\Miriam\Personal_Coding\rdp\nvda
+
+They have different purposes:
+
+- `rdAccess` is the NVDA add-on used on Windows. It receives the accessibility data sent by `linux-rdaccess` over RDP dynamic virtual channels and turns remote Linux controls into NVDA speech, braille, and remote NVDA objects. Windows-side fixes for this project normally belong here.
+- `nvda` is a checkout of the upstream NVDA source code from `nvaccess/nvda`. It is a development dependency for `rdAccess`: tests and type checking use NVDA modules and APIs from the sibling `..\nvda\source` tree, and it is useful for checking how NVDA focus, speech, TextInfo, and braille work internally.
+- The `nvda` checkout is not the installed copy of NVDA and normally should not be modified for `linux-rdaccess` work. Changes should go into `rdAccess` unless a fix truly requires a change to NVDA itself.
+
+The rdAccess GitHub Actions workflows also clone NVDA into a sibling `../nvda` directory before running tests and type checks, matching this local folder layout.
+
 ## Run in the xrdp session
 
 After logging in to the xrdp desktop, run:
@@ -44,7 +59,7 @@ Run the tracer in the xrdp session, press Tab in a Linux application over the Re
 
 ## Known limits
 
-- An xrdp reconnect while the bridge is running can leave a dead dynamic virtual channel that reports no error. libxrdpapi in xrdp 0.9.17 has no session-notification API, so the bridge cannot detect this; restart it after reconnecting. NVDA restarts and dropped channels are recovered automatically.
+- An xrdp reconnect while the bridge is running can leave a dead dynamic virtual channel that reports no error. libxrdpapi in xrdp 0.9.17 has no session-notification API, so the bridge cannot detect this; restart it after reconnecting. NVDA restarts and dropped channels are recovered automatically: each time the NVDA-A11Y channel completes its handshake the bridge re-reads the live AT-SPI focus and sends it (plus its text/caret state) without waiting for a new focus event.
 - GTK3 emits no focus event when Tab lands on a combo box. Changing its value (arrow keys) is announced; arriving on it is not.
 
 ## Tests
