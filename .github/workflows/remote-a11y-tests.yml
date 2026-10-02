@@ -20,6 +20,7 @@ on:
       - "feature/remote-a11y-objects"
       - "feature/remote-a11y-navigation"
       - "feature/remote-a11y-actions"
+      - "fix/a11y-heartbeat-reconnect"
     paths:
       - "a11y_link.py"
       - "a11y_model.py"
@@ -41,7 +42,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: mtigzoe/rdAccess
-          ref: feature/remote-a11y-actions
+          ref: feature/remote-a11y-heartbeat
           path: rdAccess
       - uses: actions/setup-python@v5
         with:
@@ -74,4 +75,22 @@ jobs:
           with open("decoded-action.json", encoding="utf-8") as f:
               decoded = json.load(f)
           assert decoded == {"object_id": "remote-button", "action_index": 1}
+          PY
+
+      - name: Verify A11Y heartbeat contract
+        shell: bash
+        run: |
+          PYTHONPATH=rdAccess/addon python - <<'PY' > rdaccess-pong.json
+          from lib.a11y import decodeMessage, encodePong, PingMessage
+          import sys
+          msg = decodeMessage({"type": "a11y_ping", "nonce": 23})
+          assert isinstance(msg, PingMessage)
+          sys.stdout.buffer.write(encodePong(msg.nonce))
+          PY
+          python - <<'PY'
+          import json
+          from a11y_link import decode_pong
+          with open("rdaccess-pong.json", encoding="utf-8") as f:
+              message = json.load(f)
+          assert decode_pong(message) == 23
           PY
