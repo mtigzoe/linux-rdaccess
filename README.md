@@ -44,7 +44,7 @@ Run the tracer in the xrdp session, press Tab in a Linux application over the Re
 
 ## Known limits
 
-- An xrdp reconnect while the bridge is running can leave a dead dynamic virtual channel that reports no error. libxrdpapi in xrdp 0.9.17 has no session-notification API, so the bridge cannot detect this; restart it after reconnecting. NVDA restarts and dropped channels are recovered automatically.
+- An xrdp reconnect while the bridge is running can leave a dead dynamic virtual channel that reports no error. libxrdpapi in xrdp 0.9.17 has no session-notification API, so the bridge cannot detect this; restart it after reconnecting. NVDA restarts and dropped channels are recovered automatically: each time the NVDA-A11Y channel completes its handshake the bridge re-reads the live AT-SPI focus and sends it (plus its text/caret state) without waiting for a new focus event.
 - GTK3 emits no focus event when Tab lands on a combo box. Changing its value (arrow keys) is announced; arriving on it is not.
 
 ## Tests

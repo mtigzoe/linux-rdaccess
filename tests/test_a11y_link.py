@@ -344,3 +344,222 @@ class A11yLinkTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _objs(name="Save"):
+    return [{"id": "1", "parent_id": None, "name": name, "role": "push button"}]
+
+
+def _text(object_id="1", text="hello"):
+    return dict(
+        object_id=object_id,
+        event="caret",
+        text_supported=True,
+        text=text,
+        text_truncated=False,
+        caret_offset=1,
+        selection_start=None,
+        selection_end=None,
+    )
+
+
+class A11yReplayAfterReconnectTests(unittest.TestCase):
+    """Focus/bootstrap regressions: state must survive channel sessions."""
+
+    def setUp(self):
+        self.clock = FakeClock()
+        self.channels = []
+        self.ready_calls = 0
+        self.resync = None
+        self.link = NvdaA11yLink(
+            self._open,
+            clock=self.clock,
+            retry_interval=3.0,
+            heartbeat_interval=5.0,
+            heartbeat_timeout=15.0,
+            on_ready=self._on_ready,
+        )
+
+    def _open(self):
+        ch = FakeChannel()
+        self.channels.append(ch)
+        return ch
+
+    def _on_ready(self):
+        self.ready_calls += 1
+        if self.resync is not None:
+            self.resync(self.link)
+
+    def connect(self):
+        self.link.poll()
+        ch = self.channels[-1]
+        ch.incoming.append(bytes([XON]))
+        self.link.poll()
+        return ch
+
+    def kinds(self, ch):
+        return [m["type"] for m in ch.written]
+
+    def reconnect_via_heartbeat(self):
+        old = self.channels[-1]
+        self.clock.advance(5.0)
+        self.link.poll()  # ping goes out, no pong
+        self.clock.advance(15.0)
+        self.link.poll()  # heartbeat timeout drops the channel
+        self.assertFalse(self.link.ready)
+        self.assertTrue(old.closed)
+        self.clock.advance(3.0)
+        return self.connect()
+
+    def test_focus_before_channel_open_is_delivered_once_connected(self):
+        self.assertFalse(self.link.send_focus(focus_id="1", objects=_objs()))
+        self.assertEqual(self.channels, [])
+        ch = self.connect()
+        self.assertEqual(self.kinds(ch), ["protocol_version", "a11y_focus"])
+
+    def test_current_focus_is_replayed_after_heartbeat_reconnect(self):
+        first = self.connect()
+        self.link.send_focus(focus_id="1", objects=_objs())
+        self.assertEqual(self.kinds(first), ["protocol_version", "a11y_focus"])
+
+        second = self.reconnect_via_heartbeat()
+
+        # No new AT-SPI event happened, yet the new session is populated.
+        self.assertEqual(self.kinds(second), ["protocol_version", "a11y_focus"])
+        self.assertEqual(second.written[1]["focus_id"], "1")
+        self.assertEqual(second.written[1]["objects"], _objs())
+
+    def test_heartbeat_reconnect_never_leaves_focus_empty(self):
+        self.connect()
+        self.link.send_focus(focus_id="1", objects=_objs())
+        for _ in range(3):
+            ch = self.reconnect_via_heartbeat()
+            self.assertIn("a11y_focus", self.kinds(ch))
+
+    def test_replay_after_xoff_xon_flap(self):
+        ch = self.connect()
+        self.link.send_focus(focus_id="1", objects=_objs())
+        ch.written.clear()
+        ch.incoming.append(bytes([XOFF]))
+        self.link.poll()
+        ch.incoming.append(bytes([XON]))
+        self.link.poll()
+        self.assertEqual(self.kinds(ch), ["protocol_version", "a11y_focus"])
+
+    def test_each_session_gets_exactly_one_focus_message(self):
+        ch = self.connect()
+        self.link.send_focus(focus_id="1", objects=_objs())
+        for _ in range(10):  # idle polling must not resend anything
+            self.link.poll()
+        self.assertEqual(self.kinds(ch).count("a11y_focus"), 1)
+
+        second = self.reconnect_via_heartbeat()
+        for _ in range(10):
+            self.link.poll()
+        self.assertEqual(self.kinds(second).count("a11y_focus"), 1)
+
+    def test_resync_result_and_cached_focus_do_not_double_send(self):
+        self.connect()
+        self.link.send_focus(focus_id="1", objects=_objs())
+        self.resync = lambda link: link.refresh_focus(focus_id="1", objects=_objs())
+        second = self.reconnect_via_heartbeat()
+        self.assertEqual(self.kinds(second).count("a11y_focus"), 1)
+
+    def test_resync_before_first_focus_event_delivers_current_focus(self):
+        # Bridge started after the desktop already had focus: no event exists.
+        self.resync = lambda link: link.refresh_focus(focus_id="9", objects=_objs("Terminal"))
+        ch = self.connect()
+        self.assertEqual(self.kinds(ch), ["protocol_version", "a11y_focus"])
+        self.assertEqual(ch.written[1]["focus_id"], "9")
+
+    def test_stale_focus_is_replaced_by_fresh_snapshot_on_reconnect(self):
+        self.connect()
+        self.link.send_focus(focus_id="old", objects=_objs("Old"))
+        self.resync = lambda link: link.refresh_focus(focus_id="new", objects=_objs("New"))
+        second = self.reconnect_via_heartbeat()
+        focus = [m for m in second.written if m["type"] == "a11y_focus"]
+        self.assertEqual([m["focus_id"] for m in focus], ["new"])
+
+    def test_stale_focus_is_not_replayed_when_nothing_is_focused(self):
+        self.connect()
+        self.link.send_focus(focus_id="old", objects=_objs("Old"))
+        self.resync = lambda link: link.clear_focus()
+        second = self.reconnect_via_heartbeat()
+        self.assertEqual(self.kinds(second), ["protocol_version"])
+
+    def test_failing_resync_falls_back_to_cached_focus(self):
+        self.connect()
+        self.link.send_focus(focus_id="1", objects=_objs())
+
+        def boom(link):
+            raise RuntimeError("AT-SPI went away")
+
+        self.resync = boom
+        second = self.reconnect_via_heartbeat()
+        self.assertEqual(self.kinds(second), ["protocol_version", "a11y_focus"])
+        self.assertTrue(self.link.ready)
+
+    def test_text_for_focused_object_is_replayed_after_focus(self):
+        self.connect()
+        self.link.send_focus(focus_id="1", objects=_objs())
+        self.link.send_text_update(**_text("1", "hello"))
+        second = self.reconnect_via_heartbeat()
+        self.assertEqual(
+            self.kinds(second), ["protocol_version", "a11y_focus", "a11y_text"]
+        )
+        self.assertEqual(second.written[2]["text"], "hello")
+
+    def test_text_for_other_object_is_not_replayed(self):
+        self.connect()
+        self.link.send_focus(focus_id="1", objects=_objs())
+        self.link.send_text_update(**_text("2", "elsewhere"))
+        second = self.reconnect_via_heartbeat()
+        self.assertEqual(self.kinds(second), ["protocol_version", "a11y_focus"])
+
+    def test_new_focus_discards_text_of_previous_focus(self):
+        self.connect()
+        self.link.send_focus(focus_id="1", objects=_objs())
+        self.link.send_text_update(**_text("1", "hello"))
+        self.link.send_focus(focus_id="2", objects=_objs("Next"))
+        second = self.reconnect_via_heartbeat()
+        self.assertEqual(self.kinds(second), ["protocol_version", "a11y_focus"])
+        self.assertEqual(second.written[1]["focus_id"], "2")
+
+    def test_fresh_snapshot_supersedes_cached_text(self):
+        self.connect()
+        self.link.send_focus(focus_id="1", objects=_objs())
+        self.link.send_text_update(**_text("1", "stale"))
+        self.resync = lambda link: link.refresh_focus(focus_id="1", objects=_objs())
+        second = self.reconnect_via_heartbeat()
+        self.assertEqual(self.kinds(second), ["protocol_version", "a11y_focus"])
+
+    def test_live_focus_after_reconnect_is_sent_normally(self):
+        self.connect()
+        self.link.send_focus(focus_id="1", objects=_objs())
+        second = self.reconnect_via_heartbeat()
+        self.assertTrue(self.link.send_focus(focus_id="2", objects=_objs("Next")))
+        self.assertEqual(second.written[-1]["focus_id"], "2")
+
+    def test_without_on_ready_cached_focus_is_still_replayed(self):
+        link = NvdaA11yLink(
+            self._open,
+            clock=self.clock,
+            heartbeat_interval=5.0,
+            heartbeat_timeout=15.0,
+        )
+        link.poll()
+        self.channels[-1].incoming.append(bytes([XON]))
+        link.poll()
+        link.send_focus(focus_id="1", objects=_objs())
+        self.clock.advance(5.0)
+        link.poll()
+        self.clock.advance(15.0)
+        link.poll()
+        self.clock.advance(3.0)
+        link.poll()
+        self.channels[-1].incoming.append(bytes([XON]))
+        link.poll()
+        self.assertEqual(
+            [m["type"] for m in self.channels[-1].written],
+            ["protocol_version", "a11y_focus"],
+        )

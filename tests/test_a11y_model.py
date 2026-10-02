@@ -1,6 +1,13 @@
 import unittest
 
-from a11y_model import action_names, build_focus_payload, build_text_update, object_id, perform_action
+from a11y_model import (
+    action_names,
+    build_focus_payload,
+    build_text_update,
+    find_focused_object,
+    object_id,
+    perform_action,
+)
 
 
 class FakeState:
@@ -552,3 +559,84 @@ class A11yModelTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TreeNode:
+    def __init__(self, name, *states, children=(), role="push button"):
+        self.name = name
+        self.role = role
+        self._states = states
+        self.kids = list(children)
+
+    def get_name(self):
+        return self.name
+
+    def get_role_name(self):
+        return self.role
+
+    def get_state_set(self):
+        return FakeStateSet(*self._states)
+
+    def get_child_count(self):
+        return len(self.kids)
+
+    def get_child_at_index(self, index):
+        return self.kids[index]
+
+
+class FindFocusedObjectTests(unittest.TestCase):
+    def test_finds_focused_descendant_of_active_window(self):
+        button = TreeNode("Save", "focused")
+        window = TreeNode("Main", "active", children=[TreeNode("panel", children=[button])], role="frame")
+        desktop = TreeNode("desktop", children=[TreeNode("app", children=[window], role="application")])
+        self.assertIs(find_focused_object(desktop), button)
+
+    def test_active_window_is_searched_before_background_windows(self):
+        background = TreeNode("old", "focused")
+        active = TreeNode("current", "active", children=[TreeNode("Name", "focused")])
+        desktop = TreeNode(
+            "desktop",
+            children=[TreeNode("app", children=[TreeNode("bg", children=[background]), active])],
+        )
+        self.assertEqual(find_focused_object(desktop).get_name(), "Name")
+
+    def test_returns_none_when_nothing_is_focused(self):
+        desktop = TreeNode("desktop", children=[TreeNode("app", children=[TreeNode("w", "active")])])
+        self.assertIsNone(find_focused_object(desktop))
+
+    def test_empty_desktop_returns_none(self):
+        self.assertIsNone(find_focused_object(TreeNode("desktop")))
+
+    def test_search_is_bounded_by_node_budget(self):
+        leaves = [TreeNode(f"n{i}") for i in range(50)]
+        leaves.append(TreeNode("late", "focused"))
+        desktop = TreeNode("desktop", children=[TreeNode("app", children=[TreeNode("w", "active", children=leaves)])])
+        self.assertIsNone(find_focused_object(desktop, max_nodes=10))
+        self.assertEqual(find_focused_object(desktop).get_name(), "late")
+
+    def test_broken_nodes_are_skipped(self):
+        class Broken(TreeNode):
+            def get_child_count(self):
+                raise RuntimeError("dead proxy")
+
+        good = TreeNode("Save", "focused")
+        desktop = TreeNode(
+            "desktop",
+            children=[TreeNode("app", children=[Broken("gone", "active"), TreeNode("w", "active", children=[good])])],
+        )
+        self.assertIs(find_focused_object(desktop), good)
+
+    def test_discovered_focus_builds_a_payload_with_text_state(self):
+        class Edit(TreeNode):
+            def get_text_iface(self):
+                return FakeText("hello", caret=2)
+
+        edit = Edit("Name", "focused", role="text")
+        window = TreeNode("Main", "active", children=[edit], role="frame")
+        desktop = TreeNode("desktop", children=[TreeNode("app", children=[window], role="application")])
+        target = find_focused_object(desktop)
+        payload = build_focus_payload("object:state-changed:focused", 1, target)
+        focused = next(o for o in payload["objects"] if o["id"] == payload["focus_id"])
+        self.assertTrue(focused["text_supported"])
+        self.assertEqual(focused["text"], "hello")
+        self.assertEqual(focused["caret_offset"], 2)

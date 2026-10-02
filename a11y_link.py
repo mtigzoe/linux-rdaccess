@@ -48,8 +48,13 @@ class NvdaA11yLink:
         on_action: Callable[[str, int], None] | None = None,
         heartbeat_interval: float = HEARTBEAT_INTERVAL,
         heartbeat_timeout: float = HEARTBEAT_TIMEOUT,
+        on_ready: Callable[[], None] | None = None,
     ):
         self._open_channel = open_channel
+        # Called once per completed handshake, before cached state is replayed.
+        # The owner uses it to re-read the live AT-SPI focus and hand the result
+        # back through refresh_focus()/clear_focus().
+        self._on_ready = on_ready
         self.channel_name = channel_name
         self._retry_interval = retry_interval
         self._clock = clock
@@ -59,6 +64,11 @@ class NvdaA11yLink:
         self._next_open_at = 0.0
         self._pending_focus: tuple[str, list[dict]] | None = None
         self._pending_text: dict | None = None
+        # Newest semantic state, kept after it has been delivered so that a new
+        # channel session (reconnect, XOFF->XON flap, heartbeat reopen) can be
+        # brought up to date without waiting for another AT-SPI event.
+        self._last_focus: tuple[str, list[dict]] | None = None
+        self._last_text: dict | None = None
         self._on_action = on_action
         self._heartbeat_interval = heartbeat_interval
         self._heartbeat_timeout = heartbeat_timeout
@@ -107,9 +117,33 @@ class NvdaA11yLink:
         # named pipe, and losing that first snapshot leaves NVDA stuck on the
         # RDP Input Capture Window until the user moves focus again.
         self._pending_focus = (focus_id, objects)
+        self._last_focus = self._pending_focus
+        # A new focus target supersedes any text state held for the old one.
+        self._last_text = None
+        self._pending_text = None
         if not self.ready:
             return False
         return self._send_pending_focus()
+
+    def refresh_focus(self, *, focus_id: str, objects: list[dict]) -> None:
+        """Replace the remembered focus with a freshly read snapshot.
+
+        Intended for the on_ready callback: the snapshot is delivered by the
+        handshake that invoked it, never sent from here, so a reconnect cannot
+        produce two focus messages.  Text held for the previous snapshot is
+        dropped because the fresh snapshot already carries the focused
+        object's text, caret and selection.
+        """
+        self._pending_focus = self._last_focus = (focus_id, objects)
+        self._pending_text = self._last_text = None
+
+    def clear_focus(self) -> None:
+        """Forget remembered focus because AT-SPI reports nothing focused.
+
+        Stale object IDs from before a reconnect must not be replayed.
+        """
+        self._pending_focus = self._last_focus = None
+        self._pending_text = self._last_text = None
 
     def _handle_action_message(self, msg: dict) -> None:
         if not self.ready or self._on_action is None:
@@ -136,7 +170,7 @@ class NvdaA11yLink:
         selection_start: int | None,
         selection_end: int | None,
     ) -> bool:
-        self._pending_text = {
+        self._pending_text = self._last_text = {
             "object_id": object_id,
             "event": event,
             "text_supported": text_supported,
@@ -181,8 +215,28 @@ class NvdaA11yLink:
         self._awaiting_pong_nonce = None
         self._awaiting_pong_since = 0.0
         self._next_ping_at = self._clock() + self._heartbeat_interval
+        # Every new channel session starts with an empty remote object tree, so
+        # the newest known focus (and text for that same object) is queued
+        # again even if an earlier session already delivered it.
+        if self._pending_focus is None:
+            self._pending_focus = self._last_focus
+        if self._pending_text is None:
+            self._pending_text = self._replayable_text()
+        if self._on_ready is not None:
+            try:
+                self._on_ready()
+            except Exception:
+                log.exception("a11y on_ready callback failed; replaying cached state")
         self._send_pending_focus()
+        # _send_pending_focus() can drop the channel; text must follow its focus.
         self._send_pending_text()
+
+    def _replayable_text(self) -> dict | None:
+        if self._last_focus is None or self._last_text is None:
+            return None
+        if self._last_text.get("object_id") != self._last_focus[0]:
+            return None
+        return self._last_text
 
     def _poll_heartbeat(self) -> None:
         if not self.ready:

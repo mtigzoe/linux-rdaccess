@@ -16,6 +16,8 @@ A11Y_TEXT_EVENTS = frozenset({
     "object:text-changed:delete",
 })
 DEFAULT_MAX_OBJECTS = 64
+MAX_FOCUS_SEARCH_NODES = 4096
+MAX_FOCUS_SEARCH_DEPTH = 32
 MAX_ACTIONS = 32
 MAX_FOCUS_TEXT_CHARS = 8192
 
@@ -277,6 +279,48 @@ def _bounds(obj, coord_type) -> list[int] | None:
     if values[2] < 0 or values[3] < 0:
         return None
     return values
+
+
+def find_focused_object(
+    desktop,
+    *,
+    max_nodes: int = MAX_FOCUS_SEARCH_NODES,
+    max_depth: int = MAX_FOCUS_SEARCH_DEPTH,
+):
+    """Find the AT-SPI object that currently has keyboard focus.
+
+    Used when no focus event is available to react to: the bridge started
+    after the desktop took focus, or the NVDA-A11Y channel (re)connected later
+    than the last focus change.  Windows in the "active" state are searched
+    first; the walk is bounded in nodes and depth so a huge tree cannot stall
+    the GLib main loop.
+    """
+    budget = [max(1, max_nodes)]
+
+    def has_state(obj, wanted: str) -> bool:
+        return wanted in _states(obj, focused=False)
+
+    def search(obj, depth: int):
+        if budget[0] <= 0 or depth > max_depth:
+            return None
+        budget[0] -= 1
+        if has_state(obj, "focused"):
+            return obj
+        for child in _children(obj):
+            found = search(child, depth + 1)
+            if found is not None:
+                return found
+        return None
+
+    windows = []
+    for application in _children(desktop):
+        windows.extend(_children(application))
+    active = [window for window in windows if has_state(window, "active")]
+    for window in active + [w for w in windows if w not in active]:
+        found = search(window, 0)
+        if found is not None:
+            return found
+    return None
 
 
 def _snapshot(

@@ -30,7 +30,13 @@ from gi.repository import Atspi, GLib
 
 from announcer import HANDLED, Announcer
 from a11y_link import A11Y_CHANNEL, NvdaA11yLink
-from a11y_model import A11Y_TEXT_EVENTS, build_focus_payload, build_text_update, perform_action
+from a11y_model import (
+    A11Y_TEXT_EVENTS,
+    build_focus_payload,
+    build_text_update,
+    find_focused_object,
+    perform_action,
+)
 from braille_link import NvdaBrailleLink
 from rdaccess_dvc import CHANNEL, DvcChannel, NvdaSpeechLink, load_xrdpapi
 
@@ -149,6 +155,38 @@ class Bridge:
             cells = text_to_braille_cells(announcement.text, self.braille_link.num_cells)
             self.braille_link.display(cells)
 
+    def resync_focus(self) -> None:
+        """Re-read the live AT-SPI focus for a newly (re)connected NVDA-A11Y channel.
+
+        Focus events that happened before the channel was usable are gone, and
+        AT-SPI will not repeat them.  Query the current focus instead and hand
+        it to the link, which delivers it as part of its handshake.  A failed
+        query leaves the link's cached state alone so it can still replay it.
+        """
+        if self.a11y_link is None:
+            return
+        try:
+            target = find_focused_object(Atspi.get_desktop(0))
+            payload = None
+            if target is not None:
+                payload = build_focus_payload(
+                    "object:state-changed:focused",
+                    1,
+                    target,
+                    coord_type=Atspi.CoordType.SCREEN,
+                    object_registry=self._a11y_objects,
+                )
+        except GLib.Error as exc:
+            log.debug("focus resync failed (%s)", exc)
+            return
+        if payload is None:
+            self._a11y_objects.clear()
+            self.a11y_link.clear_focus()
+            log.debug("focus resync: nothing is focused")
+        else:
+            self.a11y_link.refresh_focus(**payload)
+            log.debug("focus resync: %s", payload["focus_id"])
+
     def perform_remote_action(self, object_id: str, action_index: int) -> None:
         obj = self._a11y_objects.get(object_id)
         if obj is None:
@@ -211,6 +249,7 @@ def main() -> int:
                 object_id,
                 action_index,
             ),
+            on_ready=lambda: bridge.resync_focus(),
         )
     bridge = Bridge(
         link,
