@@ -43,7 +43,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: mtigzoe/rdAccess
-          ref: feature/remote-a11y-text
+          ref: main
           path: rdAccess
       - uses: actions/setup-python@v5
         with:
