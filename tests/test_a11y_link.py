@@ -1,7 +1,7 @@
 import json
 import unittest
 
-from a11y_link import A11Y_CHANNEL, NvdaA11yLink, decode_action_request
+from a11y_link import A11Y_CHANNEL, NvdaA11yLink, decode_action_request, decode_pong
 from rdaccess_dvc import XOFF, XON
 
 
@@ -21,6 +21,32 @@ class FakeChannel:
 
     def close(self):
         self.closed = True
+
+
+class FakeClock:
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+    def advance(self, seconds):
+        self.now += seconds
+
+
+class HeartbeatDecodeTests(unittest.TestCase):
+    def test_valid_pong_decodes(self):
+        self.assertEqual(decode_pong({"type": "a11y_pong", "nonce": 4}), 4)
+
+    def test_invalid_pong_is_rejected(self):
+        for message in (
+            {"type": "a11y_pong", "nonce": -1},
+            {"type": "a11y_pong", "nonce": True},
+            {"type": "a11y_pong", "nonce": 0x80000000},
+            {"type": "other", "nonce": 4},
+        ):
+            with self.subTest(message=message):
+                self.assertIsNone(decode_pong(message))
 
 
 class ActionRequestDecodeTests(unittest.TestCase):
@@ -156,6 +182,57 @@ class A11yLinkTests(unittest.TestCase):
         link.poll()
         self.assertTrue(link.ready)
         self.assertFalse(ch.closed)
+
+    def test_heartbeat_pong_keeps_channel_ready(self):
+        clock = FakeClock()
+        link = NvdaA11yLink(
+            self._open,
+            clock=clock,
+            heartbeat_interval=5.0,
+            heartbeat_timeout=10.0,
+        )
+        link.poll()
+        ch = self.channels[-1]
+        ch.incoming.append(bytes([XON]))
+        link.poll()
+        ch.written.clear()
+
+        clock.advance(5.0)
+        link.poll()
+        self.assertEqual(ch.written, [{"nonce": 0, "type": "a11y_ping"}])
+
+        ch.incoming.append(b'{"type":"a11y_pong","nonce":0}\n')
+        link.poll()
+        self.assertTrue(link.ready)
+        self.assertFalse(ch.closed)
+
+    def test_missing_heartbeat_pong_drops_and_reopens_channel(self):
+        clock = FakeClock()
+        link = NvdaA11yLink(
+            self._open,
+            clock=clock,
+            retry_interval=3.0,
+            heartbeat_interval=5.0,
+            heartbeat_timeout=10.0,
+        )
+        link.poll()
+        first = self.channels[-1]
+        first.incoming.append(bytes([XON]))
+        link.poll()
+
+        clock.advance(5.0)
+        link.poll()
+        self.assertEqual(first.written[-1], {"nonce": 0, "type": "a11y_ping"})
+
+        clock.advance(10.0)
+        link.poll()
+        self.assertFalse(link.ready)
+        self.assertTrue(first.closed)
+
+        clock.advance(3.0)
+        link.poll()
+        self.assertEqual(len(self.channels), 2)
+        self.assertIsNot(self.channels[-1], first)
 
     def test_xoff_queues_latest_focus_until_next_xon(self):
         ch = self.connect()
