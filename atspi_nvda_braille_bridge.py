@@ -30,7 +30,7 @@ from gi.repository import Atspi, GLib
 
 from announcer import HANDLED, Announcer
 from a11y_link import A11Y_CHANNEL, NvdaA11yLink
-from a11y_model import build_focus_payload, perform_action
+from a11y_model import A11Y_TEXT_EVENTS, build_focus_payload, build_text_update, perform_action
 from braille_link import NvdaBrailleLink
 from rdaccess_dvc import CHANNEL, DvcChannel, NvdaSpeechLink, load_xrdpapi
 
@@ -101,11 +101,25 @@ class Bridge:
         self._registered.clear()
 
     def _on_event(self, event: Atspi.Event, _user_data=None) -> None:
-        # Cheap string check first: anything not in HANDLED must cost no D-Bus calls.
-        if event.type not in HANDLED:
+        # Semantic text updates are deliberately separate from the v1 announcer:
+        # they refresh NVDA's remote object without speaking the whole control
+        # again on every caret move or edit.
+        is_text_event = event.type in A11Y_TEXT_EVENTS
+        if event.type not in HANDLED and not is_text_event:
             return
         try:
             any_data = getattr(event, "any_data", None)
+            if is_text_event:
+                if self.a11y_link is not None and is_focused(event.source):
+                    update = build_text_update(
+                        event.type,
+                        event.source,
+                        object_registry=self._a11y_objects,
+                    )
+                    if update is not None:
+                        self.a11y_link.send_text_update(**update)
+                return
+
             if self.a11y_link is not None:
                 payload = build_focus_payload(
                     event.type,

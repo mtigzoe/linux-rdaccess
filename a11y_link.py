@@ -58,6 +58,7 @@ class NvdaA11yLink:
         self._seen_xon_count = 0
         self._next_open_at = 0.0
         self._pending_focus: tuple[str, list[dict]] | None = None
+        self._pending_text: dict | None = None
         self._on_action = on_action
         self._heartbeat_interval = heartbeat_interval
         self._heartbeat_timeout = heartbeat_timeout
@@ -123,6 +124,32 @@ class NvdaA11yLink:
         except Exception:
             log.exception("failed to handle remote A11Y action for %s", object_id)
 
+    def send_text_update(
+        self,
+        *,
+        object_id: str,
+        event: str,
+        text_supported: bool,
+        text: str,
+        text_truncated: bool,
+        caret_offset: int | None,
+        selection_start: int | None,
+        selection_end: int | None,
+    ) -> bool:
+        self._pending_text = {
+            "object_id": object_id,
+            "event": event,
+            "text_supported": text_supported,
+            "text": text,
+            "text_truncated": text_truncated,
+            "caret_offset": caret_offset,
+            "selection_start": selection_start,
+            "selection_end": selection_end,
+        }
+        if not self.ready:
+            return False
+        return self._send_pending_text()
+
     def close(self) -> None:
         self._drop("closing", quiet=True)
 
@@ -155,6 +182,7 @@ class NvdaA11yLink:
         self._awaiting_pong_since = 0.0
         self._next_ping_at = self._clock() + self._heartbeat_interval
         self._send_pending_focus()
+        self._send_pending_text()
 
     def _poll_heartbeat(self) -> None:
         if not self.ready:
@@ -191,6 +219,22 @@ class NvdaA11yLink:
             self._drop(f"write failed: {exc}")
             return False
         self._pending_focus = None
+        return True
+
+    def _send_pending_text(self) -> bool:
+        if not self.ready or self._pending_text is None:
+            return False
+        payload = self._pending_text
+        try:
+            send_json(
+                self._channel,
+                "a11y_text",
+                **payload,
+            )
+        except (ConnectionError, TimeoutError, OSError) as exc:
+            self._drop(f"text write failed: {exc}")
+            return False
+        self._pending_text = None
         return True
 
     def _drop(self, reason: str, quiet: bool = False) -> None:
