@@ -12,6 +12,17 @@ log = logging.getLogger("a11yLink")
 A11Y_CHANNEL = "NVDA-A11Y"
 MAX_ACTIONS = 32
 MAX_OBJECT_ID_CHARS = 256
+HEARTBEAT_INTERVAL = 5.0
+HEARTBEAT_TIMEOUT = 15.0
+
+
+def decode_pong(msg: dict) -> int | None:
+    if msg.get("type") != "a11y_pong":
+        return None
+    nonce = msg.get("nonce")
+    if type(nonce) is not int or nonce < 0 or nonce > 0x7FFFFFFF:
+        return None
+    return nonce
 
 
 def decode_action_request(msg: dict) -> tuple[str, int] | None:
@@ -35,6 +46,8 @@ class NvdaA11yLink:
         retry_interval: float = 3.0,
         clock=time.monotonic,
         on_action: Callable[[str, int], None] | None = None,
+        heartbeat_interval: float = HEARTBEAT_INTERVAL,
+        heartbeat_timeout: float = HEARTBEAT_TIMEOUT,
     ):
         self._open_channel = open_channel
         self.channel_name = channel_name
@@ -46,6 +59,12 @@ class NvdaA11yLink:
         self._next_open_at = 0.0
         self._pending_focus: tuple[str, list[dict]] | None = None
         self._on_action = on_action
+        self._heartbeat_interval = heartbeat_interval
+        self._heartbeat_timeout = heartbeat_timeout
+        self._next_ping_at = 0.0
+        self._awaiting_pong_nonce: int | None = None
+        self._awaiting_pong_since = 0.0
+        self._heartbeat_nonce = 0
 
     @property
     def ready(self) -> bool:
@@ -67,11 +86,19 @@ class NvdaA11yLink:
         for msg in self._rx.drain():
             if msg.get("type") != "ping":
                 log.debug("a11y rx %s", msg)
+            pong_nonce = decode_pong(msg)
+            if pong_nonce is not None:
+                if pong_nonce == self._awaiting_pong_nonce:
+                    self._awaiting_pong_nonce = None
+                    self._awaiting_pong_since = 0.0
+                    self._next_ping_at = self._clock() + self._heartbeat_interval
+                continue
             if msg.get("type") == "a11y_action":
                 self._handle_action_message(msg)
         if self._rx.xon_count != self._seen_xon_count:
             self._seen_xon_count = self._rx.xon_count
             self._handshake()
+        self._poll_heartbeat()
 
     def send_focus(self, *, focus_id: str, objects: list[dict]) -> bool:
         # Keep the newest semantic focus snapshot even while the DVC is still
@@ -124,7 +151,30 @@ class NvdaA11yLink:
             self._drop(f"handshake failed: {exc}")
             return
         log.info("a11y XON received; announced protocol v%d", PROTOCOL_VERSION)
+        self._awaiting_pong_nonce = None
+        self._awaiting_pong_since = 0.0
+        self._next_ping_at = self._clock() + self._heartbeat_interval
         self._send_pending_focus()
+
+    def _poll_heartbeat(self) -> None:
+        if not self.ready:
+            return
+        now = self._clock()
+        if self._awaiting_pong_nonce is not None:
+            if now - self._awaiting_pong_since >= self._heartbeat_timeout:
+                self._drop("heartbeat timed out")
+            return
+        if now < self._next_ping_at:
+            return
+        nonce = self._heartbeat_nonce
+        self._heartbeat_nonce = (self._heartbeat_nonce + 1) & 0x7FFFFFFF
+        try:
+            send_json(self._channel, "a11y_ping", nonce=nonce)
+        except (ConnectionError, TimeoutError, OSError) as exc:
+            self._drop(f"heartbeat write failed: {exc}")
+            return
+        self._awaiting_pong_nonce = nonce
+        self._awaiting_pong_since = now
 
     def _send_pending_focus(self) -> bool:
         if not self.ready or self._pending_focus is None:
@@ -152,4 +202,7 @@ class NvdaA11yLink:
             except Exception:
                 pass
         self._channel = None
+        self._awaiting_pong_nonce = None
+        self._awaiting_pong_since = 0.0
+        self._next_ping_at = 0.0
         self._next_open_at = self._clock() + self._retry_interval
