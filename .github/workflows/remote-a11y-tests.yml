@@ -78,3 +78,21 @@ jobs:
               decoded = json.load(f)
           assert decoded == {"object_id": "remote-button", "action_index": 1}
           PY
+
+      - name: Verify A11Y heartbeat contract
+        shell: bash
+        run: |
+          PYTHONPATH=rdAccess/addon python - <<'PY' > rdaccess-pong.json
+          from lib.a11y import decodeMessage, encodePong, PingMessage
+          import sys
+          msg = decodeMessage({"type": "a11y_ping", "nonce": 23})
+          assert isinstance(msg, PingMessage)
+          sys.stdout.buffer.write(encodePong(msg.nonce))
+          PY
+          python - <<'PY'
+          import json
+          from a11y_link import decode_pong
+          with open("rdaccess-pong.json", encoding="utf-8") as f:
+              message = json.load(f)
+          assert decode_pong(message) == 23
+          PY
