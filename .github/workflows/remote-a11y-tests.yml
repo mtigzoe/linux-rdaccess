@@ -26,6 +26,7 @@ on:
       - "feature/remote-a11y-navigation"
       - "feature/remote-a11y-actions"
       - "feature/remote-a11y-text"
+      - "feature/nvda-remote-*"
     paths:
       - "a11y_link.py"
       - "a11y_model.py"
