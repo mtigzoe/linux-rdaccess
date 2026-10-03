@@ -27,6 +27,47 @@ This path does not require Windows App or Remote Desktop Connection for accessib
 
 See [docs/nvda-remote.md](docs/nvda-remote.md) for the current tested design and known compatibility work.
 
+## Remote Access manager
+
+`linux-rdaccess` now includes a small configuration manager for the NVDA Remote / Orca Remote backend.
+
+Default endpoint:
+
+    Host: nvdaremote.com
+    Port: 6837
+
+Create a configuration and generate a channel key:
+
+    python3 remote_access.py configure --generate-key
+
+Show the redacted configuration:
+
+    python3 remote_access.py status
+
+Generate a new key later:
+
+    python3 remote_access.py generate-key --save
+
+Configure Linux as the machine controlled by Windows NVDA:
+
+    python3 remote_access.py configure --role host
+
+Configure Linux to control another NVDA Remote machine:
+
+    python3 remote_access.py configure --role client
+
+Apply the saved endpoint, port, key, and role to a legacy Orca Remote installation such as Orca 42:
+
+    python3 remote_access.py apply-legacy
+
+Show the relevant keyboard commands:
+
+    python3 remote_access.py shortcuts
+
+The channel key is stored in `~/.config/linux-rdaccess/remote.json` with user-only permissions when the platform supports them. Status output never prints the key.
+
+For the normal Windows-to-Linux setup, use role `host`. Windows NVDA can then enter Remote Access control mode with **Insert+Alt+Tab**. Connect, disconnect, and mute are handled by the Orca Remote integration; the manager provides the persistent connection settings and role used by that integration.
+
 ## Experimental xrdp architecture
 
 The original bridge forwards Linux AT-SPI focus/window events through rdAccess dynamic virtual channels:
