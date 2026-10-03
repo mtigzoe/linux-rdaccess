@@ -188,6 +188,10 @@ _LEGACY_HELPERS = '''\
     #   vk: (extended-required, Orca key name, target vk, drop NVDA modifier,
     #        press count)
     # "drop" is needed where Orca binds the key with NO Orca modifier.
+    _LRD_ACTION_CHORDS = {
+        0x76: "elements_list",                       # NVDA+F7
+    }
+
     _LRD_CHORDS = {
         0x20: (False, "a", 0x41, False, 1),         # NVDA+Space: Orca+A focus/browse
         0x28: (True, "KP_Add", 0x6B, True, 1),      # NVDA+Down: say all
@@ -243,6 +247,19 @@ _LEGACY_HELPERS = '''\
                     self.transport.send(type="cancel")
                 except Exception:
                     log.exception("linux-rdaccess: failed to cancel remote NVDA speech")
+
+        # NVDA-only actions that do not map cleanly to one Orca key.
+        if pressed and self._lrd_nvda_down and not repeat:
+            action = self._LRD_ACTION_CHORDS.get(vk_code)
+            if (
+                action is not None
+                and not any(k[0] in self._LRD_OTHER_MOD_VKS for k in self._lrd_down)
+            ):
+                self._lrd_swapped.add(vk_code)
+                if action == "elements_list":
+                    self._linux_rdaccess_run_main(
+                        lambda: self._linux_rdaccess_show_elements_list(modifiers))
+                return True
 
         # NVDA chords -> Orca commands (see _LRD_CHORDS). Only the first press
         # with the NVDA modifier held and no Shift/Ctrl/Alt/Win is translated;
@@ -360,6 +377,33 @@ _LEGACY_HELPERS = '''\
             event = _types.SimpleNamespace(event={"argument": index})
             self._linux_rdaccess_run_main(
                 lambda: self._linux_rdaccess_script_call("processRoutingKey", event))
+
+    def _linux_rdaccess_send_structural_list(self, key, modifiers):
+        """Ask Orca to show one of its native structural-navigation lists."""
+        vk = ord(str(key)[0].upper())
+        # Orca's list commands use Alt+Shift+<letter>. Reuse the remote
+        # controller's key transport so focus/caret behavior stays in Orca.
+        list_modifiers = ["shift", "alt"]
+        for down in (True, False):
+            self.local_machine.send_key(
+                key_name=str(key).lower(),
+                pressed=down,
+                modifiers=list_modifiers,
+                vk_code=vk,
+                scan_code=0,
+                extended=False,
+            )
+
+    def _linux_rdaccess_show_elements_list(self, modifiers):
+        try:
+            from linux_rdaccess_orca_adapter import show_elements_list as _show
+            if _show(lambda key: self._linux_rdaccess_send_structural_list(key, modifiers)):
+                return
+        except Exception:
+            log.exception("linux-rdaccess: elements list failed")
+
+        # Safe fallback: Orca headings list.
+        self._linux_rdaccess_send_structural_list("h", modifiers)
 
     @staticmethod
     def _linux_rdaccess_script_call(method, *args):
