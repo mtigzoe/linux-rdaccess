@@ -137,6 +137,70 @@ def update_legacy_orca_customizations(
 
 
 
+LEGACY_REMOTE_CONTROLLER_RELATIVE = Path("orca-scripts/remote_controller.py")
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility"
+
+
+def patch_legacy_orca_remote_controller(path: Path) -> bool:
+    """Patch legacy Orca Remote input handling for NVDA compatibility.
+
+    Returns True when the file changed. The patch is idempotent and creates a
+    one-time .linux-rdaccess-backup beside the upstream file.
+    """
+    text = path.read_text(encoding="utf-8")
+    if LEGACY_COMPAT_MARKER in text:
+        return False
+
+    key_anchor = "        self.local_machine.send_key(\n"
+    if key_anchor not in text:
+        raise ValueError(f"legacy _on_remote_key anchor was not found in {path}")
+    key_patch = (
+        f"        {LEGACY_COMPAT_MARKER}\n"
+        "        # Match modern Orca Remote: any inbound key press immediately\n"
+        "        # interrupts Linux speech before the key is replayed. This makes\n"
+        "        # Ctrl behave like NVDA's normal stop-speech gesture and prevents\n"
+        "        # stale speech from continuing during remote navigation.\n"
+        "        if pressed:\n"
+        "            try:\n"
+        "                self.local_machine.cancel_speech()\n"
+        "            except Exception:\n"
+        "                log.exception(\"linux-rdaccess: failed to cancel speech on inbound key\")\n\n"
+    )
+    text = text.replace(key_anchor, key_patch + key_anchor, 1)
+
+    braille_anchor = (
+        "    def _on_remote_braille_input(self, **kwargs):\n"
+        "        log.debug(\"Remote braille input: %s\" % kwargs)\n"
+    )
+    if braille_anchor not in text:
+        raise ValueError(f"legacy braille-input handler anchor was not found in {path}")
+    braille_patch = (
+        "    def _on_remote_braille_input(self, **kwargs):\n"
+        "        # Preserve upstream logging and also write a compact gesture-only\n"
+        "        # trace so linux-rdaccess can map pan/routing/braille-keyboard\n"
+        "        # gestures without exposing connection keys or speech content.\n"
+        "        log.debug(\"Remote braille input: %s\" % kwargs)\n"
+        "        try:\n"
+        "            import json as _linux_rdaccess_json\n"
+        "            import os as _linux_rdaccess_os\n"
+        "            _allowed = (\"id\", \"identifiers\", \"scriptPath\", \"source\", \"model\", \"dots\", \"space\", \"routingIndex\")\n"
+        "            _safe = {k: kwargs[k] for k in _allowed if k in kwargs}\n"
+        "            _trace = _linux_rdaccess_os.path.expanduser(\"~/.local/share/orca/orca-remote-braille-input.log\")\n"
+        "            with open(_trace, \"a\", encoding=\"utf-8\") as _fh:\n"
+        "                _fh.write(_linux_rdaccess_json.dumps(_safe, sort_keys=True, default=str) + \"\\n\")\n"
+        "        except Exception:\n"
+        "            log.exception(\"linux-rdaccess: failed to trace braille input\")\n"
+    )\n"
+    )
+    text = text.replace(braille_anchor, braille_patch, 1)
+
+    backup = path.with_name(path.name + ".linux-rdaccess-backup")
+    if not backup.exists():
+        backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    path.write_text(text, encoding="utf-8")
+    return True
+
+
 def disable_legacy_orca_connection(path: Path) -> None:
     """Disable legacy Orca Remote auto-connect without deleting saved linux-rdaccess settings."""
     text = path.read_text(encoding="utf-8")
