@@ -152,6 +152,47 @@ class VSCodeSetupTests(unittest.TestCase):
             self.assertEqual(data["window.titleBarStyle"], "custom")
 
 
+class VSCodeJsoncTests(unittest.TestCase):
+    def test_comments_and_trailing_commas_are_preserved(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "settings.json"
+            original = '{\n    // my font\n    "editor.fontSize": 14, /* keep */\n    "files.exclude": {"a": true,},\n}\n'
+            path.write_text(original, encoding="utf-8")
+            linux_rdaccess.configure_vscode_accessibility(path)
+            result = path.read_text(encoding="utf-8")
+            self.assertIn("// my font", result)
+            self.assertIn("/* keep */", result)
+            self.assertIn('"editor.accessibilitySupport": "on"', result)
+            self.assertEqual(
+                path.with_name(path.name + ".linux-rdaccess-backup").read_text(encoding="utf-8"),
+                original,
+            )
+
+    def test_existing_value_is_replaced_not_duplicated(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "settings.json"
+            path.write_text('{"editor.accessibilitySupport": "off"}', encoding="utf-8")
+            linux_rdaccess.configure_vscode_accessibility(path)
+            result = path.read_text(encoding="utf-8")
+            self.assertEqual(result.count("editor.accessibilitySupport"), 1)
+            self.assertIn('"on"', result)
+
+    def test_url_with_slashes_in_string_is_not_treated_as_comment(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "settings.json"
+            path.write_text('{"http.proxy": "http://x//y"}', encoding="utf-8")
+            linux_rdaccess.configure_vscode_accessibility(path)
+            self.assertIn("http://x//y", path.read_text(encoding="utf-8"))
+
+    def test_invalid_settings_are_left_untouched(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "settings.json"
+            path.write_text("{ nope", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                linux_rdaccess.configure_vscode_accessibility(path)
+            self.assertEqual(path.read_text(encoding="utf-8"), "{ nope")
+
+
 class CompatibilityStatusTests(unittest.TestCase):
     def test_compatibility_status_reports_all_targets(self):
         with mock.patch("linux_rdaccess.shutil.which", side_effect=lambda cmd: f"/usr/bin/{cmd}" if cmd == "thunar" else None):

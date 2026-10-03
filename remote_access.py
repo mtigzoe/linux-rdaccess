@@ -6,9 +6,11 @@ from __future__ import annotations
 import argparse
 from dataclasses import asdict, dataclass
 import json
+import os
 from pathlib import Path
 import re
 import secrets
+import sys
 from typing import Literal
 
 DEFAULT_HOST = "nvdaremote.com"
@@ -135,93 +137,262 @@ def update_legacy_orca_customizations(
         backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
     path.write_text(text, encoding="utf-8")
 
-    remote_controller = path.parent / "orca-scripts" / "remote_controller.py"
+    remote_controller = path.parent / LEGACY_REMOTE_CONTROLLER_RELATIVE
     if remote_controller.exists():
-        patch_legacy_orca_remote_controller(remote_controller)
+        # The input shim is an enhancement: a changed upstream layout must not
+        # stop the connection settings above from being applied.
+        try:
+            patch_legacy_orca_remote_controller(remote_controller)
+        except (ValueError, OSError) as exc:
+            print(
+                f"warning: NVDA input compatibility patch not applied: {exc}",
+                file=sys.stderr,
+            )
 
 
 LEGACY_REMOTE_CONTROLLER_RELATIVE = Path("orca-scripts/remote_controller.py")
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility"
+LEGACY_COMPAT_MARKER_V1 = "# linux-rdaccess NVDA/Orca input compatibility"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v2"
+
+_LEGACY_HELPERS = '''\
+    ''' + LEGACY_COMPAT_MARKER + '''
+    # Helpers injected by linux-rdaccess. They never log key names, braille
+    # dots, speech text or connection keys.
+    _LRD_CTRL_VKS = (0x11, 0xA2, 0xA3)
+    _LRD_MODIFIER_VKS = (
+        0x10, 0xA0, 0xA1, 0x11, 0xA2, 0xA3, 0x12, 0xA4, 0xA5,
+        0x5B, 0x5C, 0x2D, 0x14,
+    )  # Shift, Ctrl, Alt, Win, Insert, CapsLock (NVDA modifier keys)
+    _LRD_BRAILLE_ACTIONS = {
+        "braille_scrollBack": "pan_back",
+        "braille_scrollForward": "pan_forward",
+        "braille_routeTo": "route",
+    }
+    _LRD_TRACE_MAX_BYTES = 262144
+
+    def _linux_rdaccess_filter_key(self, pressed, vk_code, extended, modifiers,
+                                   key_name=None, scan_code=None):
+        """Return True when the event was fully handled here."""
+        state = (
+            getattr(self, "control_state", None),
+            bool(getattr(getattr(self, "transport", None), "connected", True)),
+        )
+        if getattr(self, "_lrd_state", None) != state:
+            # Control moved local/remote or the transport reconnected:
+            # forget held keys so a stale NVDA modifier cannot rewrite Space.
+            self._lrd_state = state
+            self._lrd_down = set()
+            self._lrd_nvda_down = False
+            self._lrd_swapped = False
+        pressed = bool(pressed)
+        held = (vk_code, bool(extended))
+        repeat = pressed and held in self._lrd_down
+        if pressed:
+            self._lrd_down.add(held)
+        else:
+            self._lrd_down.discard(held)
+        if vk_code in (0x2D, 0x14):
+            self._lrd_nvda_down = pressed
+
+        # Interrupt stale speech on a real action, as NVDA does. Plain
+        # modifier keys (and their auto-repeat) must not cut off speech that
+        # a chord such as NVDA+Down started; Ctrl itself does interrupt.
+        if pressed and (
+            vk_code not in self._LRD_MODIFIER_VKS
+            or (vk_code in self._LRD_CTRL_VKS and not repeat)
+        ):
+            try:
+                self.local_machine.cancel_speech()
+            except Exception:
+                log.exception("linux-rdaccess: failed to cancel speech")
+
+        # NVDA+Space -> Orca+A (browse/focus toggle). Only the first press
+        # while the NVDA modifier is held is swapped; auto-repeat is consumed
+        # and the matching release is consumed only for a swapped press, so a
+        # normally forwarded Space can never be left stuck down.
+        if vk_code == 0x20:
+            if pressed:
+                if self._lrd_swapped:
+                    return True
+                if self._lrd_nvda_down and not repeat:
+                    self._lrd_swapped = True
+                    for down in (True, False):
+                        self.local_machine.send_key(
+                            key_name="a", pressed=down, modifiers=modifiers,
+                            vk_code=0x41, scan_code=0x1E, extended=False,
+                        )
+                    return True
+                return False
+            if self._lrd_swapped:
+                self._lrd_swapped = False
+                return True
+        return False
+
+    def _linux_rdaccess_classify_braille(self, kwargs):
+        """Return (action, safe_record) for an NVDA Remote braille_input."""
+        def text(value):
+            return str(value)[:120]
+        ids = [kwargs.get("id")] + list(kwargs.get("identifiers") or [])
+        keyboard = bool(kwargs.get("dots") or kwargs.get("space")) or any(
+            "dot" in str(i).lower() for i in ids if i
+        )
+        if keyboard:
+            # Braille keyboard input is typed text (possibly a password).
+            return "keyboard", {
+                "redacted": "braille-keyboard-input",
+                "model": text(kwargs.get("model")),
+                "source": text(kwargs.get("source")),
+            }
+        record = {}
+        for name in ("id", "scriptPath", "source", "model", "routingIndex"):
+            if name in kwargs:
+                value = kwargs[name]
+                record[name] = (
+                    [text(v) for v in value]
+                    if isinstance(value, (list, tuple)) else text(value)
+                )
+        if kwargs.get("identifiers"):
+            record["identifiers"] = [text(i) for i in kwargs["identifiers"]]
+        script = kwargs.get("scriptPath") or []
+        name = str(script[-1]) if script else ""
+        if name.startswith("script_"):
+            name = name[len("script_"):]
+        action = self._LRD_BRAILLE_ACTIONS.get(name)
+        return action, record
+
+    def _linux_rdaccess_trace_braille(self, record):
+        import json as _json
+        import os as _os
+        path = _os.path.expanduser(
+            "~/.local/share/orca/orca-remote-braille-input.log")
+        try:
+            if _os.path.getsize(path) > self._LRD_TRACE_MAX_BYTES:
+                _os.replace(path, path + ".1")
+        except OSError:
+            pass
+        fd = _os.open(path, _os.O_WRONLY | _os.O_APPEND | _os.O_CREAT, 0o600)
+        with _os.fdopen(fd, "a", encoding="utf-8") as handle:
+            handle.write(_json.dumps(record, sort_keys=True) + "\\n")
+        try:
+            _os.chmod(path, 0o600)
+        except OSError:
+            pass
+
+    @staticmethod
+    def _linux_rdaccess_run_main(func):
+        try:
+            from gi.repository import GLib
+        except Exception:
+            func()
+            return
+        GLib.idle_add(lambda: (func(), False)[1])
+
+    def _linux_rdaccess_handle_braille_input(self, kwargs):
+        action, record = self._linux_rdaccess_classify_braille(kwargs)
+        try:
+            self._linux_rdaccess_trace_braille(record)
+        except Exception:
+            log.exception("linux-rdaccess: failed to trace braille input")
+        if action in ("pan_back", "pan_forward"):
+            from orca import braille as _braille
+            method = "panLeft" if action == "pan_back" else "panRight"
+            func = getattr(_braille, method, None)
+            if func is None:
+                log.debug("linux-rdaccess: Orca braille.%s unavailable", method)
+                return
+            self._linux_rdaccess_run_main(func)
+
+'''
+
+_LEGACY_RESET_HOOKS = (
+    LEGACY_COMPAT_MARKER + "\n"
+    "# Control hand-over and reconnects forget held-key state, even when no key\n"
+    "# event arrives in between.\n"
+    "def _linux_rdaccess_wrap_reset(name):\n"
+    "    original = getattr(RemoteController, name, None)\n"
+    "    if original is None:\n"
+    "        return\n"
+    "    def wrapper(self, *args, **kwargs):\n"
+    "        self._lrd_state = None\n"
+    "        return original(self, *args, **kwargs)\n"
+    "    wrapper.__name__ = original.__name__\n"
+    "    setattr(RemoteController, name, wrapper)\n"
+    "\n\n"
+    "for _lrd_name in (\"toggle_control\", \"disconnect\",\n"
+    "                  \"_on_transport_connected\", \"_on_transport_disconnected\"):\n"
+    "    _linux_rdaccess_wrap_reset(_lrd_name)\n"
+)
+
+_LEGACY_KEY_CALL = (
+    "        " + LEGACY_COMPAT_MARKER + "\n"
+    "        if self._linux_rdaccess_filter_key(\n"
+    "                pressed, vk_code, extended, modifiers, key_name, scan_code):\n"
+    "            return\n"
+)
+
+_LEGACY_BRAILLE_HANDLER = (
+    "    def _on_remote_braille_input(self, **kwargs):\n"
+    "        " + LEGACY_COMPAT_MARKER + "\n"
+    "        try:\n"
+    "            self._linux_rdaccess_handle_braille_input(kwargs)\n"
+    "        except Exception:\n"
+    "            log.exception(\"linux-rdaccess: braille input handling failed\")\n"
+)
 
 
 def patch_legacy_orca_remote_controller(path: Path) -> bool:
     """Patch legacy Orca Remote input handling for NVDA compatibility.
 
-    Returns True when the file changed. The patch is idempotent and creates a
-    one-time .linux-rdaccess-backup beside the upstream file.
+    Returns True when the file changed. The patch is idempotent, replaces an
+    earlier v1 patch from the one-time .linux-rdaccess-backup, verifies the
+    result compiles before writing, and writes atomically.
     """
     text = path.read_text(encoding="utf-8")
     if LEGACY_COMPAT_MARKER in text:
         return False
-
-    key_anchor = "        self.local_machine.send_key(\n"
-    if key_anchor not in text:
-        raise ValueError(f"legacy _on_remote_key anchor was not found in {path}")
-    key_patch = (
-        f"        {LEGACY_COMPAT_MARKER}\n"
-        "        # Match modern Orca Remote: any inbound key press immediately\n"
-        "        # interrupts Linux speech before the key is replayed.\n"
-        "        if pressed:\n"
-        "            try:\n"
-        "                self.local_machine.cancel_speech()\n"
-        "            except Exception:\n"
-        "                log.exception(\"linux-rdaccess: failed to cancel speech on inbound key\")\n"
-        "\n"
-        "        # Track the Windows NVDA modifier. NVDA commonly uses Insert;\n"
-        "        # CapsLock is also supported for laptop-layout users. Keep the\n"
-        "        # modifier itself forwarded so Orca sees its own modifier held.\n"
-        "        _nvda_mod_vks = (0x2D, 0x14)  # VK_INSERT, VK_CAPITAL\n"
-        "        if vk_code in _nvda_mod_vks:\n"
-        "            self._linux_rdaccess_nvda_mod_down = bool(pressed)\n"
-        "\n"
-        "        # NVDA+Space toggles browse/focus mode on Windows. Orca's\n"
-        "        # equivalent is Orca+A. Because Insert/CapsLock is already held\n"
-        "        # and forwarded, replace only Space with A and consume the Space\n"
-        "        # release. This preserves the user's familiar NVDA gesture in\n"
-        "        # Firefox without changing ordinary Space behavior in GUIs.\n"
-        "        if vk_code == 0x20 and getattr(self, \"_linux_rdaccess_nvda_mod_down\", False):\n"
-        "            if pressed:\n"
-        "                self.local_machine.send_key(\n"
-        "                    key_name=\"a\", pressed=True, modifiers=modifiers,\n"
-        "                    vk_code=0x41, scan_code=0x1E, extended=False,\n"
-        "                )\n"
-        "                self.local_machine.send_key(\n"
-        "                    key_name=\"a\", pressed=False, modifiers=modifiers,\n"
-        "                    vk_code=0x41, scan_code=0x1E, extended=False,\n"
-        "                )\n"
-        "            return\n\n"
-    )
-    text = text.replace(key_anchor, key_patch + key_anchor, 1)
-
-    braille_anchor = (
-        "    def _on_remote_braille_input(self, **kwargs):\n"
-        "        log.debug(\"Remote braille input: %s\" % kwargs)\n"
-    )
-    if braille_anchor not in text:
-        raise ValueError(f"legacy braille-input handler anchor was not found in {path}")
-    braille_patch = (
-        "    def _on_remote_braille_input(self, **kwargs):\n"
-        "        # Preserve upstream logging and also write a compact gesture-only\n"
-        "        # trace so linux-rdaccess can map pan/routing/braille-keyboard\n"
-        "        # gestures without exposing connection keys or speech content.\n"
-        "        log.debug(\"Remote braille input: %s\" % kwargs)\n"
-        "        try:\n"
-        "            import json as _linux_rdaccess_json\n"
-        "            import os as _linux_rdaccess_os\n"
-        "            _allowed = (\"id\", \"identifiers\", \"scriptPath\", \"source\", \"model\", \"dots\", \"space\", \"routingIndex\")\n"
-        "            _safe = {k: kwargs[k] for k in _allowed if k in kwargs}\n"
-        "            _trace = _linux_rdaccess_os.path.expanduser(\"~/.local/share/orca/orca-remote-braille-input.log\")\n"
-        "            with open(_trace, \"a\", encoding=\"utf-8\") as _fh:\n"
-        "                _fh.write(_linux_rdaccess_json.dumps(_safe, sort_keys=True, default=str) + \"\\n\")\n"
-        "        except Exception:\n"
-        "            log.exception(\"linux-rdaccess: failed to trace braille input\")\n"
-    )
-    text = text.replace(braille_anchor, braille_patch, 1)
-
     backup = path.with_name(path.name + ".linux-rdaccess-backup")
+    if LEGACY_COMPAT_MARKER_V1 in text:
+        if not backup.exists():
+            raise ValueError(f"v1 patch found but backup is missing: {backup}")
+        text = backup.read_text(encoding="utf-8")
+
+    key_def = re.search(r"^    def _on_remote_key\(([^)]*)\):\n", text, re.MULTILINE)
+    if key_def is None:
+        raise ValueError(f"legacy _on_remote_key was not found in {path}")
+    params = key_def.group(1)
+    for needed in ("pressed", "vk_code", "extended", "modifiers"):
+        if needed not in params:
+            raise ValueError(f"legacy _on_remote_key lacks {needed} in {path}")
+    body_end = text.find("\n    def ", key_def.end())
+    body_end = len(text) if body_end == -1 else body_end
+    key_anchor = "        self.local_machine.send_key(\n"
+    anchor_at = text.find(key_anchor, key_def.end(), body_end)
+    if anchor_at == -1:
+        raise ValueError(f"legacy _on_remote_key send_key anchor was not found in {path}")
+    text = text[:anchor_at] + _LEGACY_KEY_CALL + text[anchor_at:]
+    text = text[:key_def.start()] + _LEGACY_HELPERS + text[key_def.start():]
+
+    braille_def = re.search(
+        r"^    def _on_remote_braille_input\(self, \*\*kwargs\):\n"
+        r"(?:        .*\n)+?(?=\n|    def |\Z)",
+        text,
+        re.MULTILINE,
+    )
+    if braille_def is None:
+        raise ValueError(f"legacy braille-input handler was not found in {path}")
+    text = text[:braille_def.start()] + _LEGACY_BRAILLE_HANDLER + text[braille_def.end():]
+    text = text.rstrip("\n") + "\n\n\n" + _LEGACY_RESET_HOOKS
+
+    try:
+        compile(text, str(path), "exec")
+    except SyntaxError as exc:
+        raise ValueError(f"patched {path} would not compile: {exc}") from exc
+
     if not backup.exists():
         backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
-    path.write_text(text, encoding="utf-8")
+    tmp = path.with_name(path.name + ".linux-rdaccess-tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
     return True
 
 

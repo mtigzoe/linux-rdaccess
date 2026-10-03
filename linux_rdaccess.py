@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -189,30 +190,83 @@ def disconnect(*, orca_config: Path, restart: bool = True, quiet: bool = False) 
 DEFAULT_VSCODE_SETTINGS = Path("~/.config/Code/User/settings.json").expanduser()
 
 
+def _strip_jsonc(text: str) -> str:
+    """Remove // and /* */ comments and trailing commas (VS Code uses JSONC)."""
+    out: list[str] = []
+    i, n, in_str = 0, len(text), False
+    while i < n:
+        ch = text[i]
+        if in_str:
+            out.append(ch)
+            if ch == "\\" and i + 1 < n:
+                out.append(text[i + 1])
+                i += 1
+            elif ch == '"':
+                in_str = False
+        elif ch == '"':
+            in_str = True
+            out.append(ch)
+        elif text.startswith("//", i):
+            while i < n and text[i] != "\n":
+                i += 1
+            continue
+        elif text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            i = n if end == -1 else end + 2
+            continue
+        else:
+            out.append(ch)
+        i += 1
+    return re.sub(r",(\s*[}\]])", r"\1", "".join(out))
+
+
 def configure_vscode_accessibility(path: Path = DEFAULT_VSCODE_SETTINGS) -> None:
-    """Enable VS Code screen-reader accessibility without replacing other settings."""
+    """Enable VS Code screen-reader accessibility without replacing other settings.
+
+    settings.json is JSONC, so comments and formatting are preserved by editing
+    the text in place rather than re-serialising it. A one-time backup is kept.
+    """
     path = path.expanduser()
-    data = {}
-    if path.exists():
-        try:
-            loaded = json.loads(path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"VS Code settings are not valid JSON: {path}") from exc
-        if not isinstance(loaded, dict):
-            raise ValueError(f"VS Code settings must contain a JSON object: {path}")
-        data = loaded
-    data["editor.accessibilitySupport"] = "on"
-    data.setdefault("window.titleBarStyle", "custom")
+    text = path.read_text(encoding="utf-8") if path.exists() else "{\n}\n"
+    try:
+        data = json.loads(_strip_jsonc(text) or "{}")
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"VS Code settings are not valid JSON: {path}") from exc
+    if not isinstance(data, dict):
+        raise ValueError(f"VS Code settings must contain a JSON object: {path}")
+
+    wanted = {"editor.accessibilitySupport": "on"}
+    if "window.titleBarStyle" not in data:
+        wanted["window.titleBarStyle"] = "custom"
+    for key, value in wanted.items():
+        line = f'"{key}": {json.dumps(value)}'
+        existing = re.search(rf'"{re.escape(key)}"\s*:\s*"[^"]*"', text)
+        if existing:
+            text = text[:existing.start()] + line + text[existing.end():]
+            continue
+        brace = text.index("{")
+        rest = _strip_jsonc(text[brace + 1:]).strip()
+        sep = "" if rest.startswith("}") else ","
+        text = f"{text[:brace + 1]}\n    {line}{sep}{text[brace + 1:]}"
+    json.loads(_strip_jsonc(text))  # never write something we cannot parse
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=4, sort_keys=True) + "\n", encoding="utf-8")
-
-
+    backup = path.with_name(path.name + ".linux-rdaccess-backup")
+    if path.exists() and not backup.exists():
+        backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    tmp = path.with_name(path.name + ".linux-rdaccess-tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
 
 
 COMPATIBILITY_APPS = (
     ("thunar", "Thunar File Manager"),
     ("xfce4-terminal", "XFCE Terminal"),
     ("xfce4-settings-manager", "XFCE Settings Manager"),
+    ("mousepad", "Mousepad"),
+    ("xed", "Xed"),
+    ("mintupdate", "Update Manager"),
+    ("mintinstall", "Software Manager"),
+    ("xfce4-panel", "XFCE panel"),
     ("firefox", "Firefox"),
     ("code", "VS Code"),
 )
