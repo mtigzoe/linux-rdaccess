@@ -6,6 +6,8 @@ on:
       - "a11y_link.py"
       - "a11y_model.py"
       - "atspi_nvda_braille_bridge.py"
+      - "nvda_remote_check.py"
+      - "tests/test_nvda_remote_check.py"
       - "tests/test_a11y_link.py"
       - "tests/test_a11y_model.py"
       - "tools/generate_remote_a11y_fixture.py"
@@ -50,7 +52,11 @@ jobs:
           python-version: "3.12"
       - name: Run Linux remote A11Y unit tests
         run: |
-          python -m unittest -v tests.test_a11y_link tests.test_a11y_model
+          python -m unittest -v \
+            tests.test_a11y_link \
+            tests.test_a11y_model \
+            tests.test_nvda_remote_check
+          python -m py_compile nvda_remote_check.py tests/test_nvda_remote_check.py
       - name: Generate Linux semantic fixtures
         run: |
           python tools/generate_remote_a11y_fixture.py > linux-a11y-fixture.json
