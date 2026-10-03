@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from pathlib import Path
 import shutil
@@ -184,6 +185,29 @@ def disconnect(*, orca_config: Path, restart: bool = True, quiet: bool = False) 
     return 0
 
 
+
+DEFAULT_VSCODE_SETTINGS = Path("~/.config/Code/User/settings.json").expanduser()
+
+
+def configure_vscode_accessibility(path: Path = DEFAULT_VSCODE_SETTINGS) -> None:
+    """Enable VS Code screen-reader accessibility without replacing other settings."""
+    path = path.expanduser()
+    data = {}
+    if path.exists():
+        try:
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"VS Code settings are not valid JSON: {path}") from exc
+        if not isinstance(loaded, dict):
+            raise ValueError(f"VS Code settings must contain a JSON object: {path}")
+        data = loaded
+    data["editor.accessibilitySupport"] = "on"
+    data.setdefault("window.titleBarStyle", "custom")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=4, sort_keys=True) + "\n", encoding="utf-8")
+
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
@@ -209,6 +233,14 @@ def build_parser() -> argparse.ArgumentParser:
     autostart.add_argument("state", choices=("enable", "disable", "status"))
 
     sub.add_parser("shortcuts", help="show common NVDA/Orca shortcuts")
+
+    vscode = sub.add_parser("vscode-setup", help="enable VS Code Linux screen-reader accessibility")
+    vscode.add_argument(
+        "--settings",
+        type=Path,
+        default=DEFAULT_VSCODE_SETTINGS,
+        help="path to VS Code settings.json",
+    )
 
     sub.add_parser("configure", help="run the Remote Access configuration manager")
 
@@ -287,6 +319,12 @@ def main(argv: list[str] | None = None) -> int:
         print("  Orca+Alt+PageUp / Orca+Alt+C      Connect")
         print("  Orca+Alt+PageDown / Orca+Alt+D    Disconnect")
         print("  Orca+Alt+M                         Mute/unmute remote output")
+        return 0
+
+    if args.command == "vscode-setup":
+        configure_vscode_accessibility(args.settings)
+        print(f"Enabled VS Code screen-reader accessibility in: {args.settings.expanduser()}")
+        print("If Orca is still silent, launch VS Code with: ACCESSIBILITY_ENABLED=1 code")
         return 0
 
     if args.command == "configure":
