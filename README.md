@@ -1,66 +1,135 @@
 # linux-rdaccess
 
-Prototype accessibility bridge for using NVDA on Windows with a Linux Mint/XFCE desktop over xrdp.
+Experimental Linux accessibility bridge for Windows screen readers.
 
-The bridge forwards Linux AT-SPI focus/window events through rdAccess dynamic virtual channels:
+The project now supports two architectural directions:
 
-- NVDA-SPEECH for speech
-- NVDA-BRAILLE for braille
+1. **NVDA Remote + Orca Remote (recommended)** — Linux accessibility output is produced by Orca and transported directly to NVDA Remote on Windows. This avoids depending on an RDP client for accessibility and has already been validated for remote keyboard control, NVDA speech, and braille.
+2. **xrdp dynamic virtual channels (experimental)** — Linux AT-SPI focus/window data is forwarded through xrdp DVC channels to the Windows rdAccess NVDA add-on.
 
-Braille text is translated with Liblouis using en-ueb-g2.ctb.
+The xrdp implementation is being retained for research and future native RDP integration. It is no longer the recommended path for normal use.
+
+## Recommended architecture
+
+```text
+Windows NVDA
+    ⇅
+NVDA Remote protocol
+    ⇅
+Orca Remote on Linux
+    ⇅
+Orca / AT-SPI
+    ⇅
+Linux applications
+```
+
+This path does not require Windows App or Remote Desktop Connection for accessibility. RDP may still be used independently for visual desktop access, but it is not part of the accessibility transport.
+
+See [docs/nvda-remote.md](docs/nvda-remote.md) for the current tested design and known compatibility work.
+
+## Experimental xrdp architecture
+
+The original bridge forwards Linux AT-SPI focus/window events through rdAccess dynamic virtual channels:
+
+- `NVDA-SPEECH` for speech
+- `NVDA-BRAILLE` for braille
+- `NVDA-A11Y` for richer accessibility-object data
+
+Braille text is translated with Liblouis using `en-ueb-g2.ctb`.
+
+This backend remains useful for research into native RDP accessibility, automatic session handoff, reconnect behavior, and richer remote accessibility objects.
 
 ## Requirements
 
-On Windows: NVDA, the rdAccess add-on, and a braille display configured in NVDA if braille is wanted.
+### Recommended NVDA Remote path
 
-On Linux: xrdp with drdynvc=true, Python 3, PyGObject/AT-SPI, Liblouis Python bindings and liblouis-data, gdbus, and xprop.
+On Windows:
+
+- NVDA with Remote Access enabled
+- A braille display configured in NVDA if braille is wanted
+
+On Linux:
+
+- Orca
+- AT-SPI
+- Orca Remote
+- Python 3
+- Liblouis Python bindings for braille forwarding
+- `xdotool` on X11 for remote keyboard injection
+
+### Experimental xrdp path
+
+On Windows:
+
+- NVDA
+- the rdAccess add-on
+- a braille display configured in NVDA if braille is wanted
+
+On Linux:
+
+- xrdp with `drdynvc=true`
+- Python 3
+- PyGObject/AT-SPI
+- Liblouis Python bindings and `liblouis-data`
+- `gdbus`
+- `xprop`
 
 ## Windows development folders
 
-When developing or testing this project on Windows, the repositories are normally kept as sibling folders, for example:
+When developing or testing the xrdp backend on Windows, the repositories are normally kept as sibling folders, for example:
 
     C:\Users\Miriam\Personal_Coding\rdp\rdAccess
     C:\Users\Miriam\Personal_Coding\rdp\nvda
 
 They have different purposes:
 
-- `rdAccess` is the NVDA add-on used on Windows. It receives the accessibility data sent by `linux-rdaccess` over RDP dynamic virtual channels and turns remote Linux controls into NVDA speech, braille, and remote NVDA objects. Windows-side fixes for this project normally belong here.
-- `nvda` is a checkout of the upstream NVDA source code from `nvaccess/nvda`. It is a development dependency for `rdAccess`: tests and type checking use NVDA modules and APIs from the sibling `..\nvda\source` tree, and it is useful for checking how NVDA focus, speech, TextInfo, and braille work internally.
-- The `nvda` checkout is not the installed copy of NVDA and normally should not be modified for `linux-rdaccess` work. Changes should go into `rdAccess` unless a fix truly requires a change to NVDA itself.
+- `rdAccess` is the NVDA add-on used by the xrdp backend. It receives accessibility data sent by `linux-rdaccess` over RDP dynamic virtual channels and turns remote Linux controls into NVDA speech, braille, and remote NVDA objects.
+- `nvda` is a checkout of upstream NVDA source. It is a development dependency for `rdAccess` tests and type checking and is useful for checking NVDA focus, speech, TextInfo, and braille APIs.
+- The `nvda` checkout is not the installed copy of NVDA and normally should not be modified for `linux-rdaccess` work.
 
-The rdAccess GitHub Actions workflows also clone NVDA into a sibling `../nvda` directory before running tests and type checks, matching this local folder layout.
+## Run the experimental xrdp backend
 
-## Run in the xrdp session
-
-After logging in to the xrdp desktop, run:
+After logging in to the xrdp desktop:
 
     cd ~/linux-rdaccess
     DISPLAY=:10 ./run_braille_bridge.sh --debug
 
-The launcher always asks the live session bus for the AT-SPI address (org.a11y.Bus.GetAddress), exports it as AT_SPI_BUS_ADDRESS, sets the AT_SPI_BUS X11 root property on the xrdp display, and reads the property back to confirm it. An AT_SPI_BUS_ADDRESS inherited from an older shell is only used if the live bus cannot be queried, because a stale one aborts the bridge and, once published on the root window, stops newly started applications from registering with AT-SPI.
+The launcher asks the live session bus for the AT-SPI address, exports it as `AT_SPI_BUS_ADDRESS`, publishes it on the xrdp display, and verifies the result.
 
-Print the environment facts (DISPLAY, session bus, AT-SPI address, root property) without starting the bridge:
+Print environment facts without starting the bridge:
 
     DISPLAY=:10 ./run_braille_bridge.sh --check
 
-For best results, start the launcher immediately after logging in to xrdp, before opening applications you want to inspect with AT-SPI.
+For best results, start the launcher immediately after logging in to xrdp, before opening applications that should register with AT-SPI.
 
-## When Tab does not produce speech or braille
+## xrdp diagnostics
 
-Run the tracer in the xrdp session, press Tab in a Linux application over the Remote Desktop window, and read which line you get for each press:
+When Tab does not produce speech or braille:
 
     DISPLAY=:10 python3 diagnostics/tab_trace.py
 
-- No `Tab #n` line at all: the key never reached the Linux session (the Windows client kept it).
-- `Tab #n -> NO AT-SPI focus event`: Linux received the key but the application reported no focus change. Terminals and text editors consume Tab, and GTK3 combo boxes never report focus gain, so nothing can be announced from this repository.
-- `Tab #n -> focus event ...` but nothing from NVDA: run the bridge with `--debug` and check that the same control appears as `object:state-changed:focused -> '...'`.
+- No `Tab #n` line: the key never reached the Linux session.
+- `Tab #n -> NO AT-SPI focus event`: Linux received the key but the application reported no focus change.
+- `Tab #n -> focus event ...` but nothing from NVDA: run the bridge with `--debug` and inspect the corresponding focus event.
 
-`diagnostics/atspi_event_probe.py --all` lists every raw AT-SPI event, and `diagnostics/atspi_probe.py` lists the applications registered on the bus.
+Additional tools:
+
+    DISPLAY=:10 python3 diagnostics/atspi_event_probe.py --all
+    DISPLAY=:10 python3 diagnostics/atspi_probe.py
 
 ## Known limits
 
-- An xrdp reconnect while the bridge is running can leave a dead dynamic virtual channel that reports no error. libxrdpapi in xrdp 0.9.17 has no session-notification API, so the bridge cannot detect this; restart it after reconnecting. NVDA restarts and dropped channels are recovered automatically: each time the NVDA-A11Y channel completes its handshake the bridge re-reads the live AT-SPI focus and sends it (plus its text/caret state) without waiting for a new focus event.
-- GTK3 emits no focus event when Tab lands on a combo box. Changing its value (arrow keys) is announced; arriving on it is not.
+### NVDA Remote / Orca path
+
+- The public NVDA Remote relay may reject older Linux TLS stacks. Hosting the Remote Access session locally on the Windows NVDA machine avoids that dependency.
+- Orca versions differ in speech and braille APIs; compatibility shims may be required.
+- X11 keyboard injection currently relies on `xdotool`; Wayland requires a different injection backend.
+- Braille forwarding requires converting Orca's visible braille line into raw NVDA Remote cell values.
+
+### xrdp path
+
+- An xrdp reconnect can leave a dead DVC on older xrdp versions without a session-notification API. Restart the bridge after reconnecting.
+- GTK3 can omit focus events for some controls such as combo boxes.
 
 ## Tests
 
@@ -68,16 +137,6 @@ Run the tracer in the xrdp session, press Tab in a Linux application over the Re
     python3 -m py_compile *.py diagnostics/*.py tests/*.py
     bash -n run_braille_bridge.sh
 
-## Speech-only bridge
-
-The older speech-only bridge remains available:
+## Legacy speech-only xrdp bridge
 
     DISPLAY=:10 python3 atspi_nvda_bridge.py --debug
-
-DISPLAY=:10 ./run_braille_bridge.sh --debug                                                                             
-
-DISPLAY=:10 ~/linux-rdaccess/run_braille_bridge.sh                                                                      
- DISPLAY=:10
- DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
- AT_SPI_BUS_ADDRESS=... (X root AT_SPI_BUS matches)
- WINDOW_MANAGER=present (_NET_SUPPORTING_WM_CHECK)
