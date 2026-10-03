@@ -18,13 +18,14 @@ class InstallTests(unittest.TestCase):
             share = root / "share"
             bin_path = root / "bin" / "linux-rdaccess"
             source.mkdir()
-            for name in ("linux_rdaccess.py", "remote_access.py", "nvda_remote_check.py"):
+            for name in ("linux_rdaccess.py", "remote_access.py", "nvda_remote_check.py", "orca_adapter.py"):
                 (source / name).write_text("# test\n", encoding="utf-8")
 
             linux_rdaccess.install_user_files(source, share_dir=share, bin_path=bin_path)
 
             self.assertTrue(bin_path.exists())
             self.assertTrue(share.joinpath("remote_access.py").exists())
+            self.assertTrue(share.joinpath("orca_adapter.py").exists())
             self.assertIn("linux_rdaccess.py", bin_path.read_text(encoding="utf-8"))
 
     def test_autostart_executes_connect_quietly(self):
