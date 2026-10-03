@@ -68,6 +68,122 @@ The channel key is stored in `~/.config/linux-rdaccess/remote.json` with user-on
 
 For the normal Windows-to-Linux setup, use role `host`. Windows NVDA can then enter Remote Access control mode with **Insert+Alt+Tab**. Connect, disconnect, and mute are handled by the Orca Remote integration; the manager provides the persistent connection settings and role used by that integration.
 
+## Command reference
+
+### Initial setup
+
+Configure Linux as the machine controlled by Windows NVDA and generate a new Remote Access key:
+
+    python3 remote_access.py configure --role host --generate-key
+
+The default relay and port are:
+
+    nvdaremote.com:6837
+
+Show the saved configuration without revealing the key:
+
+    python3 remote_access.py status
+
+Apply the saved settings to the legacy Orca Remote configuration used by Orca 42:
+
+    python3 remote_access.py apply-legacy
+
+Restart Orca after applying legacy settings:
+
+    orca --replace
+
+### Generate or rotate the Remote Access key
+
+Generate and save a new key:
+
+    python3 remote_access.py generate-key --save
+
+Generate a key and print it once so it can be entered on the Windows NVDA side:
+
+    python3 remote_access.py generate-key --save --show
+
+The key is stored in:
+
+    ~/.config/linux-rdaccess/remote.json
+
+Status commands never print the saved key.
+
+### Change the relay address or port
+
+Use the public NVDA Remote relay:
+
+    python3 remote_access.py configure --host nvdaremote.com --port 6837
+
+Use another relay or a locally hosted NVDA Remote server:
+
+    python3 remote_access.py configure --host 192.168.1.81 --port 6837
+
+Then apply the new settings to legacy Orca Remote:
+
+    python3 remote_access.py apply-legacy
+
+### Choose which computer is controlled
+
+Linux is controlled by Windows NVDA:
+
+    python3 remote_access.py configure --role host
+
+Linux controls another NVDA Remote-compatible computer:
+
+    python3 remote_access.py configure --role client
+
+For the normal `linux-rdaccess` Windows-to-Linux setup, use `host`.
+
+### Speech preference
+
+Keep local Orca speech muted while NVDA speaks Linux output:
+
+    python3 remote_access.py configure --local-orca-speech mute
+
+Allow local Orca speech:
+
+    python3 remote_access.py configure --local-orca-speech speak
+
+### Show Remote Access shortcuts
+
+    python3 remote_access.py shortcuts
+
+Useful shortcuts for the tested legacy Orca Remote setup:
+
+    Windows NVDA:
+      Insert+Alt+Tab
+        Switch between controlling the local Windows computer and the remote Linux computer.
+
+    Linux Orca Remote:
+      Orca+Alt+PageUp or Orca+Alt+C
+        Connect.
+
+      Orca+Alt+PageDown or Orca+Alt+D
+        Disconnect.
+
+      Orca+Alt+M
+        Mute or unmute remote output.
+
+      Orca+Alt+Tab
+        Toggle local/remote control when Linux is acting as the client.
+
+      Ctrl+Shift+Orca+C
+        Push clipboard text to the remote computer.
+
+### Diagnostic commands
+
+Check the configured Orca Remote endpoint without exposing the Remote Access key:
+
+    python3 nvda_remote_check.py
+
+Machine-readable redacted status:
+
+    python3 nvda_remote_check.py --json
+
+Run the unit tests:
+
+    python3 -m unittest discover -s tests -t .
+
 ## Experimental xrdp architecture
 
 The original bridge forwards Linux AT-SPI focus/window events through rdAccess dynamic virtual channels:
