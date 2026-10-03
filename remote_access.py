@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import shutil
 import sys
 from typing import Literal
 
@@ -139,6 +140,13 @@ def update_legacy_orca_customizations(
 
     remote_controller = path.parent / LEGACY_REMOTE_CONTROLLER_RELATIVE
     if remote_controller.exists():
+        # Install the narrow Orca runtime adapter beside the legacy controller
+        # so the injected shim can call Orca's active application script rather
+        # than duplicating AT-SPI or braille behavior.
+        adapter_source = Path(__file__).with_name("orca_adapter.py")
+        adapter_target = remote_controller.parent / "linux_rdaccess_orca_adapter.py"
+        if adapter_source.exists():
+            shutil.copy2(adapter_source, adapter_target)
         # The input shim is an enhancement: a changed upstream layout must not
         # stop the connection settings above from being applied.
         try:
@@ -152,8 +160,9 @@ def update_legacy_orca_customizations(
 
 LEGACY_REMOTE_CONTROLLER_RELATIVE = Path("orca-scripts/remote_controller.py")
 LEGACY_COMPAT_MARKER_V1 = "# linux-rdaccess NVDA/Orca input compatibility"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v3"
-# v1 is a prefix of every later marker, so any older patch is detected by it.
+LEGACY_COMPAT_MARKER_V2 = "# linux-rdaccess NVDA/Orca input compatibility v2"
+LEGACY_COMPAT_MARKER_V3 = "# linux-rdaccess NVDA/Orca input compatibility v3"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v4"
 
 _LEGACY_HELPERS = '''\
     ''' + LEGACY_COMPAT_MARKER + '''
@@ -354,15 +363,36 @@ _LEGACY_HELPERS = '''\
 
     @staticmethod
     def _linux_rdaccess_script_call(method, *args):
-        """Run an Orca script handler (never braille.* directly) on the main loop.
+        """Run an Orca operation through the linux-rdaccess Orca API adapter.
 
-        The script handlers own flat review, line wrapping and display refresh;
-        calling braille.panLeft/panRight would only move the viewport.
+        The adapter keeps Orca-version compatibility in one place and delegates
+        to the active application script, preserving Orca's GTK/web/terminal
+        semantics. A direct fallback keeps older installs functional if the
+        adapter file cannot be imported.
         """
         try:
+            from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _adapter
+            if method == "panBrailleLeft":
+                _adapter.pan_braille_left()
+                return
+            if method == "panBrailleRight":
+                _adapter.pan_braille_right()
+                return
+            if method == "processRoutingKey" and args:
+                _adapter.route_braille(args[0].event["argument"])
+                return
+            _adapter.call_script(method, *args, default_event=method.startswith("pan"))
+            return
+        except ImportError:
+            pass
+        except Exception:
+            log.exception("linux-rdaccess: Orca adapter %s failed", method)
+            return
+
+        try:
             from orca import orca_state as _state
-            script = _state.activeScript
-            handler = getattr(script, method, None)
+            script = getattr(_state, "activeScript", getattr(_state, "active_script", None))
+            handler = getattr(script, method, None) if script is not None else None
             if handler is None:
                 return
             if method.startswith("pan"):
@@ -414,7 +444,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
     """Patch legacy Orca Remote input handling for NVDA compatibility.
 
     Returns True when the file changed. The patch is idempotent, replaces an
-    earlier v1/v2 patch from the one-time .linux-rdaccess-backup, verifies the
+    earlier v1/v2/v3 patch from the one-time .linux-rdaccess-backup, verifies the
     result compiles before writing, and writes atomically.
     """
     text = path.read_text(encoding="utf-8")
@@ -422,7 +452,15 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         return False
     backup = path.with_name(path.name + ".linux-rdaccess-backup")
     old_marker = next(
-        (marker for marker in (LEGACY_COMPAT_MARKER_V1, LEGACY_COMPAT_MARKER_V2) if marker in text),
+        (
+            marker
+            for marker in (
+                LEGACY_COMPAT_MARKER_V3,
+                LEGACY_COMPAT_MARKER_V2,
+                LEGACY_COMPAT_MARKER_V1,
+            )
+            if marker in text
+        ),
         None,
     )
     if old_marker is not None:
