@@ -670,3 +670,28 @@ Additional tools:
 ## Legacy speech-only xrdp bridge
 
     DISPLAY=:10 python3 atspi_nvda_bridge.py --debug
+
+
+### NVDA-style web navigation
+
+When Windows NVDA is controlling Linux through linux-rdaccess, the goal is to
+keep NVDA muscle memory while Orca remains the Linux accessibility engine.
+
+Implemented compatibility:
+
+- `NVDA+Space` -> Orca browse/focus-mode toggle.
+- `NVDA+F7` -> accessible **Elements List** category chooser, then Orca's
+  native structural-navigation list for the selected category.
+- Shared quick-navigation keys such as `H`, `K`, `F`, `B`, `E`,
+  `X`, `C`, `R`, `L`, `I`, `T`, `G`, and `P` remain native
+  so Orca can apply the active browser/application script.
+
+The Elements List currently offers headings, links, form fields, buttons,
+edit fields, checkboxes, combo boxes, radio buttons, lists, list items,
+tables, landmarks, images, and paragraphs.
+
+Do not globally remap ordinary letters where NVDA and Orca differ. For
+example, NVDA uses `D` for landmarks while Orca uses `M`; remapping plain
+`D` without knowing whether Orca is in browse or focus mode would break
+typing into web controls. Browse-state-aware mappings should be added before
+those differences are translated.
