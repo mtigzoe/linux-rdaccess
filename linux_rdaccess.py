@@ -208,6 +208,38 @@ def configure_vscode_accessibility(path: Path = DEFAULT_VSCODE_SETTINGS) -> None
 
 
 
+
+COMPATIBILITY_APPS = (
+    ("thunar", "Thunar File Manager"),
+    ("xfce4-terminal", "XFCE Terminal"),
+    ("xfce4-settings-manager", "XFCE Settings Manager"),
+    ("firefox", "Firefox"),
+    ("code", "VS Code"),
+)
+
+
+def compatibility_status() -> list[tuple[str, str, bool]]:
+    """Return command availability for the primary Linux Mint compatibility targets."""
+    return [
+        (command, label, shutil.which(command) is not None)
+        for command, label in COMPATIBILITY_APPS
+    ]
+
+
+def print_compatibility_status() -> None:
+    print("Linux Mint / XFCE compatibility targets:")
+    for command, label, available in compatibility_status():
+        print(f"  {label}: {'installed' if available else 'not found'} ({command})")
+    print("")
+    print("Also test reusable UI patterns:")
+    print("  GTK Open/Save dialogs")
+    print("  XFCE panel/application menu")
+    print("  notifications")
+    print("  authentication prompts")
+    print("  trees/lists/tables/menus/dialogs/tabs/toolbars")
+
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
@@ -233,6 +265,7 @@ def build_parser() -> argparse.ArgumentParser:
     autostart.add_argument("state", choices=("enable", "disable", "status"))
 
     sub.add_parser("shortcuts", help="show common NVDA/Orca shortcuts")
+    sub.add_parser("compatibility", help="show Linux Mint application compatibility targets")
 
     vscode = sub.add_parser("vscode-setup", help="enable VS Code Linux screen-reader accessibility")
     vscode.add_argument(
@@ -309,6 +342,10 @@ def main(argv: list[str] | None = None) -> int:
             print("Disabled linux-rdaccess autostart.")
         else:
             print("enabled" if DEFAULT_AUTOSTART.exists() else "disabled")
+        return 0
+
+    if args.command == "compatibility":
+        print_compatibility_status()
         return 0
 
     if args.command == "shortcuts":
