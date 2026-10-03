@@ -81,6 +81,50 @@ When autostart is enabled, Linux runs:
 
 after graphical login. The command applies the saved Orca Remote settings and starts Orca with `orca --replace`.
 
+## NVDA compatibility on Linux applications
+
+The goal is to make Windows NVDA control Linux applications through Orca and AT-SPI with familiar NVDA behavior while keeping Linux applications themselves in control of normal keyboard input.
+
+### Firefox and web content
+
+Orca provides native browse/focus modes and structural navigation for web content. Common single-letter navigation such as headings, links, form fields, buttons, combo boxes, entries, radio buttons, checkboxes, and heading levels is passed through to Orca/Firefox.
+
+linux-rdaccess additionally translates:
+
+    NVDA+Space
+        Toggle Orca browse/focus mode (Orca+A)
+
+This lets Windows NVDA users use the familiar NVDA browse/focus gesture while controlling Firefox on Linux.
+
+### Linux GUI and file manager
+
+Normal application navigation remains unchanged and is forwarded directly:
+
+    Tab / Shift+Tab
+    Arrow keys
+    Enter
+    Space
+    Home / End
+    Page Up / Page Down
+    standard Ctrl/Alt shortcuts
+
+This is intentional: file managers and desktop applications expose their focused controls through Orca/AT-SPI, so their native keyboard navigation should not be replaced by a screen-reader-specific layer.
+
+The compatibility layer is being extended for NVDA review commands, braille panning/routing, braille keyboard input, speech interruption, and other screen-reader-specific gestures.
+
+### Current compatibility work
+
+Implemented or under active testing:
+
+    remote keyboard navigation
+    NVDA speech from Linux
+    remote braille output
+    Ctrl/key speech interruption
+    NVDA+Space browse/focus translation
+    safe capture of NVDA braille-input gesture metadata
+
+Braille pan, routing keys, and braille keyboard gestures are being mapped from the real NVDA Remote braille_input messages so device-specific assumptions are avoided.
+
 ## Installed command reference
 
 After running:
