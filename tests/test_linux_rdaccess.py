@@ -103,3 +103,29 @@ class RestartTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConfigureForwardingTests(unittest.TestCase):
+    @mock.patch("linux_rdaccess.subprocess.call")
+    def test_configure_forwards_role_option(self, call):
+        call.return_value = 0
+
+        result = linux_rdaccess.main(["configure", "--role", "host"])
+
+        self.assertEqual(result, 0)
+        argv = call.call_args.args[0]
+        self.assertEqual(argv[-2:], ["--role", "host"])
+
+    @mock.patch("linux_rdaccess.subprocess.call")
+    def test_configure_forwards_generate_key_option(self, call):
+        call.return_value = 0
+
+        result = linux_rdaccess.main(["configure", "--generate-key"])
+
+        self.assertEqual(result, 0)
+        argv = call.call_args.args[0]
+        self.assertEqual(argv[-1:], ["--generate-key"])
+
+    def test_unknown_option_for_other_command_is_rejected(self):
+        with self.assertRaises(SystemExit):
+            linux_rdaccess.main(["status", "--role", "host"])
