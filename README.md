@@ -125,6 +125,59 @@ Implemented or under active testing:
 
 Braille pan, routing keys, and braille keyboard gestures are being mapped from the real NVDA Remote braille_input messages so device-specific assumptions are avoided.
 
+## VS Code on Linux
+
+VS Code on Linux is supported through Orca. For reliable screen-reader behavior, enable:
+
+    "editor.accessibilitySupport": "on"
+
+If the editor is still silent with Orca, launch VS Code with:
+
+    ACCESSIBILITY_ENABLED=1 code
+
+Recommended Windows-NVDA-to-Linux workflow:
+
+    Windows NVDA
+        ↓
+    NVDA Remote
+        ↓
+    linux-rdaccess
+        ↓
+    Orca / AT-SPI
+        ↓
+    VS Code
+
+Keep VS Code in screen-reader/focus-oriented navigation. Normal VS Code shortcuts are forwarded unchanged, including:
+
+    Ctrl+P           Quick Open
+    Ctrl+Shift+P     Command Palette
+    Ctrl+G           Go to Line
+    Ctrl+Shift+O     Go to Symbol
+    Ctrl+Shift+M     Problems
+    F8               Next error or warning
+    Shift+F8         Previous error or warning
+    F7               Next diff
+    Shift+F7         Previous diff
+    Shift+Alt+F1     Accessibility Help on Linux
+    Ctrl+Space       Trigger suggestions
+
+VS Code suggestion lists should be navigated with Ctrl+Up and Ctrl+Down when announced by the screen reader.
+
+The compatibility layer should not replace VS Code's keyboard model. linux-rdaccess translates only screen-reader-specific gestures and carries Orca speech/braille back to NVDA.
+
+Targeted compatibility areas:
+
+    editor line/word/character navigation
+    Explorer tree navigation
+    Problems panel
+    suggestions/completion lists
+    Source Control
+    integrated terminal
+    diff viewer
+    accessibility help/view
+    speech interruption
+    braille pan/routing/input
+
 ## Installed command reference
 
 After running:
