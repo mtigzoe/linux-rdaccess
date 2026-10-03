@@ -127,9 +127,15 @@ Braille pan, routing keys, and braille keyboard gestures are being mapped from t
 
 ## VS Code on Linux
 
-VS Code on Linux is supported through Orca. For reliable screen-reader behavior, enable:
+VS Code on Linux is supported through Orca. For reliable screen-reader behavior, run:
+
+    linux-rdaccess vscode-setup
+
+This preserves existing VS Code settings and enables:
 
     "editor.accessibilitySupport": "on"
+
+It also defaults the Linux title bar to the custom accessible title bar unless you already chose another title-bar style.
 
 If the editor is still silent with Orca, launch VS Code with:
 
