@@ -96,6 +96,19 @@ linux-rdaccess additionally translates:
 
 This lets Windows NVDA users use the familiar NVDA browse/focus gesture while controlling Firefox on Linux.
 
+Other NVDA chords translated (bindings read from the Orca 42 desktop keymap;
+only with the NVDA key held and no Shift/Ctrl/Alt/Win):
+
+    NVDA+Down   Say all           (Orca KP_Add; NVDA key released around it)
+    NVDA+Tab    Where am I        (Orca KP_Enter; NVDA key released around it)
+    NVDA+T      Window title      (Orca+KP_Enter)
+    NVDA+End    Status bar        (Orca+KP_Enter twice)
+
+Not translated: NVDA+Up and review keys (Orca's flat review would leave braille
+following the review cursor). Numpad review keys already match Orca's desktop
+layout and pass through unchanged. CapsLock as NVDA key only gets the
+keep-modifier chords, because releasing it would toggle CapsLock.
+
 ### Linux GUI and file manager
 
 Normal application navigation remains unchanged and is forwarded directly:
@@ -125,8 +138,10 @@ Implemented or under active testing:
 
 Braille pan back/forward are mapped generically from the NVDA script path
 (`braille_scrollBack` / `braille_scrollForward`), not from a device model, and
-call Orca's `braille.panLeft` / `braille.panRight` (unverified on a live
-session). Routing keys and braille keyboard input are not forwarded yet.
+run the active Orca script's `panBrailleLeft` / `panBrailleRight` on the GLib
+main loop (so line wrapping and flat review work). Routing keys call the script's
+`processRoutingKey` with the cell index. Both are unverified on a live session.
+Braille keyboard input is still not forwarded.
 
 Gesture trace (`~/.local/share/orca/orca-remote-braille-input.log`): mode 0600,
 rotated at 256 KiB, records only id/scriptPath/source/model/routingIndex.

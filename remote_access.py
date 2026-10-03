@@ -152,7 +152,8 @@ def update_legacy_orca_customizations(
 
 LEGACY_REMOTE_CONTROLLER_RELATIVE = Path("orca-scripts/remote_controller.py")
 LEGACY_COMPAT_MARKER_V1 = "# linux-rdaccess NVDA/Orca input compatibility"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v2"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v3"
+# v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
     ''' + LEGACY_COMPAT_MARKER + '''
@@ -169,6 +170,22 @@ _LEGACY_HELPERS = '''\
         "braille_routeTo": "route",
     }
     _LRD_TRACE_MAX_BYTES = 262144
+    _LRD_OTHER_MOD_VKS = (
+        0x10, 0xA0, 0xA1, 0x11, 0xA2, 0xA3, 0x12, 0xA4, 0xA5, 0x5B, 0x5C,
+    )
+    # NVDA chord -> Orca command, checked against the Orca 42 desktop keymap.
+    # NVDA+Up/review keys are deliberately NOT mapped: Orca's KP_Up enters flat
+    # review, which would leave braille following the review cursor.
+    #   vk: (extended-required, Orca key name, target vk, drop NVDA modifier,
+    #        press count)
+    # "drop" is needed where Orca binds the key with NO Orca modifier.
+    _LRD_CHORDS = {
+        0x20: (False, "a", 0x41, False, 1),         # NVDA+Space: Orca+A focus/browse
+        0x28: (True, "KP_Add", 0x6B, True, 1),      # NVDA+Down: say all
+        0x09: (False, "KP_Enter", 0x0D, True, 1),   # NVDA+Tab: where am I
+        0x54: (False, "KP_Enter", 0x0D, False, 1),  # NVDA+T: Orca+KP_Enter title
+        0x23: (True, "KP_Enter", 0x0D, False, 2),   # NVDA+End: status bar (2x)
+    }
 
     def _linux_rdaccess_filter_key(self, pressed, vk_code, extended, modifiers,
                                    key_name=None, scan_code=None):
@@ -183,7 +200,8 @@ _LEGACY_HELPERS = '''\
             self._lrd_state = state
             self._lrd_down = set()
             self._lrd_nvda_down = False
-            self._lrd_swapped = False
+            self._lrd_swapped = set()
+            self._lrd_nvda_key = None
         pressed = bool(pressed)
         held = (vk_code, bool(extended))
         repeat = pressed and held in self._lrd_down
@@ -193,6 +211,7 @@ _LEGACY_HELPERS = '''\
             self._lrd_down.discard(held)
         if vk_code in (0x2D, 0x14):
             self._lrd_nvda_down = pressed
+            self._lrd_nvda_key = held if pressed else None
 
         # Interrupt stale speech on a real action, as NVDA does. Plain
         # modifier keys (and their auto-repeat) must not cut off speech that
@@ -206,26 +225,43 @@ _LEGACY_HELPERS = '''\
             except Exception:
                 log.exception("linux-rdaccess: failed to cancel speech")
 
-        # NVDA+Space -> Orca+A (browse/focus toggle). Only the first press
-        # while the NVDA modifier is held is swapped; auto-repeat is consumed
-        # and the matching release is consumed only for a swapped press, so a
-        # normally forwarded Space can never be left stuck down.
-        if vk_code == 0x20:
-            if pressed:
-                if self._lrd_swapped:
-                    return True
-                if self._lrd_nvda_down and not repeat:
-                    self._lrd_swapped = True
-                    for down in (True, False):
-                        self.local_machine.send_key(
-                            key_name="a", pressed=down, modifiers=modifiers,
-                            vk_code=0x41, scan_code=0x1E, extended=False,
-                        )
-                    return True
+        # NVDA chords -> Orca commands (see _LRD_CHORDS). Only the first press
+        # with the NVDA modifier held and no Shift/Ctrl/Alt/Win is translated;
+        # auto-repeat is consumed, and a release is consumed only for a
+        # translated press, so a normally forwarded key is never left stuck.
+        if pressed:
+            if vk_code in self._lrd_swapped:
+                return True  # auto-repeat of a translated chord
+            chord = self._LRD_CHORDS.get(vk_code)
+            if (
+                chord is None
+                or repeat
+                or not self._lrd_nvda_down
+                or any(k[0] in self._LRD_OTHER_MOD_VKS for k in self._lrd_down)
+                or bool(extended) != chord[0]
+            ):
                 return False
-            if self._lrd_swapped:
-                self._lrd_swapped = False
-                return True
+            need_ext, name, target_vk, drop, count = chord
+            nvda = self._lrd_nvda_key
+            if drop and (nvda is None or nvda[0] == 0x14):
+                # Re-pressing CapsLock would toggle the lock state.
+                return False
+            self._lrd_swapped.add(vk_code)
+            send = self.local_machine.send_key
+            if drop:
+                send(key_name=None, pressed=False, modifiers=modifiers,
+                     vk_code=nvda[0], scan_code=0, extended=nvda[1])
+            for _ in range(count):
+                for down in (True, False):
+                    send(key_name=name, pressed=down, modifiers=modifiers,
+                         vk_code=target_vk, scan_code=0, extended=False)
+            if drop:
+                send(key_name=None, pressed=True, modifiers=modifiers,
+                     vk_code=nvda[0], scan_code=0, extended=nvda[1])
+            return True
+        if vk_code in self._lrd_swapped:
+            self._lrd_swapped.discard(vk_code)
+            return True
         return False
 
     def _linux_rdaccess_classify_braille(self, kwargs):
@@ -294,13 +330,37 @@ _LEGACY_HELPERS = '''\
         except Exception:
             log.exception("linux-rdaccess: failed to trace braille input")
         if action in ("pan_back", "pan_forward"):
-            from orca import braille as _braille
-            method = "panLeft" if action == "pan_back" else "panRight"
-            func = getattr(_braille, method, None)
-            if func is None:
-                log.debug("linux-rdaccess: Orca braille.%s unavailable", method)
+            self._linux_rdaccess_run_main(
+                lambda: self._linux_rdaccess_script_call(
+                    "panBrailleLeft" if action == "pan_back" else "panBrailleRight"))
+        elif action == "route":
+            index = kwargs.get("routingIndex")
+            if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < 1024:
                 return
-            self._linux_rdaccess_run_main(func)
+            import types as _types
+            event = _types.SimpleNamespace(event={"argument": index})
+            self._linux_rdaccess_run_main(
+                lambda: self._linux_rdaccess_script_call("processRoutingKey", event))
+
+    @staticmethod
+    def _linux_rdaccess_script_call(method, *args):
+        """Run an Orca script handler (never braille.* directly) on the main loop.
+
+        The script handlers own flat review, line wrapping and display refresh;
+        calling braille.panLeft/panRight would only move the viewport.
+        """
+        try:
+            from orca import orca_state as _state
+            script = _state.activeScript
+            handler = getattr(script, method, None)
+            if handler is None:
+                return
+            if method.startswith("pan"):
+                handler(None)
+            else:
+                handler(*args)
+        except Exception:
+            log.exception("linux-rdaccess: Orca %s failed", method)
 
 '''
 

@@ -114,7 +114,7 @@ class RemoteController:
             self.events.append(("cancel",))
 
         def send_key(self, **kw):
-            self.events.append(("key", kw["vk_code"], bool(kw["pressed"])))
+            self.events.append(("key", kw["vk_code"], bool(kw["pressed"]), kw.get("key_name")))
 
     def _patched_controller(self, home=None, source=None):
         import types
@@ -180,7 +180,7 @@ class RemoteController:
         self._key(c, 0x20, True)
         self._key(c, 0x20, True)      # auto-repeat must not toggle again
         self._key(c, 0x20, False)
-        keys = [e for e in c.local_machine.events if e[0] == "key"]
+        keys = [e[:3] for e in c.local_machine.events if e[0] == "key"]
         self.assertEqual([k for k in keys if k[1] == 0x20], [])
         self.assertEqual(sum(k[1] == 0x41 and k[2] for k in keys), 1)
 
@@ -189,7 +189,7 @@ class RemoteController:
         self._key(c, 0x20, True)      # normal Space, forwarded
         self._key(c, 0x2D, True)      # Insert pressed while Space held
         self._key(c, 0x20, False)     # release must be forwarded
-        keys = [e for e in c.local_machine.events if e[0] == "key"]
+        keys = [e[:3] for e in c.local_machine.events if e[0] == "key"]
         self.assertIn(("key", 0x20, True), keys)
         self.assertIn(("key", 0x20, False), keys)
 
@@ -200,7 +200,7 @@ class RemoteController:
         c.toggle_control()            # ... and remote again, no key between
         self._key(c, 0x20, True)
         self._key(c, 0x20, False)
-        keys = [e for e in c.local_machine.events if e[0] == "key"]
+        keys = [e[:3] for e in c.local_machine.events if e[0] == "key"]
         self.assertIn(("key", 0x20, True), keys)
         self.assertFalse(any(k[1] == 0x41 for k in keys))
 
@@ -226,22 +226,104 @@ class RemoteController:
             self.assertNotIn("dot1", data)
             self.assertIn("braille-keyboard-input", data)
 
-    def test_braille_pan_gestures_dispatch_to_orca(self):
-        import sys, types, os
+    def _with_fake_orca(self, c, home):
+        import sys, types
         calls = []
-        fake_braille = types.SimpleNamespace(
-            panLeft=lambda: calls.append("left"), panRight=lambda: calls.append("right"))
-        fake_orca = types.ModuleType("orca")
-        fake_orca.braille = fake_braille
-        c, _, home = self._patched_controller()
+        script = types.SimpleNamespace(
+            panBrailleLeft=lambda ev=None: calls.append(("left", ev)),
+            panBrailleRight=lambda ev=None: calls.append(("right", ev)),
+            processRoutingKey=lambda ev=None: calls.append(("route", ev.event["argument"])),
+        )
+        orca = types.ModuleType("orca")
+        state = types.ModuleType("orca.orca_state")
+        state.activeScript = script
+        orca.orca_state = state
         c._linux_rdaccess_run_main = lambda func: func()
-        Path(home, ".local/share/orca").mkdir(parents=True)
-        with mock.patch.dict(sys.modules, {"orca": fake_orca, "orca.braille": fake_braille}), \
-                mock.patch.dict(os.environ, {"HOME": home}):
+        Path(home, ".local/share/orca").mkdir(parents=True, exist_ok=True)
+        patches = mock.patch.dict(sys.modules, {"orca": orca, "orca.orca_state": state})
+        return calls, patches
+
+    def test_braille_pan_uses_active_script_handlers_not_viewport(self):
+        import os
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        with patches, mock.patch.dict(os.environ, {"HOME": home}):
             c._on_remote_braille_input(scriptPath=["globalCommands", "GlobalCommands", "braille_scrollBack"])
             c._on_remote_braille_input(scriptPath=["globalCommands", "GlobalCommands", "script_braille_scrollForward"])
-            c._on_remote_braille_input(scriptPath=["globalCommands", "GlobalCommands", "braille_routeTo"], routingIndex=4)
-        self.assertEqual(calls, ["left", "right"])
+        self.assertEqual(calls, [("left", None), ("right", None)])
+
+    def test_braille_routing_key_reaches_script_with_cell_argument(self):
+        import os
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        with patches, mock.patch.dict(os.environ, {"HOME": home}):
+            c._on_remote_braille_input(scriptPath=["globalCommands", "GlobalCommands", "braille_routeTo"], routingIndex=7)
+            for bad in (-1, 5000, True, "3", None):
+                c._on_remote_braille_input(scriptPath=["globalCommands", "GlobalCommands", "braille_routeTo"], routingIndex=bad)
+        self.assertEqual(calls, [("route", 7)])
+
+    def test_typed_braille_never_triggers_pan_or_route(self):
+        import os
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        with patches, mock.patch.dict(os.environ, {"HOME": home}):
+            c._on_remote_braille_input(id="br(x):dot1", dots=1, space=False,
+                                       scriptPath=["globalCommands", "GlobalCommands", "braille_scrollBack"])
+        self.assertEqual(calls, [])
+
+    def _names(self, c):
+        return [(e[1], e[2]) for e in c.local_machine.events if e[0] == "key"]
+
+    def test_nvda_say_all_drops_modifier_around_numpad_plus(self):
+        c, _, _ = self._patched_controller()
+        self._key(c, 0x2D, True, extended=True)
+        self._key(c, 0x28, True, extended=True)    # NVDA+Down
+        self._key(c, 0x28, True, extended=True)    # auto-repeat consumed
+        self._key(c, 0x28, False, extended=True)
+        self.assertEqual(self._names(c), [
+            (0x2D, True), (0x2D, False), (0x6B, True), (0x6B, False), (0x2D, True)])
+
+    def test_plain_arrow_and_numpad_arrow_with_nvda_are_untouched(self):
+        c, _, _ = self._patched_controller()
+        self._key(c, 0x28, True, extended=True)    # no NVDA key: plain Down
+        self._key(c, 0x28, False, extended=True)
+        self._key(c, 0x2D, True, extended=True)
+        self._key(c, 0x28, True, extended=False)   # numpad 2 with NVDA: not ours
+        self.assertEqual(self._names(c), [(0x28, True), (0x28, False), (0x2D, True), (0x28, True)])
+
+    def test_chords_with_other_modifiers_pass_through(self):
+        c, _, _ = self._patched_controller()
+        self._key(c, 0x2D, True, extended=True)
+        self._key(c, 0xA0, True)                   # Shift
+        self._key(c, 0x28, True, extended=True)    # NVDA+Shift+Down
+        self.assertIn((0x28, True), self._names(c))
+        self.assertNotIn((0x6B, True), self._names(c))
+
+    def test_capslock_nvda_key_is_never_released_or_repressed(self):
+        c, _, _ = self._patched_controller()
+        self._key(c, 0x14, True)
+        self._key(c, 0x28, True, extended=True)    # drop-chord would toggle CapsLock
+        self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [(0x14, True)])
+        self.assertIn((0x28, True), self._names(c))
+        self._key(c, 0x20, True)                   # keep-modifier chord still works
+        self.assertIn((0x41, True), self._names(c))
+
+    def test_title_and_status_chords_keep_modifier_and_count_presses(self):
+        c, _, _ = self._patched_controller()
+        self._key(c, 0x2D, True, extended=True)
+        self._key(c, 0x54, True); self._key(c, 0x54, False)           # NVDA+T
+        self._key(c, 0x23, True, extended=True); self._key(c, 0x23, False, extended=True)  # NVDA+End
+        enter = [k for k in self._names(c) if k[0] == 0x0D]
+        self.assertEqual(enter, [(0x0D, True), (0x0D, False)] * 3)
+        self.assertNotIn((0x2D, False), self._names(c))
+
+    def test_v2_patch_is_upgraded_to_v3(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "remote_controller.py"
+            path.write_text(self.UPSTREAM_CONTROLLER + "\n" + remote_access.LEGACY_COMPAT_MARKER_V1 + " v2\n", encoding="utf-8")
+            path.with_name(path.name + ".linux-rdaccess-backup").write_text(self.UPSTREAM_CONTROLLER, encoding="utf-8")
+            self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
+            self.assertIn(" v3", path.read_text(encoding="utf-8"))
 
     def test_connect_survives_unpatchable_controller(self):
         with tempfile.TemporaryDirectory() as temp:
