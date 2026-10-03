@@ -23,6 +23,66 @@ DEFAULT_ORCA_CONFIG = Path("~/.local/share/orca/orca-customizations.py").expandu
 DEFAULT_SHARE_DIR = Path("~/.local/share/linux-rdaccess").expanduser()
 DEFAULT_BIN = Path("~/.local/bin/linux-rdaccess").expanduser()
 DEFAULT_AUTOSTART = Path("~/.config/autostart/linux-rdaccess.desktop").expanduser()
+GRAPHICAL_SESSION_PROCESSES = (
+    "xfce4-session",
+    "gnome-shell",
+    "cinnamon",
+    "mate-session",
+    "lxqt-session",
+    "plasmashell",
+)
+
+
+def graphical_session_env(
+    *,
+    proc_root: Path = Path("/proc"),
+    base_env: dict[str, str] | None = None,
+    uid: int | None = None,
+) -> dict[str, str]:
+    env = dict(os.environ if base_env is None else base_env)
+    if env.get("DISPLAY") or env.get("WAYLAND_DISPLAY"):
+        return env
+
+    target_uid = os.getuid() if uid is None else uid
+    wanted = {
+        "DISPLAY",
+        "WAYLAND_DISPLAY",
+        "XAUTHORITY",
+        "DBUS_SESSION_BUS_ADDRESS",
+        "XDG_RUNTIME_DIR",
+        "XDG_SESSION_TYPE",
+    }
+
+    for entry in proc_root.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            comm = (entry / "comm").read_text(encoding="utf-8").strip()
+            if comm not in GRAPHICAL_SESSION_PROCESSES:
+                continue
+            status = (entry / "status").read_text(encoding="utf-8")
+            uid_line = next(line for line in status.splitlines() if line.startswith("Uid:"))
+            real_uid = int(uid_line.split()[1])
+            if real_uid != target_uid:
+                continue
+            raw = (entry / "environ").read_bytes().split(b"\0")
+        except (OSError, StopIteration, ValueError):
+            continue
+
+        session_env: dict[str, str] = {}
+        for item in raw:
+            if not item or b"=" not in item:
+                continue
+            key_b, value_b = item.split(b"=", 1)
+            key = key_b.decode(errors="ignore")
+            if key in wanted:
+                session_env[key] = value_b.decode(errors="ignore")
+
+        if session_env.get("DISPLAY") or session_env.get("WAYLAND_DISPLAY"):
+            env.update(session_env)
+            return env
+
+    return env
 
 
 def restart_orca() -> int:
@@ -32,6 +92,7 @@ def restart_orca() -> int:
             check=False,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            env=graphical_session_env(),
         )
     except FileNotFoundError:
         print("Orca was not found in PATH.")
