@@ -230,7 +230,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "configure":
         remote_access = Path(__file__).resolve().parent / "remote_access.py"
-        return subprocess.call([sys.executable, str(remote_access), "--config", str(config_path), *forwarded])
+        return subprocess.call([sys.executable, str(remote_access), "--config", str(config_path), "configure", *forwarded])
 
     return 2
 
