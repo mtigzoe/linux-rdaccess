@@ -152,6 +152,15 @@ class VSCodeSetupTests(unittest.TestCase):
             self.assertEqual(data["window.titleBarStyle"], "custom")
 
 
+class CompatibilityStatusTests(unittest.TestCase):
+    def test_compatibility_status_reports_all_targets(self):
+        with mock.patch("linux_rdaccess.shutil.which", side_effect=lambda cmd: f"/usr/bin/{cmd}" if cmd == "thunar" else None):
+            rows = linux_rdaccess.compatibility_status()
+        self.assertEqual([row[0] for row in rows], [item[0] for item in linux_rdaccess.COMPATIBILITY_APPS])
+        self.assertTrue(rows[0][2])
+        self.assertTrue(all(not row[2] for row in rows[1:]))
+
+
 if __name__ == "__main__":
     unittest.main()
 
