@@ -81,6 +81,214 @@ When autostart is enabled, Linux runs:
 
 after graphical login. The command applies the saved Orca Remote settings and starts Orca with `orca --replace`.
 
+## NVDA compatibility on Linux applications
+
+The goal is to make Windows NVDA control Linux applications through Orca and AT-SPI with familiar NVDA behavior while keeping Linux applications themselves in control of normal keyboard input.
+
+### Firefox and web content
+
+Orca provides native browse/focus modes and structural navigation for web content. Common single-letter navigation such as headings, links, form fields, buttons, combo boxes, entries, radio buttons, checkboxes, and heading levels is passed through to Orca/Firefox.
+
+linux-rdaccess additionally translates:
+
+    NVDA+Space
+        Toggle Orca browse/focus mode (Orca+A)
+
+This lets Windows NVDA users use the familiar NVDA browse/focus gesture while controlling Firefox on Linux.
+
+Other NVDA chords translated (bindings read from the Orca 42 desktop keymap;
+only with the NVDA key held and no Shift/Ctrl/Alt/Win):
+
+    NVDA+Down   Say all           (Orca KP_Add; NVDA key released around it)
+    NVDA+Tab    Where am I        (Orca KP_Enter; NVDA key released around it)
+    NVDA+T      Window title      (Orca+KP_Enter)
+    NVDA+End    Status bar        (Orca+KP_Enter twice)
+
+Not translated: NVDA+Up and review keys (Orca's flat review would leave braille
+following the review cursor). Numpad review keys already match Orca's desktop
+layout and pass through unchanged. CapsLock as NVDA key only gets the
+keep-modifier chords, because releasing it would toggle CapsLock.
+
+### Linux GUI and file manager
+
+Normal application navigation remains unchanged and is forwarded directly:
+
+    Tab / Shift+Tab
+    Arrow keys
+    Enter
+    Space
+    Home / End
+    Page Up / Page Down
+    standard Ctrl/Alt shortcuts
+
+This is intentional: file managers and desktop applications expose their focused controls through Orca/AT-SPI, so their native keyboard navigation should not be replaced by a screen-reader-specific layer.
+
+The compatibility layer is being extended for NVDA review commands, braille panning/routing, braille keyboard input, speech interruption, and other screen-reader-specific gestures.
+
+### Current compatibility work
+
+Implemented or under active testing:
+
+    remote keyboard navigation
+    NVDA speech from Linux
+    remote braille output
+    Ctrl/key speech interruption
+    NVDA+Space browse/focus translation
+    safe capture of NVDA braille-input gesture metadata
+
+Braille pan back/forward are mapped generically from the NVDA script path
+(`braille_scrollBack` / `braille_scrollForward`), not from a device model, and
+run the active Orca script's `panBrailleLeft` / `panBrailleRight` on the GLib
+main loop (so line wrapping and flat review work). Routing keys call the script's
+`processRoutingKey` with the cell index. Both are unverified on a live session.
+Braille keyboard input is still not forwarded.
+
+Gesture trace (`~/.local/share/orca/orca-remote-braille-input.log`): mode 0600,
+rotated at 256 KiB, records only id/scriptPath/source/model/routingIndex.
+Braille-keyboard input (dots/space) is typed text and is recorded only as
+`redacted`. The patch also removes upstream's debug line that logged the whole
+braille message.
+
+## VS Code on Linux
+
+VS Code on Linux is supported through Orca. For reliable screen-reader behavior, run:
+
+    linux-rdaccess vscode-setup
+
+This preserves existing VS Code settings and enables:
+
+    "editor.accessibilitySupport": "on"
+
+It also defaults the Linux title bar to the custom accessible title bar unless you already chose another title-bar style.
+
+If the editor is still silent with Orca, launch VS Code with one of:
+
+    code --force-renderer-accessibility
+    ACCESSIBILITY_ENABLED=1 code
+
+`vscode-setup` edits `settings.json` in place (comments and trailing commas are kept) and keeps a one-time `.linux-rdaccess-backup`.
+
+Recommended Windows-NVDA-to-Linux workflow:
+
+    Windows NVDA
+        ↓
+    NVDA Remote
+        ↓
+    linux-rdaccess
+        ↓
+    Orca / AT-SPI
+        ↓
+    VS Code
+
+Keep VS Code in screen-reader/focus-oriented navigation. Normal VS Code shortcuts are forwarded unchanged, including:
+
+    Ctrl+P           Quick Open
+    Ctrl+Shift+P     Command Palette
+    Ctrl+G           Go to Line
+    Ctrl+Shift+O     Go to Symbol
+    Ctrl+Shift+M     Problems
+    F8               Next error or warning
+    Shift+F8         Previous error or warning
+    F7               Next diff
+    Shift+F7         Previous diff
+    Shift+Alt+F1     Accessibility Help on Linux
+    Ctrl+Space       Trigger suggestions
+
+Use the arrow keys in suggestion lists unless VS Code's own accessibility help for the current widget says otherwise (not yet verified over NVDA Remote).
+
+The compatibility layer should not replace VS Code's keyboard model. linux-rdaccess translates only screen-reader-specific gestures and carries Orca speech/braille back to NVDA.
+
+Targeted compatibility areas:
+
+    editor line/word/character navigation
+    Explorer tree navigation
+    Problems panel
+    suggestions/completion lists
+    Source Control
+    integrated terminal
+    diff viewer
+    accessibility help/view
+    speech interruption
+    braille pan/routing/input
+
+## Linux Mint / XFCE compatibility matrix
+
+linux-rdaccess targets reusable accessibility patterns first, then validates them against common Linux Mint/XFCE applications.
+
+Priority applications:
+
+| Priority | Application / area | What must work remotely |
+| --- | --- | --- |
+| 1 | Thunar File Manager | tree/list navigation, file/folder names, selection, rename, context menus, properties, mounted drives, trash |
+| 2 | XFCE panel and application menu | menu navigation, task buttons, tray items, notifications, clock, workspace controls |
+| 3 | GTK Open/Save dialogs | location entry, file list, folders, filename field, filters, action buttons |
+| 4 | xfce4-terminal | caret/line reading, command editing, selection, tabs, search, scrolling, braille |
+| 5 | XFCE Settings Manager | tabs, lists, checkboxes, combo boxes, sliders, spin buttons, dialogs |
+| 6 | Update / software tools | package lists, progress, authentication prompts, errors, reboot prompts |
+| 7 | Text editor | caret, selection, find/replace, menus, status bar, braille routing |
+| 8 | Firefox | browse/focus mode, structural navigation, forms, tables, landmarks |
+| 9 | VS Code | editor, Explorer, Problems, Source Control, terminal, suggestions, diffs |
+
+Reusable UI patterns that should be compatible across applications:
+
+    focus traversal
+    trees and lists
+    tables
+    menus and context menus
+    dialogs
+    tabs
+    toolbars
+    editable text
+    terminal text
+    progress bars
+    notifications
+    file pickers
+    authentication prompts
+    web/browse content
+    Electron applications
+
+Compatibility goals for each target:
+
+    speech output reaches Windows NVDA
+    Ctrl/key input interrupts stale speech
+    keyboard navigation follows the Linux application's native model
+    focused item/state/value changes are announced
+    braille output follows focus/caret
+    braille pan and routing work remotely
+    braille keyboard input is forwarded
+    reconnect does not lose the active graphical session
+
+## Thunar / file-manager compatibility test
+
+Thunar is the first Linux Mint/XFCE application target because it exercises several reusable GTK accessibility patterns.
+
+Remote NVDA test sequence:
+
+    1. Open Thunar.
+    2. Use Tab / Shift+Tab to move between side pane, file view, location controls, and toolbar.
+    3. In the file view, use Up/Down/Left/Right and Home/End.
+    4. Press Enter on a folder, then Alt+Left and Alt+Right.
+    5. Press F2 to rename a selected item and verify editable-text/caret feedback.
+    6. Open the context menu with Shift+F10 and navigate it with arrow keys.
+    7. Open Properties and move through tabs, labels, values, and buttons.
+    8. Test Ctrl+L location entry.
+    9. Test Delete/Trash confirmation dialogs.
+    10. Open a GTK Open/Save dialog from an application and test file list, location entry, filename field, filters, and action buttons.
+
+Expected compatibility:
+
+    selected file/folder name is announced
+    role/state changes are announced when useful
+    focus moves once per navigation command
+    Ctrl or another navigation key interrupts stale speech
+    braille follows the selected item or text caret
+    normal Thunar shortcuts remain unchanged
+    menus and dialogs announce the focused item
+    rename and location fields expose caret/text changes
+    no duplicate announcements from focus + selection events
+
+Problems found here should be fixed in reusable focus/list/tree/dialog handling whenever possible rather than with Thunar-only code.
+
 ## Installed command reference
 
 After running:
@@ -462,3 +670,28 @@ Additional tools:
 ## Legacy speech-only xrdp bridge
 
     DISPLAY=:10 python3 atspi_nvda_bridge.py --debug
+
+
+### NVDA-style web navigation
+
+When Windows NVDA is controlling Linux through linux-rdaccess, the goal is to
+keep NVDA muscle memory while Orca remains the Linux accessibility engine.
+
+Implemented compatibility:
+
+- `NVDA+Space` -> Orca browse/focus-mode toggle.
+- `NVDA+F7` -> accessible **Elements List** category chooser, then Orca's
+  native structural-navigation list for the selected category.
+- Shared quick-navigation keys such as `H`, `K`, `F`, `B`, `E`,
+  `X`, `C`, `R`, `L`, `I`, `T`, `G`, and `P` remain native
+  so Orca can apply the active browser/application script.
+
+The Elements List currently offers headings, links, form fields, buttons,
+edit fields, checkboxes, combo boxes, radio buttons, lists, list items,
+tables, landmarks, images, and paragraphs.
+
+Do not globally remap ordinary letters where NVDA and Orca differ. For
+example, NVDA uses `D` for landmarks while Orca uses `M`; remapping plain
+`D` without knowing whether Orca is in browse or focus mode would break
+typing into web controls. Browse-state-aware mappings should be added before
+those differences are translated.

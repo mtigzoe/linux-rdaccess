@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -109,7 +111,7 @@ def install_user_files(
     share_dir.mkdir(parents=True, exist_ok=True)
     bin_path.parent.mkdir(parents=True, exist_ok=True)
 
-    for name in ("linux_rdaccess.py", "remote_access.py", "nvda_remote_check.py"):
+    for name in ("linux_rdaccess.py", "remote_access.py", "nvda_remote_check.py", "orca_adapter.py"):
         shutil.copy2(source_dir / name, share_dir / name)
 
     wrapper = (
@@ -184,6 +186,114 @@ def disconnect(*, orca_config: Path, restart: bool = True, quiet: bool = False) 
     return 0
 
 
+
+DEFAULT_VSCODE_SETTINGS = Path("~/.config/Code/User/settings.json").expanduser()
+
+
+def _strip_jsonc(text: str) -> str:
+    """Remove // and /* */ comments and trailing commas (VS Code uses JSONC)."""
+    out: list[str] = []
+    i, n, in_str = 0, len(text), False
+    while i < n:
+        ch = text[i]
+        if in_str:
+            out.append(ch)
+            if ch == "\\" and i + 1 < n:
+                out.append(text[i + 1])
+                i += 1
+            elif ch == '"':
+                in_str = False
+        elif ch == '"':
+            in_str = True
+            out.append(ch)
+        elif text.startswith("//", i):
+            while i < n and text[i] != "\n":
+                i += 1
+            continue
+        elif text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            i = n if end == -1 else end + 2
+            continue
+        else:
+            out.append(ch)
+        i += 1
+    return re.sub(r",(\s*[}\]])", r"\1", "".join(out))
+
+
+def configure_vscode_accessibility(path: Path = DEFAULT_VSCODE_SETTINGS) -> None:
+    """Enable VS Code screen-reader accessibility without replacing other settings.
+
+    settings.json is JSONC, so comments and formatting are preserved by editing
+    the text in place rather than re-serialising it. A one-time backup is kept.
+    """
+    path = path.expanduser()
+    text = path.read_text(encoding="utf-8") if path.exists() else "{\n}\n"
+    try:
+        data = json.loads(_strip_jsonc(text) or "{}")
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"VS Code settings are not valid JSON: {path}") from exc
+    if not isinstance(data, dict):
+        raise ValueError(f"VS Code settings must contain a JSON object: {path}")
+
+    wanted = {"editor.accessibilitySupport": "on"}
+    if "window.titleBarStyle" not in data:
+        wanted["window.titleBarStyle"] = "custom"
+    for key, value in wanted.items():
+        line = f'"{key}": {json.dumps(value)}'
+        existing = re.search(rf'"{re.escape(key)}"\s*:\s*"[^"]*"', text)
+        if existing:
+            text = text[:existing.start()] + line + text[existing.end():]
+            continue
+        brace = text.index("{")
+        rest = _strip_jsonc(text[brace + 1:]).strip()
+        sep = "" if rest.startswith("}") else ","
+        text = f"{text[:brace + 1]}\n    {line}{sep}{text[brace + 1:]}"
+    json.loads(_strip_jsonc(text))  # never write something we cannot parse
+    path.parent.mkdir(parents=True, exist_ok=True)
+    backup = path.with_name(path.name + ".linux-rdaccess-backup")
+    if path.exists() and not backup.exists():
+        backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    tmp = path.with_name(path.name + ".linux-rdaccess-tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
+COMPATIBILITY_APPS = (
+    ("thunar", "Thunar File Manager"),
+    ("xfce4-terminal", "XFCE Terminal"),
+    ("xfce4-settings-manager", "XFCE Settings Manager"),
+    ("mousepad", "Mousepad"),
+    ("xed", "Xed"),
+    ("mintupdate", "Update Manager"),
+    ("mintinstall", "Software Manager"),
+    ("xfce4-panel", "XFCE panel"),
+    ("firefox", "Firefox"),
+    ("code", "VS Code"),
+)
+
+
+def compatibility_status() -> list[tuple[str, str, bool]]:
+    """Return command availability for the primary Linux Mint compatibility targets."""
+    return [
+        (command, label, shutil.which(command) is not None)
+        for command, label in COMPATIBILITY_APPS
+    ]
+
+
+def print_compatibility_status() -> None:
+    print("Linux Mint / XFCE compatibility targets:")
+    for command, label, available in compatibility_status():
+        print(f"  {label}: {'installed' if available else 'not found'} ({command})")
+    print("")
+    print("Also test reusable UI patterns:")
+    print("  GTK Open/Save dialogs")
+    print("  XFCE panel/application menu")
+    print("  notifications")
+    print("  authentication prompts")
+    print("  trees/lists/tables/menus/dialogs/tabs/toolbars")
+
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
@@ -209,6 +319,15 @@ def build_parser() -> argparse.ArgumentParser:
     autostart.add_argument("state", choices=("enable", "disable", "status"))
 
     sub.add_parser("shortcuts", help="show common NVDA/Orca shortcuts")
+    sub.add_parser("compatibility", help="show Linux Mint application compatibility targets")
+
+    vscode = sub.add_parser("vscode-setup", help="enable VS Code Linux screen-reader accessibility")
+    vscode.add_argument(
+        "--settings",
+        type=Path,
+        default=DEFAULT_VSCODE_SETTINGS,
+        help="path to VS Code settings.json",
+    )
 
     sub.add_parser("configure", help="run the Remote Access configuration manager")
 
@@ -279,6 +398,10 @@ def main(argv: list[str] | None = None) -> int:
             print("enabled" if DEFAULT_AUTOSTART.exists() else "disabled")
         return 0
 
+    if args.command == "compatibility":
+        print_compatibility_status()
+        return 0
+
     if args.command == "shortcuts":
         print("Windows NVDA:")
         print("  Insert+Alt+Tab    Toggle local/remote computer control")
@@ -287,6 +410,12 @@ def main(argv: list[str] | None = None) -> int:
         print("  Orca+Alt+PageUp / Orca+Alt+C      Connect")
         print("  Orca+Alt+PageDown / Orca+Alt+D    Disconnect")
         print("  Orca+Alt+M                         Mute/unmute remote output")
+        return 0
+
+    if args.command == "vscode-setup":
+        configure_vscode_accessibility(args.settings)
+        print(f"Enabled VS Code screen-reader accessibility in: {args.settings.expanduser()}")
+        print("If Orca is still silent, launch VS Code with: ACCESSIBILITY_ENABLED=1 code")
         return 0
 
     if args.command == "configure":
