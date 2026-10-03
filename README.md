@@ -184,6 +184,53 @@ Targeted compatibility areas:
     speech interruption
     braille pan/routing/input
 
+## Linux Mint / XFCE compatibility matrix
+
+linux-rdaccess targets reusable accessibility patterns first, then validates them against common Linux Mint/XFCE applications.
+
+Priority applications:
+
+| Priority | Application / area | What must work remotely |
+| --- | --- | --- |
+| 1 | Thunar File Manager | tree/list navigation, file/folder names, selection, rename, context menus, properties, mounted drives, trash |
+| 2 | XFCE panel and application menu | menu navigation, task buttons, tray items, notifications, clock, workspace controls |
+| 3 | GTK Open/Save dialogs | location entry, file list, folders, filename field, filters, action buttons |
+| 4 | xfce4-terminal | caret/line reading, command editing, selection, tabs, search, scrolling, braille |
+| 5 | XFCE Settings Manager | tabs, lists, checkboxes, combo boxes, sliders, spin buttons, dialogs |
+| 6 | Update / software tools | package lists, progress, authentication prompts, errors, reboot prompts |
+| 7 | Text editor | caret, selection, find/replace, menus, status bar, braille routing |
+| 8 | Firefox | browse/focus mode, structural navigation, forms, tables, landmarks |
+| 9 | VS Code | editor, Explorer, Problems, Source Control, terminal, suggestions, diffs |
+
+Reusable UI patterns that should be compatible across applications:
+
+    focus traversal
+    trees and lists
+    tables
+    menus and context menus
+    dialogs
+    tabs
+    toolbars
+    editable text
+    terminal text
+    progress bars
+    notifications
+    file pickers
+    authentication prompts
+    web/browse content
+    Electron applications
+
+Compatibility goals for each target:
+
+    speech output reaches Windows NVDA
+    Ctrl/key input interrupts stale speech
+    keyboard navigation follows the Linux application's native model
+    focused item/state/value changes are announced
+    braille output follows focus/caret
+    braille pan and routing work remotely
+    braille keyboard input is forwarded
+    reconnect does not lose the active graphical session
+
 ## Installed command reference
 
 After running:
