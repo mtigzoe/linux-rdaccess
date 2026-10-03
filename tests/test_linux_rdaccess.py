@@ -114,7 +114,7 @@ class ConfigureForwardingTests(unittest.TestCase):
 
         self.assertEqual(result, 0)
         argv = call.call_args.args[0]
-        self.assertEqual(argv[-2:], ["--role", "host"])
+        self.assertEqual(argv[-3:], ["configure", "--role", "host"])
 
     @mock.patch("linux_rdaccess.subprocess.call")
     def test_configure_forwards_generate_key_option(self, call):
@@ -124,7 +124,7 @@ class ConfigureForwardingTests(unittest.TestCase):
 
         self.assertEqual(result, 0)
         argv = call.call_args.args[0]
-        self.assertEqual(argv[-1:], ["--generate-key"])
+        self.assertEqual(argv[-2:], ["configure", "--generate-key"])
 
     def test_unknown_option_for_other_command_is_rejected(self):
         with self.assertRaises(SystemExit):
