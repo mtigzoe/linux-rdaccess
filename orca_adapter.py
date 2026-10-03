@@ -13,6 +13,64 @@ from types import SimpleNamespace
 from typing import Any, Callable, Iterable
 
 
+
+
+ELEMENT_LIST_TYPES = (
+    ("Headings", "h"),
+    ("Links", "k"),
+    ("Form fields", "f"),
+    ("Buttons", "b"),
+    ("Edit fields", "e"),
+    ("Checkboxes", "x"),
+    ("Combo boxes", "c"),
+    ("Radio buttons", "r"),
+    ("Lists", "l"),
+    ("List items", "i"),
+    ("Tables", "t"),
+    ("Landmarks", "m"),
+    ("Images", "g"),
+    ("Paragraphs", "p"),
+)
+
+
+def show_elements_list(send_structural_list: Callable[[str], Any]) -> bool:
+    """Show an NVDA-style element-type chooser, then delegate to Orca.
+
+    Orca owns the actual structural-navigation result list. linux-rdaccess only
+    provides the familiar NVDA+F7 entry point and category selection.
+    """
+    try:
+        import gi
+        gi.require_version("Gtk", "3.0")
+        from gi.repository import Gtk
+    except Exception:
+        return False
+
+    dialog = Gtk.Dialog(title="Elements List")
+    dialog.set_modal(True)
+    dialog.add_button("_Cancel", Gtk.ResponseType.CANCEL)
+    dialog.add_button("_Show", Gtk.ResponseType.OK)
+
+    box = dialog.get_content_area()
+    label = Gtk.Label(label="Element type:")
+    label.set_xalign(0)
+    combo = Gtk.ComboBoxText()
+    for name, key in ELEMENT_LIST_TYPES:
+        combo.append(key, name)
+    combo.set_active(0)
+    box.pack_start(label, False, False, 6)
+    box.pack_start(combo, False, False, 6)
+    dialog.show_all()
+
+    response = dialog.run()
+    key = combo.get_active_id()
+    dialog.destroy()
+    if response != Gtk.ResponseType.OK or not key:
+        return False
+    send_structural_list(key)
+    return True
+
+
 class OrcaRuntimeAdapter:
     """Resolve and invoke the active Orca script without owning Orca state."""
 
