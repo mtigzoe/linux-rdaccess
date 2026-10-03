@@ -75,6 +75,49 @@ transport = RelayTransport(
             self.assertTrue(path.with_name(path.name + ".linux-rdaccess-backup").exists())
 
 
+    def test_legacy_controller_patch_adds_speech_cancel_and_braille_trace(self):
+        original = '''class RemoteController:
+    def _on_remote_key(self, key_name=None, pressed=None, modifiers=None, **kwargs):
+        self.local_machine.send_key(
+            key_name=key_name, pressed=pressed, modifiers=modifiers,
+        )
+
+    def _on_remote_braille_input(self, **kwargs):
+        log.debug("Remote braille input: %s" % kwargs)
+'''
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "remote_controller.py"
+            path.write_text(original, encoding="utf-8")
+
+            changed = remote_access.patch_legacy_orca_remote_controller(path)
+            result = path.read_text(encoding="utf-8")
+
+            self.assertTrue(changed)
+            self.assertIn(remote_access.LEGACY_COMPAT_MARKER, result)
+            self.assertIn("self.local_machine.cancel_speech()", result)
+            self.assertIn("orca-remote-braille-input.log", result)
+            self.assertIn('"routingIndex"', result)
+            self.assertTrue(path.with_name(path.name + ".linux-rdaccess-backup").exists())
+
+    def test_legacy_controller_patch_is_idempotent(self):
+        original = '''class RemoteController:
+    def _on_remote_key(self, key_name=None, pressed=None, modifiers=None, **kwargs):
+        self.local_machine.send_key(
+            key_name=key_name, pressed=pressed, modifiers=modifiers,
+        )
+
+    def _on_remote_braille_input(self, **kwargs):
+        log.debug("Remote braille input: %s" % kwargs)
+'''
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "remote_controller.py"
+            path.write_text(original, encoding="utf-8")
+            self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
+            once = path.read_text(encoding="utf-8")
+            self.assertFalse(remote_access.patch_legacy_orca_remote_controller(path))
+            self.assertEqual(path.read_text(encoding="utf-8"), once)
+
+
 class ValidationTests(unittest.TestCase):
     def test_bad_port_rejected(self):
         with self.assertRaises(ValueError):
