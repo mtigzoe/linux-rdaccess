@@ -5,7 +5,18 @@ import types
 import unittest
 from unittest import mock
 
-from orca_adapter import OrcaRuntimeAdapter
+from orca_adapter import ELEMENT_LIST_TYPES, OrcaRuntimeAdapter
+
+
+class ElementsListTests(unittest.TestCase):
+    def test_nvda_elements_categories_cover_primary_orca_structural_lists(self):
+        categories = dict(ELEMENT_LIST_TYPES)
+        self.assertEqual(categories["Headings"], "h")
+        self.assertEqual(categories["Links"], "k")
+        self.assertEqual(categories["Form fields"], "f")
+        self.assertEqual(categories["Buttons"], "b")
+        self.assertEqual(categories["Tables"], "t")
+        self.assertEqual(categories["Landmarks"], "m")
 
 
 class OrcaRuntimeAdapterTests(unittest.TestCase):
