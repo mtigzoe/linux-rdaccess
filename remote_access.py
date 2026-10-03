@@ -215,7 +215,6 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         "                _fh.write(_linux_rdaccess_json.dumps(_safe, sort_keys=True, default=str) + \"\\n\")\n"
         "        except Exception:\n"
         "            log.exception(\"linux-rdaccess: failed to trace braille input\")\n"
-    )\n"
     )
     text = text.replace(braille_anchor, braille_patch, 1)
 
