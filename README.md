@@ -231,6 +231,37 @@ Compatibility goals for each target:
     braille keyboard input is forwarded
     reconnect does not lose the active graphical session
 
+## Thunar / file-manager compatibility test
+
+Thunar is the first Linux Mint/XFCE application target because it exercises several reusable GTK accessibility patterns.
+
+Remote NVDA test sequence:
+
+    1. Open Thunar.
+    2. Use Tab / Shift+Tab to move between side pane, file view, location controls, and toolbar.
+    3. In the file view, use Up/Down/Left/Right and Home/End.
+    4. Press Enter on a folder, then Alt+Left and Alt+Right.
+    5. Press F2 to rename a selected item and verify editable-text/caret feedback.
+    6. Open the context menu with Shift+F10 and navigate it with arrow keys.
+    7. Open Properties and move through tabs, labels, values, and buttons.
+    8. Test Ctrl+L location entry.
+    9. Test Delete/Trash confirmation dialogs.
+    10. Open a GTK Open/Save dialog from an application and test file list, location entry, filename field, filters, and action buttons.
+
+Expected compatibility:
+
+    selected file/folder name is announced
+    role/state changes are announced when useful
+    focus moves once per navigation command
+    Ctrl or another navigation key interrupts stale speech
+    braille follows the selected item or text caret
+    normal Thunar shortcuts remain unchanged
+    menus and dialogs announce the focused item
+    rename and location fields expose caret/text changes
+    no duplicate announcements from focus + selection events
+
+Problems found here should be fixed in reusable focus/list/tree/dialog handling whenever possible rather than with Thunar-only code.
+
 ## Installed command reference
 
 After running:
