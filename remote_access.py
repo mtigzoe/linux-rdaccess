@@ -223,7 +223,17 @@ _LEGACY_HELPERS = '''\
             try:
                 self.local_machine.cancel_speech()
             except Exception:
-                log.exception("linux-rdaccess: failed to cancel speech")
+                log.exception("linux-rdaccess: failed to cancel local speech")
+            # Ctrl is the explicit NVDA "stop speech" gesture. Local Orca
+            # cancellation alone cannot remove speech already queued on the
+            # Windows NVDA side, so send the NVDA Remote cancel message too.
+            # Restrict the protocol cancel to Ctrl to avoid adding a network
+            # round-trip to every ordinary navigation key.
+            if vk_code in self._LRD_CTRL_VKS and not repeat:
+                try:
+                    self.transport.send(type="cancel")
+                except Exception:
+                    log.exception("linux-rdaccess: failed to cancel remote NVDA speech")
 
         # NVDA chords -> Orca commands (see _LRD_CHORDS). Only the first press
         # with the NVDA modifier held and no Shift/Ctrl/Alt/Win is translated;
@@ -404,16 +414,20 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
     """Patch legacy Orca Remote input handling for NVDA compatibility.
 
     Returns True when the file changed. The patch is idempotent, replaces an
-    earlier v1 patch from the one-time .linux-rdaccess-backup, verifies the
+    earlier v1/v2 patch from the one-time .linux-rdaccess-backup, verifies the
     result compiles before writing, and writes atomically.
     """
     text = path.read_text(encoding="utf-8")
     if LEGACY_COMPAT_MARKER in text:
         return False
     backup = path.with_name(path.name + ".linux-rdaccess-backup")
-    if LEGACY_COMPAT_MARKER_V1 in text:
+    old_marker = next(
+        (marker for marker in (LEGACY_COMPAT_MARKER_V1, LEGACY_COMPAT_MARKER_V2) if marker in text),
+        None,
+    )
+    if old_marker is not None:
         if not backup.exists():
-            raise ValueError(f"v1 patch found but backup is missing: {backup}")
+            raise ValueError(f"older compatibility patch found but backup is missing: {backup}")
         text = backup.read_text(encoding="utf-8")
 
     key_def = re.search(r"^    def _on_remote_key\(([^)]*)\):\n", text, re.MULTILINE)
