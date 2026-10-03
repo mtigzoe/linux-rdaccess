@@ -136,6 +136,27 @@ def update_legacy_orca_customizations(
     path.write_text(text, encoding="utf-8")
 
 
+
+def disable_legacy_orca_connection(path: Path) -> None:
+    """Disable legacy Orca Remote auto-connect without deleting saved linux-rdaccess settings."""
+    text = path.read_text(encoding="utf-8")
+    replacements = {
+        "YOUR_NVDAREMOTE_SERVER_ADDRESS": json.dumps("host"),
+        "YOUR_NVDAREMOTE_KEY": json.dumps("key"),
+    }
+    for name, value in replacements.items():
+        pattern = rf"^\s*{re.escape(name)}\s*=.*$"
+        text, count = re.subn(
+            pattern,
+            f"{name} = {value}",
+            text,
+            count=1,
+            flags=re.MULTILINE,
+        )
+        if count != 1:
+            raise ValueError(f"{name} was not found in {path}")
+    path.write_text(text, encoding="utf-8")
+
 def print_status(config: RemoteAccessConfig) -> None:
     data = config.redacted()
     for key in (

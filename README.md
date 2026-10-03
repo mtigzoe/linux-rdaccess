@@ -27,6 +27,158 @@ This path does not require Windows App or Remote Desktop Connection for accessib
 
 See [docs/nvda-remote.md](docs/nvda-remote.md) for the current tested design and known compatibility work.
 
+## Install once, then use simple commands
+
+From a clone of this repository on Linux Mint:
+
+    python3 linux_rdaccess.py install
+
+That installs a user command at:
+
+    ~/.local/bin/linux-rdaccess
+
+and enables login autostart by default.
+
+If you do not want autostart:
+
+    python3 linux_rdaccess.py install --no-autostart
+
+Configure Linux as the computer controlled by Windows NVDA and generate a key:
+
+    linux-rdaccess configure --role host --generate-key
+
+Apply the saved configuration and connect:
+
+    linux-rdaccess connect
+
+Disconnect while keeping the saved configuration:
+
+    linux-rdaccess disconnect
+
+Show redacted status:
+
+    linux-rdaccess status
+
+Enable or disable login autostart:
+
+    linux-rdaccess autostart enable
+    linux-rdaccess autostart disable
+    linux-rdaccess autostart status
+
+Show the keyboard shortcuts:
+
+    linux-rdaccess shortcuts
+
+Remove the installed command and autostart entry:
+
+    linux-rdaccess uninstall
+
+The saved Remote Access configuration is intentionally kept during uninstall.
+
+When autostart is enabled, Linux runs:
+
+    linux-rdaccess connect --quiet
+
+after graphical login. The command applies the saved Orca Remote settings and starts Orca with `orca --replace`.
+
+## Installed command reference
+
+After running:
+
+    python3 linux_rdaccess.py install
+
+you can use these commands from any terminal:
+
+### Configure
+
+Configure Linux as the computer controlled by Windows NVDA and generate a new key:
+
+    linux-rdaccess configure --role host --generate-key
+
+Use the public NVDA Remote relay explicitly:
+
+    linux-rdaccess configure --host nvdaremote.com --port 6837
+
+Configure Linux to control another NVDA Remote-compatible computer:
+
+    linux-rdaccess configure --role client
+
+Keep local Orca speech muted while NVDA speaks Linux output:
+
+    linux-rdaccess configure --local-orca-speech mute
+
+Allow local Orca speech:
+
+    linux-rdaccess configure --local-orca-speech speak
+
+### Connect and disconnect
+
+Apply the saved configuration, update Orca Remote, and restart Orca:
+
+    linux-rdaccess connect
+
+Connect without restarting Orca:
+
+    linux-rdaccess connect --no-restart
+
+Disconnect Orca Remote while keeping the saved configuration:
+
+    linux-rdaccess disconnect
+
+Disconnect without restarting Orca:
+
+    linux-rdaccess disconnect --no-restart
+
+### Status
+
+Show the saved Remote Access configuration without revealing the key:
+
+    linux-rdaccess status
+
+The status also reports whether:
+
+    autostart is enabled
+    the linux-rdaccess command is installed
+    the Orca Remote configuration file was found
+
+### Autostart
+
+Enable automatic Remote Access startup after graphical login:
+
+    linux-rdaccess autostart enable
+
+Disable automatic startup:
+
+    linux-rdaccess autostart disable
+
+Check whether autostart is enabled:
+
+    linux-rdaccess autostart status
+
+When enabled, the desktop session runs:
+
+    linux-rdaccess connect --quiet
+
+### Shortcuts
+
+Show the common NVDA and Orca Remote keyboard shortcuts:
+
+    linux-rdaccess shortcuts
+
+The main Windows NVDA shortcut is:
+
+    Insert+Alt+Tab
+
+Use it to switch between controlling the local Windows computer and the remote Linux computer.
+
+### Uninstall
+
+Remove the installed command and autostart entry:
+
+    linux-rdaccess uninstall
+
+The saved Remote Access configuration is intentionally preserved so it can be reused after reinstalling.
+
 ## Remote Access manager
 
 `linux-rdaccess` now includes a small configuration manager for the NVDA Remote / Orca Remote backend.
