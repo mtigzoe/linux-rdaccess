@@ -149,14 +149,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("shortcuts", help="show common NVDA/Orca shortcuts")
 
-    config = sub.add_parser("configure", help="run the Remote Access configuration manager")
-    config.add_argument("args", nargs=argparse.REMAINDER)
+    sub.add_parser("configure", help="run the Remote Access configuration manager")
 
     return parser
 
 
-def main() -> int:
-    args = build_parser().parse_args()
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args, forwarded = parser.parse_known_args(argv)
+    if forwarded and args.command != "configure":
+        parser.error("unrecognized arguments: " + " ".join(forwarded))
     config_path = args.config.expanduser()
     orca_config = args.orca_config.expanduser()
 
@@ -228,7 +230,7 @@ def main() -> int:
 
     if args.command == "configure":
         remote_access = Path(__file__).resolve().parent / "remote_access.py"
-        return subprocess.call([sys.executable, str(remote_access), "--config", str(config_path), *args.args])
+        return subprocess.call([sys.executable, str(remote_access), "--config", str(config_path), *forwarded])
 
     return 2
 
