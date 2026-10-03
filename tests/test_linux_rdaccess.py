@@ -129,6 +129,29 @@ class RestartTests(unittest.TestCase):
         self.assertEqual(run.call_args.kwargs["env"], {"DISPLAY": ":0"})
 
 
+class VSCodeSetupTests(unittest.TestCase):
+    def test_vscode_setup_preserves_existing_settings(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "settings.json"
+            path.write_text(
+                json.dumps({"editor.fontSize": 14, "window.titleBarStyle": "native"}),
+                encoding="utf-8",
+            )
+            linux_rdaccess.configure_vscode_accessibility(path)
+            data = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(data["editor.fontSize"], 14)
+            self.assertEqual(data["editor.accessibilitySupport"], "on")
+            self.assertEqual(data["window.titleBarStyle"], "native")
+
+    def test_vscode_setup_creates_accessible_defaults(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "settings.json"
+            linux_rdaccess.configure_vscode_accessibility(path)
+            data = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(data["editor.accessibilitySupport"], "on")
+            self.assertEqual(data["window.titleBarStyle"], "custom")
+
+
 if __name__ == "__main__":
     unittest.main()
 
