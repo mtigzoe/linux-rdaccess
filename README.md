@@ -121,6 +121,19 @@ Connect without restarting Orca:
 
     linux-rdaccess connect --no-restart
 
+If Orca needs to be restarted from SSH, Desktop Commander, or another shell that does not inherit the graphical desktop environment, use:
+
+    ./start-orca-remote.sh
+
+The helper locates the active XFCE session, imports its display, Xauthority, D-Bus, runtime-directory, and session-type variables, and then runs:
+
+    orca --replace
+
+This avoids hard-coding session-specific values in ~/.bashrc. A typical recovery sequence after restarting Windows NVDA Remote Access is:
+
+    linux-rdaccess connect --no-restart
+    ./start-orca-remote.sh
+
 Disconnect Orca Remote while keeping the saved configuration:
 
     linux-rdaccess disconnect
