@@ -111,7 +111,7 @@ def install_user_files(
     share_dir.mkdir(parents=True, exist_ok=True)
     bin_path.parent.mkdir(parents=True, exist_ok=True)
 
-    for name in ("linux_rdaccess.py", "remote_access.py", "nvda_remote_check.py"):
+    for name in ("linux_rdaccess.py", "remote_access.py", "nvda_remote_check.py", "orca_adapter.py"):
         shutil.copy2(source_dir / name, share_dir / name)
 
     wrapper = (
