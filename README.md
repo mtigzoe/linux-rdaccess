@@ -27,6 +27,60 @@ This path does not require Windows App or Remote Desktop Connection for accessib
 
 See [docs/nvda-remote.md](docs/nvda-remote.md) for the current tested design and known compatibility work.
 
+## Install once, then use simple commands
+
+From a clone of this repository on Linux Mint:
+
+    python3 linux_rdaccess.py install
+
+That installs a user command at:
+
+    ~/.local/bin/linux-rdaccess
+
+and enables login autostart by default.
+
+If you do not want autostart:
+
+    python3 linux_rdaccess.py install --no-autostart
+
+Configure Linux as the computer controlled by Windows NVDA and generate a key:
+
+    linux-rdaccess configure --role host --generate-key
+
+Apply the saved configuration and connect:
+
+    linux-rdaccess connect
+
+Disconnect while keeping the saved configuration:
+
+    linux-rdaccess disconnect
+
+Show redacted status:
+
+    linux-rdaccess status
+
+Enable or disable login autostart:
+
+    linux-rdaccess autostart enable
+    linux-rdaccess autostart disable
+    linux-rdaccess autostart status
+
+Show the keyboard shortcuts:
+
+    linux-rdaccess shortcuts
+
+Remove the installed command and autostart entry:
+
+    linux-rdaccess uninstall
+
+The saved Remote Access configuration is intentionally kept during uninstall.
+
+When autostart is enabled, Linux runs:
+
+    linux-rdaccess connect --quiet
+
+after graphical login. The command applies the saved Orca Remote settings and starts Orca with `orca --replace`.
+
 ## Remote Access manager
 
 `linux-rdaccess` now includes a small configuration manager for the NVDA Remote / Orca Remote backend.
