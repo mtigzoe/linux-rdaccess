@@ -135,6 +135,9 @@ def update_legacy_orca_customizations(
         backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
     path.write_text(text, encoding="utf-8")
 
+    remote_controller = path.parent / "orca-scripts" / "remote_controller.py"
+    if remote_controller.exists():
+        patch_legacy_orca_remote_controller(remote_controller)
 
 
 LEGACY_REMOTE_CONTROLLER_RELATIVE = Path("orca-scripts/remote_controller.py")
