@@ -199,6 +199,27 @@ class RemoteController:
         self.assertEqual(sum(e[0] == "cancel" for e in c.local_machine.events), 2)
         self.assertEqual(c.transport.events, [{"type": "cancel"}])
 
+    def test_nvda_f7_opens_elements_list_once_and_consumes_release(self):
+        c, _, _ = self._patched_controller()
+        calls = []
+        c._linux_rdaccess_run_main = lambda func: func()
+        c._linux_rdaccess_show_elements_list = lambda modifiers: calls.append("elements")
+        self._key(c, 0x2D, True)
+        self._key(c, 0x76, True)      # NVDA+F7
+        self._key(c, 0x76, True)      # auto-repeat consumed
+        self._key(c, 0x76, False)
+        self.assertEqual(calls, ["elements"])
+        keys = [e for e in c.local_machine.events if e[0] == "key" and e[1] == 0x76]
+        self.assertEqual(keys, [])
+
+    def test_plain_f7_is_untouched(self):
+        c, _, _ = self._patched_controller()
+        self._key(c, 0x76, True)
+        self._key(c, 0x76, False)
+        keys = [e[:3] for e in c.local_machine.events if e[0] == "key"]
+        self.assertIn(("key", 0x76, True), keys)
+        self.assertIn(("key", 0x76, False), keys)
+
     def test_nvda_space_becomes_a_once_and_repeat_is_consumed(self):
         c, _, _ = self._patched_controller()
         self._key(c, 0x2D, True)
