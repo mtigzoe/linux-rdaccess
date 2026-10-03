@@ -93,12 +93,40 @@ class ConnectionTests(unittest.TestCase):
 
 
 class RestartTests(unittest.TestCase):
+    def test_graphical_session_env_finds_xfce_session(self):
+        with tempfile.TemporaryDirectory() as temp:
+            proc = Path(temp)
+            p = proc / "1251"
+            p.mkdir()
+            (p / "comm").write_text("xfce4-session\n", encoding="utf-8")
+            (p / "status").write_text("Name:\txfce4-session\nUid:\t1000\t1000\t1000\t1000\n", encoding="utf-8")
+            (p / "environ").write_bytes(
+                b"DISPLAY=:0\0"
+                b"XAUTHORITY=/home/miriam/.Xauthority\0"
+                b"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus\0"
+                b"XDG_RUNTIME_DIR=/run/user/1000\0"
+                b"XDG_SESSION_TYPE=x11\0"
+            )
+
+            env = linux_rdaccess.graphical_session_env(
+                proc_root=proc,
+                base_env={"PATH": "/usr/bin"},
+                uid=1000,
+            )
+
+            self.assertEqual(env["DISPLAY"], ":0")
+            self.assertEqual(env["XAUTHORITY"], "/home/miriam/.Xauthority")
+            self.assertEqual(env["DBUS_SESSION_BUS_ADDRESS"], "unix:path=/run/user/1000/bus")
+
+    @mock.patch("linux_rdaccess.graphical_session_env")
     @mock.patch("linux_rdaccess.subprocess.run")
-    def test_restart_orca_uses_replace(self, run):
+    def test_restart_orca_uses_replace_and_graphical_env(self, run, graphical_env):
+        graphical_env.return_value = {"DISPLAY": ":0"}
         run.return_value.returncode = 0
         self.assertEqual(linux_rdaccess.restart_orca(), 0)
         run.assert_called_once()
         self.assertEqual(run.call_args.args[0], ["orca", "--replace"])
+        self.assertEqual(run.call_args.kwargs["env"], {"DISPLAY": ":0"})
 
 
 if __name__ == "__main__":
