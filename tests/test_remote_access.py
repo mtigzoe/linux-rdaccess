@@ -342,13 +342,40 @@ class RemoteController:
         self.assertEqual(enter, [(0x0D, True), (0x0D, False)] * 3)
         self.assertNotIn((0x2D, False), self._names(c))
 
-    def test_v2_patch_is_upgraded_to_v3(self):
+    def test_v2_patch_is_upgraded_to_v4(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "remote_controller.py"
             path.write_text(self.UPSTREAM_CONTROLLER + "\n" + remote_access.LEGACY_COMPAT_MARKER_V1 + " v2\n", encoding="utf-8")
             path.with_name(path.name + ".linux-rdaccess-backup").write_text(self.UPSTREAM_CONTROLLER, encoding="utf-8")
             self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
-            self.assertIn(" v3", path.read_text(encoding="utf-8"))
+            self.assertIn(" v4", path.read_text(encoding="utf-8"))
+
+    def test_connect_installs_orca_runtime_adapter(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            cfg = root / "orca-customizations.py"
+            cfg.write_text(
+                'YOUR_NVDAREMOTE_SERVER_ADDRESS = "x"\n'
+                'YOUR_NVDAREMOTE_SERVER_PORT = 1\n'
+                'YOUR_NVDAREMOTE_KEY = "k"\n'
+                'connection_type="slave"\n',
+                encoding="utf-8",
+            )
+            scripts = root / "orca-scripts"
+            scripts.mkdir()
+            controller = scripts / "remote_controller.py"
+            controller.write_text(self.UPSTREAM_CONTROLLER, encoding="utf-8")
+            adapter_source = Path(remote_access.__file__).with_name("orca_adapter.py")
+            self.assertTrue(adapter_source.exists())
+
+            config = remote_access.RemoteAccessConfig(
+                host="h", port=2, key="secret", role="host"
+            )
+            remote_access.update_legacy_orca_customizations(config, cfg)
+
+            installed = scripts / "linux_rdaccess_orca_adapter.py"
+            self.assertTrue(installed.exists())
+            self.assertIn("OrcaRuntimeAdapter", installed.read_text(encoding="utf-8"))
 
     def test_connect_survives_unpatchable_controller(self):
         with tempfile.TemporaryDirectory() as temp:
