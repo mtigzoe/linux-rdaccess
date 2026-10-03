@@ -9,6 +9,8 @@ on:
       - "nvda_remote_check.py"
       - "tests/test_remote_access.py"
       - "remote_access.py"
+      - "tests/test_linux_rdaccess.py"
+      - "linux_rdaccess.py"
       - "tests/test_nvda_remote_check.py"
       - "tests/test_a11y_link.py"
       - "tests/test_a11y_model.py"
@@ -59,8 +61,9 @@ jobs:
             tests.test_a11y_link \
             tests.test_a11y_model \
             tests.test_nvda_remote_check \
-            tests.test_remote_access
-          python -m py_compile nvda_remote_check.py remote_access.py tests/test_nvda_remote_check.py tests/test_remote_access.py
+            tests.test_remote_access \
+            tests.test_linux_rdaccess
+          python -m py_compile nvda_remote_check.py remote_access.py linux_rdaccess.py tests/test_nvda_remote_check.py tests/test_remote_access.py tests/test_linux_rdaccess.py
       - name: Generate Linux semantic fixtures
         run: |
           python tools/generate_remote_a11y_fixture.py > linux-a11y-fixture.json
