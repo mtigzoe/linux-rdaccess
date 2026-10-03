@@ -106,6 +106,15 @@ class RemoteController:
         pass
 '''
 
+    class FakeTransport:
+        connected = True
+
+        def __init__(self):
+            self.events = []
+
+        def send(self, **kw):
+            self.events.append(kw)
+
     class FakeLocal:
         def __init__(self):
             self.events = []
@@ -127,6 +136,7 @@ class RemoteController:
         exec(compile(path.read_text(encoding="utf-8"), str(path), "exec"), module.__dict__)
         controller = module.RemoteController()
         controller.local_machine = self.FakeLocal()
+        controller.transport = self.FakeTransport()
         return controller, path, temp.name
 
     def _key(self, controller, vk, pressed, extended=False):
@@ -154,6 +164,16 @@ class RemoteController:
                 remote_access.patch_legacy_orca_remote_controller(path)
             self.assertEqual(path.read_text(encoding="utf-8"), broken)
 
+    def test_v2_patch_is_replaced_from_backup(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "remote_controller.py"
+            path.write_text(self.UPSTREAM_CONTROLLER + "\n" + remote_access.LEGACY_COMPAT_MARKER_V2 + "\n", encoding="utf-8")
+            path.with_name(path.name + ".linux-rdaccess-backup").write_text(self.UPSTREAM_CONTROLLER, encoding="utf-8")
+            self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
+            result = path.read_text(encoding="utf-8")
+            self.assertIn(remote_access.LEGACY_COMPAT_MARKER, result)
+            self.assertNotIn(remote_access.LEGACY_COMPAT_MARKER_V2 + "\n", result)
+
     def test_v1_patch_is_replaced_from_backup(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "remote_controller.py"
@@ -164,15 +184,20 @@ class RemoteController:
             self.assertIn(remote_access.LEGACY_COMPAT_MARKER, result)
             self.assertEqual(result.count("_linux_rdaccess_filter_key(\n"), 1)
 
-    def test_ctrl_interrupts_speech_once_but_modifier_repeat_does_not(self):
+    def test_ctrl_interrupts_local_and_remote_speech_once(self):
         c, _, _ = self._patched_controller()
         self._key(c, 0x11, True)
         self._key(c, 0x11, True)      # auto-repeat
         self._key(c, 0x2D, True)      # Insert held for a chord
         self._key(c, 0x2D, True)      # Insert auto-repeat
         self.assertEqual([e for e in c.local_machine.events if e[0] == "cancel"], [("cancel",)])
+        self.assertEqual(c.transport.events, [{"type": "cancel"}])
+
+        # Ordinary navigation can interrupt local Orca output, but should not
+        # add NVDA Remote cancel traffic for every key press.
         self._key(c, 0x28, True, extended=True)   # Down arrow
         self.assertEqual(sum(e[0] == "cancel" for e in c.local_machine.events), 2)
+        self.assertEqual(c.transport.events, [{"type": "cancel"}])
 
     def test_nvda_space_becomes_a_once_and_repeat_is_consumed(self):
         c, _, _ = self._patched_controller()
