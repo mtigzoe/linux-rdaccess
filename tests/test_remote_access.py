@@ -1109,6 +1109,51 @@ class LocalMachine:
                 remote_access.patch_legacy_orca_local_machine(path)
             self.assertEqual(path.read_text(encoding="utf-8"), "class LocalMachine:\n    pass\n")
 
+    def test_local_machine_v2_patch_is_upgraded_to_current(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "local_machine.py"
+            path.write_text(
+                self.UPSTREAM_LOCAL + "\n" + remote_access.LOCAL_MACHINE_MARKER_V2 + "\n",
+                encoding="utf-8",
+            )
+            path.with_name(path.name + ".linux-rdaccess-backup").write_text(
+                self.UPSTREAM_LOCAL, encoding="utf-8"
+            )
+            self.assertTrue(remote_access.patch_legacy_orca_local_machine(path))
+            result = path.read_text(encoding="utf-8")
+            self.assertIn(remote_access.LOCAL_MACHINE_MARKER, result)
+            self.assertNotIn(remote_access.LOCAL_MACHINE_MARKER_V2 + "\n", result)
+
+    def test_xtest_re_resolves_keycode_after_keyboard_layout_change(self):
+        module, _, _ = self._patched_local()
+        calls = []
+
+        class FakeX11:
+            def __init__(self):
+                self.codes = iter((38, 52))
+
+            def XStringToKeysym(self, name):
+                return 97
+
+            def XKeysymToKeycode(self, display, sym):
+                return next(self.codes)
+
+            def XFlush(self, display):
+                return 0
+
+        class FakeXt:
+            def XTestFakeKeyEvent(self, display, code, pressed, delay):
+                calls.append((code, bool(pressed)))
+                return 1
+
+        helper = module._LrdXTest()
+        helper._x11 = FakeX11()
+        helper._xt = FakeXt()
+        helper._dpy = object()
+        self.assertTrue(helper.key("a", True))
+        self.assertTrue(helper.key("a", False))
+        self.assertEqual(calls, [(38, True), (52, False)])
+
     def test_xtest_success_skips_the_xdotool_process(self):
         module, _, _ = self._patched_local()
         module._LRD_XTEST.key = lambda name, pressed: True
