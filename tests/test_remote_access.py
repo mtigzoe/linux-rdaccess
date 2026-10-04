@@ -504,6 +504,27 @@ class RemoteController:
     # space=False, and NVDA Remote adds both with hasattr(), so *every* gesture
     # from a display whose gesture class inherits it (Eurobraille, Handy Tech,
     # Freedom Scientific, HIMS...) carries them, including pan and routing keys.
+    def test_dotpad_pan_ids_are_not_mistaken_for_typed_braille(self):
+        import os
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        with patches, mock.patch.dict(os.environ, {"HOME": home}):
+            c._on_remote_braille_input(
+                id="br(dotPad):panLeft",
+                identifiers=["br(dotPad):panLeft"],
+                dots=0,
+                space=False,
+                scriptPath=["globalCommands", "GlobalCommands", "braille_scrollBack"],
+            )
+            c._on_remote_braille_input(
+                id="br(dotPad):panRight",
+                identifiers=["br(dotPad):panRight"],
+                dots=0,
+                space=False,
+                scriptPath=["globalCommands", "GlobalCommands", "braille_scrollForward"],
+            )
+        self.assertEqual(calls, [("left", None), ("right", None)])
+
     def test_eurobraille_pan_keys_with_zero_dots_and_space_still_pan(self):
         import os
         c, _, home = self._patched_controller()
