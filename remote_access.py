@@ -288,6 +288,10 @@ _LEGACY_HELPERS = '''\
         self._lrd_nvda_down = False
         self._lrd_swapped = set()
         self._lrd_nvda_key = None
+        marker = globals().get("_LRD_D")
+        if isinstance(marker, dict):
+            marker["ts"] = 0.0
+            marker["swapped"] = False
 
     def _linux_rdaccess_filter_key(self, pressed, vk_code, extended, modifiers,
                                    key_name=None, scan_code=None):
