@@ -415,6 +415,24 @@ class RemoteController:
             (0xA0, True), (0x75, True), (0x75, False), (0xA0, False),
         ])
 
+    def test_releasing_one_of_two_nvda_modifiers_keeps_the_other_active(self):
+        c, _, _ = self._patched_controller()
+        self._key(c, 0x2D, True, extended=True)      # Insert
+        self._key(c, 0x14, True)                     # CapsLock
+        self._key(c, 0x14, False)                    # release only CapsLock
+        self._key(c, 0x20, True)                     # NVDA+Space still translates
+        self.assertIn((0x41, True), self._names(c))
+
+    def test_drop_chord_prefers_insert_when_capslock_and_insert_are_both_held(self):
+        c, _, _ = self._patched_controller()
+        self._key(c, 0x14, True)                     # CapsLock first
+        self._key(c, 0x2D, True, extended=True)      # Insert also held
+        self._key(c, 0x28, True, extended=True)      # NVDA+Down
+        names = self._names(c)
+        self.assertIn((0x2D, False), names)
+        self.assertIn((0x6B, True), names)
+        self.assertNotIn((0x14, False), names)
+
     def test_capslock_nvda_key_is_never_released_or_repressed(self):
         c, _, _ = self._patched_controller()
         self._key(c, 0x14, True)
