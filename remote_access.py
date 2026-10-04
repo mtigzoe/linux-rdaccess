@@ -12,6 +12,7 @@ import re
 import secrets
 import shutil
 import sys
+import tempfile
 from typing import Literal
 
 DEFAULT_HOST = "nvdaremote.com"
@@ -92,13 +93,20 @@ def load_config(path: Path = DEFAULT_CONFIG) -> RemoteAccessConfig:
     )
 
 
+def _write_private_text(path: Path, text: str) -> None:
+    """Publish secret-bearing text from a file private from its creation."""
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
 def save_config(config: RemoteAccessConfig, path: Path = DEFAULT_CONFIG) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(asdict(config), indent=2) + "\n", encoding="utf-8")
-    try:
-        path.chmod(0o600)
-    except OSError:
-        pass
+    _write_private_text(path, json.dumps(asdict(config), indent=2) + "\n")
 
 
 def update_legacy_orca_customizations(
@@ -116,7 +124,7 @@ def update_legacy_orca_customizations(
         pattern = rf"^\s*{re.escape(name)}\s*=.*$"
         updated, count = re.subn(
             pattern,
-            f"{name} = {value}",
+            lambda match: f"{name} = {value}",
             text,
             count=1,
             flags=re.MULTILINE,
@@ -174,7 +182,7 @@ if (
 
     backup = path.with_name(path.name + ".linux-rdaccess-backup")
     if not backup.exists():
-        backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+        _write_private_text(backup, path.read_text(encoding="utf-8"))
     # Both files can contain an NVDA Remote channel key: the live file has the
     # new key and the one-time backup may contain the previous key.
     for private_path in (backup, path):
@@ -182,11 +190,7 @@ if (
             private_path.chmod(0o600)
         except OSError:
             pass
-    path.write_text(text, encoding="utf-8")
-    try:
-        path.chmod(0o600)
-    except OSError:
-        pass
+    _write_private_text(path, text)
 
     remote_controller = path.parent / LEGACY_REMOTE_CONTROLLER_RELATIVE
     if remote_controller.exists():

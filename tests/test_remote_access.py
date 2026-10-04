@@ -1,12 +1,42 @@
 from __future__ import annotations
 
 import json
+import os
+from contextlib import contextmanager
 from pathlib import Path
 import tempfile
 import unittest
 from unittest import mock
 
 import remote_access
+
+
+@contextmanager
+def private_write_checks(test):
+    """Observe permissions before writing, including newly created files."""
+    real_open, real_fdopen = Path.open, os.fdopen
+    observed = []
+
+    def check(handle, mode):
+        if any(flag in mode for flag in ('w', 'a', 'x', '+')):
+            observed.append(os.fstat(handle.fileno()).st_mode & 0o777)
+            test.addCleanup(handle.close)
+            test.assertEqual(observed[-1], 0o600)
+        return handle
+
+    def path_open(path, mode='r', *args, **kwargs):
+        return check(real_open(path, mode, *args, **kwargs), mode)
+
+    def fdopen(fd, mode='r', *args, **kwargs):
+        return check(real_fdopen(fd, mode, *args, **kwargs), mode)
+
+    previous_umask = os.umask(0o022)
+    try:
+        with mock.patch.object(Path, 'open', path_open), mock.patch.object(os, 'fdopen', fdopen):
+            yield
+        test.assertTrue(observed)
+    finally:
+        os.umask(previous_umask)
 
 
 class RemoteAccessConfigTests(unittest.TestCase):
@@ -44,8 +74,60 @@ class RemoteAccessConfigTests(unittest.TestCase):
             self.assertEqual(loaded, config)
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
 
+    def test_config_is_private_before_secret_content_is_written(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'remote.json'
+            for existing in (False, True):
+                if existing:
+                    path.chmod(0o644)
+                with private_write_checks(self):
+                    remote_access.save_config(remote_access.RemoteAccessConfig(key='secret'), path)
+                self.assertEqual(remote_access.load_config(path).key, 'secret')
+
+    def test_failed_config_publish_preserves_old_file_and_removes_temporary(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'remote.json'
+            old = remote_access.RemoteAccessConfig(key='old-key')
+            remote_access.save_config(old, path)
+            with mock.patch.object(remote_access.os, 'replace', side_effect=OSError('failed')):
+                with self.assertRaises(OSError):
+                    remote_access.save_config(remote_access.RemoteAccessConfig(key='new-key'), path)
+            self.assertEqual(remote_access.load_config(path), old)
+            self.assertEqual(list(Path(temp).iterdir()), [path])
+
 
 class LegacyConfigTests(unittest.TestCase):
+    CONFIG_SOURCE = '''YOUR_NVDAREMOTE_SERVER_ADDRESS = "host"
+YOUR_NVDAREMOTE_SERVER_PORT = 6837
+YOUR_NVDAREMOTE_KEY = "old-key"
+connection_type="slave"
+'''
+
+    def test_customizations_and_backup_are_private_before_writing(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'orca-customizations.py'
+            path.write_text(self.CONFIG_SOURCE, encoding='utf-8')
+            path.chmod(0o644)
+            with private_write_checks(self):
+                remote_access.update_legacy_orca_customizations(
+                    remote_access.RemoteAccessConfig(key='new-key'), path)
+            backup = path.with_name(path.name + '.linux-rdaccess-backup')
+            self.assertEqual(backup.read_text(encoding='utf-8'), self.CONFIG_SOURCE)
+            self.assertEqual(backup.stat().st_mode & 0o777, 0o600)
+
+    def test_connection_key_escapes_are_preserved_literally(self):
+        import ast
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'orca-customizations.py'
+            path.write_text(self.CONFIG_SOURCE, encoding='utf-8')
+            key = 'channel\\n\\1"tail'
+            remote_access.update_legacy_orca_customizations(
+                remote_access.RemoteAccessConfig(key=key), path)
+            tree = ast.parse(path.read_text(encoding='utf-8'))
+            assignment = next(node for node in tree.body if isinstance(node, ast.Assign)
+                              and node.targets[0].id == 'YOUR_NVDAREMOTE_KEY')
+            self.assertEqual(ast.literal_eval(assignment.value), key)
+
     def test_apply_updates_endpoint_key_and_role(self):
         original = """YOUR_NVDAREMOTE_SERVER_ADDRESS = "host"
 YOUR_NVDAREMOTE_SERVER_PORT = 6837
