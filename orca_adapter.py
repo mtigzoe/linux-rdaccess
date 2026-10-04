@@ -80,11 +80,10 @@ class OrcaRuntimeAdapter:
     def active_script() -> Any | None:
         from orca import orca_state
 
-        return getattr(
-            orca_state,
-            "activeScript",
-            getattr(orca_state, "active_script", None),
-        )
+        script = getattr(orca_state, "activeScript", None)
+        if script is not None:
+            return script
+        return getattr(orca_state, "active_script", None)
 
     @staticmethod
     def run_on_main(callback: Callable[[], Any]) -> None:
