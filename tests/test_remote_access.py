@@ -437,6 +437,7 @@ class RemoteController:
             panBrailleLeft=lambda ev=None: calls.append(("left", ev)),
             panBrailleRight=lambda ev=None: calls.append(("right", ev)),
             processRoutingKey=lambda ev=None: calls.append(("route", ev.event["argument"])),
+            goBrailleHome=lambda ev=None: calls.append(("focus", ev)),
         )
         orca = types.ModuleType("orca")
         state = types.ModuleType("orca.orca_state")
@@ -455,6 +456,15 @@ class RemoteController:
             c._on_remote_braille_input(scriptPath=["globalCommands", "GlobalCommands", "braille_scrollBack"])
             c._on_remote_braille_input(scriptPath=["globalCommands", "GlobalCommands", "script_braille_scrollForward"])
         self.assertEqual(calls, [("left", None), ("right", None)])
+
+    def test_braille_to_focus_uses_orca_home_semantics(self):
+        import os
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        with patches, mock.patch.dict(os.environ, {"HOME": home}):
+            c._on_remote_braille_input(
+                scriptPath=["globalCommands", "GlobalCommands", "braille_toFocus"])
+        self.assertEqual(calls, [("focus", None)])
 
     def test_braille_routing_key_reaches_script_with_cell_argument(self):
         import os
