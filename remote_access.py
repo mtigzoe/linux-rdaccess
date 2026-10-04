@@ -500,12 +500,15 @@ _LEGACY_HELPERS = '''\
     def _linux_rdaccess_show_elements_list(self, modifiers):
         try:
             from linux_rdaccess_orca_adapter import show_elements_list as _show
-            if _show(lambda key: self._linux_rdaccess_send_structural_list(key, modifiers)):
+            result = _show(lambda key: self._linux_rdaccess_send_structural_list(key, modifiers))
+            if result is not None:
+                # True: category selected and delegated to Orca.
+                # False: the dialog was intentionally cancelled/Escaped.
                 return
         except Exception:
             log.exception("linux-rdaccess: elements list failed")
 
-        # Safe fallback: Orca headings list.
+        # Safe fallback only when the chooser could not be presented.
         self._linux_rdaccess_send_structural_list("h", modifiers)
 
     @staticmethod
