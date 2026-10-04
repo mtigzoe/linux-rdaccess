@@ -283,7 +283,16 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
             self.assertTrue(OrcaRuntimeAdapter.present_status_bar())
         self.assertEqual(snake_calls, [("title", None), ("status", None)])
 
-    def test_where_am_i_uses_available_script_handler(self):
+    def test_where_am_i_uses_orca42_basic_handler(self):
+        calls = []
+        script = types.SimpleNamespace(
+            whereAmIBasic=lambda event: calls.append(("basic", event))
+        )
+        with self._fake_orca(script):
+            self.assertTrue(OrcaRuntimeAdapter.where_am_i())
+        self.assertEqual(calls, [("basic", None)])
+
+    def test_where_am_i_uses_available_fallback_handler(self):
         calls = []
         script = types.SimpleNamespace(
             presentCurrentObject=lambda event=None: calls.append(event)
