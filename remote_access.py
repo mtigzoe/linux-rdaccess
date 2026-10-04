@@ -508,6 +508,14 @@ _LEGACY_HELPERS = '''\
         if name.startswith("script_"):
             name = name[len("script_"):]
         action = self._LRD_BRAILLE_ACTIONS.get(name)
+        if action is None and (
+            "routingIndex" in kwargs
+            or "cellIndexes" in kwargs
+        ):
+            # Routing position is protocol-level data and is sufficient to
+            # identify a routing gesture even when an older/newer peer omits
+            # scriptPath metadata. Validation still happens before dispatch.
+            action = "route"
         return action, record
 
     def _linux_rdaccess_trace_braille(self, record):
