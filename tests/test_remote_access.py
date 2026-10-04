@@ -727,6 +727,34 @@ class RemoteController:
         self.assertNotIn((0x14, False), names)
         self.assertNotIn((0x6B, True), names)
 
+    def test_standalone_capslock_is_forwarded_as_one_press_release(self):
+        c, _, _ = self._patched_controller()
+        self._key(c, 0x14, True)
+        self._key(c, 0x14, False)
+        self.assertEqual(
+            [k for k in self._names(c) if k[0] == 0x14],
+            [(0x14, True), (0x14, False)],
+        )
+
+    def test_capslock_nvda_modifier_is_never_forwarded_for_translated_command(self):
+        import os
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        with patches, mock.patch.dict(os.environ, {"HOME": home}):
+            self._key(c, 0x14, True)
+            self._key(c, 0x28, True, extended=True)
+            self._key(c, 0x28, False, extended=True)
+            self._key(c, 0x14, False)
+        self.assertEqual(calls, [("sayAll", None)])
+        self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [])
+
+    def test_pending_capslock_is_not_released_on_reset_before_forwarding(self):
+        c, _, _ = self._patched_controller()
+        self._key(c, 0x14, True)
+        self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [])
+        c.toggle_control()
+        self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [])
+
     def test_capslock_nvda_key_supports_direct_say_all_without_toggling_capslock(self):
         import os
         c, _, home = self._patched_controller()
@@ -736,8 +764,9 @@ class RemoteController:
             self._key(c, 0x28, True, extended=True)
             self._key(c, 0x28, False, extended=True)
             self._key(c, 0x20, True)                   # direct presentation toggle
+        self._key(c, 0x14, False)
         self.assertEqual(calls, [("sayAll", None), ("presentation", None)])
-        self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [(0x14, True)])
+        self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [])
         self.assertEqual([k for k in self._names(c) if k[0] == 0x28], [])
 
     def test_title_and_status_use_direct_orca_apis_without_keypad_sequences(self):
