@@ -490,6 +490,63 @@ class RemoteController:
             )
         self.assertEqual(calls, [("route", 9)])
 
+    # Real NVDA payloads: BrailleInputGesture declares class-level dots=0 and
+    # space=False, and NVDA Remote adds both with hasattr(), so *every* gesture
+    # from a display whose gesture class inherits it (Eurobraille, Handy Tech,
+    # Freedom Scientific, HIMS...) carries them, including pan and routing keys.
+    def test_eurobraille_pan_keys_with_zero_dots_and_space_still_pan(self):
+        import os
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        with patches, mock.patch.dict(os.environ, {"HOME": home}):
+            for script in ("braille_scrollBack", "braille_scrollForward"):
+                c._on_remote_braille_input(
+                    id="backward" if script.endswith("Back") else "forward",
+                    model="bnote", source="eurobraille", dots=0, space=False,
+                    scriptPath=["globalCommands", "GlobalCommands", script])
+        self.assertEqual(calls, [("left", None), ("right", None)])
+
+    def test_eurobraille_routing_with_zero_dots_and_space_still_routes(self):
+        import os
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        with patches, mock.patch.dict(os.environ, {"HOME": home}):
+            c._on_remote_braille_input(
+                id="routing", model="bnote", source="eurobraille",
+                dots=0, space=False, cellIndexes=[5], routingIndex=5,
+                scriptPath=["globalCommands", "GlobalCommands", "braille_routeTo"])
+        self.assertEqual(calls, [("route", 5)])
+
+    def test_zero_dots_display_gesture_is_traced_as_a_display_gesture(self):
+        c, _, _ = self._patched_controller()
+        action, record = c._linux_rdaccess_classify_braille({
+            "id": "backward", "model": "bnote", "source": "eurobraille",
+            "dots": 0, "space": False,
+            "scriptPath": ["globalCommands", "GlobalCommands", "braille_scrollBack"],
+        })
+        self.assertEqual(action, "pan_back")
+        self.assertNotIn("redacted", record)
+        self.assertNotIn("dots", record)
+        self.assertNotIn("space", record)
+
+    def test_space_only_typed_braille_stays_redacted_even_as_an_integer_flag(self):
+        # Eurobraille reports a lone braille-keyboard space as 0x200, dots 0.
+        c, _, _ = self._patched_controller()
+        action, record = c._linux_rdaccess_classify_braille({
+            "id": "space", "model": "bnote", "source": "eurobraille",
+            "dots": 0, "space": 0x200,
+        })
+        self.assertEqual(action, "keyboard")
+        self.assertEqual(record["redacted"], "braille-keyboard-input")
+        self.assertNotIn("id", record)
+
+    def test_backspace_key_name_is_not_mistaken_for_typed_space(self):
+        c, _, _ = self._patched_controller()
+        action, _ = c._linux_rdaccess_classify_braille({
+            "id": "backSpace", "dots": 0, "space": False,
+        })
+        self.assertNotEqual(action, "keyboard")
+
     def test_typed_braille_never_triggers_pan_or_route(self):
         import os
         c, _, home = self._patched_controller()
@@ -587,6 +644,16 @@ class RemoteController:
         enter = [k for k in self._names(c) if k[0] == 0x0D]
         self.assertEqual(enter, [(0x0D, True), (0x0D, False)] * 3)
         self.assertNotIn((0x2D, False), self._names(c))
+
+    def test_v18_patch_is_upgraded_to_current(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "remote_controller.py"
+            path.write_text(self.UPSTREAM_CONTROLLER + "\n" + remote_access.LEGACY_COMPAT_MARKER_V18 + "\n", encoding="utf-8")
+            path.with_name(path.name + ".linux-rdaccess-backup").write_text(self.UPSTREAM_CONTROLLER, encoding="utf-8")
+            self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
+            result = path.read_text(encoding="utf-8")
+            self.assertIn(remote_access.LEGACY_COMPAT_MARKER, result)
+            self.assertNotIn(remote_access.LEGACY_COMPAT_MARKER_V18 + "\n", result)
 
     def test_v17_patch_is_upgraded_to_current(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -694,7 +761,7 @@ class RemoteController:
             path.write_text(self.UPSTREAM_CONTROLLER + "\n" + remote_access.LEGACY_COMPAT_MARKER_V1 + " v2\n", encoding="utf-8")
             path.with_name(path.name + ".linux-rdaccess-backup").write_text(self.UPSTREAM_CONTROLLER, encoding="utf-8")
             self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
-            self.assertIn(" v18", path.read_text(encoding="utf-8"))
+            self.assertIn(remote_access.LEGACY_COMPAT_MARKER, path.read_text(encoding="utf-8"))
 
     def test_connect_installs_orca_runtime_adapter(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -233,7 +233,8 @@ LEGACY_COMPAT_MARKER_V14 = "# linux-rdaccess NVDA/Orca input compatibility v14"
 LEGACY_COMPAT_MARKER_V15 = "# linux-rdaccess NVDA/Orca input compatibility v15"
 LEGACY_COMPAT_MARKER_V16 = "# linux-rdaccess NVDA/Orca input compatibility v16"
 LEGACY_COMPAT_MARKER_V17 = "# linux-rdaccess NVDA/Orca input compatibility v17"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v18"
+LEGACY_COMPAT_MARKER_V18 = "# linux-rdaccess NVDA/Orca input compatibility v18"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v19"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -482,12 +483,23 @@ _LEGACY_HELPERS = '''\
         def text(value):
             return str(value)[:120]
         ids = [kwargs.get("id")] + list(kwargs.get("identifiers") or [])
-        # NVDA Remote includes dots/space attributes for braille-input
-        # gestures even when their values are 0/False. Presence, not truthiness,
-        # identifies typed braille and prevents zero-valued chords from being
-        # traced as ordinary display gestures.
-        keyboard = ("dots" in kwargs or "space" in kwargs) or any(
-            "dot" in str(i).lower() for i in ids if i
+        # NVDA's BrailleInputGesture declares dots=0 and space=False as class
+        # attributes and NVDA Remote copies them with hasattr(), so EVERY
+        # gesture from a display whose gesture class inherits it (Eurobraille,
+        # Handy Tech, Freedom Scientific, HIMS...) carries both fields, pan and
+        # routing keys included. Their presence therefore says nothing; typed
+        # braille is identified by a non-zero dots mask, a truthy space flag
+        # (some drivers report it as an int such as 0x200), a "dot" in the
+        # gesture id/identifiers, or an exact "space" key-name token. A lone
+        # "backSpace" key name is not a typed space.
+        def has_space_token(value):
+            import re as _re
+            return "space" in _re.split(r"[^a-z0-9]+", str(value).lower())
+        keyboard = (
+            bool(kwargs.get("dots"))
+            or bool(kwargs.get("space"))
+            or any("dot" in str(i).lower() or has_space_token(i)
+                   for i in ids if i)
         )
         if keyboard:
             # Braille keyboard input is typed text (possibly a password).
@@ -1011,6 +1023,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V18,
                 LEGACY_COMPAT_MARKER_V17,
                 LEGACY_COMPAT_MARKER_V16,
                 LEGACY_COMPAT_MARKER_V15,
