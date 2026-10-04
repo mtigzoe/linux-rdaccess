@@ -157,6 +157,13 @@ class OrcaRuntimeAdapter:
         )
 
     @classmethod
+    def to_braille_focus(cls) -> bool:
+        return cls.call_script(
+            ("goBrailleHome", "go_braille_home"),
+            default_event=True,
+        )
+
+    @classmethod
     def where_am_i(cls) -> bool:
         return cls.call_script(
             ("whereAmI", "where_am_i", "presentCurrentObject", "present_current_object"),
