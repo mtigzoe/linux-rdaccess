@@ -9,6 +9,93 @@ from orca_adapter import ELEMENT_LIST_TYPES, OrcaRuntimeAdapter
 
 
 class ElementsListTests(unittest.TestCase):
+
+    def test_elements_list_labels_and_focuses_category_control(self):
+        class FakeBox:
+            def pack_start(self, *args):
+                pass
+
+        class FakeCombo:
+            last = None
+
+            def __init__(self):
+                self.items = []
+                self.active = None
+                self.focused = False
+                FakeCombo.last = self
+
+            def append(self, key, name):
+                self.items.append((key, name))
+
+            def set_active(self, index):
+                self.active = index
+
+            def get_active_id(self):
+                return self.items[self.active][0]
+
+            def grab_focus(self):
+                self.focused = True
+
+        class FakeLabel:
+            last = None
+
+            def __init__(self, label):
+                self.label = label
+                self.underline = False
+                self.mnemonic = None
+                FakeLabel.last = self
+
+            def set_use_underline(self, value):
+                self.underline = value
+
+            def set_xalign(self, value):
+                pass
+
+            def set_mnemonic_widget(self, widget):
+                self.mnemonic = widget
+
+        class FakeDialog:
+            def __init__(self, title):
+                self.box = FakeBox()
+
+            def set_modal(self, value):
+                pass
+
+            def add_button(self, *args):
+                pass
+
+            def get_content_area(self):
+                return self.box
+
+            def show_all(self):
+                pass
+
+            def run(self):
+                return 1
+
+            def destroy(self):
+                pass
+
+        fake_gtk = types.SimpleNamespace(
+            Dialog=FakeDialog,
+            Label=FakeLabel,
+            ComboBoxText=FakeCombo,
+            ResponseType=types.SimpleNamespace(CANCEL=0, OK=1),
+        )
+        gi = types.ModuleType("gi")
+        gi.require_version = lambda *args: None
+        repository = types.ModuleType("gi.repository")
+        repository.Gtk = fake_gtk
+        gi.repository = repository
+        calls = []
+        with mock.patch.dict(sys.modules, {"gi": gi, "gi.repository": repository}):
+            from orca_adapter import show_elements_list
+            self.assertTrue(show_elements_list(calls.append))
+        self.assertTrue(FakeCombo.last.focused)
+        self.assertTrue(FakeLabel.last.underline)
+        self.assertIs(FakeLabel.last.mnemonic, FakeCombo.last)
+        self.assertEqual(calls, ["h"])
+
     def test_nvda_elements_categories_cover_primary_orca_structural_lists(self):
         categories = dict(ELEMENT_LIST_TYPES)
         self.assertEqual(categories["Headings"], "h")
