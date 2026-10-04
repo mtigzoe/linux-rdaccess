@@ -262,6 +262,13 @@ class RemoteController:
     def toggle_control(self):
         self.control_state = 0 if self.control_state else 1
 
+    def _on_client_left(self, client=None, **kwargs):
+        if client:
+            self.connected_clients.pop(client.get('id'), None)
+
+    def _on_channel_joined(self, channel=None, **kwargs):
+        log.info("Joined channel: %s" % channel)
+
     def _on_remote_sas(self, **kwargs):
         pass
 
@@ -370,6 +377,122 @@ class RemoteController:
         self._key(c, 0x28, True, extended=True)   # Down arrow
         self.assertEqual(sum(e[0] == "cancel" for e in c.local_machine.events), 2)
         self.assertEqual(c.transport.events, [{"type": "cancel"}])
+
+    def test_controller_departure_releases_keys_while_relay_stays_connected(self):
+        c, _, _ = self._patched_controller()
+        c.connected_clients = {23: {'connection_type': 'master'}}
+        self._key(c, 0xA2, True)
+        self._key(c, 0x2D, True, extended=True)
+        self._key(c, 0x14, True)  # deferred, never injected
+        c._on_client_left(client={'id': 23})
+        keys = [e[:3] for e in c.local_machine.events if e[0] == 'key']
+        self.assertEqual(keys, [('key', 0xA2, True), ('key', 0x2D, True),
+                                ('key', 0x2D, False), ('key', 0xA2, False)])
+        self.assertTrue(c.transport.connected)
+        self.assertEqual(c._lrd_down, set())
+        self.assertEqual(c.connected_clients, {})
+
+    def test_non_controller_departure_preserves_held_keys(self):
+        c, _, _ = self._patched_controller()
+        c.connected_clients = {23: {'connection_type': 'slave'}}
+        self._key(c, 0xA2, True)
+        c._on_client_left({'id': 23})
+        self.assertEqual(c._lrd_down, {(0xA2, False)})
+        self.assertEqual(c.connected_clients, {})
+
+    def test_channel_join_never_logs_connection_key(self):
+        c, _, _ = self._patched_controller()
+        with mock.patch.object(c._module.log, 'info') as info:
+            c._on_channel_joined(channel='private-channel-key')
+        self.assertTrue(info.called)
+        self.assertNotIn('private-channel-key', str(info.call_args_list))
+
+    def test_orca42_fallback_passes_required_input_event(self):
+        import sys, types
+        c, _, _ = self._patched_controller()
+        calls = []
+        script = types.SimpleNamespace()
+        for name in ('sayAll', 'presentTitle', 'presentStatusBar',
+                     'togglePresentationMode'):
+            # These signatures require inputEvent in actual ORCA_42_0 source.
+            def handler(inputEvent, command=name):
+                calls.append((command, inputEvent))
+            setattr(script, name, handler)
+        orca = types.ModuleType('orca')
+        orca.orca_state = types.SimpleNamespace(activeScript=script)
+        with mock.patch.dict(sys.modules, {'orca': orca,
+                                          'linux_rdaccess_orca_adapter': None}):
+            for name in ('sayAll', 'presentTitle', 'presentStatusBar',
+                         'togglePresentationMode'):
+                c._linux_rdaccess_script_call(name)
+        self.assertEqual(calls, [(name, None) for name in
+                                ('sayAll', 'presentTitle', 'presentStatusBar',
+                                 'togglePresentationMode')])
+
+    def test_pass_next_bypasses_translation_before_main_loop_runs(self):
+        c, _, _ = self._patched_controller()
+        queue = []
+        c._linux_rdaccess_run_main = queue.append
+        self._key(c, 0x2D, True, extended=True)
+        self._key(c, 0x71, True)
+        self._key(c, 0x71, True)  # repeat must still be consumed
+        self._key(c, 0x71, False)  # consumed F2 must not acquire a stray release
+        self._key(c, 0x20, True)
+        self._key(c, 0x20, False)
+        keys = [e[:3] for e in c.local_machine.events if e[0] == 'key']
+        self.assertEqual(keys, [('key', 0x2D, True), ('key', 0x20, True),
+                                ('key', 0x20, False)])
+        self.assertFalse(c._lrd_bypass_next)
+        # A later chord is translated again after the one bypassed command.
+        self._key(c, 0x54, True)
+        self.assertIn((0x54, False), c._lrd_swapped)
+
+    def test_external_orca_bypass_prevents_remote_translation(self):
+        import sys, types
+        c, _, _ = self._patched_controller()
+        orca = types.ModuleType('orca')
+        orca.orca_state = types.SimpleNamespace(bypassNextCommand=True)
+        with mock.patch.dict(sys.modules, {'orca': orca}):
+            self._key(c, 0x14, True)
+            self._key(c, 0x54, True)
+            self._key(c, 0x54, False)
+            self._key(c, 0x14, False)
+        keys = [e[:3] for e in c.local_machine.events if e[0] == 'key']
+        self.assertEqual(keys, [('key', 0x14, True), ('key', 0x54, True),
+                                ('key', 0x54, False), ('key', 0x14, False)])
+
+    def test_queued_orca_actions_and_speech_stops_expire_on_control_handoff(self):
+        c, _, _ = self._patched_controller(inline=False)
+        queue, patches = self._fake_glib()
+        commands = []
+        c._linux_rdaccess_script_call = lambda *args: commands.append(args)
+        with patches:
+            self._key(c, 0x2D, True, extended=True)
+            self._key(c, 0x54, True)  # queued stop + title
+            self.assertTrue(c._lrd_local_stop_pending)
+            c.toggle_control()
+            self.assertFalse(c._lrd_local_stop_pending)
+            # New session input must be able to queue its own stop/action.
+            self._key(c, 0x2D, True, extended=True)
+            self._key(c, 0x09, True)
+            for callback in queue:
+                self.assertFalse(callback())
+        self.assertEqual(commands, [('whereAmI',)])
+        self.assertEqual([e for e in c.local_machine.events if e[0] == 'cancel'],
+                         [('cancel',)])
+
+    def test_braille_and_keyboard_callbacks_share_initial_session(self):
+        c, _, _ = self._patched_controller(inline=False)
+        queue, patches = self._fake_glib()
+        commands = []
+        c._linux_rdaccess_script_call = lambda *args: commands.append(args)
+        with patches:
+            c._on_remote_braille_input(
+                scriptPath=['globalCommands', 'GlobalCommands', 'braille_scrollBack'])
+            self._key(c, 0x09, True)
+            for callback in queue:
+                self.assertFalse(callback())
+        self.assertEqual(commands, [('panBrailleLeft',)])
 
     def test_elements_list_prefers_native_orca_list_without_synthetic_keys(self):
         import sys
@@ -565,11 +688,12 @@ class RemoteController:
             processRoutingKey=lambda ev=None: calls.append(("route", ev.event["argument"])),
             goBrailleHome=lambda ev=None: calls.append(("focus", ev)),
             bypassNextCommand=lambda ev=None: calls.append(("bypass", ev)),
-            whereAmIBasic=lambda ev=None: calls.append(("where", ev)),
-            presentTitle=lambda ev=None: calls.append(("title", ev)),
-            presentStatusBar=lambda ev=None: calls.append(("status", ev)),
-            sayAll=lambda ev=None: calls.append(("sayAll", ev)),
-            togglePresentationMode=lambda ev=None: calls.append(("presentation", ev)),
+            # Required inputEvent parameters match actual Orca 42 source.
+            whereAmIBasic=lambda ev: calls.append(("where", ev)),
+            presentTitle=lambda ev: calls.append(("title", ev)),
+            presentStatusBar=lambda ev: calls.append(("status", ev)),
+            sayAll=lambda ev: calls.append(("sayAll", ev)),
+            togglePresentationMode=lambda ev: calls.append(("presentation", ev)),
             structuralNavigation=nav,
         )
         orca = types.ModuleType("orca")
@@ -617,6 +741,39 @@ class RemoteController:
             c._on_remote_braille_input(routingIndex=4)
             c._on_remote_braille_input(cellIndexes=[6])
         self.assertEqual(calls, [("route", 4), ("route", 6)])
+
+    def test_other_braille_cell_commands_are_not_reinterpreted_as_routing(self):
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        with patches:
+            for name in ('braille_reportFormatting', 'braille_selectRange',
+                         'custom_route_action'):
+                c._on_remote_braille_input(
+                    scriptPath=['globalCommands', 'GlobalCommands', name],
+                    routingIndex=7, cellIndexes=[7])
+        self.assertEqual(calls, [])
+
+    def test_braille_keyboard_script_metadata_is_redacted_without_dot_fields(self):
+        c, _, _ = self._patched_controller()
+        for name in ('kb:a', 'kb:control+a', 'braille_dots', 'script_braille_dots'):
+            action, record = c._linux_rdaccess_classify_braille({
+                'scriptPath': ['globalCommands', 'GlobalCommands', name],
+                'id': 'driver-key', 'routingIndex': 2})
+            self.assertEqual(action, 'keyboard')
+            self.assertEqual(record.get('redacted'), 'braille-keyboard-input')
+            self.assertNotIn('scriptPath', record)
+            self.assertNotIn('id', record)
+
+    def test_conflicting_or_ambiguous_routing_fields_are_rejected(self):
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        with patches:
+            for cells in ([1, 2], [2], [], [True], '1'):
+                c._on_remote_braille_input(
+                    scriptPath=['globalCommands', 'GlobalCommands', 'braille_routeTo'],
+                    routingIndex=1, cellIndexes=cells)
+            c._on_remote_braille_input(routingIndex=1, cellIndexes=[1])
+        self.assertEqual(calls, [('route', 1)])
 
     def test_modern_nvda_single_cell_indexes_route_when_legacy_field_is_absent(self):
         import os
@@ -915,6 +1072,18 @@ class RemoteController:
             self._key(c, 0x14, False)
         self.assertEqual(calls, [("title", None), ("status", None)])
         self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [])
+
+    def test_v28_patch_is_upgraded_to_current(self):
+        c, path, _ = self._patched_controller()
+        previous = path.read_text(encoding='utf-8').replace(
+            remote_access.LEGACY_COMPAT_MARKER, remote_access.LEGACY_COMPAT_MARKER_V28)
+        path.write_text(previous, encoding='utf-8')
+        self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
+        result = path.read_text(encoding='utf-8')
+        self.assertNotIn(remote_access.LEGACY_COMPAT_MARKER_V28 + '\n', result)
+        self.assertEqual(result.count('    def _linux_rdaccess_filter_key('), 1)
+        self.assertIn('Joined remote channel', result)
+        self.assertFalse(remote_access.patch_legacy_orca_remote_controller(path))
 
     def test_v27_patch_is_upgraded_to_current(self):
         with tempfile.TemporaryDirectory() as temp:

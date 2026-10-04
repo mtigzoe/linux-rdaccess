@@ -184,8 +184,9 @@ recorded key names, including typed passwords) is off unless you set
 `LINUX_RDACCESS_DEBUG=1` in Orca's environment. Speech interruption on held keys
 is limited to once per 150 ms.
 
-Ctrl (and any other real key press) now sends the NVDA Remote `cancel` message to
-the controlling NVDA immediately. Previously only Linux-side speech was stopped,
+Ctrl now sends the NVDA Remote `cancel` message to the controlling NVDA
+immediately. Other action keys cancel local Orca speech without sending an
+additional protocol message. Previously only Linux-side speech was stopped,
 and upstream defers the cancel to NVDA until the next utterance, so Ctrl with
 nothing spoken afterwards never silenced Windows. Bare Shift/Alt/Insert/CapsLock/Win
 do not cancel, so NVDA+key chords can keep reading.

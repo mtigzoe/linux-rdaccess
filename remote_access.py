@@ -247,7 +247,8 @@ LEGACY_COMPAT_MARKER_V24 = "# linux-rdaccess NVDA/Orca input compatibility v24"
 LEGACY_COMPAT_MARKER_V25 = "# linux-rdaccess NVDA/Orca input compatibility v25"
 LEGACY_COMPAT_MARKER_V26 = "# linux-rdaccess NVDA/Orca input compatibility v26"
 LEGACY_COMPAT_MARKER_V27 = "# linux-rdaccess NVDA/Orca input compatibility v27"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v28"
+LEGACY_COMPAT_MARKER_V28 = "# linux-rdaccess NVDA/Orca input compatibility v28"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v29"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -359,6 +360,9 @@ _LEGACY_HELPERS = '''\
         self._lrd_nvda_key = None
         self._lrd_caps_pending = None
         self._lrd_caps_used = False
+        self._lrd_bypass_next = False
+        self._lrd_generation = getattr(self, "_lrd_generation", 0) + 1
+        self._lrd_local_stop_pending = False
         marker = globals().get("_LRD_D")
         if isinstance(marker, dict):
             marker["ts"] = 0.0
@@ -380,9 +384,8 @@ _LEGACY_HELPERS = '''\
         except Exception:
             log.exception("linux-rdaccess: failed to forward deferred CapsLock")
 
-    def _linux_rdaccess_filter_key(self, pressed, vk_code, extended, modifiers,
-                                   key_name=None, scan_code=None):
-        """Return True when the event was fully handled here."""
+    def _linux_rdaccess_sync_state(self):
+        """Initialize/change the input generation for either input channel."""
         state = (
             getattr(self, "control_state", None),
             bool(getattr(getattr(self, "transport", None), "connected", True)),
@@ -394,6 +397,11 @@ _LEGACY_HELPERS = '''\
             # or modifier after reconnect.
             self._linux_rdaccess_reset_keys()
             self._lrd_state = state
+
+    def _linux_rdaccess_filter_key(self, pressed, vk_code, extended, modifiers,
+                                   key_name=None, scan_code=None):
+        """Return True when the event was fully handled here."""
+        self._linux_rdaccess_sync_state()
         pressed = bool(pressed)
         held = (vk_code, bool(extended))
         repeat = pressed and held in self._lrd_down
@@ -466,6 +474,28 @@ _LEGACY_HELPERS = '''\
                 if vk_code in self._LRD_CTRL_VKS and not repeat:
                     self._linux_rdaccess_stop_nvda_speech()
 
+        # Consumed presses retain ownership of their repeat/release even if
+        # pass-next has just been armed (notably the F2 which armed it).
+        if held in self._lrd_swapped:
+            if not pressed:
+                self._lrd_swapped.discard(held)
+            return True
+
+        # Orca's bypass flag is cleared by its keyboard-event processing. Arm
+        # a local latch when scheduling NVDA+F2 as well: the receive thread can
+        # see the next key before the GLib callback has set Orca's flag.
+        bypass = getattr(self, "_lrd_bypass_next", False)
+        try:
+            from orca import orca_state as _state
+            bypass = bypass or bool(getattr(_state, "bypassNextCommand", False))
+        except ImportError:
+            pass
+        if bypass:
+            if pressed and vk_code not in self._LRD_MODIFIER_VKS:
+                self._lrd_bypass_next = False
+                self._linux_rdaccess_flush_pending_caps()
+            return False
+
         # Remember that a plain (or Shift) D came from the remote session, so the
         # Orca-side hook below can turn it into the landmark key in browse mode
         # only. Nothing is translated here; the key is forwarded unchanged.
@@ -530,6 +560,7 @@ _LEGACY_HELPERS = '''\
                     self._linux_rdaccess_run_main(
                         lambda: self._linux_rdaccess_show_elements_list(modifiers))
                 elif action == "pass_next":
+                    self._lrd_bypass_next = True
                     self._linux_rdaccess_run_main(
                         lambda: self._linux_rdaccess_script_call("bypassNextCommand"))
                 elif action == "where_am_i":
@@ -605,6 +636,10 @@ _LEGACY_HELPERS = '''\
         def text(value):
             return str(value)[:120]
         ids = [kwargs.get("id")] + list(kwargs.get("identifiers") or [])
+        script = kwargs.get("scriptPath") or []
+        name = str(script[-1]) if script else ""
+        if name.startswith("script_"):
+            name = name[len("script_"):]
         # NVDA's BrailleInputGesture declares dots=0 and space=False as class
         # attributes and NVDA Remote copies them with hasattr(), so EVERY
         # gesture from a display whose gesture class inherits it (Eurobraille,
@@ -630,6 +665,10 @@ _LEGACY_HELPERS = '''\
             bool(kwargs.get("dots"))
             or bool(kwargs.get("space"))
             or any(has_braille_input_token(i) for i in ids if i)
+            # NVDA serializes keyboard-emulation scripts as kb:<gesture>.
+            # That string can contain typed characters even without dot data.
+            or name.startswith("kb:")
+            or name == "braille_dots"
         )
         if keyboard:
             # Braille keyboard input is typed text (possibly a password).
@@ -639,21 +678,17 @@ _LEGACY_HELPERS = '''\
                 "source": text(kwargs.get("source")),
             }
         record = {}
-        for name in ("id", "scriptPath", "source", "model", "routingIndex", "cellIndexes"):
-            if name in kwargs:
-                value = kwargs[name]
-                record[name] = (
+        for field in ("id", "scriptPath", "source", "model", "routingIndex", "cellIndexes"):
+            if field in kwargs:
+                value = kwargs[field]
+                record[field] = (
                     [text(v) for v in value]
                     if isinstance(value, (list, tuple)) else text(value)
                 )
         if kwargs.get("identifiers"):
             record["identifiers"] = [text(i) for i in kwargs["identifiers"]]
-        script = kwargs.get("scriptPath") or []
-        name = str(script[-1]) if script else ""
-        if name.startswith("script_"):
-            name = name[len("script_"):]
         action = self._LRD_BRAILLE_ACTIONS.get(name)
-        if action is None and (
+        if action is None and not script and (
             "routingIndex" in kwargs
             or "cellIndexes" in kwargs
         ):
@@ -683,16 +718,25 @@ _LEGACY_HELPERS = '''\
         except OSError:
             pass
 
-    @staticmethod
-    def _linux_rdaccess_run_main(func):
+    def _linux_rdaccess_run_main(self, func):
+        generation = getattr(self, "_lrd_generation", 0)
+
+        def invoke():
+            # A disconnected controller's queued command must not operate on
+            # the new session/focus, or cancel speech started after handoff.
+            if generation == getattr(self, "_lrd_generation", 0):
+                func()
+            return False
+
         try:
             from gi.repository import GLib
         except Exception:
-            func()
+            invoke()
             return
-        GLib.idle_add(lambda: (func(), False)[1])
+        GLib.idle_add(invoke)
 
     def _linux_rdaccess_handle_braille_input(self, kwargs):
+        self._linux_rdaccess_sync_state()
         action, record = self._linux_rdaccess_classify_braille(kwargs)
         try:
             self._linux_rdaccess_trace_braille(record)
@@ -707,13 +751,19 @@ _LEGACY_HELPERS = '''\
                 lambda: self._linux_rdaccess_script_call("goBrailleHome"))
         elif action == "route":
             index = kwargs.get("routingIndex")
-            if index is None:
-                cell_indexes = kwargs.get("cellIndexes")
-                if (
-                    isinstance(cell_indexes, (list, tuple))
-                    and len(cell_indexes) == 1
-                ):
-                    index = cell_indexes[0]
+            if "cellIndexes" in kwargs:
+                cell_indexes = kwargs["cellIndexes"]
+                if not isinstance(cell_indexes, (list, tuple)) or len(cell_indexes) != 1:
+                    return
+                cell = cell_indexes[0]
+                if isinstance(cell, bool) or not isinstance(cell, int):
+                    return
+                # Modern metadata must be unambiguous even when a legacy
+                # field is also supplied. Never turn a multi-cell selection
+                # or conflicting positions into a single routing action.
+                if index is not None and (isinstance(index, bool) or index != cell):
+                    return
+                index = cell
             if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < 1024:
                 return
             import types as _types
@@ -875,7 +925,10 @@ _LEGACY_HELPERS = '''\
             handler = getattr(script, method, None)
             if handler is None:
                 return
-            if method.startswith("pan"):
+            if not args:
+                # Orca 42 requires inputEvent for sayAll, presentTitle,
+                # presentStatusBar and togglePresentationMode. The adapter
+                # supplies None; the fallback must use the same signature.
                 handler(None)
             else:
                 handler(*args)
@@ -1054,6 +1107,18 @@ _LEGACY_RESET_HOOKS = (
     "for _lrd_name in (\"toggle_control\", \"disconnect\",\n"
     "                  \"_on_transport_connected\", \"_on_transport_disconnected\"):\n"
     "    _linux_rdaccess_wrap_reset(_lrd_name)\n"
+    "\n"
+    "_lrd_original_client_left = getattr(RemoteController, \"_on_client_left\", None)\n"
+    "if _lrd_original_client_left is not None:\n"
+    "    def _lrd_on_client_left(self, client=None, **kwargs):\n"
+    "        if isinstance(client, dict):\n"
+    "            known = getattr(self, \"connected_clients\", {}).get(client.get(\"id\"), {})\n"
+    "            role = client.get(\"connection_type\") or known.get(\"connection_type\")\n"
+    "            if role == \"master\":\n"
+    "                self._linux_rdaccess_reset_keys()\n"
+    "                self._lrd_state = None\n"
+    "        return _lrd_original_client_left(self, client=client, **kwargs)\n"
+    "    RemoteController._on_client_left = _lrd_on_client_left\n"
 )
 
 _LEGACY_KEY_CALL = (
@@ -1271,6 +1336,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V28,
                 LEGACY_COMPAT_MARKER_V27,
                 LEGACY_COMPAT_MARKER_V26,
                 LEGACY_COMPAT_MARKER_V25,
@@ -1335,6 +1401,11 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
     text = text.rstrip("\n") + "\n\n\n" + _LEGACY_SLOW_EVENT_HOOK
     text = text.rstrip("\n") + "\n\n\n" + _LEGACY_ORCA_D_HOOK.strip("\n") + "\n"
     text = _silence_dbg(text)
+    # NVDA Remote's channel is the connection key, not a public identifier.
+    text = text.replace(
+        'log.info("Joined channel: %s" % channel)',
+        'log.info("Joined remote channel")',
+    )
 
     try:
         compile(text, str(path), "exec")
