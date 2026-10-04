@@ -505,20 +505,43 @@ _LEGACY_HELPERS = '''\
                 lambda: self._linux_rdaccess_script_call("processRoutingKey", event))
 
     def _linux_rdaccess_send_structural_list(self, key, modifiers):
-        """Ask Orca to show one of its native structural-navigation lists."""
+        """Ask Orca to show one of its native structural-navigation lists.
+
+        Legacy LocalMachine.send_key accepts a modifiers argument but does not
+        apply it during injection. Press Alt and Shift as real key events so
+        Orca receives the actual Alt+Shift+letter binding.
+        """
         vk = ord(str(key)[0].upper())
-        # Orca's list commands use Alt+Shift+<letter>. Reuse the remote
-        # controller's key transport so focus/caret behavior stays in Orca.
-        list_modifiers = ["shift", "alt"]
-        for down in (True, False):
-            self.local_machine.send_key(
-                key_name=str(key).lower(),
-                pressed=down,
-                modifiers=list_modifiers,
-                vk_code=vk,
-                scan_code=0,
-                extended=False,
-            )
+        send = self.local_machine.send_key
+        held_modifiers = (
+            ("Shift_L", 0xA0, False),
+            ("Alt_L", 0xA4, False),
+        )
+        pressed_modifiers = []
+        try:
+            for name, mod_vk, mod_ext in held_modifiers:
+                send(
+                    key_name=name, pressed=True, modifiers=None,
+                    vk_code=mod_vk, scan_code=0, extended=mod_ext)
+                pressed_modifiers.append((name, mod_vk, mod_ext))
+            for down in (True, False):
+                send(
+                    key_name=str(key).lower(),
+                    pressed=down,
+                    modifiers=None,
+                    vk_code=vk,
+                    scan_code=0,
+                    extended=False,
+                )
+        finally:
+            for name, mod_vk, mod_ext in reversed(pressed_modifiers):
+                try:
+                    send(
+                        key_name=name, pressed=False, modifiers=None,
+                        vk_code=mod_vk, scan_code=0, extended=mod_ext)
+                except Exception:
+                    log.exception(
+                        "linux-rdaccess: failed to release structural-list modifier")
 
     def _linux_rdaccess_show_elements_list(self, modifiers):
         try:
