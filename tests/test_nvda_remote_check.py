@@ -10,6 +10,26 @@ import nvda_remote_check
 
 
 class ParseRemoteConfigTests(unittest.TestCase):
+    def test_python_values_with_comments_and_escapes_are_parsed_without_execution(self):
+        text = ('YOUR_NVDAREMOTE_SERVER_ADDRESS = "relay\\u00e9.example" # host\n'
+                'YOUR_NVDAREMOTE_SERVER_PORT = 6837 # port\n'
+                'YOUR_NVDAREMOTE_KEY = ("private\\\\key") # key\n'
+                'raise RuntimeError("must not execute")\n')
+        config = nvda_remote_check.parse_remote_config(text)
+        self.assertEqual(config.server, 'relayé.example')
+        self.assertEqual(config.port, 6837)
+        self.assertTrue(config.key_configured)
+        self.assertNotIn('private', repr(config))
+
+    def test_ambiguous_or_invalid_configuration_does_not_report_ready(self):
+        source = ('YOUR_NVDAREMOTE_SERVER_ADDRESS = "relay.example"\n'
+                  'YOUR_NVDAREMOTE_SERVER_PORT = 6837\n'
+                  'YOUR_NVDAREMOTE_KEY = "private"\n')
+        for tail in ('YOUR_NVDAREMOTE_KEY = "key"\n', 'if invalid\n'):
+            config = nvda_remote_check.parse_remote_config(source + tail)
+            self.assertFalse(config.key_configured)
+            self.assertNotIn('private', repr(config))
+
     def test_parses_config_without_returning_key(self):
         text = """
 YOUR_NVDAREMOTE_SERVER_ADDRESS = "192.168.1.81"

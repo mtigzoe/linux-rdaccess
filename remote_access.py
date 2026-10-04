@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 from dataclasses import asdict, dataclass
 import json
 import os
@@ -26,6 +27,50 @@ _ROLE_TO_ORCA = {
 }
 
 LOCAL_SPEECH_PREF_MARKER = "# linux-rdaccess local Orca speech preference"
+_LOCAL_SPEECH_PREF_HOOK_V1 = """# linux-rdaccess local Orca speech preference
+# Legacy Orca Remote forwards Orca speech to NVDA and then calls the original
+# local SpeechServer methods. In slave/controlled mode, replace only those
+# original local-output callables when requested. The forwarding wrappers stay
+# installed, so Windows NVDA continues to receive all Orca speech.
+if (
+    LINUX_RDACCESS_MUTE_LOCAL_ORCA_SPEECH
+    and globals().get("transport") is not None
+    and getattr(transport, "connection_type", None) == "slave"
+):
+    if "old_speak" in globals():
+        def _linux_rdaccess_muted_old_speak(*args, **kwargs):
+            return None
+        old_speak = _linux_rdaccess_muted_old_speak
+    if "old_speakCharacter" in globals():
+        def _linux_rdaccess_muted_old_speak_character(*args, **kwargs):
+            return None
+        old_speakCharacter = _linux_rdaccess_muted_old_speak_character
+"""
+_LOCAL_SPEECH_PREF_HOOK = """# linux-rdaccess local Orca speech preference
+# Keep forwarding wrappers installed; mute only while the remote transport is
+# actually connected in slave mode, and restore local output on disconnect.
+def _linux_rdaccess_local_speech_muted():
+    peer = globals().get("transport")
+    return (LINUX_RDACCESS_MUTE_LOCAL_ORCA_SPEECH
+            and getattr(peer, "connected", False)
+            and getattr(peer, "connection_type", None) == "slave")
+
+if "old_speak" in globals():
+    _linux_rdaccess_saved_old_speak = old_speak
+    def _linux_rdaccess_muted_old_speak(*args, **kwargs):
+        if _linux_rdaccess_local_speech_muted():
+            return None
+        return _linux_rdaccess_saved_old_speak(*args, **kwargs)
+    old_speak = _linux_rdaccess_muted_old_speak
+if "old_speakCharacter" in globals():
+    _linux_rdaccess_saved_old_speak_character = old_speakCharacter
+    def _linux_rdaccess_muted_old_speak_character(*args, **kwargs):
+        if _linux_rdaccess_local_speech_muted():
+            return None
+        return _linux_rdaccess_saved_old_speak_character(*args, **kwargs)
+    old_speakCharacter = _linux_rdaccess_muted_old_speak_character
+"""
+
 
 
 @dataclass(frozen=True)
@@ -109,6 +154,68 @@ def save_config(config: RemoteAccessConfig, path: Path = DEFAULT_CONFIG) -> None
     _write_private_text(path, json.dumps(asdict(config), indent=2) + "\n")
 
 
+def _replace_configuration_values(text: str, replacements: dict[str, str], *, role: str | None = None) -> str:
+    """Edit real Python values, rejecting missing/ambiguous assignments."""
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        raise ValueError("legacy configuration is invalid Python") from None
+    edits = []
+    for name, value in replacements.items():
+        assignments = [node for node in tree.body if isinstance(node, (ast.Assign, ast.AnnAssign))
+                       and any(isinstance(target, ast.Name) and target.id == name
+                               for target in (node.targets if isinstance(node, ast.Assign) else [node.target]))]
+        if len(assignments) != 1 or assignments[0].value is None:
+            raise ValueError(f"expected one top-level assignment for {name}")
+        if isinstance(assignments[0], ast.Assign) and len(assignments[0].targets) != 1:
+            raise ValueError(f"chained assignment is unsupported for {name}")
+        edits.append((assignments[0].value, value))
+    if role is not None:
+        roles = [keyword.value for node in ast.walk(tree) if isinstance(node, ast.Call)
+                 and (getattr(node.func, "id", None) == "RelayTransport"
+                      or getattr(node.func, "attr", None) == "RelayTransport")
+                 for keyword in node.keywords if keyword.arg == "connection_type"]
+        if not roles:
+            roles = [node.value for node in tree.body if isinstance(node, ast.Assign)
+                     and any(isinstance(target, ast.Name) and target.id == "connection_type"
+                             for target in node.targets)]
+        if len(roles) != 1 or not isinstance(roles[0], ast.Constant) or roles[0].value not in ("slave", "master"):
+            raise ValueError("expected one supported transport connection_type")
+        edits.append((roles[0], json.dumps(role)))
+    # AST column offsets are UTF-8 byte offsets, including on Unicode lines.
+    lines = text.encode("utf-8").splitlines(keepends=True)
+    starts = [0]
+    for line in lines:
+        starts.append(starts[-1] + len(line))
+    data = text.encode("utf-8")
+    spans = [(starts[node.lineno - 1] + node.col_offset,
+              starts[node.end_lineno - 1] + node.end_col_offset, value.encode("utf-8"))
+             for node, value in edits]
+    for start, end, value in sorted(spans, reverse=True):
+        data = data[:start] + value + data[end:]
+    return data.decode("utf-8")
+
+
+def _patch_legacy_transport_logging(path: Path) -> bool:
+    """Remove the verified legacy constructor's connection-key log."""
+    text = path.read_text(encoding="utf-8")
+    backup = path.with_name(path.name + ".linux-rdaccess-backup")
+    if backup.exists():
+        backup.chmod(0o600)
+    original = 'log.info("Connecting to %s channel %s" % (address, channel))'
+    if original not in text:
+        return False
+    updated = text.replace(original, 'log.info("Connecting to remote relay %s", address)')
+    try:
+        compile(updated, str(path), "exec")
+    except SyntaxError:
+        raise ValueError("updated legacy transport would not compile") from None
+    if not backup.exists():
+        _write_private_text(backup, text)
+    _write_private_text(path, updated)
+    return True
+
+
 def update_legacy_orca_customizations(
     config: RemoteAccessConfig,
     path: Path,
@@ -120,66 +227,27 @@ def update_legacy_orca_customizations(
         "YOUR_NVDAREMOTE_SERVER_PORT": str(config.port),
         "YOUR_NVDAREMOTE_KEY": json.dumps(config.key),
     }
-    for name, value in replacements.items():
-        pattern = rf"^\s*{re.escape(name)}\s*=.*$"
-        updated, count = re.subn(
-            pattern,
-            lambda match: f"{name} = {value}",
-            text,
-            count=1,
-            flags=re.MULTILINE,
-        )
-        if count != 1:
-            raise ValueError(f"{name} was not found in {path}")
-        text = updated
+    text = _replace_configuration_values(text, replacements, role=config.orca_connection_type)
 
-    # Legacy Orca Remote hard-codes slave/host in the transport constructor.
-    text, count = re.subn(
-        r'connection_type\s*=\s*["\'](?:slave|master)["\']',
-        f'connection_type="{config.orca_connection_type}"',
-        text,
-        count=1,
-    )
-    if count != 1:
-        raise ValueError(f"connection_type was not found in {path}")
-
-    pref_line = (
-        "LINUX_RDACCESS_MUTE_LOCAL_ORCA_SPEECH = "
-        + ("True" if config.mute_local_orca_speech else "False")
-    )
-    pref_re = re.compile(
-        r"^LINUX_RDACCESS_MUTE_LOCAL_ORCA_SPEECH\s*=.*$",
-        re.MULTILINE,
-    )
-    if pref_re.search(text):
-        text = pref_re.sub(pref_line, text, count=1)
+    pref_name = "LINUX_RDACCESS_MUTE_LOCAL_ORCA_SPEECH"
+    pref_value = "True" if config.mute_local_orca_speech else "False"
+    if any(isinstance(node, ast.Name) and node.id == pref_name and isinstance(node.ctx, ast.Store)
+           for node in ast.walk(ast.parse(text))):
+        text = _replace_configuration_values(text, {pref_name: pref_value})
     else:
-        text = text.rstrip("\n") + "\n\n" + pref_line + "\n"
+        text = text.rstrip("\n") + "\n\n" + pref_name + " = " + pref_value + "\n"
 
-    if LOCAL_SPEECH_PREF_MARKER not in text:
-        text = text.rstrip("\n") + """
+    if _LOCAL_SPEECH_PREF_HOOK_V1 in text:
+        text = text.replace(_LOCAL_SPEECH_PREF_HOOK_V1, _LOCAL_SPEECH_PREF_HOOK, 1)
+    elif _LOCAL_SPEECH_PREF_HOOK not in text:
+        if LOCAL_SPEECH_PREF_MARKER in text:
+            raise ValueError("unrecognized local speech preference patch")
+        text = text.rstrip("\n") + "\n\n" + _LOCAL_SPEECH_PREF_HOOK
 
-
-# linux-rdaccess local Orca speech preference
-# Legacy Orca Remote forwards Orca speech to NVDA and then calls the original
-# local SpeechServer methods. In slave/controlled mode, replace only those
-# original local-output callables when requested. The forwarding wrappers stay
-# installed, so Windows NVDA continues to receive all Orca speech.
-if (
-    LINUX_RDACCESS_MUTE_LOCAL_ORCA_SPEECH
-    and globals().get("transport") is not None
-    and getattr(transport, "connection_type", None) == "slave"
-):
-    if "old_speak" in globals():
-        def _linux_rdaccess_muted_old_speak(*args, **kwargs):
-            return None
-        old_speak = _linux_rdaccess_muted_old_speak
-    if "old_speakCharacter" in globals():
-        def _linux_rdaccess_muted_old_speak_character(*args, **kwargs):
-            return None
-        old_speakCharacter = _linux_rdaccess_muted_old_speak_character
-""" + "\n"
-
+    try:
+        compile(text, str(path), "exec")
+    except SyntaxError:
+        raise ValueError("updated legacy configuration would not compile") from None
     backup = path.with_name(path.name + ".linux-rdaccess-backup")
     if not backup.exists():
         _write_private_text(backup, path.read_text(encoding="utf-8"))
@@ -191,6 +259,13 @@ if (
         except OSError:
             pass
     _write_private_text(path, text)
+
+    transport_path = path.parent / "orca-scripts" / "transport.py"
+    if transport_path.exists():
+        try:
+            _patch_legacy_transport_logging(transport_path)
+        except (ValueError, OSError) as exc:
+            print(f"warning: transport logging patch not applied: {exc}", file=sys.stderr)
 
     remote_controller = path.parent / LEGACY_REMOTE_CONTROLLER_RELATIVE
     if remote_controller.exists():
@@ -1427,18 +1502,8 @@ def disable_legacy_orca_connection(path: Path) -> None:
         "YOUR_NVDAREMOTE_SERVER_ADDRESS": json.dumps("host"),
         "YOUR_NVDAREMOTE_KEY": json.dumps("key"),
     }
-    for name, value in replacements.items():
-        pattern = rf"^\s*{re.escape(name)}\s*=.*$"
-        text, count = re.subn(
-            pattern,
-            f"{name} = {value}",
-            text,
-            count=1,
-            flags=re.MULTILINE,
-        )
-        if count != 1:
-            raise ValueError(f"{name} was not found in {path}")
-    path.write_text(text, encoding="utf-8")
+    text = _replace_configuration_values(text, replacements)
+    _write_private_text(path, text)
 
 def print_status(config: RemoteAccessConfig) -> None:
     data = config.redacted()

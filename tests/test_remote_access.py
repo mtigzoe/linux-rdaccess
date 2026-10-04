@@ -188,6 +188,7 @@ connection_type="slave"
 
 class Transport:
     connection_type = "slave"
+    connected = True  # Real legacy Transport has a connected flag.
 
 transport = Transport()
 calls = []
