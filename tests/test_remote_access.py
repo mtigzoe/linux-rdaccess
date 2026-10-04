@@ -1150,9 +1150,17 @@ class LocalMachine:
         helper._x11 = FakeX11()
         helper._xt = FakeXt()
         helper._dpy = object()
+
+        # A layout change while the key is held must not move the release to
+        # the new keycode. The next fresh press should use the new mapping.
         self.assertTrue(helper.key("a", True))
         self.assertTrue(helper.key("a", False))
-        self.assertEqual(calls, [(38, True), (52, False)])
+        self.assertTrue(helper.key("a", True))
+        self.assertTrue(helper.key("a", False))
+        self.assertEqual(
+            calls,
+            [(38, True), (38, False), (52, True), (52, False)],
+        )
 
     def test_xtest_success_skips_the_xdotool_process(self):
         module, _, _ = self._patched_local()
