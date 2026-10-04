@@ -778,6 +778,20 @@ _LEGACY_HELPERS = '''\
                 if callable(handler):
                     handler(script, None)
                 return
+            if method == "whereAmI":
+                handler = None
+                for name in (
+                    "whereAmIBasic", "where_am_i_basic",
+                    "whereAmI", "where_am_i",
+                    "presentCurrentObject", "present_current_object",
+                ):
+                    candidate = getattr(script, name, None)
+                    if callable(candidate):
+                        handler = candidate
+                        break
+                if handler is not None:
+                    handler(None)
+                return
             handler = getattr(script, method, None)
             if handler is None:
                 return
