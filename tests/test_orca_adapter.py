@@ -177,6 +177,29 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
             self.assertFalse(OrcaRuntimeAdapter.pan_braille_left())
             self.assertFalse(OrcaRuntimeAdapter.route_braille(1))
 
+    def test_structural_list_uses_orca42_enabled_object_show_list(self):
+        calls = []
+        script = types.SimpleNamespace()
+        heading = types.SimpleNamespace(
+            bindings={"list": ["h", 0, "Headings"]},
+            showList=lambda script_obj, event: calls.append(
+                ("headings", script_obj is script, event)
+            ),
+        )
+        link = types.SimpleNamespace(
+            bindings={"list": ["k", 0, "Links"]},
+            showList=lambda script_obj, event: calls.append(
+                ("links", script_obj is script, event)
+            ),
+        )
+        script.structuralNavigation = types.SimpleNamespace(
+            enabledObjects={"heading": heading, "link": link}
+        )
+        with self._fake_orca(script):
+            self.assertTrue(OrcaRuntimeAdapter.show_structural_list("h"))
+            self.assertFalse(OrcaRuntimeAdapter.show_structural_list("m"))
+        self.assertEqual(calls, [("headings", True, None)])
+
     def test_bypass_next_command_supports_legacy_and_snake_case_handlers(self):
         legacy_calls = []
         legacy = types.SimpleNamespace(
