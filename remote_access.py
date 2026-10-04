@@ -1087,6 +1087,7 @@ class _LrdXTest:
         self._x11 = None
         self._xt = None
         self._dpy = None
+        self._down_codes = {}
         self._failed = False
 
     def _open(self):
@@ -1116,15 +1117,22 @@ class _LrdXTest:
             try:
                 if self._dpy is None:
                     self._open()
-                # XKB layout changes can remap keysyms to different
-                # keycodes while Orca stays running. Resolve on every event
-                # rather than keeping a process-lifetime keycode cache.
-                sym = self._x11.XStringToKeysym(str(name).encode("ascii"))
-                code = self._x11.XKeysymToKeycode(self._dpy, sym) if sym else 0
+                # Keep one resolved keycode only for the lifetime of a
+                # held key. This preserves matching down/up events if the XKB
+                # layout changes while the key is held, while the next fresh
+                # press is resolved against the new layout.
+                code = self._down_codes.get(name)
+                if code is None:
+                    sym = self._x11.XStringToKeysym(str(name).encode("ascii"))
+                    code = self._x11.XKeysymToKeycode(self._dpy, sym) if sym else 0
                 if not code:
                     return False
                 if not self._xt.XTestFakeKeyEvent(self._dpy, code, 1 if pressed else 0, 0):
                     return False
+                if pressed:
+                    self._down_codes[name] = code
+                else:
+                    self._down_codes.pop(name, None)
                 self._x11.XFlush(self._dpy)
                 return True
             except Exception:
