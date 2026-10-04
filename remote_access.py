@@ -264,6 +264,7 @@ _LEGACY_HELPERS = '''\
     #        press count)
     # "drop" is needed where Orca binds the key with NO Orca modifier.
     _LRD_ACTION_CHORDS = {
+        0x71: "pass_next",                           # NVDA+F2
         0x76: "elements_list",                       # NVDA+F7
     }
     _LRD_SHIFT_VKS = (0x10, 0xA0, 0xA1)
@@ -275,7 +276,6 @@ _LEGACY_HELPERS = '''\
     _LRD_CHORDS = {
         (0x20, False): (False, "a", 0x41, False, 1, False),         # NVDA+Space: Orca+A focus/browse
         (0x20, True): (False, "z", 0x5A, False, 1, True),           # NVDA+Shift+Space: Orca+Z single-letter nav on/off
-        (0x71, False): (False, "BackSpace", 0x08, False, 1, False), # NVDA+F2: Orca+BackSpace pass next key through
         (0x28, False): (True, "KP_Add", 0x6B, True, 1, False),      # NVDA+Down: say all
         (0x09, False): (False, "KP_Enter", 0x0D, True, 1, False),   # NVDA+Tab: where am I
         (0x54, False): (False, "KP_Enter", 0x0D, False, 1, False),  # NVDA+T: Orca+KP_Enter title
@@ -429,6 +429,9 @@ _LEGACY_HELPERS = '''\
                 if action == "elements_list":
                     self._linux_rdaccess_run_main(
                         lambda: self._linux_rdaccess_show_elements_list(modifiers))
+                elif action == "pass_next":
+                    self._linux_rdaccess_run_main(
+                        lambda: self._linux_rdaccess_script_call("bypassNextCommand"))
                 return True
 
         # NVDA chords -> Orca commands (see _LRD_CHORDS). Only the first press
@@ -674,6 +677,9 @@ _LEGACY_HELPERS = '''\
                 return
             if method == "goBrailleHome":
                 _adapter.to_braille_focus()
+                return
+            if method == "bypassNextCommand":
+                _adapter.bypass_next_command()
                 return
             _adapter.call_script(method, *args, default_event=method.startswith("pan"))
             return
