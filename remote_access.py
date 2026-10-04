@@ -482,7 +482,7 @@ _LEGACY_HELPERS = '''\
                 "source": text(kwargs.get("source")),
             }
         record = {}
-        for name in ("id", "scriptPath", "source", "model", "routingIndex"):
+        for name in ("id", "scriptPath", "source", "model", "routingIndex", "cellIndexes"):
             if name in kwargs:
                 value = kwargs[name]
                 record[name] = (
@@ -537,6 +537,13 @@ _LEGACY_HELPERS = '''\
                     "panBrailleLeft" if action == "pan_back" else "panBrailleRight"))
         elif action == "route":
             index = kwargs.get("routingIndex")
+            if index is None:
+                cell_indexes = kwargs.get("cellIndexes")
+                if (
+                    isinstance(cell_indexes, (list, tuple))
+                    and len(cell_indexes) == 1
+                ):
+                    index = cell_indexes[0]
             if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < 1024:
                 return
             import types as _types
