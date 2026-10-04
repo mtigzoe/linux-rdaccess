@@ -205,6 +205,7 @@ _LEGACY_HELPERS = '''\
         0x76: "elements_list",                       # NVDA+F7
     }
     _LRD_SHIFT_VKS = (0x10, 0xA0, 0xA1)
+    _LRD_NVDA_VKS = (0x2D, 0x14)
     # Key: (vk, Shift held). Value: (extended-required, Orca key name, target
     # vk, drop NVDA modifier, press count, drop Shift). Orca matches the
     # modifier state exactly, so Shift is released around the key when Orca's
@@ -306,9 +307,17 @@ _LEGACY_HELPERS = '''\
             self._lrd_down.add(held)
         else:
             self._lrd_down.discard(held)
-        if vk_code in (0x2D, 0x14):
-            self._lrd_nvda_down = pressed
-            self._lrd_nvda_key = held if pressed else None
+        if vk_code in self._LRD_NVDA_VKS:
+            nvda_keys = sorted(
+                (k for k in self._lrd_down if k[0] in self._LRD_NVDA_VKS),
+                key=lambda k: (k[0] == 0x14, k[0], k[1]),
+            )
+            self._lrd_nvda_down = bool(nvda_keys)
+            # Prefer Insert when both configured NVDA modifiers are held. It
+            # can be temporarily released for Orca commands that require no
+            # modifier; CapsLock cannot be safely released/re-pressed because
+            # doing so would toggle the lock state.
+            self._lrd_nvda_key = nvda_keys[0] if nvda_keys else None
 
         # Interrupt stale speech on a real action, as NVDA does. Plain
         # modifier keys (and their auto-repeat) must not cut off speech that
