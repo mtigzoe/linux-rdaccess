@@ -712,6 +712,7 @@ class RemoteController:
             self._key(c, 0x14, False)                    # release only CapsLock
             self._key(c, 0x20, True)                     # NVDA+Space still translates
         self.assertEqual(calls, [("presentation", None)])
+        self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [])
 
     def test_say_all_with_both_nvda_modifiers_never_releases_either(self):
         import os
@@ -754,6 +755,17 @@ class RemoteController:
         self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [])
         c.toggle_control()
         self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [])
+
+    def test_unhandled_capslock_chord_flushes_modifier_before_target_key(self):
+        c, _, _ = self._patched_controller()
+        self._key(c, 0x14, True)
+        self._key(c, 0x74, True)   # CapsLock+F5 is not translated yet
+        self._key(c, 0x74, False)
+        self._key(c, 0x14, False)
+        self.assertEqual(
+            self._names(c),
+            [(0x14, True), (0x74, True), (0x74, False), (0x14, False)],
+        )
 
     def test_capslock_nvda_key_supports_direct_say_all_without_toggling_capslock(self):
         import os
@@ -799,8 +811,9 @@ class RemoteController:
             self._key(c, 0x14, True)
             self._key(c, 0x54, True); self._key(c, 0x54, False)
             self._key(c, 0x23, True, extended=True); self._key(c, 0x23, False, extended=True)
+            self._key(c, 0x14, False)
         self.assertEqual(calls, [("title", None), ("status", None)])
-        self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [(0x14, True)])
+        self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [])
 
     def test_v26_patch_is_upgraded_to_current(self):
         with tempfile.TemporaryDirectory() as temp:
