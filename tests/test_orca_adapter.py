@@ -48,6 +48,20 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
             self.assertTrue(OrcaRuntimeAdapter.route_braille(12))
         self.assertEqual(calls, [("left", None), ("right", None), ("route", 12)])
 
+    def test_snake_case_active_script_is_used_when_camelcase_is_none(self):
+        calls = []
+        script = types.SimpleNamespace(
+            pan_braille_left=lambda event=None: calls.append("left"),
+        )
+        orca = types.ModuleType("orca")
+        state = types.ModuleType("orca.orca_state")
+        state.activeScript = None
+        state.active_script = script
+        orca.orca_state = state
+        with mock.patch.dict(sys.modules, {"orca": orca, "orca.orca_state": state}):
+            self.assertTrue(OrcaRuntimeAdapter.pan_braille_left())
+        self.assertEqual(calls, ["left"])
+
     def test_snake_case_aliases_are_supported(self):
         calls = []
         script = types.SimpleNamespace(
