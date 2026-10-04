@@ -1139,7 +1139,14 @@ class _LrdXTest:
                 # press is resolved against the new layout.
                 code = self._down_codes.get(name)
                 if code is None:
-                    sym = self._x11.XStringToKeysym(str(name).encode("ascii"))
+                    try:
+                        encoded_name = str(name).encode("ascii")
+                    except UnicodeEncodeError:
+                        # Let upstream xdotool/other backends handle names Xlib's
+                        # ASCII XStringToKeysym path cannot represent. One such
+                        # key must not disable XTest for the rest of the session.
+                        return False
+                    sym = self._x11.XStringToKeysym(encoded_name)
                     code = self._x11.XKeysymToKeycode(self._dpy, sym) if sym else 0
                 if not code:
                     return False
