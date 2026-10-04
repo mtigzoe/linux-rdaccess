@@ -218,7 +218,16 @@ class OrcaRuntimeAdapter:
 
     @classmethod
     def where_am_i(cls) -> bool:
+        # Orca 42's default script exposes whereAmIBasic(inputEvent), not
+        # whereAmI. Keep older/newer aliases as fallbacks.
         return cls.call_script(
-            ("whereAmI", "where_am_i", "presentCurrentObject", "present_current_object"),
+            (
+                "whereAmIBasic",
+                "where_am_i_basic",
+                "whereAmI",
+                "where_am_i",
+                "presentCurrentObject",
+                "present_current_object",
+            ),
             default_event=True,
         )
