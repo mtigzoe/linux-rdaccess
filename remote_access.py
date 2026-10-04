@@ -552,7 +552,9 @@ _LEGACY_HELPERS = '''\
 
         try:
             from orca import orca_state as _state
-            script = getattr(_state, "activeScript", getattr(_state, "active_script", None))
+            script = getattr(_state, "activeScript", None)
+            if script is None:
+                script = getattr(_state, "active_script", None)
             handler = getattr(script, method, None) if script is not None else None
             if handler is None:
                 return
