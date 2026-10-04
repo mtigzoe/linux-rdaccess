@@ -1469,6 +1469,18 @@ class LocalMachine:
         again = KE("d", self.D_CODE, pressed=False)       # second release: state cleared
         self.assertEqual(again._handler.function, "live_region")
 
+    def test_landmark_release_reuses_press_keycode_if_lookup_changes(self):
+        import orca.keybindings as kb
+        c, KE, _ = self._hooked()
+        self._remote_d(c)
+        press = KE("d", self.D_CODE)
+        self.assertEqual(press._handler.function, "landmark_next")
+        kb.getKeycode = lambda key: None
+        rel = KE("d", self.D_CODE, pressed=False)
+        self.assertEqual(rel._handler.function, "landmark_next")
+        self.assertFalse(c._module._LRD_D["swapped"])
+        self.assertIsNone(c._module._LRD_D["code"])
+
     def test_landmark_release_keeps_translated_identity_if_modifiers_change(self):
         c, KE, _ = self._hooked()
         self._remote_d(c)
