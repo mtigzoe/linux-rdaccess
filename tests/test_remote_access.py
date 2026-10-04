@@ -464,7 +464,7 @@ class RemoteController:
             processRoutingKey=lambda ev=None: calls.append(("route", ev.event["argument"])),
             goBrailleHome=lambda ev=None: calls.append(("focus", ev)),
             bypassNextCommand=lambda ev=None: calls.append(("bypass", ev)),
-            whereAmI=lambda ev=None: calls.append(("where", ev)),
+            whereAmIBasic=lambda ev=None: calls.append(("where", ev)),
             presentTitle=lambda ev=None: calls.append(("title", ev)),
             presentStatusBar=lambda ev=None: calls.append(("status", ev)),
             sayAll=lambda ev=None: calls.append(("sayAll", ev)),
