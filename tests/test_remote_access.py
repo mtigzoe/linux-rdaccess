@@ -307,6 +307,19 @@ class RemoteController:
         self.assertNotIn(("key", 0x20, False), keys2)
         self.assertIn(("key", 0x2D, False), keys2)
 
+    def test_zero_valued_braille_input_is_still_redacted(self):
+        c, _, _ = self._patched_controller()
+        action, record = c._linux_rdaccess_classify_braille({
+            "id": "br(test):space",
+            "dots": 0,
+            "space": False,
+            "identifiers": ["br(test):space"],
+        })
+        self.assertEqual(action, "keyboard")
+        self.assertEqual(record["redacted"], "braille-keyboard-input")
+        self.assertNotIn("id", record)
+        self.assertNotIn("identifiers", record)
+
     def test_braille_trace_is_private_bounded_and_redacts_typed_input(self):
         import os
         c, _, home = self._patched_controller()
