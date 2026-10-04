@@ -265,6 +265,7 @@ _LEGACY_HELPERS = '''\
     #        press count)
     # "drop" is needed where Orca binds the key with NO Orca modifier.
     _LRD_ACTION_CHORDS = {
+        0x09: "where_am_i",                          # NVDA+Tab
         0x71: "pass_next",                           # NVDA+F2
         0x76: "elements_list",                       # NVDA+F7
     }
@@ -278,7 +279,6 @@ _LEGACY_HELPERS = '''\
         (0x20, False): (False, "a", 0x41, False, 1, False),         # NVDA+Space: Orca+A focus/browse
         (0x20, True): (False, "z", 0x5A, False, 1, True),           # NVDA+Shift+Space: Orca+Z single-letter nav on/off
         (0x28, False): (True, "KP_Add", 0x6B, True, 1, False),      # NVDA+Down: say all
-        (0x09, False): (False, "KP_Enter", 0x0D, True, 1, False),   # NVDA+Tab: where am I
         (0x54, False): (False, "KP_Enter", 0x0D, False, 1, False),  # NVDA+T: Orca+KP_Enter title
         (0x23, False): (True, "KP_Enter", 0x0D, False, 2, False),   # NVDA+End: status bar (2x)
     }
@@ -433,6 +433,9 @@ _LEGACY_HELPERS = '''\
                 elif action == "pass_next":
                     self._linux_rdaccess_run_main(
                         lambda: self._linux_rdaccess_script_call("bypassNextCommand"))
+                elif action == "where_am_i":
+                    self._linux_rdaccess_run_main(
+                        lambda: self._linux_rdaccess_script_call("whereAmI"))
                 return True
 
         # NVDA chords -> Orca commands (see _LRD_CHORDS). Only the first press
@@ -681,6 +684,9 @@ _LEGACY_HELPERS = '''\
                 return
             if method == "bypassNextCommand":
                 _adapter.bypass_next_command()
+                return
+            if method == "whereAmI":
+                _adapter.where_am_i()
                 return
             _adapter.call_script(method, *args, default_event=method.startswith("pan"))
             return
