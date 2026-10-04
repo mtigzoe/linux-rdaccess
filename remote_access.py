@@ -257,6 +257,33 @@ _LEGACY_HELPERS = '''\
         except Exception:
             log.exception("linux-rdaccess: failed to send cancel to NVDA")
 
+    def _linux_rdaccess_reset_keys(self):
+        """Release forwarded held keys and clear compatibility state.
+
+        Remote disconnects/control hand-offs can lose key-up events. Keys in
+        _lrd_swapped were consumed by the compatibility layer and were never
+        forwarded as their original key, so do not synthesize releases for
+        those. Everything else that is still down is released directly through
+        the local machine before state is forgotten.
+        """
+        down = set(getattr(self, "_lrd_down", set()))
+        swapped = set(getattr(self, "_lrd_swapped", set()))
+        send = getattr(getattr(self, "local_machine", None), "send_key", None)
+        if callable(send):
+            for vk_code, extended in sorted(down):
+                if vk_code in swapped:
+                    continue
+                try:
+                    send(
+                        key_name=None, pressed=False, modifiers=None,
+                        vk_code=vk_code, scan_code=0, extended=extended)
+                except Exception:
+                    log.exception("linux-rdaccess: failed to release held key on reset")
+        self._lrd_down = set()
+        self._lrd_nvda_down = False
+        self._lrd_swapped = set()
+        self._lrd_nvda_key = None
+
     def _linux_rdaccess_filter_key(self, pressed, vk_code, extended, modifiers,
                                    key_name=None, scan_code=None):
         """Return True when the event was fully handled here."""
@@ -265,13 +292,12 @@ _LEGACY_HELPERS = '''\
             bool(getattr(getattr(self, "transport", None), "connected", True)),
         )
         if getattr(self, "_lrd_state", None) != state:
-            # Control moved local/remote or the transport reconnected:
-            # forget held keys so a stale NVDA modifier cannot rewrite Space.
+            # Control moved local/remote or the transport reconnected. Release
+            # keys that were actually forwarded before forgetting state; a
+            # missing remote key-up must never leave Linux with a stuck arrow
+            # or modifier after reconnect.
+            self._linux_rdaccess_reset_keys()
             self._lrd_state = state
-            self._lrd_down = set()
-            self._lrd_nvda_down = False
-            self._lrd_swapped = set()
-            self._lrd_nvda_key = None
         pressed = bool(pressed)
         held = (vk_code, bool(extended))
         repeat = pressed and held in self._lrd_down
@@ -662,7 +688,10 @@ _LEGACY_RESET_HOOKS = (
     "    if original is None:\n"
     "        return\n"
     "    def wrapper(self, *args, **kwargs):\n"
-    "        self._lrd_state = None\n"
+    "        try:\n"
+    "            self._linux_rdaccess_reset_keys()\n"
+    "        finally:\n"
+    "            self._lrd_state = None\n"
     "        return original(self, *args, **kwargs)\n"
     "    wrapper.__name__ = original.__name__\n"
     "    setattr(RemoteController, name, wrapper)\n"
