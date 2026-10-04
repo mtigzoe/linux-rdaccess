@@ -171,6 +171,20 @@ class OrcaRuntimeAdapter:
         )
 
     @classmethod
+    def present_title(cls) -> bool:
+        return cls.call_script(
+            ("presentTitle", "present_title"),
+            default_event=True,
+        )
+
+    @classmethod
+    def present_status_bar(cls) -> bool:
+        return cls.call_script(
+            ("presentStatusBar", "present_status_bar"),
+            default_event=True,
+        )
+
+    @classmethod
     def where_am_i(cls) -> bool:
         return cls.call_script(
             ("whereAmI", "where_am_i", "presentCurrentObject", "present_current_object"),
