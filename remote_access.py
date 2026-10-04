@@ -407,6 +407,13 @@ _LEGACY_HELPERS = '''\
             # modifier; CapsLock cannot be safely released/re-pressed because
             # doing so would toggle the lock state.
             self._lrd_nvda_key = nvda_keys[0] if nvda_keys else None
+            if (
+                pressed
+                and vk_code != 0x14
+                and vk_code in self._LRD_NVDA_VKS
+                and getattr(self, "_lrd_caps_pending", None) is not None
+            ):
+                self._lrd_caps_used = True
 
         # CapsLock can be configured as the NVDA modifier. Forwarding its press
         # immediately toggles Linux Caps Lock before we know whether this is a
@@ -416,7 +423,10 @@ _LEGACY_HELPERS = '''\
             if pressed:
                 if not repeat:
                     self._lrd_caps_pending = held
-                    self._lrd_caps_used = False
+                    self._lrd_caps_used = any(
+                        k != held and k[0] in self._LRD_NVDA_VKS
+                        for k in self._lrd_down
+                    )
                 return True
             if pending == held:
                 used = bool(getattr(self, "_lrd_caps_used", False))
