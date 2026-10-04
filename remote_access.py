@@ -852,7 +852,7 @@ def _lrd_maybe_swap_d(event, keybindings):
     event.hw_code = code
     handler = script.keyBindings.getInputHandler(event)
     if handler is None or handler.function not in nav.functions:
-        event.hw_code = original
+        event.hw_code, event.modifiers = original
         return None
     if pressed:
         _LRD_D["ts"] = 0.0
