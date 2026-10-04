@@ -167,8 +167,10 @@ Braille keyboard input is still not forwarded.
 
 Optional gesture trace (`~/.local/share/orca/orca-remote-braille-input.log`):
 disabled by default. Set `LINUX_RDACCESS_BRAILLE_TRACE=1` in Orca's environment
-to enable it. The file is mode 0600, rotates at 256 KiB, and records only safe
-gesture metadata. Braille-keyboard input (dots/space) is typed text and remains
+to enable it. The file and rotated copy are mode 0600; rotation occurs at 256 KiB.
+Only canonical supported command names are recorded; arbitrary identifiers,
+driver metadata and unknown script paths are redacted. Braille-keyboard input
+(dots/space) is typed text and remains
 recorded only as `redacted` even when tracing is enabled. The patch also removes
 upstream's debug line that logged the whole braille message.
 
@@ -180,8 +182,8 @@ keystroke), so held arrow keys, fast typing and multi-key chords queued up and
 played out late. `linux-rdaccess connect` now also patches `local_machine.py` to
 inject keys in-process through XTest (about 0.03 ms per keystroke) and falls back
 to `xdotool` for any key it cannot map. Upstream's per-keypress debug log (which
-recorded key names, including typed passwords) is off unless you set
-`LINUX_RDACCESS_DEBUG=1` in Orca's environment. Speech interruption on held keys
+recorded key names, including typed passwords) is disabled. Setting
+`LINUX_RDACCESS_DEBUG=1` enables timing diagnostics only. Speech interruption on held keys
 is limited to once per 150 ms.
 
 Ctrl now sends the NVDA Remote `cancel` message to the controlling NVDA
@@ -198,6 +200,14 @@ busy Firefox navigation. Remote clipboard writes are likewise moved off the
 network thread (GTK is not thread-safe). Run `linux-rdaccess doctor` to check the
 patches are active; set `LINUX_RDACCESS_DEBUG=1` to log key-handling stalls
 (duration only, never which key) to `~/.local/share/orca/orca-remote-slow-events.log`.
+
+The current patches are controller **v30** and local-machine **v7**. Update the
+installed command from the repository with `python3 linux_rdaccess.py install`,
+then run `linux-rdaccess connect` to update the Orca-side files and restart Orca.
+`doctor` verifies the complete patch, including valid Python, rather than only
+its version comment. Local Orca speech resumes when the relay disconnects.
+See the [follow-up audit](docs/compatibility-audit-2026-10-04-followup.md) for the
+source evidence, regressions and remaining desktop checks.
 
 ## VS Code on Linux
 
