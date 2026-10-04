@@ -733,6 +733,16 @@ class RemoteController:
         self.assertEqual([k for k in self._names(c) if k[0] == 0x0D], [])
         self.assertEqual([k for k in self._names(c) if k[0] in (0x54, 0x23)], [])
 
+    def test_nonextended_end_with_nvda_is_not_mistaken_for_status_command(self):
+        import os
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        with patches, mock.patch.dict(os.environ, {"HOME": home}):
+            self._key(c, 0x2D, True, extended=True)
+            self._key(c, 0x23, True, extended=False)
+        self.assertEqual(calls, [])
+        self.assertIn((0x23, True), self._names(c))
+
     def test_capslock_title_and_status_are_modifier_layout_independent(self):
         import os
         c, _, home = self._patched_controller()
