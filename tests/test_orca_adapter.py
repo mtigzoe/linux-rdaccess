@@ -211,6 +211,40 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
             self.assertTrue(OrcaRuntimeAdapter.to_braille_focus())
         self.assertEqual(snake_calls, [None])
 
+    def test_browse_and_structural_navigation_support_legacy_handlers(self):
+        calls = []
+        script = types.SimpleNamespace()
+        script.togglePresentationMode = lambda event=None: calls.append(("presentation", event))
+        script.structuralNavigation = types.SimpleNamespace(
+            toggleStructuralNavigation=lambda script_obj, event=None: calls.append(
+                ("structural", script_obj is script, event)
+            )
+        )
+        with self._fake_orca(script):
+            self.assertTrue(OrcaRuntimeAdapter.toggle_presentation_mode())
+            self.assertTrue(OrcaRuntimeAdapter.toggle_structural_navigation())
+        self.assertEqual(
+            calls,
+            [("presentation", None), ("structural", True, None)],
+        )
+
+    def test_structural_navigation_supports_snake_case_aliases(self):
+        calls = []
+        script = types.SimpleNamespace()
+        script.toggle_presentation_mode = lambda event=None: calls.append(("presentation", event))
+        script.structural_navigation = types.SimpleNamespace(
+            toggle_structural_navigation=lambda script_obj, event=None: calls.append(
+                ("structural", script_obj is script, event)
+            )
+        )
+        with self._fake_orca(script, snake_state=True):
+            self.assertTrue(OrcaRuntimeAdapter.toggle_presentation_mode())
+            self.assertTrue(OrcaRuntimeAdapter.toggle_structural_navigation())
+        self.assertEqual(
+            calls,
+            [("presentation", None), ("structural", True, None)],
+        )
+
     def test_title_and_status_support_legacy_and_snake_case_handlers(self):
         legacy_calls = []
         legacy = types.SimpleNamespace(
