@@ -740,7 +740,19 @@ _LEGACY_HELPERS = '''\
             script = getattr(_state, "activeScript", None)
             if script is None:
                 script = getattr(_state, "active_script", None)
-            handler = getattr(script, method, None) if script is not None else None
+            if script is None:
+                return
+            if method == "toggleStructuralNavigation":
+                nav = getattr(script, "structuralNavigation", None)
+                if nav is None:
+                    nav = getattr(script, "structural_navigation", None)
+                handler = getattr(nav, "toggleStructuralNavigation", None) if nav is not None else None
+                if not callable(handler) and nav is not None:
+                    handler = getattr(nav, "toggle_structural_navigation", None)
+                if callable(handler):
+                    handler(script, None)
+                return
+            handler = getattr(script, method, None)
             if handler is None:
                 return
             if method.startswith("pan"):
