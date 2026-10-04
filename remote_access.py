@@ -1072,7 +1072,8 @@ _LEGACY_BRAILLE_HANDLER = (
 LOCAL_MACHINE_MARKER_V1 = "# linux-rdaccess low-latency XTest key injection"
 LOCAL_MACHINE_MARKER_V2 = LOCAL_MACHINE_MARKER_V1 + " v2"
 LOCAL_MACHINE_MARKER_V3 = LOCAL_MACHINE_MARKER_V1 + " v3"
-LOCAL_MACHINE_MARKER = LOCAL_MACHINE_MARKER_V1 + " v4"
+LOCAL_MACHINE_MARKER_V4 = LOCAL_MACHINE_MARKER_V1 + " v4"
+LOCAL_MACHINE_MARKER = LOCAL_MACHINE_MARKER_V1 + " v5"
 LEGACY_LOCAL_MACHINE_RELATIVE = Path("orca-scripts/local_machine.py")
 
 # Upstream writes every key name (including typed passwords) to a debug log,
