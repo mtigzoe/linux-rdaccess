@@ -663,17 +663,30 @@ def _lrd_maybe_swap_d(event, keybindings):
     if getattr(event, "event_string", None) not in ("d", "D"):
         return None
     pressed = event.isPressedKey()
-    if not pressed and not _LRD_D["swapped"]:
-        return None
-    if pressed:
-        # The marker belongs to exactly one D that Orca evaluates, whether or
-        # not it ends up translated; otherwise a refused remote D (focus mode)
-        # would leak into a later local D.
-        fresh = __import__("time").monotonic() - _LRD_D["ts"] <= _LRD_D_WINDOW
-        _LRD_D["ts"] = 0.0
-        _LRD_D["swapped"] = False
-        if not fresh:
+    if not pressed:
+        if not _LRD_D["swapped"]:
             return None
+        # A translated key-up must follow the identity chosen for its key-down.
+        # Do not re-evaluate Ctrl/Alt/Orca modifiers or browse/focus mode here:
+        # those can legitimately change while D is held, and sending D-up after
+        # an M-down creates an unmatched structural-navigation key sequence.
+        code = keybindings.getKeycode("m")
+        if not code:
+            _LRD_D["swapped"] = False
+            return None
+        original = event.hw_code
+        event.hw_code = code
+        _LRD_D["swapped"] = False
+        return original
+
+    # The marker belongs to exactly one D that Orca evaluates, whether or
+    # not it ends up translated; otherwise a refused remote D (focus mode)
+    # would leak into a later local D.
+    fresh = __import__("time").monotonic() - _LRD_D["ts"] <= _LRD_D_WINDOW
+    _LRD_D["ts"] = 0.0
+    _LRD_D["swapped"] = False
+    if not fresh:
+        return None
     blocked = (keybindings.CTRL_MODIFIER_MASK | keybindings.ALT_MODIFIER_MASK
                | keybindings.ORCA_MODIFIER_MASK)
     if event.modifiers & blocked:
