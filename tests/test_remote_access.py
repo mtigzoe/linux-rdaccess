@@ -76,6 +76,59 @@ transport = RelayTransport(
             self.assertTrue(path.with_name(path.name + ".linux-rdaccess-backup").exists())
 
 
+    def test_local_orca_speech_preference_is_applied_in_slave_mode(self):
+        original = """YOUR_NVDAREMOTE_SERVER_ADDRESS = "host"
+YOUR_NVDAREMOTE_SERVER_PORT = 6837
+YOUR_NVDAREMOTE_KEY = "key"
+connection_type="slave"
+
+class Transport:
+    connection_type = "slave"
+
+transport = Transport()
+calls = []
+
+def old_speak(*args, **kwargs):
+    calls.append("speak")
+
+def old_speakCharacter(*args, **kwargs):
+    calls.append("character")
+"""
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "orca-customizations.py"
+            path.write_text(original, encoding="utf-8")
+
+            muted = remote_access.RemoteAccessConfig(
+                host="nvdaremote.com", port=6837, role="host",
+                key="abc", mute_local_orca_speech=True,
+            )
+            remote_access.update_legacy_orca_customizations(muted, path)
+            namespace = {}
+            exec(compile(path.read_text(encoding="utf-8"), str(path), "exec"), namespace)
+            namespace["old_speak"]()
+            namespace["old_speakCharacter"]()
+            self.assertEqual(namespace["calls"], [])
+            self.assertIn(
+                remote_access.LOCAL_SPEECH_PREF_MARKER,
+                path.read_text(encoding="utf-8"),
+            )
+
+            speaking = remote_access.RemoteAccessConfig(
+                host="nvdaremote.com", port=6837, role="host",
+                key="abc", mute_local_orca_speech=False,
+            )
+            remote_access.update_legacy_orca_customizations(speaking, path)
+            namespace = {}
+            exec(compile(path.read_text(encoding="utf-8"), str(path), "exec"), namespace)
+            namespace["old_speak"]()
+            namespace["old_speakCharacter"]()
+            self.assertEqual(namespace["calls"], ["speak", "character"])
+            self.assertEqual(
+                path.read_text(encoding="utf-8").count(
+                    remote_access.LOCAL_SPEECH_PREF_MARKER),
+                1,
+            )
+
     # ---- legacy Orca Remote input shim -------------------------------
 
     UPSTREAM_CONTROLLER = '''import logging
