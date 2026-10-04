@@ -347,6 +347,7 @@ _LEGACY_HELPERS = '''\
         if isinstance(marker, dict):
             marker["ts"] = 0.0
             marker["swapped"] = False
+            marker["modifiers"] = 0
 
     def _linux_rdaccess_filter_key(self, pressed, vk_code, extended, modifiers,
                                    key_name=None, scan_code=None):
@@ -680,7 +681,7 @@ _LEGACY_ORCA_D_HOOK = '''
 # captures the key handler there, before consumesKeyboardEvent), then restores
 # hw_code so echo, double-click detection and release matching see the real key.
 # Opt out with LINUX_RDACCESS_NVDA_D_LANDMARK=0.
-_LRD_D = {"ts": 0.0, "swapped": False}
+_LRD_D = {"ts": 0.0, "swapped": False, "modifiers": 0}
 _LRD_D_WINDOW = 1.0
 
 
@@ -702,9 +703,11 @@ def _lrd_maybe_swap_d(event, keybindings):
         if not code:
             _LRD_D["swapped"] = False
             return None
-        original = event.hw_code
+        original = (event.hw_code, event.modifiers)
         event.hw_code = code
+        event.modifiers = _LRD_D.get("modifiers", 0)
         _LRD_D["swapped"] = False
+        _LRD_D["modifiers"] = 0
         return original
 
     # The marker belongs to exactly one D that Orca evaluates, whether or
@@ -729,7 +732,7 @@ def _lrd_maybe_swap_d(event, keybindings):
     code = keybindings.getKeycode("m")
     if not code:
         return None
-    original = event.hw_code
+    original = (event.hw_code, event.modifiers)
     event.hw_code = code
     handler = script.keyBindings.getInputHandler(event)
     if handler is None or handler.function not in nav.functions:
@@ -738,8 +741,10 @@ def _lrd_maybe_swap_d(event, keybindings):
     if pressed:
         _LRD_D["ts"] = 0.0
         _LRD_D["swapped"] = True
+        _LRD_D["modifiers"] = event.modifiers
     else:
         _LRD_D["swapped"] = False
+        _LRD_D["modifiers"] = 0
     return original
 
 
@@ -763,7 +768,7 @@ def _lrd_install_orca_hook():
             return original(self)
         finally:
             if restore is not None:
-                self.hw_code = restore
+                self.hw_code, self.modifiers = restore
 
     cls.shouldConsume = shouldConsume
     cls._lrd_d_hooked = True
