@@ -24,6 +24,8 @@ _ROLE_TO_ORCA = {
     "client": "master",
 }
 
+LOCAL_SPEECH_PREF_MARKER = "# linux-rdaccess local Orca speech preference"
+
 
 @dataclass(frozen=True)
 class RemoteAccessConfig:
@@ -132,6 +134,43 @@ def update_legacy_orca_customizations(
     )
     if count != 1:
         raise ValueError(f"connection_type was not found in {path}")
+
+    pref_line = (
+        "LINUX_RDACCESS_MUTE_LOCAL_ORCA_SPEECH = "
+        + ("True" if config.mute_local_orca_speech else "False")
+    )
+    pref_re = re.compile(
+        r"^LINUX_RDACCESS_MUTE_LOCAL_ORCA_SPEECH\s*=.*$",
+        re.MULTILINE,
+    )
+    if pref_re.search(text):
+        text = pref_re.sub(pref_line, text, count=1)
+    else:
+        text = text.rstrip("\n") + "\n\n" + pref_line + "\n"
+
+    if LOCAL_SPEECH_PREF_MARKER not in text:
+        text = text.rstrip("\n") + """
+
+
+# linux-rdaccess local Orca speech preference
+# Legacy Orca Remote forwards Orca speech to NVDA and then calls the original
+# local SpeechServer methods. In slave/controlled mode, replace only those
+# original local-output callables when requested. The forwarding wrappers stay
+# installed, so Windows NVDA continues to receive all Orca speech.
+if (
+    LINUX_RDACCESS_MUTE_LOCAL_ORCA_SPEECH
+    and globals().get("transport") is not None
+    and getattr(transport, "connection_type", None) == "slave"
+):
+    if "old_speak" in globals():
+        def _linux_rdaccess_muted_old_speak(*args, **kwargs):
+            return None
+        old_speak = _linux_rdaccess_muted_old_speak
+    if "old_speakCharacter" in globals():
+        def _linux_rdaccess_muted_old_speak_character(*args, **kwargs):
+            return None
+        old_speakCharacter = _linux_rdaccess_muted_old_speak_character
+""" + "\n"
 
     backup = path.with_name(path.name + ".linux-rdaccess-backup")
     if not backup.exists():
