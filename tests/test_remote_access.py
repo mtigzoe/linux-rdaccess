@@ -463,6 +463,16 @@ class RemoteController:
         self.assertEqual(enter, [(0x0D, True), (0x0D, False)] * 3)
         self.assertNotIn((0x2D, False), self._names(c))
 
+    def test_v12_patch_is_upgraded_to_current(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "remote_controller.py"
+            path.write_text(self.UPSTREAM_CONTROLLER + "\n" + remote_access.LEGACY_COMPAT_MARKER_V12 + "\n", encoding="utf-8")
+            path.with_name(path.name + ".linux-rdaccess-backup").write_text(self.UPSTREAM_CONTROLLER, encoding="utf-8")
+            self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
+            result = path.read_text(encoding="utf-8")
+            self.assertIn(remote_access.LEGACY_COMPAT_MARKER, result)
+            self.assertNotIn(remote_access.LEGACY_COMPAT_MARKER_V12 + "\n", result)
+
     def test_v11_patch_is_upgraded_to_current(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "remote_controller.py"
@@ -509,7 +519,7 @@ class RemoteController:
             path.write_text(self.UPSTREAM_CONTROLLER + "\n" + remote_access.LEGACY_COMPAT_MARKER_V1 + " v2\n", encoding="utf-8")
             path.with_name(path.name + ".linux-rdaccess-backup").write_text(self.UPSTREAM_CONTROLLER, encoding="utf-8")
             self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
-            self.assertIn(" v12", path.read_text(encoding="utf-8"))
+            self.assertIn(" v13", path.read_text(encoding="utf-8"))
 
     def test_connect_installs_orca_runtime_adapter(self):
         with tempfile.TemporaryDirectory() as temp:
