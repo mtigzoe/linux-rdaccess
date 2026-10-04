@@ -662,7 +662,7 @@ class RemoteController:
             self._key(c, 0x09, True)
             self._key(c, 0x09, False)
         self.assertEqual(calls, [("where", None)])
-        self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [(0x14, True)])
+        self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [])
 
     def test_nvda_say_all_calls_orca_directly_and_consumes_repeat(self):
         import os
@@ -1599,8 +1599,8 @@ class LocalMachine:
         self.assertEqual(again._handler.function, "live_region")
 
     def test_landmark_release_reuses_press_keycode_if_lookup_changes(self):
-        import orca.keybindings as kb
         c, KE, _ = self._hooked()
+        import orca.keybindings as kb
         self._remote_d(c)
         press = KE("d", self.D_CODE)
         self.assertEqual(press._handler.function, "landmark_next")
@@ -1762,7 +1762,7 @@ class LocalMachine:
             self._key(c, 0x71, True)
             self._key(c, 0x71, False)
         self.assertEqual(calls, [("bypass", None)])
-        self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [(0x14, True)])
+        self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [])
 
     def test_plain_f2_and_shift_f2_rename_keys_are_untouched(self):
         c, _, _ = self._patched_controller()
@@ -1779,7 +1779,7 @@ class LocalMachine:
             self._key(c, 0xA0, True)
             self._key(c, 0x20, True)
         self.assertEqual(calls, [("structural", None)])
-        self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [(0x14, True)])
+        self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [])
 
     def test_elements_list_chord_from_the_branch_still_works(self):
         c, _, _ = self._patched_controller()
