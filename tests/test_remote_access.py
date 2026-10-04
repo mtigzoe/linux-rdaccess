@@ -254,16 +254,32 @@ class RemoteController:
         self.assertIn(("key", 0x20, True), keys)
         self.assertIn(("key", 0x20, False), keys)
 
-    def test_stale_nvda_modifier_is_forgotten_when_control_changes(self):
+    def test_stale_nvda_modifier_is_released_when_control_changes(self):
         c, _, _ = self._patched_controller()
         self._key(c, 0x2D, True)      # Insert down, release never arrives
-        c.toggle_control()            # back to local ...
-        c.toggle_control()            # ... and remote again, no key between
+        c.toggle_control()            # reset must synthesize the lost key-up
+        c.toggle_control()
         self._key(c, 0x20, True)
         self._key(c, 0x20, False)
         keys = [e[:3] for e in c.local_machine.events if e[0] == "key"]
+        self.assertIn(("key", 0x2D, False), keys)
         self.assertIn(("key", 0x20, True), keys)
         self.assertFalse(any(k[1] == 0x41 for k in keys))
+
+    def test_reset_releases_forwarded_arrow_but_not_consumed_chord_key(self):
+        c, _, _ = self._patched_controller()
+        self._key(c, 0x28, True, extended=True)     # ordinary Down forwarded
+        c.toggle_control()
+        keys = [e[:3] for e in c.local_machine.events if e[0] == "key"]
+        self.assertIn(("key", 0x28, False), keys)
+
+        c2, _, _ = self._patched_controller()
+        self._key(c2, 0x2D, True)                   # NVDA
+        self._key(c2, 0x20, True)                   # NVDA+Space consumed/replaced
+        c2.toggle_control()
+        keys2 = [e[:3] for e in c2.local_machine.events if e[0] == "key"]
+        self.assertNotIn(("key", 0x20, False), keys2)
+        self.assertIn(("key", 0x2D, False), keys2)
 
     def test_braille_trace_is_private_bounded_and_redacts_typed_input(self):
         import os
