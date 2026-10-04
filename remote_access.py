@@ -426,7 +426,11 @@ _LEGACY_HELPERS = '''\
         def text(value):
             return str(value)[:120]
         ids = [kwargs.get("id")] + list(kwargs.get("identifiers") or [])
-        keyboard = bool(kwargs.get("dots") or kwargs.get("space")) or any(
+        # NVDA Remote includes dots/space attributes for braille-input
+        # gestures even when their values are 0/False. Presence, not truthiness,
+        # identifies typed braille and prevents zero-valued chords from being
+        # traced as ordinary display gestures.
+        keyboard = ("dots" in kwargs or "space" in kwargs) or any(
             "dot" in str(i).lower() for i in ids if i
         )
         if keyboard:
