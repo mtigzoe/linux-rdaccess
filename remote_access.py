@@ -250,6 +250,7 @@ _LEGACY_HELPERS = '''\
         "braille_scrollBack": "pan_back",
         "braille_scrollForward": "pan_forward",
         "braille_routeTo": "route",
+        "braille_toFocus": "to_focus",
     }
     _LRD_TRACE_MAX_BYTES = 262144
     _LRD_OTHER_MOD_VKS = (
@@ -570,6 +571,9 @@ _LEGACY_HELPERS = '''\
             self._linux_rdaccess_run_main(
                 lambda: self._linux_rdaccess_script_call(
                     "panBrailleLeft" if action == "pan_back" else "panBrailleRight"))
+        elif action == "to_focus":
+            self._linux_rdaccess_run_main(
+                lambda: self._linux_rdaccess_script_call("goBrailleHome"))
         elif action == "route":
             index = kwargs.get("routingIndex")
             if index is None:
@@ -658,6 +662,9 @@ _LEGACY_HELPERS = '''\
                 return
             if method == "processRoutingKey" and args:
                 _adapter.route_braille(args[0].event["argument"])
+                return
+            if method == "goBrailleHome":
+                _adapter.to_braille_focus()
                 return
             _adapter.call_script(method, *args, default_event=method.startswith("pan"))
             return
