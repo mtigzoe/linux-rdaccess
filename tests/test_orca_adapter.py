@@ -211,6 +211,27 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
             self.assertTrue(OrcaRuntimeAdapter.to_braille_focus())
         self.assertEqual(snake_calls, [None])
 
+    def test_title_and_status_support_legacy_and_snake_case_handlers(self):
+        legacy_calls = []
+        legacy = types.SimpleNamespace(
+            presentTitle=lambda event=None: legacy_calls.append(("title", event)),
+            presentStatusBar=lambda event=None: legacy_calls.append(("status", event)),
+        )
+        with self._fake_orca(legacy):
+            self.assertTrue(OrcaRuntimeAdapter.present_title())
+            self.assertTrue(OrcaRuntimeAdapter.present_status_bar())
+        self.assertEqual(legacy_calls, [("title", None), ("status", None)])
+
+        snake_calls = []
+        snake = types.SimpleNamespace(
+            present_title=lambda event=None: snake_calls.append(("title", event)),
+            present_status_bar=lambda event=None: snake_calls.append(("status", event)),
+        )
+        with self._fake_orca(snake, snake_state=True):
+            self.assertTrue(OrcaRuntimeAdapter.present_title())
+            self.assertTrue(OrcaRuntimeAdapter.present_status_bar())
+        self.assertEqual(snake_calls, [("title", None), ("status", None)])
+
     def test_where_am_i_uses_available_script_handler(self):
         calls = []
         script = types.SimpleNamespace(
