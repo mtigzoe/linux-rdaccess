@@ -351,12 +351,28 @@ _LEGACY_HELPERS = '''\
         self._lrd_nvda_down = False
         self._lrd_swapped = set()
         self._lrd_nvda_key = None
+        self._lrd_caps_pending = None
+        self._lrd_caps_used = False
         marker = globals().get("_LRD_D")
         if isinstance(marker, dict):
             marker["ts"] = 0.0
             marker["swapped"] = False
             marker["modifiers"] = 0
             marker["code"] = None
+
+    def _linux_rdaccess_flush_pending_caps(self):
+        """Forward a deferred CapsLock press when it was not an NVDA command."""
+        held = getattr(self, "_lrd_caps_pending", None)
+        if held is None:
+            return
+        self._lrd_caps_pending = None
+        self._lrd_caps_used = False
+        try:
+            self.local_machine.send_key(
+                key_name=None, pressed=True, modifiers=None,
+                vk_code=held[0], scan_code=0, extended=held[1])
+        except Exception:
+            log.exception("linux-rdaccess: failed to forward deferred CapsLock")
 
     def _linux_rdaccess_filter_key(self, pressed, vk_code, extended, modifiers,
                                    key_name=None, scan_code=None):
@@ -390,6 +406,25 @@ _LEGACY_HELPERS = '''\
             # modifier; CapsLock cannot be safely released/re-pressed because
             # doing so would toggle the lock state.
             self._lrd_nvda_key = nvda_keys[0] if nvda_keys else None
+
+        # CapsLock can be configured as the NVDA modifier. Forwarding its press
+        # immediately toggles Linux Caps Lock before we know whether this is a
+        # translated NVDA command, so defer it until the gesture is known.
+        if vk_code == 0x14:
+            pending = getattr(self, "_lrd_caps_pending", None)
+            if pressed:
+                if not repeat:
+                    self._lrd_caps_pending = held
+                    self._lrd_caps_used = False
+                return True
+            if pending == held:
+                used = bool(getattr(self, "_lrd_caps_used", False))
+                if used:
+                    self._lrd_caps_pending = None
+                    self._lrd_caps_used = False
+                    return True
+                self._linux_rdaccess_flush_pending_caps()
+                return False
 
         # Interrupt stale speech on a real action, as NVDA does. Plain
         # modifier keys (and their auto-repeat) must not cut off speech that
@@ -436,6 +471,8 @@ _LEGACY_HELPERS = '''\
             and not any(k[0] in self._LRD_OTHER_MOD_VKS for k in self._lrd_down)
         ):
             self._lrd_swapped.add(held)
+            if getattr(self, "_lrd_caps_pending", None) is not None:
+                self._lrd_caps_used = True
             self._linux_rdaccess_run_main(
                 lambda: self._linux_rdaccess_script_call("sayAll"))
             return True
@@ -450,6 +487,8 @@ _LEGACY_HELPERS = '''\
                 for k in self._lrd_down
             ):
                 self._lrd_swapped.add(held)
+                if getattr(self, "_lrd_caps_pending", None) is not None:
+                    self._lrd_caps_used = True
                 if shifts:
                     self._linux_rdaccess_run_main(
                         lambda: self._linux_rdaccess_script_call(
@@ -469,6 +508,8 @@ _LEGACY_HELPERS = '''\
                 and not (action == "status_bar" and not bool(extended))
             ):
                 self._lrd_swapped.add(held)
+                if getattr(self, "_lrd_caps_pending", None) is not None:
+                    self._lrd_caps_used = True
                 if action == "elements_list":
                     self._linux_rdaccess_run_main(
                         lambda: self._linux_rdaccess_show_elements_list(modifiers))
@@ -503,6 +544,12 @@ _LEGACY_HELPERS = '''\
                        for k in self._lrd_down)
                 or bool(extended) != chord[0]
             ):
+                if (
+                    not repeat
+                    and vk_code not in self._LRD_MODIFIER_VKS
+                    and getattr(self, "_lrd_caps_pending", None) is not None
+                ):
+                    self._linux_rdaccess_flush_pending_caps()
                 return False
             need_ext, name, target_vk, drop, count, drop_shift = chord
             nvda = self._lrd_nvda_key
@@ -510,6 +557,8 @@ _LEGACY_HELPERS = '''\
                 # Re-pressing CapsLock would toggle the lock state.
                 return False
             self._lrd_swapped.add(held)
+            if getattr(self, "_lrd_caps_pending", None) is not None:
+                self._lrd_caps_used = True
             send = self.local_machine.send_key
             if drop:
                 send(key_name=None, pressed=False, modifiers=modifiers,
