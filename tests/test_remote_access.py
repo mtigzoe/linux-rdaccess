@@ -1143,6 +1143,21 @@ class LocalMachine:
                 remote_access.patch_legacy_orca_local_machine(path)
             self.assertEqual(path.read_text(encoding="utf-8"), "class LocalMachine:\n    pass\n")
 
+    def test_local_machine_v3_patch_is_upgraded_to_current(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "local_machine.py"
+            path.write_text(
+                self.UPSTREAM_LOCAL + "\n" + remote_access.LOCAL_MACHINE_MARKER_V3 + "\n",
+                encoding="utf-8",
+            )
+            path.with_name(path.name + ".linux-rdaccess-backup").write_text(
+                self.UPSTREAM_LOCAL, encoding="utf-8"
+            )
+            self.assertTrue(remote_access.patch_legacy_orca_local_machine(path))
+            result = path.read_text(encoding="utf-8")
+            self.assertIn(remote_access.LOCAL_MACHINE_MARKER, result)
+            self.assertNotIn(remote_access.LOCAL_MACHINE_MARKER_V3 + "\n", result)
+
     def test_local_machine_v2_patch_is_upgraded_to_current(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "local_machine.py"
