@@ -600,6 +600,8 @@ _LEGACY_HELPERS = '''\
     def _linux_rdaccess_trace_braille(self, record):
         import json as _json
         import os as _os
+        if _os.environ.get("LINUX_RDACCESS_BRAILLE_TRACE") != "1":
+            return
         path = _os.path.expanduser(
             "~/.local/share/orca/orca-remote-braille-input.log")
         try:
