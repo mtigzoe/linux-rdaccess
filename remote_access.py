@@ -175,6 +175,13 @@ if (
     backup = path.with_name(path.name + ".linux-rdaccess-backup")
     if not backup.exists():
         backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    # Both files can contain an NVDA Remote channel key: the live file has the
+    # new key and the one-time backup may contain the previous key.
+    for private_path in (backup, path):
+        try:
+            private_path.chmod(0o600)
+        except OSError:
+            pass
     path.write_text(text, encoding="utf-8")
     try:
         path.chmod(0o600)
