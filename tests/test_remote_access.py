@@ -411,10 +411,29 @@ class RemoteController:
         self.assertNotIn("id", record)
         self.assertNotIn("identifiers", record)
 
+    def test_braille_trace_is_disabled_without_explicit_opt_in(self):
+        import os
+        c, _, home = self._patched_controller()
+        env = {k: v for k, v in os.environ.items() if k != "LINUX_RDACCESS_BRAILLE_TRACE"}
+        env["HOME"] = home
+        with mock.patch.dict(os.environ, env, clear=True):
+            Path(home, ".local/share/orca").mkdir(parents=True)
+            c._on_remote_braille_input(
+                id="br(test):backward",
+                scriptPath=["globalCommands", "GlobalCommands", "braille_scrollBack"],
+            )
+            self.assertFalse(
+                Path(home, ".local/share/orca/orca-remote-braille-input.log").exists()
+            )
+
     def test_braille_trace_is_private_bounded_and_redacts_typed_input(self):
         import os
         c, _, home = self._patched_controller()
-        with mock.patch.dict(os.environ, {"HOME": home}):
+        with mock.patch.dict(
+            os.environ,
+            {"HOME": home, "LINUX_RDACCESS_BRAILLE_TRACE": "1"},
+            clear=True,
+        ):
             Path(home, ".local/share/orca").mkdir(parents=True)
             c._on_remote_braille_input(
                 id="br(eurobraille.bnote):backward", identifiers=["br(eurobraille):backward"],
