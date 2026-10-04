@@ -360,6 +360,19 @@ class RemoteController:
         self.assertIn((0x28, True), self._names(c))
         self.assertNotIn((0x6B, True), self._names(c))
 
+    def test_f6_and_shift_f6_are_forwarded_unchanged(self):
+        c, _, _ = self._patched_controller()
+        self._key(c, 0x75, True)                    # F6
+        self._key(c, 0x75, False)
+        self._key(c, 0xA0, True)                    # Shift
+        self._key(c, 0x75, True)                    # Shift+F6
+        self._key(c, 0x75, False)
+        self._key(c, 0xA0, False)
+        self.assertEqual(self._names(c), [
+            (0x75, True), (0x75, False),
+            (0xA0, True), (0x75, True), (0x75, False), (0xA0, False),
+        ])
+
     def test_capslock_nvda_key_is_never_released_or_repressed(self):
         c, _, _ = self._patched_controller()
         self._key(c, 0x14, True)
