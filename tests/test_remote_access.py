@@ -1239,6 +1239,42 @@ class LocalMachine:
         self.assertTrue(helper.key("Down", True))
         self.assertEqual(calls, [(42, True)])
 
+    def test_xtest_failed_release_forgets_held_mapping_before_fallback(self):
+        module, _, _ = self._patched_local()
+        calls = []
+
+        class FakeX11:
+            def __init__(self):
+                self.codes = iter((38, 52))
+
+            def XStringToKeysym(self, name):
+                return 97
+
+            def XKeysymToKeycode(self, display, sym):
+                return next(self.codes)
+
+            def XFlush(self, display):
+                return 0
+
+        class FakeXt:
+            def __init__(self):
+                self.results = iter((1, 0, 1))
+
+            def XTestFakeKeyEvent(self, display, code, pressed, delay):
+                calls.append((code, bool(pressed)))
+                return next(self.results)
+
+        helper = module._LrdXTest()
+        helper._x11 = FakeX11()
+        helper._xt = FakeXt()
+        helper._dpy = object()
+
+        self.assertTrue(helper.key("a", True))
+        self.assertFalse(helper.key("a", False))  # fallback handles this release
+        self.assertNotIn("a", helper._down_codes)
+        self.assertTrue(helper.key("a", True))
+        self.assertEqual(calls, [(38, True), (38, False), (52, True)])
+
     def test_xtest_success_skips_the_xdotool_process(self):
         module, _, _ = self._patched_local()
         module._LRD_XTEST.key = lambda name, pressed: True
