@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 from pathlib import Path
 import tempfile
@@ -192,6 +194,41 @@ class VSCodeJsoncTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 linux_rdaccess.configure_vscode_accessibility(path)
             self.assertEqual(path.read_text(encoding="utf-8"), "{ nope")
+
+
+class DoctorTests(unittest.TestCase):
+    def _orca(self, controller=None, local=None):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        base = Path(temp.name)
+        (base / "orca-scripts").mkdir()
+        cfg = base / "orca-customizations.py"
+        cfg.write_text("", encoding="utf-8")
+        if controller is not None:
+            (base / "orca-scripts" / "remote_controller.py").write_text(controller, encoding="utf-8")
+        if local is not None:
+            (base / "orca-scripts" / "local_machine.py").write_text(local, encoding="utf-8")
+        return cfg
+
+    def test_reports_current_outdated_unpatched_and_missing(self):
+        from remote_access import (LEGACY_COMPAT_MARKER, LOCAL_MACHINE_MARKER_V1)
+        cfg = self._orca(controller="x\n" + LEGACY_COMPAT_MARKER, local="x\n" + LOCAL_MACHINE_MARKER_V1 + " v1")
+        rows = dict(linux_rdaccess.patch_status(cfg))
+        self.assertEqual(rows["input shim (remote_controller.py)"], "current")
+        self.assertIn("outdated", rows["fast key injection (local_machine.py)"])
+        cfg = self._orca(controller="plain upstream")
+        rows = dict(linux_rdaccess.patch_status(cfg))
+        self.assertIn("not patched", rows["input shim (remote_controller.py)"])
+        self.assertEqual(rows["fast key injection (local_machine.py)"], "missing")
+
+    def test_doctor_command_runs_and_never_prints_the_key(self):
+        cfg = self._orca(controller="plain", local="plain")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = linux_rdaccess.main(["--orca-config", str(cfg), "doctor"])
+        self.assertEqual(code, 0)
+        self.assertIn("patch status", out.getvalue())
+        self.assertIn("not patched", out.getvalue())
 
 
 class CompatibilityStatusTests(unittest.TestCase):

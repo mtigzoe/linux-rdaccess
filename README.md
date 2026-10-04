@@ -104,6 +104,28 @@ only with the NVDA key held and no Shift/Ctrl/Alt/Win):
     NVDA+T      Window title      (Orca+KP_Enter)
     NVDA+End    Status bar        (Orca+KP_Enter twice)
 
+NVDA's D (landmark) is Orca's M (Orca's own D is "live region"). A D typed in the
+remote session is turned into the landmark key (Shift+D into previous landmark)
+only where Orca itself would use structural navigation, i.e. browse mode on web
+content. The decision is made on Orca's main thread inside `KeyboardEvent.shouldConsume`,
+using Orca's own `useStructuralNavigationModel()`, and is re-read for every key,
+so NVDA+Space toggling is followed immediately. Focus mode, edit fields, the
+address bar, Ctrl/Alt+D, NVDA+D and any D from the Linux keyboard are never
+translated. Set `LINUX_RDACCESS_NVDA_D_LANDMARK=0` in Orca's environment to turn
+it off. The other single-letter keys (H K F B E X C R L I T G P Q S O, 1-6)
+already match Orca 42 and are untouched. `tools/orca42_d_landmark_check.py` runs
+the hook through real Orca 42 key matching.
+
+Also translated (verified against Orca 42 key matching, which needs the modifier
+state to be exactly Orca, so Shift is released around the key and restored):
+
+    NVDA+Shift+Space   Single-letter navigation on/off   (Orca+Z)
+    NVDA+F2            Pass the next key to the app      (Orca+BackSpace)
+
+Orca+Z is Orca's toggle for structural-navigation keys. While it is off, the D
+landmark translation above is off too, so single-letter keys never get in the
+way of typing. Plain Shift+Space and plain F2 (Thunar rename) are untouched.
+
 Not translated: NVDA+Up and review keys (Orca's flat review would leave braille
 following the review cursor). Numpad review keys already match Orca's desktop
 layout and pass through unchanged. CapsLock as NVDA key only gets the
@@ -148,6 +170,32 @@ rotated at 256 KiB, records only id/scriptPath/source/model/routingIndex.
 Braille-keyboard input (dots/space) is typed text and is recorded only as
 `redacted`. The patch also removes upstream's debug line that logged the whole
 braille message.
+
+### Responsiveness
+
+Upstream legacy Orca Remote started one `xdotool` process per key event, serially
+on the receive thread. Measured on X11 that is about 38 ms per event (76 ms per
+keystroke), so held arrow keys, fast typing and multi-key chords queued up and
+played out late. `linux-rdaccess connect` now also patches `local_machine.py` to
+inject keys in-process through XTest (about 0.03 ms per keystroke) and falls back
+to `xdotool` for any key it cannot map. Upstream's per-keypress debug log (which
+recorded key names, including typed passwords) is off unless you set
+`LINUX_RDACCESS_DEBUG=1` in Orca's environment. Speech interruption on held keys
+is limited to once per 150 ms.
+
+Ctrl (and any other real key press) now sends the NVDA Remote `cancel` message to
+the controlling NVDA immediately. Previously only Linux-side speech was stopped,
+and upstream defers the cancel to NVDA until the next utterance, so Ctrl with
+nothing spoken afterwards never silenced Windows. Bare Shift/Alt/Insert/CapsLock/Win
+do not cancel, so NVDA+key chords can keep reading.
+
+The Linux-side speech stop runs on Orca's GLib main loop, coalesced, never on the
+thread that receives keys: Orca's speech-dispatcher client is not thread-safe and
+a stop blocks until speech-dispatcher answers, which froze key forwarding during
+busy Firefox navigation. Remote clipboard writes are likewise moved off the
+network thread (GTK is not thread-safe). Run `linux-rdaccess doctor` to check the
+patches are active; set `LINUX_RDACCESS_DEBUG=1` to log key-handling stalls
+(duration only, never which key) to `~/.local/share/orca/orca-remote-slow-events.log`.
 
 ## VS Code on Linux
 

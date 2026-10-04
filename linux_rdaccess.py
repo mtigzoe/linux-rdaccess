@@ -13,6 +13,12 @@ import subprocess
 import sys
 
 from remote_access import (
+    LEGACY_COMPAT_MARKER,
+    LEGACY_COMPAT_MARKER_V1,
+    LEGACY_LOCAL_MACHINE_RELATIVE,
+    LEGACY_REMOTE_CONTROLLER_RELATIVE,
+    LOCAL_MACHINE_MARKER,
+    LOCAL_MACHINE_MARKER_V1,
     DEFAULT_CONFIG,
     disable_legacy_orca_connection,
     load_config,
@@ -258,6 +264,69 @@ def configure_vscode_accessibility(path: Path = DEFAULT_VSCODE_SETTINGS) -> None
     os.replace(tmp, path)
 
 
+def patch_status(orca_config: Path) -> list[tuple[str, str]]:
+    """Report whether each legacy Orca Remote patch is active.
+
+    Patches only take effect after ``connect`` re-applies them and Orca restarts.
+    """
+    base = orca_config.expanduser().parent
+    checks = (
+        ("input shim (remote_controller.py)", base / LEGACY_REMOTE_CONTROLLER_RELATIVE,
+         LEGACY_COMPAT_MARKER, LEGACY_COMPAT_MARKER_V1),
+        ("fast key injection (local_machine.py)", base / LEGACY_LOCAL_MACHINE_RELATIVE,
+         LOCAL_MACHINE_MARKER, LOCAL_MACHINE_MARKER_V1),
+    )
+    rows = []
+    for label, path, current, old in checks:
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            rows.append((label, "missing"))
+            continue
+        if current in text:
+            rows.append((label, "current"))
+        elif old in text:
+            rows.append((label, "outdated - run: linux-rdaccess connect"))
+        else:
+            rows.append((label, "not patched - run: linux-rdaccess connect"))
+    return rows
+
+
+def _tool_version(command: list[str]) -> str:
+    if shutil.which(command[0]) is None:
+        return "not found"
+    try:
+        out = subprocess.run(command, capture_output=True, text=True, timeout=5)
+        return (out.stdout or out.stderr).strip().splitlines()[0][:80]
+    except (OSError, subprocess.SubprocessError, IndexError):
+        return "unknown"
+
+
+def print_doctor(orca_config: Path) -> None:
+    print("linux-rdaccess patch status:")
+    for label, status in patch_status(orca_config):
+        print(f"  {label}: {status}")
+    print("")
+    print("Versions:")
+    for name, command in (
+        ("Orca", ["orca", "--version"]),
+        ("Firefox", ["firefox", "--version"]),
+        ("speech-dispatcher", ["speech-dispatcher", "--version"]),
+        ("xdotool (fallback)", ["xdotool", "version"]),
+    ):
+        print(f"  {name}: {_tool_version(command)}")
+    print("")
+    slow = orca_config.expanduser().parent / "orca-remote-slow-events.log"
+    count = 0
+    try:
+        count = len(slow.read_text(encoding="utf-8").splitlines())
+    except OSError:
+        pass
+    print(f"Slow key events logged: {count} ({slow})")
+    print("To record stalls, launch Orca with LINUX_RDACCESS_DEBUG=1 (logs timing only,")
+    print("never which keys were pressed).")
+
+
 COMPATIBILITY_APPS = (
     ("thunar", "Thunar File Manager"),
     ("xfce4-terminal", "XFCE Terminal"),
@@ -320,6 +389,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("shortcuts", help="show common NVDA/Orca shortcuts")
     sub.add_parser("compatibility", help="show Linux Mint application compatibility targets")
+    sub.add_parser("doctor", help="check that the NVDA compatibility patches are active")
 
     vscode = sub.add_parser("vscode-setup", help="enable VS Code Linux screen-reader accessibility")
     vscode.add_argument(
@@ -396,6 +466,10 @@ def main(argv: list[str] | None = None) -> int:
             print("Disabled linux-rdaccess autostart.")
         else:
             print("enabled" if DEFAULT_AUTOSTART.exists() else "disabled")
+        return 0
+
+    if args.command == "doctor":
+        print_doctor(args.orca_config)
         return 0
 
     if args.command == "compatibility":

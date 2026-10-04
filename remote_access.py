@@ -156,13 +156,25 @@ def update_legacy_orca_customizations(
                 f"warning: NVDA input compatibility patch not applied: {exc}",
                 file=sys.stderr,
             )
+    local_machine = path.parent / LEGACY_LOCAL_MACHINE_RELATIVE
+    if local_machine.exists():
+        try:
+            patch_legacy_orca_local_machine(local_machine)
+        except (ValueError, OSError) as exc:
+            print(
+                f"warning: low-latency key injection patch not applied: {exc}",
+                file=sys.stderr,
+            )
 
 
 LEGACY_REMOTE_CONTROLLER_RELATIVE = Path("orca-scripts/remote_controller.py")
 LEGACY_COMPAT_MARKER_V1 = "# linux-rdaccess NVDA/Orca input compatibility"
 LEGACY_COMPAT_MARKER_V2 = "# linux-rdaccess NVDA/Orca input compatibility v2"
 LEGACY_COMPAT_MARKER_V3 = "# linux-rdaccess NVDA/Orca input compatibility v3"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v4"
+LEGACY_COMPAT_MARKER_V4 = "# linux-rdaccess NVDA/Orca input compatibility v4"
+LEGACY_COMPAT_MARKER_V7 = "# linux-rdaccess NVDA/Orca input compatibility v7"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v8"
+# v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
     ''' + LEGACY_COMPAT_MARKER + '''
@@ -191,14 +203,59 @@ _LEGACY_HELPERS = '''\
     _LRD_ACTION_CHORDS = {
         0x76: "elements_list",                       # NVDA+F7
     }
-
+    _LRD_SHIFT_VKS = (0x10, 0xA0, 0xA1)
+    # Key: (vk, Shift held). Value: (extended-required, Orca key name, target
+    # vk, drop NVDA modifier, press count, drop Shift). Orca matches the
+    # modifier state exactly, so Shift is released around the key when Orca's
+    # binding has none (verified against Orca 42 key matching).
     _LRD_CHORDS = {
-        0x20: (False, "a", 0x41, False, 1),         # NVDA+Space: Orca+A focus/browse
-        0x28: (True, "KP_Add", 0x6B, True, 1),      # NVDA+Down: say all
-        0x09: (False, "KP_Enter", 0x0D, True, 1),   # NVDA+Tab: where am I
-        0x54: (False, "KP_Enter", 0x0D, False, 1),  # NVDA+T: Orca+KP_Enter title
-        0x23: (True, "KP_Enter", 0x0D, False, 2),   # NVDA+End: status bar (2x)
+        (0x20, False): (False, "a", 0x41, False, 1, False),         # NVDA+Space: Orca+A focus/browse
+        (0x20, True): (False, "z", 0x5A, False, 1, True),           # NVDA+Shift+Space: Orca+Z single-letter nav on/off
+        (0x71, False): (False, "BackSpace", 0x08, False, 1, False), # NVDA+F2: Orca+BackSpace pass next key through
+        (0x28, False): (True, "KP_Add", 0x6B, True, 1, False),      # NVDA+Down: say all
+        (0x09, False): (False, "KP_Enter", 0x0D, True, 1, False),   # NVDA+Tab: where am I
+        (0x54, False): (False, "KP_Enter", 0x0D, False, 1, False),  # NVDA+T: Orca+KP_Enter title
+        (0x23, False): (True, "KP_Enter", 0x0D, False, 2, False),   # NVDA+End: status bar (2x)
     }
+
+    def _linux_rdaccess_stop_local_speech(self):
+        """Stop Linux-side speech on Orca's main loop, never on the network thread.
+
+        Orca's speech-dispatcher client is not thread-safe and a stop blocks
+        until speech-dispatcher answers. Doing that on the thread that receives
+        keys stalled all key forwarding whenever Orca was busy (Firefox), which
+        looked like a freeze. Requests are coalesced: at most one is pending.
+        """
+        if getattr(self, "_lrd_local_stop_pending", False):
+            return
+        self._lrd_local_stop_pending = True
+
+        def run():
+            self._lrd_local_stop_pending = False
+            try:
+                self.local_machine.cancel_speech()
+            except Exception:
+                log.exception("linux-rdaccess: failed to cancel speech")
+
+        self._linux_rdaccess_run_main(run)
+
+    def _linux_rdaccess_stop_nvda_speech(self):
+        """Tell the controlling NVDA to stop speaking *now*.
+
+        Orca's own stop only silences Linux; upstream defers the NVDA cancel
+        until the next utterance, so Ctrl with no speech after it never
+        reached Windows. Send the protocol "cancel" message immediately.
+        """
+        try:
+            transport = getattr(self, "transport", None)
+            if (
+                transport is not None
+                and getattr(transport, "connected", False)
+                and getattr(transport, "connection_type", None) == "slave"
+            ):
+                transport.send(type="cancel")
+        except Exception:
+            log.exception("linux-rdaccess: failed to send cancel to NVDA")
 
     def _linux_rdaccess_filter_key(self, pressed, vk_code, extended, modifiers,
                                    key_name=None, scan_code=None):
@@ -233,20 +290,30 @@ _LEGACY_HELPERS = '''\
             vk_code not in self._LRD_MODIFIER_VKS
             or (vk_code in self._LRD_CTRL_VKS and not repeat)
         ):
-            try:
-                self.local_machine.cancel_speech()
-            except Exception:
-                log.exception("linux-rdaccess: failed to cancel local speech")
-            # Ctrl is the explicit NVDA "stop speech" gesture. Local Orca
-            # cancellation alone cannot remove speech already queued on the
-            # Windows NVDA side, so send the NVDA Remote cancel message too.
-            # Restrict the protocol cancel to Ctrl to avoid adding a network
-            # round-trip to every ordinary navigation key.
-            if vk_code in self._LRD_CTRL_VKS and not repeat:
-                try:
-                    self.transport.send(type="cancel")
-                except Exception:
-                    log.exception("linux-rdaccess: failed to cancel remote NVDA speech")
+            # Auto-repeat re-cancels at most every 150 ms: Orca's own new
+            # speech interrupts per item anyway, and a cancel per repeat event
+            # floods the speech server during held arrow keys.
+            _now = __import__("time").monotonic()
+            if not repeat or _now - getattr(self, "_lrd_last_cancel", 0.0) >= 0.15:
+                self._lrd_last_cancel = _now
+                # Local Orca speech is stopped on Orca's main loop, never on this
+                # network thread (see _linux_rdaccess_stop_local_speech).
+                self._linux_rdaccess_stop_local_speech()
+                # Ctrl is the explicit NVDA "stop speech" gesture. Local Orca
+                # cancellation alone cannot remove speech already queued on the
+                # Windows NVDA side, so send the NVDA Remote cancel message too.
+                # Restrict the protocol cancel to Ctrl to avoid adding a network
+                # round-trip to every ordinary navigation key.
+                if vk_code in self._LRD_CTRL_VKS and not repeat:
+                    self._linux_rdaccess_stop_nvda_speech()
+
+        # Remember that a plain (or Shift) D came from the remote session, so the
+        # Orca-side hook below can turn it into the landmark key in browse mode
+        # only. Nothing is translated here; the key is forwarded unchanged.
+        if pressed and vk_code == 0x44 and not self._lrd_nvda_down and not any(
+                k[0] in self._LRD_OTHER_MOD_VKS and k[0] not in (0x10, 0xA0, 0xA1)
+                for k in self._lrd_down):
+            _LRD_D["ts"] = __import__("time").monotonic()
 
         # NVDA-only actions that do not map cleanly to one Orca key.
         if pressed and self._lrd_nvda_down and not repeat:
@@ -268,16 +335,18 @@ _LEGACY_HELPERS = '''\
         if pressed:
             if vk_code in self._lrd_swapped:
                 return True  # auto-repeat of a translated chord
-            chord = self._LRD_CHORDS.get(vk_code)
+            shifts = [k for k in self._lrd_down if k[0] in self._LRD_SHIFT_VKS]
+            chord = self._LRD_CHORDS.get((vk_code, bool(shifts)))
             if (
                 chord is None
                 or repeat
                 or not self._lrd_nvda_down
-                or any(k[0] in self._LRD_OTHER_MOD_VKS for k in self._lrd_down)
+                or any(k[0] in self._LRD_OTHER_MOD_VKS and k[0] not in self._LRD_SHIFT_VKS
+                       for k in self._lrd_down)
                 or bool(extended) != chord[0]
             ):
                 return False
-            need_ext, name, target_vk, drop, count = chord
+            need_ext, name, target_vk, drop, count, drop_shift = chord
             nvda = self._lrd_nvda_key
             if drop and (nvda is None or nvda[0] == 0x14):
                 # Re-pressing CapsLock would toggle the lock state.
@@ -287,10 +356,18 @@ _LEGACY_HELPERS = '''\
             if drop:
                 send(key_name=None, pressed=False, modifiers=modifiers,
                      vk_code=nvda[0], scan_code=0, extended=nvda[1])
+            if drop_shift:
+                for held_vk, held_ext in shifts:
+                    send(key_name=None, pressed=False, modifiers=modifiers,
+                         vk_code=held_vk, scan_code=0, extended=held_ext)
             for _ in range(count):
                 for down in (True, False):
                     send(key_name=name, pressed=down, modifiers=modifiers,
                          vk_code=target_vk, scan_code=0, extended=False)
+            if drop_shift:
+                for held_vk, held_ext in shifts:
+                    send(key_name=None, pressed=True, modifiers=modifiers,
+                         vk_code=held_vk, scan_code=0, extended=held_ext)
             if drop:
                 send(key_name=None, pressed=True, modifiers=modifiers,
                      vk_code=nvda[0], scan_code=0, extended=nvda[1])
@@ -448,6 +525,134 @@ _LEGACY_HELPERS = '''\
 
 '''
 
+_LEGACY_ORCA_D_HOOK = '''
+''' + LEGACY_COMPAT_MARKER + '''
+# NVDA's D (landmark) is Orca's M; Orca's own D is "live region". Translate only
+# for a D that arrived from the remote session AND only where Orca itself would
+# use structural navigation (web document, browse mode). Everywhere else D is
+# left alone, so typing "d" in a field, the address bar or focus mode is never
+# remapped. Runs on Orca's main thread inside KeyboardEvent.shouldConsume (Orca
+# captures the key handler there, before consumesKeyboardEvent), then restores
+# hw_code so echo, double-click detection and release matching see the real key.
+# Opt out with LINUX_RDACCESS_NVDA_D_LANDMARK=0.
+_LRD_D = {"ts": 0.0, "swapped": False}
+_LRD_D_WINDOW = 1.0
+
+
+def _lrd_maybe_swap_d(event, keybindings):
+    """Return the original hw_code if the event was swapped to M, else None."""
+    if __import__("os").environ.get("LINUX_RDACCESS_NVDA_D_LANDMARK") == "0":
+        return None
+    if getattr(event, "event_string", None) not in ("d", "D"):
+        return None
+    pressed = event.isPressedKey()
+    if not pressed and not _LRD_D["swapped"]:
+        return None
+    if pressed:
+        # The marker belongs to exactly one D that Orca evaluates, whether or
+        # not it ends up translated; otherwise a refused remote D (focus mode)
+        # would leak into a later local D.
+        fresh = __import__("time").monotonic() - _LRD_D["ts"] <= _LRD_D_WINDOW
+        _LRD_D["ts"] = 0.0
+        _LRD_D["swapped"] = False
+        if not fresh:
+            return None
+    blocked = (keybindings.CTRL_MODIFIER_MASK | keybindings.ALT_MODIFIER_MASK
+               | keybindings.ORCA_MODIFIER_MASK)
+    if event.modifiers & blocked:
+        return None
+    script = getattr(event, "_script", None)
+    nav = getattr(script, "structuralNavigation", None)
+    gate = getattr(script, "useStructuralNavigationModel", None)
+    if nav is None or gate is None:
+        return None
+    if pressed and not gate():
+        return None
+    code = keybindings.getKeycode("m")
+    if not code:
+        return None
+    original = event.hw_code
+    event.hw_code = code
+    handler = script.keyBindings.getInputHandler(event)
+    if handler is None or handler.function not in nav.functions:
+        event.hw_code = original
+        return None
+    if pressed:
+        _LRD_D["ts"] = 0.0
+        _LRD_D["swapped"] = True
+    else:
+        _LRD_D["swapped"] = False
+    return original
+
+
+def _lrd_install_orca_hook():
+    try:
+        from orca import input_event, keybindings
+    except Exception:
+        return False
+    cls = input_event.KeyboardEvent
+    if getattr(cls, "_lrd_d_hooked", False):
+        return True
+    original = cls.shouldConsume
+
+    def shouldConsume(self):
+        restore = None
+        try:
+            restore = _lrd_maybe_swap_d(self, keybindings)
+        except Exception:
+            log.exception("linux-rdaccess: D landmark translation failed")
+        try:
+            return original(self)
+        finally:
+            if restore is not None:
+                self.hw_code = restore
+
+    cls.shouldConsume = shouldConsume
+    cls._lrd_d_hooked = True
+    return True
+
+
+def _lrd_schedule_orca_hook():
+    try:
+        from gi.repository import GLib
+        GLib.idle_add(lambda: (_lrd_install_orca_hook(), False)[1])
+    except Exception:
+        pass
+
+
+_lrd_schedule_orca_hook()
+'''
+
+_LEGACY_SLOW_EVENT_HOOK = (
+    LEGACY_COMPAT_MARKER + "\n"
+    "# With LINUX_RDACCESS_DEBUG=1, log when handling one inbound key stalls the\n"
+    "# receive thread. Only the duration and press/release are recorded, never\n"
+    "# which key, so typed passwords cannot leak.\n"
+    "_lrd_original_on_key = RemoteController._on_remote_key\n"
+    "\n"
+    "def _lrd_timed_on_key(self, *args, **kwargs):\n"
+    "    if not __import__(\"os\").environ.get(\"LINUX_RDACCESS_DEBUG\"):\n"
+    "        return _lrd_original_on_key(self, *args, **kwargs)\n"
+    "    _t = __import__(\"time\").monotonic()\n"
+    "    try:\n"
+    "        return _lrd_original_on_key(self, *args, **kwargs)\n"
+    "    finally:\n"
+    "        _ms = (__import__(\"time\").monotonic() - _t) * 1000\n"
+    "        if _ms > 20:\n"
+    "            try:\n"
+    "                _p = __import__(\"os\").path.expanduser(\n"
+    "                    \"~/.local/share/orca/orca-remote-slow-events.log\")\n"
+    "                with open(_p, \"a\") as _f:\n"
+    "                    _f.write(\"%.3f key-event handling took %.0f ms (%s)\\n\" % (\n"
+    "                        __import__(\"time\").time(), _ms,\n"
+    "                        \"press\" if kwargs.get(\"pressed\") else \"release\"))\n"
+    "            except Exception:\n"
+    "                pass\n"
+    "\n"
+    "_lrd_timed_on_key.__name__ = _lrd_original_on_key.__name__\n"
+    "RemoteController._on_remote_key = _lrd_timed_on_key\n"
+)
+
 _LEGACY_RESET_HOOKS = (
     LEGACY_COMPAT_MARKER + "\n"
     "# Control hand-over and reconnects forget held-key state, even when no key\n"
@@ -484,11 +689,151 @@ _LEGACY_BRAILLE_HANDLER = (
 )
 
 
+LOCAL_MACHINE_MARKER_V1 = "# linux-rdaccess low-latency XTest key injection"
+LOCAL_MACHINE_MARKER = LOCAL_MACHINE_MARKER_V1 + " v2"
+LEGACY_LOCAL_MACHINE_RELATIVE = Path("orca-scripts/local_machine.py")
+
+# Upstream writes every key name (including typed passwords) to a debug log,
+# opening the file twice per key event. Silence it unless explicitly enabled.
+_DBG_RE = re.compile(r"^def _dbg\(msg\):\n", re.MULTILINE)
+_DBG_GUARD = (
+    "    if not __import__(\"os\").environ.get(\"LINUX_RDACCESS_DEBUG\"):\n"
+    "        return  # linux-rdaccess: no per-keypress file logging by default\n"
+)
+
+
+def _silence_dbg(text: str) -> str:
+    match = _DBG_RE.search(text)
+    if match is None or "linux-rdaccess: no per-keypress" in text:
+        return text
+    return text[:match.end()] + _DBG_GUARD + text[match.end():]
+
+
+_XTEST_HELPER = '''
+
+''' + LOCAL_MACHINE_MARKER + '''
+# Upstream starts one `xdotool` process per key event (~38 ms each, measured),
+# serially on the receive thread, so key bursts queue up and NVDA feels
+# "chunky". Inject through XTest in-process instead (~0.004 ms); fall back to
+# upstream's xdotool path for anything we cannot map.
+class _LrdXTest:
+    def __init__(self):
+        self._lock = __import__("threading").Lock()
+        self._x11 = None
+        self._xt = None
+        self._dpy = None
+        self._codes = {}
+        self._failed = False
+
+    def _open(self):
+        import ctypes
+        import ctypes.util
+        x11 = ctypes.CDLL(ctypes.util.find_library("X11") or "libX11.so.6")
+        xt = ctypes.CDLL(ctypes.util.find_library("Xtst") or "libXtst.so.6")
+        x11.XOpenDisplay.restype = ctypes.c_void_p
+        x11.XOpenDisplay.argtypes = [ctypes.c_char_p]
+        x11.XStringToKeysym.restype = ctypes.c_ulong
+        x11.XStringToKeysym.argtypes = [ctypes.c_char_p]
+        x11.XKeysymToKeycode.restype = ctypes.c_ubyte
+        x11.XKeysymToKeycode.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+        x11.XFlush.argtypes = [ctypes.c_void_p]
+        xt.XTestFakeKeyEvent.argtypes = [
+            ctypes.c_void_p, ctypes.c_uint, ctypes.c_int, ctypes.c_ulong]
+        dpy = x11.XOpenDisplay(None)
+        if not dpy:
+            raise OSError("cannot open X display")
+        self._x11, self._xt, self._dpy = x11, xt, dpy
+
+    def key(self, name, pressed):
+        """Return True when the event was injected."""
+        if self._failed or not name:
+            return False
+        with self._lock:
+            try:
+                if self._dpy is None:
+                    self._open()
+                code = self._codes.get(name)
+                if code is None:
+                    sym = self._x11.XStringToKeysym(str(name).encode("ascii"))
+                    code = self._x11.XKeysymToKeycode(self._dpy, sym) if sym else 0
+                    self._codes[name] = code
+                if not code:
+                    return False
+                if not self._xt.XTestFakeKeyEvent(self._dpy, code, 1 if pressed else 0, 0):
+                    return False
+                self._x11.XFlush(self._dpy)
+                return True
+            except Exception:
+                self._failed = True  # missing libs / no display: use xdotool
+                return False
+
+
+_LRD_XTEST = _LrdXTest()
+
+
+def _lrd_call_on_main(func, *args, **kwargs):
+    """Run func on the GLib main loop (GTK is not thread-safe)."""
+    try:
+        from gi.repository import GLib
+    except Exception:
+        return func(*args, **kwargs)
+    GLib.idle_add(lambda: (func(*args, **kwargs), False)[1])
+'''
+
+_XDOTOOL_DEF_RE = re.compile(r"^    def _send_key_xdotool\(self, key, pressed\):\n", re.MULTILINE)
+_CLIPBOARD_DEF_RE = re.compile(
+    r"^    def set_clipboard_text\(self, text=None, \*\*kwargs\):\n", re.MULTILINE)
+_CLIPBOARD_HOOK = (
+    "        if __import__(\"threading\").current_thread() is not __import__(\"threading\").main_thread():\n"
+    "            # Gtk.Clipboard from the network thread can deadlock Orca.\n"
+    "            _lrd_call_on_main(self.set_clipboard_text, text=text, **kwargs)\n"
+    "            return\n"
+)
+_XDOTOOL_HOOK = (
+    "        if _LRD_XTEST.key(key, pressed):  " + LOCAL_MACHINE_MARKER + "\n"
+    "            return True\n"
+)
+
+
+def patch_legacy_orca_local_machine(path: Path) -> bool:
+    """Make key injection low-latency and stop per-keypress file logging.
+
+    Idempotent; one-time backup; verified to compile; atomic write.
+    """
+    text = path.read_text(encoding="utf-8")
+    if LOCAL_MACHINE_MARKER in text:
+        return False
+    backup = path.with_name(path.name + ".linux-rdaccess-backup")
+    if LOCAL_MACHINE_MARKER_V1 in text:
+        if not backup.exists():
+            raise ValueError(f"older patch found but backup is missing: {backup}")
+        text = backup.read_text(encoding="utf-8")
+    match = _XDOTOOL_DEF_RE.search(text)
+    if match is None:
+        raise ValueError(f"legacy _send_key_xdotool was not found in {path}")
+    text = text[:match.end()] + _XDOTOOL_HOOK + text[match.end():]
+    clip = _CLIPBOARD_DEF_RE.search(text)
+    if clip is not None:
+        text = text[:clip.end()] + _CLIPBOARD_HOOK + text[clip.end():]
+    text = _silence_dbg(text)
+    text = text.rstrip("\n") + "\n" + _XTEST_HELPER
+    try:
+        compile(text, str(path), "exec")
+    except SyntaxError as exc:
+        raise ValueError(f"patched {path} would not compile: {exc}") from exc
+    if not backup.exists():
+        backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    tmp = path.with_name(path.name + ".linux-rdaccess-tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+    return True
+
+
 def patch_legacy_orca_remote_controller(path: Path) -> bool:
     """Patch legacy Orca Remote input handling for NVDA compatibility.
 
     Returns True when the file changed. The patch is idempotent, replaces an
-    earlier v1/v2/v3 patch from the one-time .linux-rdaccess-backup, verifies the
+    earlier v1-v4 patch from the one-time .linux-rdaccess-backup, verifies the
     result compiles before writing, and writes atomically.
     """
     text = path.read_text(encoding="utf-8")
@@ -499,6 +844,8 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V7,
+                LEGACY_COMPAT_MARKER_V4,
                 LEGACY_COMPAT_MARKER_V3,
                 LEGACY_COMPAT_MARKER_V2,
                 LEGACY_COMPAT_MARKER_V1,
@@ -538,6 +885,9 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         raise ValueError(f"legacy braille-input handler was not found in {path}")
     text = text[:braille_def.start()] + _LEGACY_BRAILLE_HANDLER + text[braille_def.end():]
     text = text.rstrip("\n") + "\n\n\n" + _LEGACY_RESET_HOOKS
+    text = text.rstrip("\n") + "\n\n\n" + _LEGACY_SLOW_EVENT_HOOK
+    text = text.rstrip("\n") + "\n\n\n" + _LEGACY_ORCA_D_HOOK.strip("\n") + "\n"
+    text = _silence_dbg(text)
 
     try:
         compile(text, str(path), "exec")
