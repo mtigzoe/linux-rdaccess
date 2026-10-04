@@ -121,6 +121,47 @@ class RestartTests(unittest.TestCase):
             self.assertEqual(env["XAUTHORITY"], "/home/miriam/.Xauthority")
             self.assertEqual(env["DBUS_SESSION_BUS_ADDRESS"], "unix:path=/run/user/1000/bus")
 
+    def test_graphical_session_env_replaces_partial_ssh_display_with_desktop_session(self):
+        with tempfile.TemporaryDirectory() as temp:
+            proc = Path(temp)
+            p = proc / "1251"
+            p.mkdir()
+            (p / "comm").write_text("xfce4-session\n", encoding="utf-8")
+            (p / "status").write_text("Name:\txfce4-session\nUid:\t1000\t1000\t1000\t1000\n", encoding="utf-8")
+            (p / "environ").write_bytes(
+                b"DISPLAY=:0\0"
+                b"XAUTHORITY=/home/miriam/.Xauthority\0"
+                b"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus\0"
+                b"XDG_RUNTIME_DIR=/run/user/1000\0"
+                b"XDG_SESSION_TYPE=x11\0"
+            )
+
+            env = linux_rdaccess.graphical_session_env(
+                proc_root=proc,
+                base_env={"PATH": "/usr/bin", "DISPLAY": "localhost:10.0"},
+                uid=1000,
+            )
+
+            self.assertEqual(env["DISPLAY"], ":0")
+            self.assertEqual(env["DBUS_SESSION_BUS_ADDRESS"], "unix:path=/run/user/1000/bus")
+            self.assertEqual(env["XDG_RUNTIME_DIR"], "/run/user/1000")
+
+    def test_graphical_session_env_keeps_complete_desktop_environment(self):
+        env = {
+            "PATH": "/usr/bin",
+            "DISPLAY": ":0",
+            "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
+            "XDG_RUNTIME_DIR": "/run/user/1000",
+        }
+        self.assertEqual(
+            linux_rdaccess.graphical_session_env(
+                proc_root=Path("/definitely/not/needed"),
+                base_env=env,
+                uid=1000,
+            ),
+            env,
+        )
+
     @mock.patch("linux_rdaccess.graphical_session_env")
     @mock.patch("linux_rdaccess.subprocess.run")
     def test_restart_orca_uses_replace_and_graphical_env(self, run, graphical_env):
