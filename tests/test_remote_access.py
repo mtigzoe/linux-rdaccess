@@ -1196,6 +1196,34 @@ class LocalMachine:
             [(38, True), (38, False), (52, True), (52, False)],
         )
 
+    def test_non_ascii_fallback_does_not_disable_xtest_for_later_keys(self):
+        module, _, _ = self._patched_local()
+        calls = []
+
+        class FakeX11:
+            def XStringToKeysym(self, name):
+                return 1
+
+            def XKeysymToKeycode(self, display, sym):
+                return 42
+
+            def XFlush(self, display):
+                return 0
+
+        class FakeXt:
+            def XTestFakeKeyEvent(self, display, code, pressed, delay):
+                calls.append((code, bool(pressed)))
+                return 1
+
+        helper = module._LrdXTest()
+        helper._x11 = FakeX11()
+        helper._xt = FakeXt()
+        helper._dpy = object()
+        self.assertFalse(helper.key("é", True))
+        self.assertFalse(helper._failed)
+        self.assertTrue(helper.key("Down", True))
+        self.assertEqual(calls, [(42, True)])
+
     def test_xtest_success_skips_the_xdotool_process(self):
         module, _, _ = self._patched_local()
         module._LRD_XTEST.key = lambda name, pressed: True
