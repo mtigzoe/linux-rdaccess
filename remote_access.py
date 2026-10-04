@@ -280,8 +280,6 @@ _LEGACY_HELPERS = '''\
     # modifier state exactly, so Shift is released around the key when Orca's
     # binding has none (verified against Orca 42 key matching).
     _LRD_CHORDS = {
-        (0x20, False): (False, "a", 0x41, False, 1, False),         # NVDA+Space: Orca+A focus/browse
-        (0x20, True): (False, "z", 0x5A, False, 1, True),           # NVDA+Shift+Space: Orca+Z single-letter nav on/off
         (0x28, False): (True, "KP_Add", 0x6B, True, 1, False),      # NVDA+Down: say all
     }
 
@@ -420,6 +418,26 @@ _LEGACY_HELPERS = '''\
                 k[0] in self._LRD_OTHER_MOD_VKS and k[0] not in (0x10, 0xA0, 0xA1)
                 for k in self._lrd_down):
             _LRD_D["ts"] = __import__("time").monotonic()
+
+        # NVDA+Space and NVDA+Shift+Space have exact Orca APIs. Calling
+        # them directly avoids assuming the Windows NVDA modifier (Insert or
+        # CapsLock) is also configured as Orca's physical modifier.
+        if pressed and self._lrd_nvda_down and not repeat and vk_code == 0x20:
+            shifts = [k for k in self._lrd_down if k[0] in self._LRD_SHIFT_VKS]
+            if not any(
+                k[0] in self._LRD_OTHER_MOD_VKS and k[0] not in self._LRD_SHIFT_VKS
+                for k in self._lrd_down
+            ):
+                self._lrd_swapped.add(held)
+                if shifts:
+                    self._linux_rdaccess_run_main(
+                        lambda: self._linux_rdaccess_script_call(
+                            "toggleStructuralNavigation"))
+                else:
+                    self._linux_rdaccess_run_main(
+                        lambda: self._linux_rdaccess_script_call(
+                            "togglePresentationMode"))
+                return True
 
         # NVDA-only actions that do not map cleanly to one Orca key.
         if pressed and self._lrd_nvda_down and not repeat:
@@ -701,6 +719,12 @@ _LEGACY_HELPERS = '''\
                 return
             if method == "presentStatusBar":
                 _adapter.present_status_bar()
+                return
+            if method == "togglePresentationMode":
+                _adapter.toggle_presentation_mode()
+                return
+            if method == "toggleStructuralNavigation":
+                _adapter.toggle_structural_navigation()
                 return
             _adapter.call_script(method, *args, default_event=method.startswith("pan"))
             return
