@@ -214,6 +214,32 @@ class RemoteController:
         self.assertEqual(sum(e[0] == "cancel" for e in c.local_machine.events), 2)
         self.assertEqual(c.transport.events, [{"type": "cancel"}])
 
+    def test_elements_list_cancel_does_not_open_headings_fallback(self):
+        import sys
+        import types
+
+        c, _, _ = self._patched_controller()
+        module = types.ModuleType("linux_rdaccess_orca_adapter")
+        module.show_elements_list = lambda callback: False
+        calls = []
+        c._linux_rdaccess_send_structural_list = lambda key, modifiers: calls.append(key)
+        with mock.patch.dict(sys.modules, {"linux_rdaccess_orca_adapter": module}):
+            c._linux_rdaccess_show_elements_list(None)
+        self.assertEqual(calls, [])
+
+    def test_elements_list_unavailable_uses_headings_fallback(self):
+        import sys
+        import types
+
+        c, _, _ = self._patched_controller()
+        module = types.ModuleType("linux_rdaccess_orca_adapter")
+        module.show_elements_list = lambda callback: None
+        calls = []
+        c._linux_rdaccess_send_structural_list = lambda key, modifiers: calls.append(key)
+        with mock.patch.dict(sys.modules, {"linux_rdaccess_orca_adapter": module}):
+            c._linux_rdaccess_show_elements_list(None)
+        self.assertEqual(calls, ["h"])
+
     def test_nvda_f7_opens_elements_list_once_and_consumes_release(self):
         c, _, _ = self._patched_controller()
         calls = []
