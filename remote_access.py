@@ -1152,6 +1152,11 @@ class _LrdXTest:
                 if not code:
                     return False
                 if not self._xt.XTestFakeKeyEvent(self._dpy, code, 1 if pressed else 0, 0):
+                    if not pressed:
+                        # Upstream fallback will handle this release; forget
+                        # the held mapping so the next fresh press can resolve
+                        # against the current keyboard layout.
+                        self._down_codes.pop(name, None)
                     return False
                 if pressed:
                     self._down_codes[name] = code
