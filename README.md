@@ -165,11 +165,12 @@ main loop (so line wrapping and flat review work). Routing keys call the script'
 `processRoutingKey` with the cell index. Both are unverified on a live session.
 Braille keyboard input is still not forwarded.
 
-Gesture trace (`~/.local/share/orca/orca-remote-braille-input.log`): mode 0600,
-rotated at 256 KiB, records only id/scriptPath/source/model/routingIndex.
-Braille-keyboard input (dots/space) is typed text and is recorded only as
-`redacted`. The patch also removes upstream's debug line that logged the whole
-braille message.
+Optional gesture trace (`~/.local/share/orca/orca-remote-braille-input.log`):
+disabled by default. Set `LINUX_RDACCESS_BRAILLE_TRACE=1` in Orca's environment
+to enable it. The file is mode 0600, rotates at 256 KiB, and records only safe
+gesture metadata. Braille-keyboard input (dots/space) is typed text and remains
+recorded only as `redacted` even when tracing is enabled. The patch also removes
+upstream's debug line that logged the whole braille message.
 
 ### Responsiveness
 
