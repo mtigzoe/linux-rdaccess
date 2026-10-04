@@ -1193,6 +1193,15 @@ class LocalMachine:
     def _send_key_xdotool(self, key, pressed):
         LocalMachine.fallback_calls.append((key, pressed))
         return True
+
+    @staticmethod
+    def _resolve_key(key_name, vk_code, extended):
+        # Legacy resolver ignores extended for navigation/keypad VKs.
+        if key_name:
+            return key_name
+        return {0x21: 'Prior', 0x22: 'Next', 0x23: 'End', 0x24: 'Home',
+                0x25: 'Left', 0x26: 'Up', 0x27: 'Right', 0x28: 'Down',
+                0x2D: 'Insert', 0x2E: 'Delete', 0x0C: None}.get(vk_code)
 '''
 
     def _patched_local(self):
@@ -1224,6 +1233,32 @@ class LocalMachine:
             with self.assertRaises(ValueError):
                 remote_access.patch_legacy_orca_local_machine(path)
             self.assertEqual(path.read_text(encoding="utf-8"), "class LocalMachine:\n    pass\n")
+
+    def test_keypad_and_dedicated_navigation_keys_resolve_separately(self):
+        module, _, _ = self._patched_local()
+        resolve = module.LocalMachine._resolve_key
+        for vk, name in ((0x21, 'Prior'), (0x22, 'Next'), (0x23, 'End'),
+                         (0x24, 'Home'), (0x25, 'Left'), (0x26, 'Up'),
+                         (0x27, 'Right'), (0x28, 'Down'), (0x2D, 'Insert'),
+                         (0x2E, 'Delete')):
+            with self.subTest(vk=vk):
+                self.assertEqual(resolve(None, vk, False), 'KP_' + name)
+                self.assertEqual(resolve(None, vk, True), name)
+                # Older key-name peers and missing flags preserve priority.
+                self.assertEqual(resolve(name, vk, False), name)
+                self.assertEqual(resolve(None, vk, None), name)
+        self.assertEqual(resolve(None, 0x0C, False), 'KP_Begin')
+
+    def test_local_machine_v5_patch_is_upgraded_to_current(self):
+        module, path, _ = self._patched_local()
+        path.write_text(path.read_text(encoding='utf-8').replace(
+            remote_access.LOCAL_MACHINE_MARKER, remote_access.LOCAL_MACHINE_MARKER_V5),
+            encoding='utf-8')
+        self.assertTrue(remote_access.patch_legacy_orca_local_machine(path))
+        result = path.read_text(encoding='utf-8')
+        self.assertNotIn(remote_access.LOCAL_MACHINE_MARKER_V5 + '\n', result)
+        self.assertEqual(result.count('class _LrdXTest:'), 1)
+        self.assertFalse(remote_access.patch_legacy_orca_local_machine(path))
 
     def test_local_machine_v4_patch_is_upgraded_to_current(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -1077,7 +1077,8 @@ LOCAL_MACHINE_MARKER_V1 = "# linux-rdaccess low-latency XTest key injection"
 LOCAL_MACHINE_MARKER_V2 = LOCAL_MACHINE_MARKER_V1 + " v2"
 LOCAL_MACHINE_MARKER_V3 = LOCAL_MACHINE_MARKER_V1 + " v3"
 LOCAL_MACHINE_MARKER_V4 = LOCAL_MACHINE_MARKER_V1 + " v4"
-LOCAL_MACHINE_MARKER = LOCAL_MACHINE_MARKER_V1 + " v5"
+LOCAL_MACHINE_MARKER_V5 = LOCAL_MACHINE_MARKER_V1 + " v5"
+LOCAL_MACHINE_MARKER = LOCAL_MACHINE_MARKER_V1 + " v6"
 LEGACY_LOCAL_MACHINE_RELATIVE = Path("orca-scripts/local_machine.py")
 
 # Upstream writes every key name (including typed passwords) to a debug log,
@@ -1099,6 +1100,15 @@ def _silence_dbg(text: str) -> str:
 _XTEST_HELPER = '''
 
 ''' + LOCAL_MACHINE_MARKER + '''
+# Windows navigation VKs identify the keypad when extended=False. Preserve
+# that identity before choosing XTest or any upstream injection fallback.
+_LRD_KEYPAD_NAMES = {
+    0x0C: "KP_Begin", 0x21: "KP_Prior", 0x22: "KP_Next",
+    0x23: "KP_End", 0x24: "KP_Home", 0x25: "KP_Left",
+    0x26: "KP_Up", 0x27: "KP_Right", 0x28: "KP_Down",
+    0x2D: "KP_Insert", 0x2E: "KP_Delete",
+}
+
 # Upstream starts one `xdotool` process per key event (~38 ms each, measured),
 # serially on the receive thread, so key bursts queue up and NVDA feels
 # "chunky". Inject through XTest in-process instead (~0.004 ms); fall back to
@@ -1187,6 +1197,14 @@ def _lrd_call_on_main(func, *args, **kwargs):
 '''
 
 _XDOTOOL_DEF_RE = re.compile(r"^    def _send_key_xdotool\(self, key, pressed\):\n", re.MULTILINE)
+_RESOLVE_KEY_DEF_RE = re.compile(
+    r"^    def _resolve_key\(key_name, vk_code, extended\):\n", re.MULTILINE)
+_RESOLVE_KEY_HOOK = (
+    "        if not key_name and extended is not None and not extended:\n"
+    "            keypad_name = _LRD_KEYPAD_NAMES.get(vk_code)\n"
+    "            if keypad_name is not None:\n"
+    "                return keypad_name\n"
+)
 _CLIPBOARD_DEF_RE = re.compile(
     r"^    def set_clipboard_text\(self, text=None, \*\*kwargs\):\n", re.MULTILINE)
 _CLIPBOARD_HOOK = (
@@ -1218,6 +1236,9 @@ def patch_legacy_orca_local_machine(path: Path) -> bool:
     if match is None:
         raise ValueError(f"legacy _send_key_xdotool was not found in {path}")
     text = text[:match.end()] + _XDOTOOL_HOOK + text[match.end():]
+    resolve = _RESOLVE_KEY_DEF_RE.search(text)
+    if resolve is not None:
+        text = text[:resolve.end()] + _RESOLVE_KEY_HOOK + text[resolve.end():]
     clip = _CLIPBOARD_DEF_RE.search(text)
     if clip is not None:
         text = text[:clip.end()] + _CLIPBOARD_HOOK + text[clip.end():]

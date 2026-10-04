@@ -23,6 +23,10 @@ def _dbg(msg):
 class LocalMachine:
     def _send_key_xdotool(self, key, pressed):
         raise AssertionError("fell back to the xdotool process")
+
+    @staticmethod
+    def _resolve_key(key_name, vk_code, extended):
+        return key_name or {0x28: "Down"}.get(vk_code)
 '''
 
 
@@ -79,6 +83,25 @@ class XTestInjectionTests(unittest.TestCase):
     def test_unknown_keysym_falls_back_instead_of_injecting_garbage(self):
         with self.assertRaises(AssertionError):
             self.machine._send_key_xdotool("NotARealKeysymName", True)
+
+    def test_same_vk_keypad_and_navigation_keys_have_independent_releases(self):
+        resolve = self.machine._resolve_key
+        arrow = resolve(None, 0x28, True)
+        keypad = resolve(None, 0x28, False)
+        self.machine._send_key_xdotool(arrow, True)
+        self.machine._send_key_xdotool(keypad, True)
+        self.addCleanup(self.machine._send_key_xdotool, keypad, False)
+        self.addCleanup(self.machine._send_key_xdotool, arrow, False)
+        time.sleep(0.02)
+        self.assertTrue(self._is_down('Down'))
+        self.assertTrue(self._is_down('KP_Down'))
+        self.machine._send_key_xdotool(arrow, False)
+        time.sleep(0.02)
+        self.assertFalse(self._is_down('Down'))
+        self.assertTrue(self._is_down('KP_Down'))
+        self.machine._send_key_xdotool(keypad, False)
+        time.sleep(0.02)
+        self.assertFalse(self._is_down('KP_Down'))
 
     def test_injection_is_far_faster_than_a_process_per_event(self):
         start = time.perf_counter()
