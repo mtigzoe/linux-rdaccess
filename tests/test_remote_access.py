@@ -93,7 +93,10 @@ connection_type="slave"
                 key="private-channel-key",
             )
             remote_access.update_legacy_orca_customizations(config, path)
+            backup = path.with_name(path.name + ".linux-rdaccess-backup")
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(backup.stat().st_mode & 0o777, 0o600)
+            self.assertIn("key", backup.read_text(encoding="utf-8"))
 
     def test_local_orca_speech_preference_is_applied_in_slave_mode(self):
         original = """YOUR_NVDAREMOTE_SERVER_ADDRESS = "host"
