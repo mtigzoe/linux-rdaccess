@@ -48,7 +48,15 @@ def graphical_session_env(
     uid: int | None = None,
 ) -> dict[str, str]:
     env = dict(os.environ if base_env is None else base_env)
-    if env.get("DISPLAY") or env.get("WAYLAND_DISPLAY"):
+
+    # A DISPLAY alone is not enough to identify the user's real desktop.
+    # SSH/X11 forwarding commonly sets DISPLAY while omitting the desktop
+    # session bus/runtime directory; restarting Orca in that environment can
+    # make accessibility disappear from the active Linux session.
+    has_display = bool(env.get("DISPLAY") or env.get("WAYLAND_DISPLAY"))
+    has_session_bus = bool(env.get("DBUS_SESSION_BUS_ADDRESS"))
+    has_runtime = bool(env.get("XDG_RUNTIME_DIR"))
+    if has_display and has_session_bus and has_runtime:
         return env
 
     target_uid = os.getuid() if uid is None else uid
