@@ -176,6 +176,10 @@ if (
     if not backup.exists():
         backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
     path.write_text(text, encoding="utf-8")
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
 
     remote_controller = path.parent / LEGACY_REMOTE_CONTROLLER_RELATIVE
     if remote_controller.exists():
