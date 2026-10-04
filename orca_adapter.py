@@ -196,6 +196,13 @@ class OrcaRuntimeAdapter:
         return True
 
     @classmethod
+    def say_all(cls) -> bool:
+        return cls.call_script(
+            ("sayAll", "say_all"),
+            default_event=True,
+        )
+
+    @classmethod
     def present_title(cls) -> bool:
         return cls.call_script(
             ("presentTitle", "present_title"),
