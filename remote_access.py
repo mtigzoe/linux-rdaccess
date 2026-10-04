@@ -336,10 +336,11 @@ _LEGACY_HELPERS = '''\
         """
         down = set(getattr(self, "_lrd_down", set()))
         swapped = set(getattr(self, "_lrd_swapped", set()))
+        pending_caps = getattr(self, "_lrd_caps_pending", None)
         send = getattr(getattr(self, "local_machine", None), "send_key", None)
         if callable(send):
             for vk_code, extended in sorted(down):
-                if (vk_code, extended) in swapped:
+                if (vk_code, extended) in swapped or (vk_code, extended) == pending_caps:
                     continue
                 try:
                     send(
