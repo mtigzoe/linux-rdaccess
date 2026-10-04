@@ -157,6 +157,34 @@ class OrcaRuntimeAdapter:
         )
 
     @classmethod
+    def show_structural_list(cls, key: str) -> bool:
+        """Open Orca's native structural-navigation list for one shortcut key."""
+        script = cls.active_script()
+        if script is None:
+            return False
+        nav = getattr(script, "structuralNavigation", None)
+        if nav is None:
+            nav = getattr(script, "structural_navigation", None)
+        objects = getattr(nav, "enabledObjects", None) if nav is not None else None
+        if objects is None and nav is not None:
+            objects = getattr(nav, "enabled_objects", None)
+        values = objects.values() if isinstance(objects, dict) else ()
+        wanted = str(key).lower()
+        for obj in values:
+            bindings = getattr(obj, "bindings", None)
+            list_binding = bindings.get("list") if isinstance(bindings, dict) else None
+            if not list_binding or str(list_binding[0]).lower() != wanted:
+                continue
+            handler = getattr(obj, "showList", None)
+            if not callable(handler):
+                handler = getattr(obj, "show_list", None)
+            if not callable(handler):
+                continue
+            handler(script, None)
+            return True
+        return False
+
+    @classmethod
     def bypass_next_command(cls) -> bool:
         return cls.call_script(
             ("bypassNextCommand", "bypass_next_command"),
