@@ -52,15 +52,23 @@ def show_elements_list(send_structural_list: Callable[[str], Any]) -> bool | Non
     dialog.add_button("_Show", Gtk.ResponseType.OK)
 
     box = dialog.get_content_area()
-    label = Gtk.Label(label="Element type:")
-    label.set_xalign(0)
     combo = Gtk.ComboBoxText()
     for name, key in ELEMENT_LIST_TYPES:
         combo.append(key, name)
     combo.set_active(0)
+
+    label = Gtk.Label(label="_Element type:")
+    label.set_use_underline(True)
+    label.set_xalign(0)
+    label.set_mnemonic_widget(combo)
+
     box.pack_start(label, False, False, 6)
     box.pack_start(combo, False, False, 6)
     dialog.show_all()
+    # Put the screen reader immediately on the category control. The mnemonic
+    # relation gives Orca a stable accessible label instead of relying on visual
+    # proximity to "Element type".
+    combo.grab_focus()
 
     response = dialog.run()
     key = combo.get_active_id()
