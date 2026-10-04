@@ -464,6 +464,7 @@ _LEGACY_HELPERS = '''\
             if (
                 action is not None
                 and not any(k[0] in self._LRD_OTHER_MOD_VKS for k in self._lrd_down)
+                and not (action == "status_bar" and not bool(extended))
             ):
                 self._lrd_swapped.add(held)
                 if action == "elements_list":
