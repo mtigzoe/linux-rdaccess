@@ -157,6 +157,13 @@ class OrcaRuntimeAdapter:
         )
 
     @classmethod
+    def bypass_next_command(cls) -> bool:
+        return cls.call_script(
+            ("bypassNextCommand", "bypass_next_command"),
+            default_event=True,
+        )
+
+    @classmethod
     def to_braille_focus(cls) -> bool:
         return cls.call_script(
             ("goBrailleHome", "go_braille_home"),
