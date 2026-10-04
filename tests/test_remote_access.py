@@ -240,6 +240,19 @@ class RemoteController:
             c._linux_rdaccess_show_elements_list(None)
         self.assertEqual(calls, ["h"])
 
+    def test_elements_list_injects_real_alt_shift_modifiers(self):
+        c, _, _ = self._patched_controller()
+        c._linux_rdaccess_send_structural_list("m", None)
+        keys = [e[:3] for e in c.local_machine.events if e[0] == "key"]
+        self.assertEqual(keys, [
+            ("key", 0xA0, True),
+            ("key", 0xA4, True),
+            ("key", 0x4D, True),
+            ("key", 0x4D, False),
+            ("key", 0xA4, False),
+            ("key", 0xA0, False),
+        ])
+
     def test_nvda_f7_opens_elements_list_once_and_consumes_release(self):
         c, _, _ = self._patched_controller()
         calls = []
