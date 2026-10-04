@@ -466,6 +466,15 @@ class RemoteController:
                 c._on_remote_braille_input(scriptPath=["globalCommands", "GlobalCommands", "braille_routeTo"], routingIndex=bad)
         self.assertEqual(calls, [("route", 7)])
 
+    def test_braille_routing_without_script_metadata_is_not_dropped(self):
+        import os
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        with patches, mock.patch.dict(os.environ, {"HOME": home}):
+            c._on_remote_braille_input(routingIndex=4)
+            c._on_remote_braille_input(cellIndexes=[6])
+        self.assertEqual(calls, [("route", 4), ("route", 6)])
+
     def test_modern_nvda_single_cell_indexes_route_when_legacy_field_is_absent(self):
         import os
         c, _, home = self._patched_controller()
