@@ -922,6 +922,15 @@ class LocalMachine:
         ev = KE("d", self.D_CODE)                        # local keyboard: no remote marker
         self.assertEqual(ev._handler.function, "live_region")
 
+    def test_remote_d_marker_is_cleared_on_control_reset(self):
+        c, KE, _ = self._hooked()
+        self._remote_d(c)
+        self.assertGreater(c._module._LRD_D["ts"], 0.0)
+        c.toggle_control()
+        self.assertEqual(c._module._LRD_D["ts"], 0.0)
+        self.assertFalse(c._module._LRD_D["swapped"])
+        self.assertEqual(KE("d", self.D_CODE)._handler.function, "live_region")
+
     def test_stale_remote_marker_expires(self):
         c, KE, _ = self._hooked()
         self._remote_d(c)
