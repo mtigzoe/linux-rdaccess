@@ -493,14 +493,22 @@ _LEGACY_HELPERS = '''\
         # (some drivers report it as an int such as 0x200), a "dot" in the
         # gesture id/identifiers, or an exact "space" key-name token. A lone
         # "backSpace" key name is not a typed space.
-        def has_space_token(value):
+        def has_braille_input_token(value):
             import re as _re
-            return "space" in _re.split(r"[^a-z0-9]+", str(value).lower())
+            tokens = _re.split(r"[^a-z0-9]+", str(value).lower())
+            return (
+                "space" in tokens
+                or any(
+                    token.startswith("dot")
+                    and token[3:].isdigit()
+                    and 1 <= int(token[3:]) <= 8
+                    for token in tokens
+                )
+            )
         keyboard = (
             bool(kwargs.get("dots"))
             or bool(kwargs.get("space"))
-            or any("dot" in str(i).lower() or has_space_token(i)
-                   for i in ids if i)
+            or any(has_braille_input_token(i) for i in ids if i)
         )
         if keyboard:
             # Braille keyboard input is typed text (possibly a password).
