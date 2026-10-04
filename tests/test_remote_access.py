@@ -438,6 +438,7 @@ class RemoteController:
             panBrailleRight=lambda ev=None: calls.append(("right", ev)),
             processRoutingKey=lambda ev=None: calls.append(("route", ev.event["argument"])),
             goBrailleHome=lambda ev=None: calls.append(("focus", ev)),
+            bypassNextCommand=lambda ev=None: calls.append(("bypass", ev)),
         )
         orca = types.ModuleType("orca")
         state = types.ModuleType("orca.orca_state")
@@ -1414,14 +1415,29 @@ class LocalMachine:
         self.assertEqual(names.count((0xA0, True)), 2)    # typed press + our restore
         self.assertEqual(names.count((0xA0, False)), 2)   # our release + the user's
 
-    def test_nvda_f2_is_orca_backspace_with_nvda_held(self):
-        c, _, _ = self._patched_controller()
-        self._key(c, 0x2D, True, extended=True)
-        self._key(c, 0x71, True)
-        self.assertEqual(self._names(c)[1:], [(0x08, True), (0x08, False)])
-        self.assertNotIn((0x2D, False), self._names(c))
-        self._key(c, 0x71, False)
-        self.assertEqual(len(self._names(c)), 3)    # release consumed
+    def test_nvda_f2_invokes_orca_bypass_directly_without_modifier_layout_dependency(self):
+        import os
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        with patches, mock.patch.dict(os.environ, {"HOME": home}):
+            self._key(c, 0x2D, True, extended=True)
+            self._key(c, 0x71, True)
+            self._key(c, 0x71, False)
+        self.assertEqual(calls, [("bypass", None)])
+        self.assertNotIn((0x08, True), self._names(c))
+        self.assertNotIn((0x08, False), self._names(c))
+        self.assertEqual([k for k in self._names(c) if k[0] == 0x71], [])
+
+    def test_capslock_nvda_f2_does_not_require_capslock_to_be_orca_modifier(self):
+        import os
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        with patches, mock.patch.dict(os.environ, {"HOME": home}):
+            self._key(c, 0x14, True)
+            self._key(c, 0x71, True)
+            self._key(c, 0x71, False)
+        self.assertEqual(calls, [("bypass", None)])
+        self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [(0x14, True)])
 
     def test_plain_f2_and_shift_f2_rename_keys_are_untouched(self):
         c, _, _ = self._patched_controller()
