@@ -171,6 +171,31 @@ class OrcaRuntimeAdapter:
         )
 
     @classmethod
+    def toggle_presentation_mode(cls) -> bool:
+        return cls.call_script(
+            ("togglePresentationMode", "toggle_presentation_mode"),
+            default_event=True,
+        )
+
+    @classmethod
+    def toggle_structural_navigation(cls) -> bool:
+        script = cls.active_script()
+        if script is None:
+            return False
+        nav = getattr(script, "structuralNavigation", None)
+        if nav is None:
+            nav = getattr(script, "structural_navigation", None)
+        if nav is None:
+            return False
+        handler = getattr(nav, "toggleStructuralNavigation", None)
+        if not callable(handler):
+            handler = getattr(nav, "toggle_structural_navigation", None)
+        if not callable(handler):
+            return False
+        handler(script, None)
+        return True
+
+    @classmethod
     def present_title(cls) -> bool:
         return cls.call_script(
             ("presentTitle", "present_title"),
