@@ -755,10 +755,25 @@ _LEGACY_HELPERS = '''\
                     log.exception(
                         "linux-rdaccess: failed to release structural-list modifier")
 
+    def _linux_rdaccess_open_structural_list(self, key, modifiers):
+        """Prefer Orca's native structural-list API; retain key fallback."""
+        try:
+            from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _adapter
+            if _adapter.show_structural_list(key):
+                return
+        except ImportError:
+            pass
+        except Exception:
+            log.exception("linux-rdaccess: native structural list failed")
+
+        # Adapter unavailable or this Orca version does not expose the object.
+        # Fall back to the verified Orca 42 Alt+Shift+letter binding.
+        self._linux_rdaccess_send_structural_list(key, modifiers)
+
     def _linux_rdaccess_show_elements_list(self, modifiers):
         try:
             from linux_rdaccess_orca_adapter import show_elements_list as _show
-            result = _show(lambda key: self._linux_rdaccess_send_structural_list(key, modifiers))
+            result = _show(lambda key: self._linux_rdaccess_open_structural_list(key, modifiers))
             if result is not None:
                 # True: category selected and delegated to Orca.
                 # False: the dialog was intentionally cancelled/Escaped.
@@ -767,7 +782,7 @@ _LEGACY_HELPERS = '''\
             log.exception("linux-rdaccess: elements list failed")
 
         # Safe fallback only when the chooser could not be presented.
-        self._linux_rdaccess_send_structural_list("h", modifiers)
+        self._linux_rdaccess_open_structural_list("h", modifiers)
 
     @staticmethod
     def _linux_rdaccess_script_call(method, *args):
