@@ -440,6 +440,8 @@ class RemoteController:
             goBrailleHome=lambda ev=None: calls.append(("focus", ev)),
             bypassNextCommand=lambda ev=None: calls.append(("bypass", ev)),
             whereAmI=lambda ev=None: calls.append(("where", ev)),
+            presentTitle=lambda ev=None: calls.append(("title", ev)),
+            presentStatusBar=lambda ev=None: calls.append(("status", ev)),
         )
         orca = types.ModuleType("orca")
         state = types.ModuleType("orca.orca_state")
@@ -692,14 +694,28 @@ class RemoteController:
         self._key(c, 0x20, True)                   # keep-modifier chord still works
         self.assertIn((0x41, True), self._names(c))
 
-    def test_title_and_status_chords_keep_modifier_and_count_presses(self):
-        c, _, _ = self._patched_controller()
-        self._key(c, 0x2D, True, extended=True)
-        self._key(c, 0x54, True); self._key(c, 0x54, False)           # NVDA+T
-        self._key(c, 0x23, True, extended=True); self._key(c, 0x23, False, extended=True)  # NVDA+End
-        enter = [k for k in self._names(c) if k[0] == 0x0D]
-        self.assertEqual(enter, [(0x0D, True), (0x0D, False)] * 3)
-        self.assertNotIn((0x2D, False), self._names(c))
+    def test_title_and_status_use_direct_orca_apis_without_keypad_sequences(self):
+        import os
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        with patches, mock.patch.dict(os.environ, {"HOME": home}):
+            self._key(c, 0x2D, True, extended=True)
+            self._key(c, 0x54, True); self._key(c, 0x54, False)           # NVDA+T
+            self._key(c, 0x23, True, extended=True); self._key(c, 0x23, False, extended=True)  # NVDA+End
+        self.assertEqual(calls, [("title", None), ("status", None)])
+        self.assertEqual([k for k in self._names(c) if k[0] == 0x0D], [])
+        self.assertEqual([k for k in self._names(c) if k[0] in (0x54, 0x23)], [])
+
+    def test_capslock_title_and_status_are_modifier_layout_independent(self):
+        import os
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        with patches, mock.patch.dict(os.environ, {"HOME": home}):
+            self._key(c, 0x14, True)
+            self._key(c, 0x54, True); self._key(c, 0x54, False)
+            self._key(c, 0x23, True, extended=True); self._key(c, 0x23, False, extended=True)
+        self.assertEqual(calls, [("title", None), ("status", None)])
+        self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [(0x14, True)])
 
     def test_v21_patch_is_upgraded_to_current(self):
         with tempfile.TemporaryDirectory() as temp:
