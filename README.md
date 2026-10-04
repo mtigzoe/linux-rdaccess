@@ -738,8 +738,14 @@ The Elements List currently offers headings, links, form fields, buttons,
 edit fields, checkboxes, combo boxes, radio buttons, lists, list items,
 tables, landmarks, images, and paragraphs.
 
-Do not globally remap ordinary letters where NVDA and Orca differ. For
-example, NVDA uses `D` for landmarks while Orca uses `M`; remapping plain
-`D` without knowing whether Orca is in browse or focus mode would break
-typing into web controls. Browse-state-aware mappings should be added before
-those differences are translated.
+Do not globally remap ordinary letters where NVDA and Orca differ.
+`linux-rdaccess` currently translates remote `D` / `Shift+D` to Orca's
+landmark navigation only when Orca's active script reports structural/browse
+navigation is in use. In focus mode, editable controls, browser chrome, and
+local Linux input, `D` remains ordinary text. Ctrl/Alt/Orca-modified `D`
+is also left untouched. Future differing quick keys should use the same
+browse-state-aware approach rather than global printable-key remapping.
+
+`F6` / `Shift+F6` are currently forwarded unchanged. Native Firefox and
+Chromium behavior must be verified in a live Linux session before any
+translation is considered.
