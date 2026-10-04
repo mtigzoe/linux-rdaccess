@@ -33,7 +33,7 @@ ELEMENT_LIST_TYPES = (
 )
 
 
-def show_elements_list(send_structural_list: Callable[[str], Any]) -> bool:
+def show_elements_list(send_structural_list: Callable[[str], Any]) -> bool | None:
     """Show an NVDA-style element-type chooser, then delegate to Orca.
 
     Orca owns the actual structural-navigation result list. linux-rdaccess only
@@ -44,7 +44,7 @@ def show_elements_list(send_structural_list: Callable[[str], Any]) -> bool:
         gi.require_version("Gtk", "3.0")
         from gi.repository import Gtk
     except Exception:
-        return False
+        return None
 
     dialog = Gtk.Dialog(title="Elements List")
     dialog.set_modal(True)
@@ -66,6 +66,8 @@ def show_elements_list(send_structural_list: Callable[[str], Any]) -> bool:
     key = combo.get_active_id()
     dialog.destroy()
     if response != Gtk.ResponseType.OK or not key:
+        # The dialog was shown and the user's Cancel/Escape must be treated as
+        # a completed gesture, not as a failure that opens a fallback list.
         return False
     send_structural_list(key)
     return True
