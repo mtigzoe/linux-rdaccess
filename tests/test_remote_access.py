@@ -439,6 +439,7 @@ class RemoteController:
             processRoutingKey=lambda ev=None: calls.append(("route", ev.event["argument"])),
             goBrailleHome=lambda ev=None: calls.append(("focus", ev)),
             bypassNextCommand=lambda ev=None: calls.append(("bypass", ev)),
+            whereAmI=lambda ev=None: calls.append(("where", ev)),
         )
         orca = types.ModuleType("orca")
         state = types.ModuleType("orca.orca_state")
@@ -590,6 +591,29 @@ class RemoteController:
 
     def _names(self, c):
         return [(e[1], e[2]) for e in c.local_machine.events if e[0] == "key"]
+
+    def test_nvda_tab_invokes_where_am_i_without_keypad_modifier_translation(self):
+        import os
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        with patches, mock.patch.dict(os.environ, {"HOME": home}):
+            self._key(c, 0x2D, True, extended=True)
+            self._key(c, 0x09, True)
+            self._key(c, 0x09, False)
+        self.assertEqual(calls, [("where", None)])
+        self.assertEqual([k for k in self._names(c) if k[0] == 0x09], [])
+        self.assertEqual([k for k in self._names(c) if k[0] == 0x0D], [])
+
+    def test_capslock_nvda_tab_is_modifier_layout_independent(self):
+        import os
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        with patches, mock.patch.dict(os.environ, {"HOME": home}):
+            self._key(c, 0x14, True)
+            self._key(c, 0x09, True)
+            self._key(c, 0x09, False)
+        self.assertEqual(calls, [("where", None)])
+        self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [(0x14, True)])
 
     def test_nvda_say_all_drops_modifier_around_numpad_plus(self):
         c, _, _ = self._patched_controller()
