@@ -1395,6 +1395,15 @@ class LocalMachine:
         script.state["browse"] = True
         self.assertEqual(KE("d", self.D_CODE)._handler.function, "live_region")
 
+    def test_rejected_landmark_translation_restores_hw_code_and_modifiers(self):
+        c, KE, script = self._hooked()
+        script.structuralNavigation.functions = []  # M is no longer a structural command
+        self._remote_d(c)
+        ev = KE("d", self.D_CODE, modifiers=self.SHIFT)
+        self.assertEqual(ev.hw_code, self.D_CODE)
+        self.assertEqual(ev.modifiers, self.SHIFT)
+        self.assertEqual(ev._handler.function, "live_region")
+
     def test_one_remote_d_marks_exactly_one_orca_d(self):
         c, KE, _ = self._hooked()
         self._remote_d(c)
