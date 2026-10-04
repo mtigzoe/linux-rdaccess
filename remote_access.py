@@ -282,7 +282,6 @@ _LEGACY_HELPERS = '''\
     # modifier state exactly, so Shift is released around the key when Orca's
     # binding has none (verified against Orca 42 key matching).
     _LRD_CHORDS = {
-        (0x28, False): (True, "KP_Add", 0x6B, True, 1, False),      # NVDA+Down: say all
     }
 
     def _linux_rdaccess_stop_local_speech(self):
@@ -420,6 +419,23 @@ _LEGACY_HELPERS = '''\
                 k[0] in self._LRD_OTHER_MOD_VKS and k[0] not in (0x10, 0xA0, 0xA1)
                 for k in self._lrd_down):
             _LRD_D["ts"] = __import__("time").monotonic()
+
+        # NVDA+Down has an exact Orca Say All method. Only the extended
+        # navigation Down key is NVDA's gesture; the non-extended VK form is
+        # the numeric keypad key and must continue to pass through unchanged.
+        if (
+            pressed
+            and self._lrd_nvda_down
+            and not repeat
+            and vk_code == 0x28
+            and bool(extended)
+            and not any(k[0] in self._LRD_SHIFT_VKS for k in self._lrd_down)
+            and not any(k[0] in self._LRD_OTHER_MOD_VKS for k in self._lrd_down)
+        ):
+            self._lrd_swapped.add(held)
+            self._linux_rdaccess_run_main(
+                lambda: self._linux_rdaccess_script_call("sayAll"))
+            return True
 
         # NVDA+Space and NVDA+Shift+Space have exact Orca APIs. Calling
         # them directly avoids assuming the Windows NVDA modifier (Insert or
@@ -727,6 +743,9 @@ _LEGACY_HELPERS = '''\
                 return
             if method == "toggleStructuralNavigation":
                 _adapter.toggle_structural_navigation()
+                return
+            if method == "sayAll":
+                _adapter.say_all()
                 return
             _adapter.call_script(method, *args, default_event=method.startswith("pan"))
             return
