@@ -448,6 +448,7 @@ class RemoteController:
             whereAmI=lambda ev=None: calls.append(("where", ev)),
             presentTitle=lambda ev=None: calls.append(("title", ev)),
             presentStatusBar=lambda ev=None: calls.append(("status", ev)),
+            sayAll=lambda ev=None: calls.append(("sayAll", ev)),
             togglePresentationMode=lambda ev=None: calls.append(("presentation", ev)),
             structuralNavigation=nav,
         )
@@ -625,26 +626,33 @@ class RemoteController:
         self.assertEqual(calls, [("where", None)])
         self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [(0x14, True)])
 
-    def test_nvda_say_all_drops_modifier_around_numpad_plus(self):
-        c, _, _ = self._patched_controller()
-        self._key(c, 0x2D, True, extended=True)
-        self._key(c, 0x28, True, extended=True)    # NVDA+Down
-        self._key(c, 0x28, True, extended=True)    # auto-repeat consumed
-        self._key(c, 0x28, False, extended=True)
-        self.assertEqual(self._names(c), [
-            (0x2D, True), (0x2D, False), (0x6B, True), (0x6B, False), (0x2D, True)])
+    def test_nvda_say_all_calls_orca_directly_and_consumes_repeat(self):
+        import os
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        with patches, mock.patch.dict(os.environ, {"HOME": home}):
+            self._key(c, 0x2D, True, extended=True)
+            self._key(c, 0x28, True, extended=True)    # NVDA+Down
+            self._key(c, 0x28, True, extended=True)    # auto-repeat consumed
+            self._key(c, 0x28, False, extended=True)
+        self.assertEqual(calls, [("sayAll", None)])
+        self.assertEqual(self._names(c), [(0x2D, True)])
 
-    def test_translated_extended_down_does_not_swallow_nonextended_key_with_same_vk(self):
-        c, _, _ = self._patched_controller()
-        self._key(c, 0x2D, True, extended=True)      # NVDA
-        self._key(c, 0x28, True, extended=True)     # translated NVDA+Down
-        self._key(c, 0x28, True, extended=False)    # keypad form: distinct physical key
-        self._key(c, 0x28, False, extended=False)
-        self._key(c, 0x28, False, extended=True)    # release translated key last
+    def test_direct_say_all_does_not_swallow_nonextended_key_with_same_vk(self):
+        import os
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        with patches, mock.patch.dict(os.environ, {"HOME": home}):
+            self._key(c, 0x2D, True, extended=True)      # NVDA
+            self._key(c, 0x28, True, extended=True)     # NVDA+Down -> direct Say All
+            self._key(c, 0x28, True, extended=False)    # keypad form: distinct physical key
+            self._key(c, 0x28, False, extended=False)
+            self._key(c, 0x28, False, extended=True)    # translated release consumed
+        self.assertEqual(calls, [("sayAll", None)])
         names = self._names(c)
-        self.assertIn((0x28, True), names)
-        self.assertIn((0x28, False), names)
-        self.assertEqual(names.count((0x6B, True)), 1)
+        self.assertEqual(names.count((0x28, True)), 1)
+        self.assertEqual(names.count((0x28, False)), 1)
+        self.assertNotIn((0x6B, True), names)
 
     def test_plain_arrow_and_numpad_arrow_with_nvda_are_untouched(self):
         c, _, _ = self._patched_controller()
@@ -686,28 +694,32 @@ class RemoteController:
             self._key(c, 0x20, True)                     # NVDA+Space still translates
         self.assertEqual(calls, [("presentation", None)])
 
-    def test_drop_chord_prefers_insert_when_capslock_and_insert_are_both_held(self):
-        c, _, _ = self._patched_controller()
-        self._key(c, 0x14, True)                     # CapsLock first
-        self._key(c, 0x2D, True, extended=True)      # Insert also held
-        self._key(c, 0x28, True, extended=True)      # NVDA+Down
+    def test_say_all_with_both_nvda_modifiers_never_releases_either(self):
+        import os
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        with patches, mock.patch.dict(os.environ, {"HOME": home}):
+            self._key(c, 0x14, True)                     # CapsLock first
+            self._key(c, 0x2D, True, extended=True)      # Insert also held
+            self._key(c, 0x28, True, extended=True)      # NVDA+Down
+        self.assertEqual(calls, [("sayAll", None)])
         names = self._names(c)
-        self.assertIn((0x2D, False), names)
-        self.assertIn((0x6B, True), names)
+        self.assertNotIn((0x2D, False), names)
         self.assertNotIn((0x14, False), names)
+        self.assertNotIn((0x6B, True), names)
 
-    def test_capslock_nvda_key_is_never_released_or_repressed(self):
+    def test_capslock_nvda_key_supports_direct_say_all_without_toggling_capslock(self):
         import os
         c, _, home = self._patched_controller()
         calls, patches = self._with_fake_orca(c, home)
         with patches, mock.patch.dict(os.environ, {"HOME": home}):
             self._key(c, 0x14, True)
-            self._key(c, 0x28, True, extended=True)    # drop-chord cannot safely toggle CapsLock
-            self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [(0x14, True)])
-            self.assertIn((0x28, True), self._names(c))
+            self._key(c, 0x28, True, extended=True)
+            self._key(c, 0x28, False, extended=True)
             self._key(c, 0x20, True)                   # direct presentation toggle
-        self.assertEqual(calls, [("presentation", None)])
+        self.assertEqual(calls, [("sayAll", None), ("presentation", None)])
         self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [(0x14, True)])
+        self.assertEqual([k for k in self._names(c) if k[0] == 0x28], [])
 
     def test_title_and_status_use_direct_orca_apis_without_keypad_sequences(self):
         import os
