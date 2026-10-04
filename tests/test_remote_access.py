@@ -386,6 +386,18 @@ class RemoteController:
         self.assertEqual(self._names(c), [
             (0x2D, True), (0x2D, False), (0x6B, True), (0x6B, False), (0x2D, True)])
 
+    def test_translated_extended_down_does_not_swallow_nonextended_key_with_same_vk(self):
+        c, _, _ = self._patched_controller()
+        self._key(c, 0x2D, True, extended=True)      # NVDA
+        self._key(c, 0x28, True, extended=True)     # translated NVDA+Down
+        self._key(c, 0x28, True, extended=False)    # keypad form: distinct physical key
+        self._key(c, 0x28, False, extended=False)
+        self._key(c, 0x28, False, extended=True)    # release translated key last
+        names = self._names(c)
+        self.assertIn((0x28, True), names)
+        self.assertIn((0x28, False), names)
+        self.assertEqual(names.count((0x6B, True)), 1)
+
     def test_plain_arrow_and_numpad_arrow_with_nvda_are_untouched(self):
         c, _, _ = self._patched_controller()
         self._key(c, 0x28, True, extended=True)    # no NVDA key: plain Down
