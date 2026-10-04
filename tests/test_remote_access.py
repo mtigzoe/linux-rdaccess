@@ -76,6 +76,25 @@ transport = RelayTransport(
             self.assertTrue(path.with_name(path.name + ".linux-rdaccess-backup").exists())
 
 
+    def test_apply_protects_orca_customizations_key_permissions(self):
+        original = """YOUR_NVDAREMOTE_SERVER_ADDRESS = "host"
+YOUR_NVDAREMOTE_SERVER_PORT = 6837
+YOUR_NVDAREMOTE_KEY = "key"
+connection_type="slave"
+"""
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "orca-customizations.py"
+            path.write_text(original, encoding="utf-8")
+            path.chmod(0o644)
+            config = remote_access.RemoteAccessConfig(
+                host="nvdaremote.com",
+                port=6837,
+                role="host",
+                key="private-channel-key",
+            )
+            remote_access.update_legacy_orca_customizations(config, path)
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+
     def test_local_orca_speech_preference_is_applied_in_slave_mode(self):
         original = """YOUR_NVDAREMOTE_SERVER_ADDRESS = "host"
 YOUR_NVDAREMOTE_SERVER_PORT = 6837
