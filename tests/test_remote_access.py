@@ -349,15 +349,18 @@ class RemoteController:
         self.assertIn(("key", 0x76, True), keys)
         self.assertIn(("key", 0x76, False), keys)
 
-    def test_nvda_space_becomes_a_once_and_repeat_is_consumed(self):
-        c, _, _ = self._patched_controller()
-        self._key(c, 0x2D, True)
-        self._key(c, 0x20, True)
-        self._key(c, 0x20, True)      # auto-repeat must not toggle again
-        self._key(c, 0x20, False)
-        keys = [e[:3] for e in c.local_machine.events if e[0] == "key"]
-        self.assertEqual([k for k in keys if k[1] == 0x20], [])
-        self.assertEqual(sum(k[1] == 0x41 and k[2] for k in keys), 1)
+    def test_nvda_space_calls_orca_presentation_toggle_once_and_consumes_repeat(self):
+        import os
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        with patches, mock.patch.dict(os.environ, {"HOME": home}):
+            self._key(c, 0x2D, True)
+            self._key(c, 0x20, True)
+            self._key(c, 0x20, True)      # auto-repeat must not toggle again
+            self._key(c, 0x20, False)
+        self.assertEqual(calls, [("presentation", None)])
+        self.assertEqual([k for k in self._names(c) if k[0] == 0x20], [])
+        self.assertEqual([k for k in self._names(c) if k[0] == 0x41], [])
 
     def test_plain_space_then_insert_does_not_leave_space_stuck(self):
         c, _, _ = self._patched_controller()
@@ -433,6 +436,9 @@ class RemoteController:
     def _with_fake_orca(self, c, home):
         import sys, types
         calls = []
+        nav = types.SimpleNamespace(
+            toggleStructuralNavigation=lambda script_obj, ev=None: calls.append(("structural", ev)),
+        )
         script = types.SimpleNamespace(
             panBrailleLeft=lambda ev=None: calls.append(("left", ev)),
             panBrailleRight=lambda ev=None: calls.append(("right", ev)),
@@ -442,6 +448,8 @@ class RemoteController:
             whereAmI=lambda ev=None: calls.append(("where", ev)),
             presentTitle=lambda ev=None: calls.append(("title", ev)),
             presentStatusBar=lambda ev=None: calls.append(("status", ev)),
+            togglePresentationMode=lambda ev=None: calls.append(("presentation", ev)),
+            structuralNavigation=nav,
         )
         orca = types.ModuleType("orca")
         state = types.ModuleType("orca.orca_state")
@@ -668,12 +676,15 @@ class RemoteController:
         ])
 
     def test_releasing_one_of_two_nvda_modifiers_keeps_the_other_active(self):
-        c, _, _ = self._patched_controller()
-        self._key(c, 0x2D, True, extended=True)      # Insert
-        self._key(c, 0x14, True)                     # CapsLock
-        self._key(c, 0x14, False)                    # release only CapsLock
-        self._key(c, 0x20, True)                     # NVDA+Space still translates
-        self.assertIn((0x41, True), self._names(c))
+        import os
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        with patches, mock.patch.dict(os.environ, {"HOME": home}):
+            self._key(c, 0x2D, True, extended=True)      # Insert
+            self._key(c, 0x14, True)                     # CapsLock
+            self._key(c, 0x14, False)                    # release only CapsLock
+            self._key(c, 0x20, True)                     # NVDA+Space still translates
+        self.assertEqual(calls, [("presentation", None)])
 
     def test_drop_chord_prefers_insert_when_capslock_and_insert_are_both_held(self):
         c, _, _ = self._patched_controller()
@@ -686,13 +697,17 @@ class RemoteController:
         self.assertNotIn((0x14, False), names)
 
     def test_capslock_nvda_key_is_never_released_or_repressed(self):
-        c, _, _ = self._patched_controller()
-        self._key(c, 0x14, True)
-        self._key(c, 0x28, True, extended=True)    # drop-chord would toggle CapsLock
+        import os
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        with patches, mock.patch.dict(os.environ, {"HOME": home}):
+            self._key(c, 0x14, True)
+            self._key(c, 0x28, True, extended=True)    # drop-chord cannot safely toggle CapsLock
+            self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [(0x14, True)])
+            self.assertIn((0x28, True), self._names(c))
+            self._key(c, 0x20, True)                   # direct presentation toggle
+        self.assertEqual(calls, [("presentation", None)])
         self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [(0x14, True)])
-        self.assertIn((0x28, True), self._names(c))
-        self._key(c, 0x20, True)                   # keep-modifier chord still works
-        self.assertIn((0x41, True), self._names(c))
 
     def test_title_and_status_use_direct_orca_apis_without_keypad_sequences(self):
         import os
@@ -1416,16 +1431,16 @@ class LocalMachine:
 
     # ---- NVDA+Shift+Space (single-letter nav) and NVDA+F2 (pass next key) --
 
-    def test_nvda_shift_space_is_orca_z_with_shift_released_around_it(self):
-        c, _, _ = self._patched_controller()
-        self._key(c, 0x2D, True, extended=True)     # NVDA (Insert)
-        self._key(c, 0xA0, True)                    # Left Shift
-        self._key(c, 0x20, True)                    # Space
-        self.assertEqual(self._names(c), [
-            (0x2D, True), (0xA0, True),             # forwarded as typed
-            (0xA0, False), (0x5A, True), (0x5A, False), (0xA0, True)])
-        # NVDA stays held throughout (Orca needs its modifier for Orca+Z).
-        self.assertNotIn((0x2D, False), self._names(c))
+    def test_nvda_shift_space_calls_structural_navigation_directly(self):
+        import os
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        with patches, mock.patch.dict(os.environ, {"HOME": home}):
+            self._key(c, 0x2D, True, extended=True)
+            self._key(c, 0xA0, True)
+            self._key(c, 0x20, True)
+        self.assertEqual(calls, [("structural", None)])
+        self.assertEqual(self._names(c), [(0x2D, True), (0xA0, True)])
 
     def test_nvda_shift_space_repeat_and_release_are_consumed(self):
         c, _, _ = self._patched_controller()
@@ -1439,16 +1454,17 @@ class LocalMachine:
         self.assertNotIn((0x20, True), self._names(c))
         self.assertNotIn((0x20, False), self._names(c))
 
-    def test_both_shift_keys_are_released_and_restored(self):
-        c, _, _ = self._patched_controller()
-        self._key(c, 0x2D, True, extended=True)
-        self._key(c, 0xA0, True)
-        self._key(c, 0xA1, True)
-        self._key(c, 0x20, True)
-        tail = self._names(c)[3:]
-        self.assertEqual(sorted(tail[:2]), [(0xA0, False), (0xA1, False)])
-        self.assertEqual(tail[2:4], [(0x5A, True), (0x5A, False)])
-        self.assertEqual(sorted(tail[4:]), [(0xA0, True), (0xA1, True)])
+    def test_both_shift_keys_stay_physically_held_during_direct_structural_toggle(self):
+        import os
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        with patches, mock.patch.dict(os.environ, {"HOME": home}):
+            self._key(c, 0x2D, True, extended=True)
+            self._key(c, 0xA0, True)
+            self._key(c, 0xA1, True)
+            self._key(c, 0x20, True)
+        self.assertEqual(calls, [("structural", None)])
+        self.assertEqual(self._names(c), [(0x2D, True), (0xA0, True), (0xA1, True)])
 
     def test_shift_space_without_nvda_key_types_normally(self):
         c, _, _ = self._patched_controller()
@@ -1468,22 +1484,30 @@ class LocalMachine:
             self.assertNotIn((0x5A, True), self._names(c))
 
     def test_nvda_space_without_shift_is_still_the_focus_browse_toggle(self):
-        c, _, _ = self._patched_controller()
-        self._key(c, 0x2D, True, extended=True)
-        self._key(c, 0x20, True)
-        self.assertEqual(self._names(c)[1:], [(0x41, True), (0x41, False)])
+        import os
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        with patches, mock.patch.dict(os.environ, {"HOME": home}):
+            self._key(c, 0x2D, True, extended=True)
+            self._key(c, 0x20, True)
+        self.assertEqual(calls, [("presentation", None)])
+        self.assertEqual(self._names(c), [(0x2D, True)])
 
     def test_shift_released_before_space_does_not_confuse_the_release(self):
-        c, _, _ = self._patched_controller()
-        self._key(c, 0x2D, True, extended=True)
-        self._key(c, 0xA0, True)
-        self._key(c, 0x20, True)                    # translated while Shift held
-        self._key(c, 0xA0, False)                   # user lets go of Shift first
-        self._key(c, 0x20, False)                   # then Space: still consumed
+        import os
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        with patches, mock.patch.dict(os.environ, {"HOME": home}):
+            self._key(c, 0x2D, True, extended=True)
+            self._key(c, 0xA0, True)
+            self._key(c, 0x20, True)
+            self._key(c, 0xA0, False)
+            self._key(c, 0x20, False)
+        self.assertEqual(calls, [("structural", None)])
         self.assertEqual([k for k in self._names(c) if k[0] == 0x20], [])
         names = self._names(c)
-        self.assertEqual(names.count((0xA0, True)), 2)    # typed press + our restore
-        self.assertEqual(names.count((0xA0, False)), 2)   # our release + the user's
+        self.assertEqual(names.count((0xA0, True)), 1)
+        self.assertEqual(names.count((0xA0, False)), 1)
 
     def test_nvda_f2_invokes_orca_bypass_directly_without_modifier_layout_dependency(self):
         import os
@@ -1516,11 +1540,14 @@ class LocalMachine:
         self.assertEqual(self._names(c), [(0x71, True), (0x71, False), (0xA0, True), (0x71, True)])
 
     def test_capslock_as_nvda_key_still_gets_the_shift_space_chord(self):
-        c, _, _ = self._patched_controller()
-        self._key(c, 0x14, True)
-        self._key(c, 0xA0, True)
-        self._key(c, 0x20, True)
-        self.assertIn((0x5A, True), self._names(c))
+        import os
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        with patches, mock.patch.dict(os.environ, {"HOME": home}):
+            self._key(c, 0x14, True)
+            self._key(c, 0xA0, True)
+            self._key(c, 0x20, True)
+        self.assertEqual(calls, [("structural", None)])
         self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [(0x14, True)])
 
     def test_elements_list_chord_from_the_branch_still_works(self):
