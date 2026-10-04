@@ -275,7 +275,7 @@ _LEGACY_HELPERS = '''\
         send = getattr(getattr(self, "local_machine", None), "send_key", None)
         if callable(send):
             for vk_code, extended in sorted(down):
-                if vk_code in swapped:
+                if (vk_code, extended) in swapped:
                     continue
                 try:
                     send(
@@ -360,7 +360,7 @@ _LEGACY_HELPERS = '''\
                 action is not None
                 and not any(k[0] in self._LRD_OTHER_MOD_VKS for k in self._lrd_down)
             ):
-                self._lrd_swapped.add(vk_code)
+                self._lrd_swapped.add(held)
                 if action == "elements_list":
                     self._linux_rdaccess_run_main(
                         lambda: self._linux_rdaccess_show_elements_list(modifiers))
@@ -371,8 +371,8 @@ _LEGACY_HELPERS = '''\
         # auto-repeat is consumed, and a release is consumed only for a
         # translated press, so a normally forwarded key is never left stuck.
         if pressed:
-            if vk_code in self._lrd_swapped:
-                return True  # auto-repeat of a translated chord
+            if held in self._lrd_swapped:
+                return True  # auto-repeat of this translated physical key
             shifts = [k for k in self._lrd_down if k[0] in self._LRD_SHIFT_VKS]
             chord = self._LRD_CHORDS.get((vk_code, bool(shifts)))
             if (
@@ -389,7 +389,7 @@ _LEGACY_HELPERS = '''\
             if drop and (nvda is None or nvda[0] == 0x14):
                 # Re-pressing CapsLock would toggle the lock state.
                 return False
-            self._lrd_swapped.add(vk_code)
+            self._lrd_swapped.add(held)
             send = self.local_machine.send_key
             if drop:
                 send(key_name=None, pressed=False, modifiers=modifiers,
@@ -410,8 +410,8 @@ _LEGACY_HELPERS = '''\
                 send(key_name=None, pressed=True, modifiers=modifiers,
                      vk_code=nvda[0], scan_code=0, extended=nvda[1])
             return True
-        if vk_code in self._lrd_swapped:
-            self._lrd_swapped.discard(vk_code)
+        if held in self._lrd_swapped:
+            self._lrd_swapped.discard(held)
             return True
         return False
 
