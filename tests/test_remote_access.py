@@ -1108,6 +1108,23 @@ class LocalMachine:
         again = KE("d", self.D_CODE, pressed=False)       # second release: state cleared
         self.assertEqual(again._handler.function, "live_region")
 
+    def test_landmark_release_keeps_translated_identity_if_modifiers_change(self):
+        c, KE, _ = self._hooked()
+        self._remote_d(c)
+        KE("d", self.D_CODE)  # translated press -> M
+        rel = KE("d", self.D_CODE, modifiers=self.CTRL, pressed=False)
+        self.assertEqual(rel._handler.function, "landmark_next")
+        self.assertFalse(c._module._LRD_D["swapped"])
+
+    def test_landmark_release_keeps_translated_identity_if_browse_mode_changes(self):
+        c, KE, script = self._hooked()
+        self._remote_d(c)
+        KE("d", self.D_CODE)  # translated press -> M
+        script.state["browse"] = False
+        rel = KE("d", self.D_CODE, pressed=False)
+        self.assertEqual(rel._handler.function, "landmark_next")
+        self.assertFalse(c._module._LRD_D["swapped"])
+
     def test_other_keys_pass_through_untouched(self):
         c, KE, _ = self._hooked()
         self._remote_d(c)
