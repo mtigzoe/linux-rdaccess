@@ -356,6 +356,7 @@ _LEGACY_HELPERS = '''\
             marker["ts"] = 0.0
             marker["swapped"] = False
             marker["modifiers"] = 0
+            marker["code"] = None
 
     def _linux_rdaccess_filter_key(self, pressed, vk_code, extended, modifiers,
                                    key_name=None, scan_code=None):
@@ -799,7 +800,7 @@ _LEGACY_ORCA_D_HOOK = '''
 # captures the key handler there, before consumesKeyboardEvent), then restores
 # hw_code so echo, double-click detection and release matching see the real key.
 # Opt out with LINUX_RDACCESS_NVDA_D_LANDMARK=0.
-_LRD_D = {"ts": 0.0, "swapped": False, "modifiers": 0}
+_LRD_D = {"ts": 0.0, "swapped": False, "modifiers": 0, "code": None}
 _LRD_D_WINDOW = 1.0
 
 
@@ -817,15 +818,18 @@ def _lrd_maybe_swap_d(event, keybindings):
         # Do not re-evaluate Ctrl/Alt/Orca modifiers or browse/focus mode here:
         # those can legitimately change while D is held, and sending D-up after
         # an M-down creates an unmatched structural-navigation key sequence.
-        code = keybindings.getKeycode("m")
+        code = _LRD_D.get("code")
         if not code:
             _LRD_D["swapped"] = False
+            _LRD_D["modifiers"] = 0
+            _LRD_D["code"] = None
             return None
         original = (event.hw_code, event.modifiers)
         event.hw_code = code
         event.modifiers = _LRD_D.get("modifiers", 0)
         _LRD_D["swapped"] = False
         _LRD_D["modifiers"] = 0
+        _LRD_D["code"] = None
         return original
 
     # The marker belongs to exactly one D that Orca evaluates, whether or
@@ -860,9 +864,11 @@ def _lrd_maybe_swap_d(event, keybindings):
         _LRD_D["ts"] = 0.0
         _LRD_D["swapped"] = True
         _LRD_D["modifiers"] = event.modifiers
+        _LRD_D["code"] = code
     else:
         _LRD_D["swapped"] = False
         _LRD_D["modifiers"] = 0
+        _LRD_D["code"] = None
     return original
 
 
