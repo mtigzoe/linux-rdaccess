@@ -22,6 +22,8 @@ from remote_access import (
     DEFAULT_CONFIG,
     disable_legacy_orca_connection,
     load_config,
+    legacy_controller_patch_current,
+    legacy_local_machine_patch_current,
     print_status,
     update_legacy_orca_customizations,
 )
@@ -281,19 +283,19 @@ def patch_status(orca_config: Path) -> list[tuple[str, str]]:
     base = orca_config.expanduser().parent
     checks = (
         ("input shim (remote_controller.py)", base / LEGACY_REMOTE_CONTROLLER_RELATIVE,
-         LEGACY_COMPAT_MARKER, LEGACY_COMPAT_MARKER_V1),
+         LEGACY_COMPAT_MARKER, LEGACY_COMPAT_MARKER_V1, legacy_controller_patch_current),
         ("fast key injection (local_machine.py)", base / LEGACY_LOCAL_MACHINE_RELATIVE,
-         LOCAL_MACHINE_MARKER, LOCAL_MACHINE_MARKER_V1),
+         LOCAL_MACHINE_MARKER, LOCAL_MACHINE_MARKER_V1, legacy_local_machine_patch_current),
     )
     rows = []
-    for label, path, current, old in checks:
+    for label, path, current, old, valid in checks:
         try:
             text = path.read_text(encoding="utf-8")
         except OSError:
             rows.append((label, "missing"))
             continue
         if current in text:
-            rows.append((label, "current"))
+            rows.append((label, "current" if valid(text) else "incomplete patch - repair required"))
         elif old in text:
             rows.append((label, "outdated - run: linux-rdaccess connect"))
         else:

@@ -323,13 +323,15 @@ LEGACY_COMPAT_MARKER_V25 = "# linux-rdaccess NVDA/Orca input compatibility v25"
 LEGACY_COMPAT_MARKER_V26 = "# linux-rdaccess NVDA/Orca input compatibility v26"
 LEGACY_COMPAT_MARKER_V27 = "# linux-rdaccess NVDA/Orca input compatibility v27"
 LEGACY_COMPAT_MARKER_V28 = "# linux-rdaccess NVDA/Orca input compatibility v28"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v29"
+LEGACY_COMPAT_MARKER_V29 = "# linux-rdaccess NVDA/Orca input compatibility v29"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v30"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
     ''' + LEGACY_COMPAT_MARKER + '''
     # Helpers injected by linux-rdaccess. They never log key names, braille
     # dots, speech text or connection keys.
+    _LRD_INPUT_LOCK = __import__("threading").RLock()
     _LRD_CTRL_VKS = (0x11, 0xA2, 0xA3)
     _LRD_MODIFIER_VKS = (
         0x10, 0xA0, 0xA1, 0x11, 0xA2, 0xA3, 0x12, 0xA4, 0xA5,
@@ -384,7 +386,7 @@ _LEGACY_HELPERS = '''\
             try:
                 self.local_machine.cancel_speech()
             except Exception:
-                log.exception("linux-rdaccess: failed to cancel speech")
+                log.error("linux-rdaccess: failed to cancel speech")
 
         self._linux_rdaccess_run_main(run)
 
@@ -404,31 +406,48 @@ _LEGACY_HELPERS = '''\
             ):
                 transport.send(type="cancel")
         except Exception:
-            log.exception("linux-rdaccess: failed to send cancel to NVDA")
+            log.error("linux-rdaccess: failed to send cancel to NVDA")
+
+    @staticmethod
+    def _linux_rdaccess_key_identity(vk_code, extended, key_name=None):
+        return (vk_code if vk_code is not None else key_name, bool(extended))
+
+    def _linux_rdaccess_forward_key(self, **kwargs):
+        """Own successful forwards, retaining the original release payload."""
+        held = self._linux_rdaccess_key_identity(
+            kwargs.get("vk_code"), kwargs.get("extended"), kwargs.get("key_name"))
+        forwarded = getattr(self, "_lrd_forwarded", None)
+        if forwarded is None:
+            forwarded = self._lrd_forwarded = {}
+        pressed = bool(kwargs.get("pressed"))
+        if not pressed and held not in forwarded:
+            return False
+        result = self.local_machine.send_key(**kwargs)
+        if result is not False:
+            if pressed:
+                forwarded[held] = dict(kwargs)
+            else:
+                forwarded.pop(held, None)
+        return result
 
     def _linux_rdaccess_reset_keys(self):
         """Release forwarded held keys and clear compatibility state.
 
-        Remote disconnects/control hand-offs can lose key-up events. Keys in
-        _lrd_swapped were consumed by the compatibility layer and were never
-        forwarded as their original key, so do not synthesize releases for
-        those. Everything else that is still down is released directly through
-        the local machine before state is forgotten.
+        Remote disconnects/control hand-offs can lose key-up events. Only
+        successful forwards acquire release ownership; failed releases remain
+        owned so a later reset can retry them.
         """
-        down = set(getattr(self, "_lrd_down", set()))
-        swapped = set(getattr(self, "_lrd_swapped", set()))
-        pending_caps = getattr(self, "_lrd_caps_pending", None)
+        forwarded = getattr(self, "_lrd_forwarded", {})
         send = getattr(getattr(self, "local_machine", None), "send_key", None)
         if callable(send):
-            for vk_code, extended in sorted(down):
-                if (vk_code, extended) in swapped or (vk_code, extended) == pending_caps:
-                    continue
+            order = lambda item: (isinstance(item[0], str), str(item[0]) if isinstance(item[0], str) else item[0] or 0, item[1])
+            for held in sorted(list(forwarded), key=order):
                 try:
-                    send(
-                        key_name=None, pressed=False, modifiers=None,
-                        vk_code=vk_code, scan_code=0, extended=extended)
+                    release = dict(forwarded[held], pressed=False)
+                    if send(**release) is not False:
+                        forwarded.pop(held, None)
                 except Exception:
-                    log.exception("linux-rdaccess: failed to release held key on reset")
+                    log.error("linux-rdaccess: failed to release held key on reset")
         self._lrd_down = set()
         self._lrd_nvda_down = False
         self._lrd_swapped = set()
@@ -453,17 +472,19 @@ _LEGACY_HELPERS = '''\
         self._lrd_caps_pending = None
         self._lrd_caps_used = False
         try:
-            self.local_machine.send_key(
+            self._linux_rdaccess_forward_key(
                 key_name=None, pressed=True, modifiers=None,
                 vk_code=held[0], scan_code=0, extended=held[1])
         except Exception:
-            log.exception("linux-rdaccess: failed to forward deferred CapsLock")
+            log.error("linux-rdaccess: failed to forward deferred CapsLock")
 
     def _linux_rdaccess_sync_state(self):
         """Initialize/change the input generation for either input channel."""
         state = (
             getattr(self, "control_state", None),
             bool(getattr(getattr(self, "transport", None), "connected", True)),
+            getattr(getattr(self, "transport", None), "connection_type", None),
+            id(getattr(self, "transport", None)),
         )
         if getattr(self, "_lrd_state", None) != state:
             # Control moved local/remote or the transport reconnected. Release
@@ -478,7 +499,7 @@ _LEGACY_HELPERS = '''\
         """Return True when the event was fully handled here."""
         self._linux_rdaccess_sync_state()
         pressed = bool(pressed)
-        held = (vk_code, bool(extended))
+        held = self._linux_rdaccess_key_identity(vk_code, extended, key_name)
         repeat = pressed and held in self._lrd_down
         if pressed:
             self._lrd_down.add(held)
@@ -637,7 +658,7 @@ _LEGACY_HELPERS = '''\
                 elif action == "pass_next":
                     self._lrd_bypass_next = True
                     self._linux_rdaccess_run_main(
-                        lambda: self._linux_rdaccess_script_call("bypassNextCommand"))
+                        self._linux_rdaccess_activate_bypass)
                 elif action == "where_am_i":
                     self._linux_rdaccess_run_main(
                         lambda: self._linux_rdaccess_script_call("whereAmI"))
@@ -706,71 +727,57 @@ _LEGACY_HELPERS = '''\
             return True
         return False
 
+    def _linux_rdaccess_activate_bypass(self):
+        if self._linux_rdaccess_script_call("bypassNextCommand") is False:
+            self._lrd_bypass_next = False
+
     def _linux_rdaccess_classify_braille(self, kwargs):
-        """Return (action, safe_record) for an NVDA Remote braille_input."""
-        def text(value):
-            return str(value)[:120]
-        ids = [kwargs.get("id")] + list(kwargs.get("identifiers") or [])
-        script = kwargs.get("scriptPath") or []
-        name = str(script[-1]) if script else ""
+        """Validate protocol shapes; persist only canonical command metadata."""
+        invalid = (None, {"redacted": "invalid-braille-input"})
+        identifiers = kwargs.get("identifiers", [])
+        gesture_id = kwargs.get("id")
+        if not isinstance(identifiers, (list, tuple)) or not all(
+                isinstance(item, str) for item in identifiers):
+            return invalid
+        if gesture_id is not None and not isinstance(gesture_id, str):
+            return invalid
+        script = kwargs.get("scriptPath")
+        if "scriptPath" in kwargs and (
+                not isinstance(script, (list, tuple)) or len(script) != 3
+                or not all(isinstance(part, str) and part for part in script)):
+            return invalid
+        name = script[-1] if script else ""
         if name.startswith("script_"):
             name = name[len("script_"):]
-        # NVDA's BrailleInputGesture declares dots=0 and space=False as class
-        # attributes and NVDA Remote copies them with hasattr(), so EVERY
-        # gesture from a display whose gesture class inherits it (Eurobraille,
-        # Handy Tech, Freedom Scientific, HIMS...) carries both fields, pan and
-        # routing keys included. Their presence therefore says nothing; typed
-        # braille is identified by a non-zero dots mask, a truthy space flag
-        # (some drivers report it as an int such as 0x200), a "dot" in the
-        # gesture id/identifiers, or an exact "space" key-name token. A lone
-        # "backSpace" key name is not a typed space.
-        def has_braille_input_token(value):
+        dots, space = kwargs.get("dots", 0), kwargs.get("space", False)
+        if (not isinstance(dots, int) or not 0 <= dots <= 255
+                or not isinstance(space, (bool, int)) or space < 0):
+            return invalid
+        ids = ([gesture_id] if gesture_id else []) + list(identifiers)
+
+        def is_input(value):
             import re as _re
-            tokens = _re.split(r"[^a-z0-9]+", str(value).lower())
-            return (
-                "space" in tokens
-                or any(
-                    token.startswith("dot")
-                    and token[3:].isdigit()
-                    and 1 <= int(token[3:]) <= 8
-                    for token in tokens
-                )
-            )
-        keyboard = (
-            bool(kwargs.get("dots"))
-            or bool(kwargs.get("space"))
-            or any(has_braille_input_token(i) for i in ids if i)
-            # NVDA serializes keyboard-emulation scripts as kb:<gesture>.
-            # That string can contain typed characters even without dot data.
-            or name.startswith("kb:")
-            or name == "braille_dots"
-        )
-        if keyboard:
-            # Braille keyboard input is typed text (possibly a password).
-            return "keyboard", {
-                "redacted": "braille-keyboard-input",
-                "model": text(kwargs.get("model")),
-                "source": text(kwargs.get("source")),
-            }
-        record = {}
-        for field in ("id", "scriptPath", "source", "model", "routingIndex", "cellIndexes"):
-            if field in kwargs:
-                value = kwargs[field]
-                record[field] = (
-                    [text(v) for v in value]
-                    if isinstance(value, (list, tuple)) else text(value)
-                )
-        if kwargs.get("identifiers"):
-            record["identifiers"] = [text(i) for i in kwargs["identifiers"]]
-        action = self._LRD_BRAILLE_ACTIONS.get(name)
-        if action is None and not script and (
-            "routingIndex" in kwargs
-            or "cellIndexes" in kwargs
-        ):
-            # Routing position is protocol-level data and is sufficient to
-            # identify a routing gesture even when an older/newer peer omits
-            # scriptPath metadata. Validation still happens before dispatch.
+            tokens = _re.split(r"[^a-z0-9]+", value.lower())
+            return (value.lower().startswith("bk:") or "space" in tokens
+                    or any(token in ("dot1", "dot2", "dot3", "dot4",
+                                     "dot5", "dot6", "dot7", "dot8")
+                           for token in tokens))
+
+        if dots or space or any(is_input(value) for value in ids) or name.startswith("kb:") or name == "braille_dots":
+            return "keyboard", {"redacted": "braille-keyboard-input"}
+        action = (self._LRD_BRAILLE_ACTIONS.get(name)
+                  if script and tuple(script[:2]) == ("globalCommands", "GlobalCommands")
+                  else None)
+        if action is None and "scriptPath" not in kwargs and (
+                "routingIndex" in kwargs or "cellIndexes" in kwargs):
             action = "route"
+        if action is None:
+            return None, {"redacted": "unknown-braille-input"}
+        # Driver ids, identifiers, model/source and unknown script paths can
+        # encode characters. They are never persisted, even with trace enabled.
+        record = {"action": action}
+        if script:
+            record["scriptPath"] = ["globalCommands", "GlobalCommands", name]
         return action, record
 
     def _linux_rdaccess_trace_braille(self, record):
@@ -781,11 +788,15 @@ _LEGACY_HELPERS = '''\
         path = _os.path.expanduser(
             "~/.local/share/orca/orca-remote-braille-input.log")
         try:
+            # An existing trace may predate private creation permissions.
+            # Protect it before rotation, including the resulting .1 file.
+            _os.chmod(path, 0o600)
             if _os.path.getsize(path) > self._LRD_TRACE_MAX_BYTES:
                 _os.replace(path, path + ".1")
         except OSError:
             pass
         fd = _os.open(path, _os.O_WRONLY | _os.O_APPEND | _os.O_CREAT, 0o600)
+        _os.fchmod(fd, 0o600)
         with _os.fdopen(fd, "a", encoding="utf-8") as handle:
             handle.write(_json.dumps(record, sort_keys=True) + "\\n")
         try:
@@ -794,13 +805,18 @@ _LEGACY_HELPERS = '''\
             pass
 
     def _linux_rdaccess_run_main(self, func):
+        self._linux_rdaccess_sync_state()
         generation = getattr(self, "_lrd_generation", 0)
 
         def invoke():
+            self._linux_rdaccess_sync_state()
             # A disconnected controller's queued command must not operate on
             # the new session/focus, or cancel speech started after handoff.
             if generation == getattr(self, "_lrd_generation", 0):
-                func()
+                try:
+                    func()
+                except Exception:
+                    log.error("linux-rdaccess: queued Orca operation failed")
             return False
 
         try:
@@ -816,7 +832,7 @@ _LEGACY_HELPERS = '''\
         try:
             self._linux_rdaccess_trace_braille(record)
         except Exception:
-            log.exception("linux-rdaccess: failed to trace braille input")
+            log.error("linux-rdaccess: failed to trace braille input")
         if action in ("pan_back", "pan_forward"):
             self._linux_rdaccess_run_main(
                 lambda: self._linux_rdaccess_script_call(
@@ -836,7 +852,7 @@ _LEGACY_HELPERS = '''\
                 # Modern metadata must be unambiguous even when a legacy
                 # field is also supplied. Never turn a multi-cell selection
                 # or conflicting positions into a single routing action.
-                if index is not None and (isinstance(index, bool) or index != cell):
+                if index is not None and (isinstance(index, bool) or not isinstance(index, int) or index != cell):
                     return
                 index = cell
             if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < 1024:
@@ -854,7 +870,10 @@ _LEGACY_HELPERS = '''\
         Orca receives the actual Alt+Shift+letter binding.
         """
         vk = ord(str(key)[0].upper())
-        send = self.local_machine.send_key
+        # A synthetic release must not release a remotely held letter.
+        if (vk, False) in getattr(self, "_lrd_forwarded", {}):
+            return
+        send = self._linux_rdaccess_forward_key
         held_modifiers = (
             ("Shift_L", 0xA0, False),
             ("Alt_L", 0xA4, False),
@@ -862,27 +881,43 @@ _LEGACY_HELPERS = '''\
         pressed_modifiers = []
         try:
             for name, mod_vk, mod_ext in held_modifiers:
-                send(
+                # Upstream maps generic Shift/Alt and their left VKs to the
+                # same Linux keys. Borrow either alias instead of releasing
+                # a modifier held by the Windows controller.
+                generic_vk = 0x10 if mod_vk == 0xA0 else 0x12
+                if any(held_vk == mod_vk or (held_vk == generic_vk and not held_ext)
+                       for held_vk, held_ext in getattr(self, "_lrd_forwarded", {})):
+                    continue
+                if send(
                     key_name=name, pressed=True, modifiers=None,
-                    vk_code=mod_vk, scan_code=0, extended=mod_ext)
+                    vk_code=mod_vk, scan_code=0, extended=mod_ext) is False:
+                    return
                 pressed_modifiers.append((name, mod_vk, mod_ext))
             for down in (True, False):
-                send(
+                if send(
                     key_name=str(key).lower(),
                     pressed=down,
                     modifiers=None,
                     vk_code=vk,
                     scan_code=0,
                     extended=False,
-                )
+                ) is False:
+                    return
         finally:
+            # A failed letter release must be retried before modifier cleanup.
+            if (vk, False) in getattr(self, "_lrd_forwarded", {}):
+                try:
+                    send(key_name=str(key).lower(), pressed=False, modifiers=None,
+                         vk_code=vk, scan_code=0, extended=False)
+                except Exception:
+                    log.error("linux-rdaccess: failed to release structural-list key")
             for name, mod_vk, mod_ext in reversed(pressed_modifiers):
                 try:
                     send(
                         key_name=name, pressed=False, modifiers=None,
                         vk_code=mod_vk, scan_code=0, extended=mod_ext)
                 except Exception:
-                    log.exception(
+                    log.error(
                         "linux-rdaccess: failed to release structural-list modifier")
 
     def _linux_rdaccess_open_structural_list(self, key, modifiers):
@@ -894,25 +929,35 @@ _LEGACY_HELPERS = '''\
         except ImportError:
             pass
         except Exception:
-            log.exception("linux-rdaccess: native structural list failed")
+            log.error("linux-rdaccess: native structural list failed")
 
         # Adapter unavailable or this Orca version does not expose the object.
         # Fall back to the verified Orca 42 Alt+Shift+letter binding.
         self._linux_rdaccess_send_structural_list(key, modifiers)
 
     def _linux_rdaccess_show_elements_list(self, modifiers):
+        self._linux_rdaccess_sync_state()
+        generation = getattr(self, "_lrd_generation", 0)
+
+        def open_list(key):
+            # Gtk.Dialog.run() processes a nested main loop. Recheck ownership
+            # after it returns, just as for a queued top-level command.
+            self._linux_rdaccess_sync_state()
+            if generation == getattr(self, "_lrd_generation", 0):
+                self._linux_rdaccess_open_structural_list(key, modifiers)
+
         try:
             from linux_rdaccess_orca_adapter import show_elements_list as _show
-            result = _show(lambda key: self._linux_rdaccess_open_structural_list(key, modifiers))
+            result = _show(open_list)
             if result is not None:
                 # True: category selected and delegated to Orca.
                 # False: the dialog was intentionally cancelled/Escaped.
                 return
         except Exception:
-            log.exception("linux-rdaccess: elements list failed")
+            log.error("linux-rdaccess: elements list failed")
 
         # Safe fallback only when the chooser could not be presented.
-        self._linux_rdaccess_open_structural_list("h", modifiers)
+        open_list("h")
 
     @staticmethod
     def _linux_rdaccess_script_call(method, *args):
@@ -923,48 +968,44 @@ _LEGACY_HELPERS = '''\
         semantics. A direct fallback keeps older installs functional if the
         adapter file cannot be imported.
         """
+        def unavailable():
+            log.error("linux-rdaccess: unavailable Orca operation: %s", method)
+            return False
+
         try:
             from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _adapter
-            if method == "panBrailleLeft":
-                _adapter.pan_braille_left()
-                return
-            if method == "panBrailleRight":
-                _adapter.pan_braille_right()
-                return
+            handlers = {
+                "panBrailleLeft": "pan_braille_left",
+                "panBrailleRight": "pan_braille_right",
+                "processRoutingKey": "route_braille",
+                "goBrailleHome": "to_braille_focus",
+                "bypassNextCommand": "bypass_next_command",
+                "whereAmI": "where_am_i",
+                "presentTitle": "present_title",
+                "presentStatusBar": "present_status_bar",
+                "togglePresentationMode": "toggle_presentation_mode",
+                "toggleStructuralNavigation": "toggle_structural_navigation",
+                "sayAll": "say_all",
+            }
+            adapter_method = handlers.get(method)
+            adapter_args = args
             if method == "processRoutingKey" and args:
-                _adapter.route_braille(args[0].event["argument"])
-                return
-            if method == "goBrailleHome":
-                _adapter.to_braille_focus()
-                return
-            if method == "bypassNextCommand":
-                _adapter.bypass_next_command()
-                return
-            if method == "whereAmI":
-                _adapter.where_am_i()
-                return
-            if method == "presentTitle":
-                _adapter.present_title()
-                return
-            if method == "presentStatusBar":
-                _adapter.present_status_bar()
-                return
-            if method == "togglePresentationMode":
-                _adapter.toggle_presentation_mode()
-                return
-            if method == "toggleStructuralNavigation":
-                _adapter.toggle_structural_navigation()
-                return
-            if method == "sayAll":
-                _adapter.say_all()
-                return
-            _adapter.call_script(method, *args, default_event=method.startswith("pan"))
-            return
+                adapter_args = (args[0].event["argument"],)
+            if adapter_method:
+                handler = getattr(_adapter, adapter_method, None)
+                if callable(handler) and handler(*adapter_args):
+                    return True
+            elif _adapter.call_script(method, *args, default_event=not args):
+                return True
+            # False denotes no supported adapter operation, not an invocation.
+            # Try the verified legacy API instead of stopping at module import.
         except ImportError:
             pass
         except Exception:
-            log.exception("linux-rdaccess: Orca adapter %s failed", method)
-            return
+            # An exception can contain application text. Do not persist it or
+            # retry a handler which may already have performed part of its work.
+            log.error("linux-rdaccess: Orca adapter operation failed: %s", method)
+            return False
 
         try:
             from orca import orca_state as _state
@@ -972,7 +1013,7 @@ _LEGACY_HELPERS = '''\
             if script is None:
                 script = getattr(_state, "active_script", None)
             if script is None:
-                return
+                return unavailable()
             if method == "toggleStructuralNavigation":
                 nav = getattr(script, "structuralNavigation", None)
                 if nav is None:
@@ -981,8 +1022,8 @@ _LEGACY_HELPERS = '''\
                 if not callable(handler) and nav is not None:
                     handler = getattr(nav, "toggle_structural_navigation", None)
                 if callable(handler):
-                    handler(script, None)
-                return
+                    return handler(script, None) is not False
+                return unavailable()
             if method == "whereAmI":
                 handler = None
                 for name in (
@@ -995,20 +1036,21 @@ _LEGACY_HELPERS = '''\
                         handler = candidate
                         break
                 if handler is not None:
-                    handler(None)
-                return
+                    return handler(None) is not False
+                return unavailable()
             handler = getattr(script, method, None)
             if handler is None:
-                return
+                return unavailable()
             if not args:
                 # Orca 42 requires inputEvent for sayAll, presentTitle,
                 # presentStatusBar and togglePresentationMode. The adapter
                 # supplies None; the fallback must use the same signature.
-                handler(None)
+                return handler(None) is not False
             else:
-                handler(*args)
+                return handler(*args) is not False
         except Exception:
-            log.exception("linux-rdaccess: Orca %s failed", method)
+            log.error("linux-rdaccess: Orca operation failed: %s", method)
+            return False
 
 '''
 
@@ -1109,7 +1151,7 @@ def _lrd_install_orca_hook():
         try:
             restore = _lrd_maybe_swap_d(self, keybindings)
         except Exception:
-            log.exception("linux-rdaccess: D landmark translation failed")
+            log.error("linux-rdaccess: D landmark translation failed")
         try:
             return original(self)
         finally:
@@ -1166,16 +1208,35 @@ _LEGACY_RESET_HOOKS = (
     LEGACY_COMPAT_MARKER + "\n"
     "# Control hand-over and reconnects forget held-key state, even when no key\n"
     "# event arrives in between.\n"
+    "def _linux_rdaccess_wrap_input(name):\n"
+    "    original = getattr(RemoteController, name)\n"
+    "    def wrapper(self, *args, **kwargs):\n"
+    "        with self._LRD_INPUT_LOCK:\n"
+    "            try:\n"
+    "                return original(self, *args, **kwargs)\n"
+    "            except Exception:\n"
+    "                if name != \"_on_remote_key\":\n"
+    "                    raise\n"
+    "                # The upstream callback manager logs uncaught tracebacks.\n"
+    "                log.error(\"linux-rdaccess: remote key injection failed\")\n"
+    "    wrapper.__name__ = original.__name__\n"
+    "    setattr(RemoteController, name, wrapper)\n"
+    "\n"
+    "for _lrd_name in (\"_on_remote_key\", \"_linux_rdaccess_reset_keys\",\n"
+    "                  \"_linux_rdaccess_send_structural_list\"):\n"
+    "    _linux_rdaccess_wrap_input(_lrd_name)\n"
+    "\n"
     "def _linux_rdaccess_wrap_reset(name):\n"
     "    original = getattr(RemoteController, name, None)\n"
     "    if original is None:\n"
     "        return\n"
     "    def wrapper(self, *args, **kwargs):\n"
-    "        try:\n"
-    "            self._linux_rdaccess_reset_keys()\n"
-    "        finally:\n"
-    "            self._lrd_state = None\n"
-    "        return original(self, *args, **kwargs)\n"
+    "        with self._LRD_INPUT_LOCK:\n"
+    "            try:\n"
+    "                self._linux_rdaccess_reset_keys()\n"
+    "            finally:\n"
+    "                self._lrd_state = None\n"
+    "            return original(self, *args, **kwargs)\n"
     "    wrapper.__name__ = original.__name__\n"
     "    setattr(RemoteController, name, wrapper)\n"
     "\n\n"
@@ -1194,6 +1255,13 @@ _LEGACY_RESET_HOOKS = (
     "                self._lrd_state = None\n"
     "        return _lrd_original_client_left(self, client=client, **kwargs)\n"
     "    RemoteController._on_client_left = _lrd_on_client_left\n"
+    "\n"
+    "_lrd_original_clipboard = getattr(RemoteController, \"_on_remote_clipboard\", None)\n"
+    "if _lrd_original_clipboard is not None:\n"
+    "    def _lrd_on_remote_clipboard(self, *args, **kwargs):\n"
+    "        self._linux_rdaccess_run_main(\n"
+    "            lambda: _lrd_original_clipboard(self, *args, **kwargs))\n"
+    "    RemoteController._on_remote_clipboard = _lrd_on_remote_clipboard\n"
 )
 
 _LEGACY_KEY_CALL = (
@@ -1209,7 +1277,7 @@ _LEGACY_BRAILLE_HANDLER = (
     "        try:\n"
     "            self._linux_rdaccess_handle_braille_input(kwargs)\n"
     "        except Exception:\n"
-    "            log.exception(\"linux-rdaccess: braille input handling failed\")\n"
+    "            log.error(\"linux-rdaccess: braille input handling failed\")\n"
 )
 
 
@@ -1218,7 +1286,8 @@ LOCAL_MACHINE_MARKER_V2 = LOCAL_MACHINE_MARKER_V1 + " v2"
 LOCAL_MACHINE_MARKER_V3 = LOCAL_MACHINE_MARKER_V1 + " v3"
 LOCAL_MACHINE_MARKER_V4 = LOCAL_MACHINE_MARKER_V1 + " v4"
 LOCAL_MACHINE_MARKER_V5 = LOCAL_MACHINE_MARKER_V1 + " v5"
-LOCAL_MACHINE_MARKER = LOCAL_MACHINE_MARKER_V1 + " v6"
+LOCAL_MACHINE_MARKER_V6 = LOCAL_MACHINE_MARKER_V1 + " v6"
+LOCAL_MACHINE_MARKER = LOCAL_MACHINE_MARKER_V1 + " v7"
 LEGACY_LOCAL_MACHINE_RELATIVE = Path("orca-scripts/local_machine.py")
 
 # Upstream writes every key name (including typed passwords) to a debug log,
@@ -1231,6 +1300,9 @@ _DBG_GUARD = (
 
 
 def _silence_dbg(text: str) -> str:
+    # Backend exceptions can contain speech, clipboard or subprocess arguments.
+    # Preserve their fixed diagnostic message without persisting the traceback.
+    text = text.replace("log.exception(", "log.error(")
     match = _DBG_RE.search(text)
     if match is None or "linux-rdaccess: no per-keypress" in text:
         return text
@@ -1260,7 +1332,9 @@ class _LrdXTest:
         self._xt = None
         self._dpy = None
         self._down_codes = {}
+        self._fallback_down = set()
         self._failed = False
+        self._failed_environment = None
 
     def _open(self):
         import ctypes
@@ -1281,11 +1355,30 @@ class _LrdXTest:
             raise OSError("cannot open X display")
         self._x11, self._xt, self._dpy = x11, xt, dpy
 
+    def _fall_back(self, name, pressed):
+        if pressed:
+            self._fallback_down.add(name)
+        else:
+            self._fallback_down.discard(name)
+            self._down_codes.pop(name, None)
+        return False
+
     def key(self, name, pressed):
         """Return True when the event was injected."""
-        if self._failed or not name:
+        if not name:
             return False
         with self._lock:
+            import os
+            environment = (os.environ.get("DISPLAY"), os.environ.get("XAUTHORITY"))
+            if self._failed:
+                # An initial open failure owns no live connection. Retry once
+                # when session credentials change, without polling/blocking.
+                if self._dpy is not None or environment == self._failed_environment:
+                    return self._fall_back(name, pressed)
+                self._failed = False
+            if name in self._fallback_down:
+                return self._fall_back(name, pressed)
+            injected = False
             try:
                 if self._dpy is None:
                     self._open()
@@ -1301,18 +1394,19 @@ class _LrdXTest:
                         # Let upstream xdotool/other backends handle names Xlib's
                         # ASCII XStringToKeysym path cannot represent. One such
                         # key must not disable XTest for the rest of the session.
-                        return False
+                        return self._fall_back(name, pressed)
                     sym = self._x11.XStringToKeysym(encoded_name)
                     code = self._x11.XKeysymToKeycode(self._dpy, sym) if sym else 0
                 if not code:
-                    return False
+                    return self._fall_back(name, pressed)
                 if not self._xt.XTestFakeKeyEvent(self._dpy, code, 1 if pressed else 0, 0):
                     if not pressed:
                         # Upstream fallback will handle this release; forget
                         # the held mapping so the next fresh press can resolve
                         # against the current keyboard layout.
                         self._down_codes.pop(name, None)
-                    return False
+                    return self._fall_back(name, pressed)
+                injected = True
                 if pressed:
                     self._down_codes[name] = code
                 else:
@@ -1320,8 +1414,14 @@ class _LrdXTest:
                 self._x11.XFlush(self._dpy)
                 return True
             except Exception:
-                self._failed = True  # missing libs / no display: use xdotool
-                return False
+                if injected:
+                    # The event has already been queued. Replaying it through
+                    # xdotool can double-toggle a lock or duplicate text input.
+                    return True
+                if self._dpy is None:
+                    self._failed = True
+                    self._failed_environment = environment
+                return self._fall_back(name, pressed)
 
 
 _LRD_XTEST = _LrdXTest()
@@ -1359,19 +1459,82 @@ _XDOTOOL_HOOK = (
 )
 
 
+def _valid_patch_python(text: str) -> bool:
+    try:
+        ast.parse(text)
+    except SyntaxError:
+        return False
+    return True
+
+
+def _patch_local_key_results(text: str) -> str:
+    """Expose real backend success from legacy LocalMachine.send_key."""
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        raise ValueError("legacy local-machine source is invalid Python") from None
+    methods = [node for cls in tree.body if isinstance(cls, ast.ClassDef) and cls.name == "LocalMachine"
+               for node in cls.body if isinstance(node, ast.FunctionDef) and node.name == "send_key"
+               and any(arg.arg == "vk_code" for arg in node.args.args)]
+    if not methods:
+        return text  # Key-name-only implementations do not have this API.
+    if len(methods) != 1:
+        raise ValueError("ambiguous legacy send_key implementation")
+    method = methods[0]
+    lines = text.splitlines(keepends=True)
+    parents = {child: node for node in ast.walk(method) for child in ast.iter_child_nodes(node)}
+    backend_names = {"_send_key_xdotool", "_send_key_portal", "_send_key_ydotool"}
+    for node in ast.walk(method):
+        if not isinstance(node, ast.Return) or node.value is not None:
+            continue
+        parent = parents.get(node)
+        succeeded = (isinstance(parent, ast.If) and isinstance(parent.test, ast.Call)
+                     and getattr(parent.test.func, "attr", None) in backend_names)
+        lines[node.lineno - 1] = " " * node.col_offset + f"return {succeeded}\n"
+    lines.insert(method.end_lineno, "        return False\n")
+    first_body_line = method.body[0].lineno - 1
+    lines.insert(first_body_line, "        # linux-rdaccess: report injection results\n")
+    return "".join(lines)
+
+
+def legacy_local_machine_patch_current(text: str) -> bool:
+    return (all(part in text for part in (_XTEST_HELPER, _XDOTOOL_HOOK))
+            and "log.exception(" not in text
+            and (_RESOLVE_KEY_DEF_RE.search(text) is None or _RESOLVE_KEY_HOOK in text)
+            and (_CLIPBOARD_DEF_RE.search(text) is None or _CLIPBOARD_HOOK in text)
+            and ("    def send_key(self, key_name=None" not in text
+                 or "        # linux-rdaccess: report injection results" in text)
+            and _valid_patch_python(text))
+
+
+def legacy_controller_patch_current(text: str) -> bool:
+    return (all(part in text for part in (
+        _LEGACY_HELPERS, _LEGACY_KEY_CALL, _LEGACY_BRAILLE_HANDLER,
+        _LEGACY_RESET_HOOKS, _LEGACY_SLOW_EVENT_HOOK,
+        _LEGACY_ORCA_D_HOOK.strip("\n")))
+        and "        self._linux_rdaccess_forward_key(\n" in text
+        and "log.exception(" not in text
+        and _valid_patch_python(text))
+
+
 def patch_legacy_orca_local_machine(path: Path) -> bool:
     """Make key injection low-latency and stop per-keypress file logging.
 
     Idempotent; one-time backup; verified to compile; atomic write.
     """
     text = path.read_text(encoding="utf-8")
-    if LOCAL_MACHINE_MARKER in text:
-        return False
     backup = path.with_name(path.name + ".linux-rdaccess-backup")
+    if backup.exists():
+        backup.chmod(0o600)
+    if LOCAL_MACHINE_MARKER in text:
+        if legacy_local_machine_patch_current(text):
+            return False
+        raise ValueError("current local-machine marker has an incomplete patch")
     if LOCAL_MACHINE_MARKER_V1 in text:
         if not backup.exists():
             raise ValueError(f"older patch found but backup is missing: {backup}")
         text = backup.read_text(encoding="utf-8")
+    text = _patch_local_key_results(text)
     match = _XDOTOOL_DEF_RE.search(text)
     if match is None:
         raise ValueError(f"legacy _send_key_xdotool was not found in {path}")
@@ -1386,13 +1549,11 @@ def patch_legacy_orca_local_machine(path: Path) -> bool:
     text = text.rstrip("\n") + "\n" + _XTEST_HELPER
     try:
         compile(text, str(path), "exec")
-    except SyntaxError as exc:
-        raise ValueError(f"patched {path} would not compile: {exc}") from exc
+    except SyntaxError:
+        raise ValueError(f"patched {path} would not compile") from None
     if not backup.exists():
-        backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
-    tmp = path.with_name(path.name + ".linux-rdaccess-tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
+        _write_private_text(backup, path.read_text(encoding="utf-8"))
+    _write_private_text(path, text)
     return True
 
 
@@ -1400,17 +1561,22 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
     """Patch legacy Orca Remote input handling for NVDA compatibility.
 
     Returns True when the file changed. The patch is idempotent, replaces an
-    earlier v1-v4 patch from the one-time .linux-rdaccess-backup, verifies the
+    earlier patch from the one-time .linux-rdaccess-backup, verifies the
     result compiles before writing, and writes atomically.
     """
     text = path.read_text(encoding="utf-8")
-    if LEGACY_COMPAT_MARKER in text:
-        return False
     backup = path.with_name(path.name + ".linux-rdaccess-backup")
+    if backup.exists():
+        backup.chmod(0o600)
+    if LEGACY_COMPAT_MARKER in text:
+        if legacy_controller_patch_current(text):
+            return False
+        raise ValueError("current controller marker has an incomplete patch")
     old_marker = next(
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V29,
                 LEGACY_COMPAT_MARKER_V28,
                 LEGACY_COMPAT_MARKER_V27,
                 LEGACY_COMPAT_MARKER_V26,
@@ -1460,7 +1626,9 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
     anchor_at = text.find(key_anchor, key_def.end(), body_end)
     if anchor_at == -1:
         raise ValueError(f"legacy _on_remote_key send_key anchor was not found in {path}")
-    text = text[:anchor_at] + _LEGACY_KEY_CALL + text[anchor_at:]
+    text = (text[:anchor_at] + _LEGACY_KEY_CALL
+            + text[anchor_at:].replace(key_anchor,
+                "        self._linux_rdaccess_forward_key(\n", 1))
     text = text[:key_def.start()] + _LEGACY_HELPERS + text[key_def.start():]
 
     braille_def = re.search(
@@ -1484,14 +1652,12 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
 
     try:
         compile(text, str(path), "exec")
-    except SyntaxError as exc:
-        raise ValueError(f"patched {path} would not compile: {exc}") from exc
+    except SyntaxError:
+        raise ValueError(f"patched {path} would not compile") from None
 
     if not backup.exists():
-        backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
-    tmp = path.with_name(path.name + ".linux-rdaccess-tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
+        _write_private_text(backup, path.read_text(encoding="utf-8"))
+    _write_private_text(path, text)
     return True
 
 

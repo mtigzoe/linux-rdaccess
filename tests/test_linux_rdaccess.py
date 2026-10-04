@@ -254,6 +254,14 @@ class DoctorTests(unittest.TestCase):
     def test_reports_current_outdated_unpatched_and_missing(self):
         from remote_access import (LEGACY_COMPAT_MARKER, LOCAL_MACHINE_MARKER_V1)
         cfg = self._orca(controller="x\n" + LEGACY_COMPAT_MARKER, local="x\n" + LOCAL_MACHINE_MARKER_V1 + " v1")
+        # A marker-only fake is incomplete, not an installed working patch.
+        rows = dict(linux_rdaccess.patch_status(cfg))
+        self.assertIn("incomplete", rows["input shim (remote_controller.py)"])
+        from tests import test_remote_access as fixtures
+        from remote_access import patch_legacy_orca_remote_controller
+        controller = cfg.parent / "orca-scripts" / "remote_controller.py"
+        controller.write_text(fixtures.LegacyConfigTests.UPSTREAM_CONTROLLER, encoding="utf-8")
+        patch_legacy_orca_remote_controller(controller)
         rows = dict(linux_rdaccess.patch_status(cfg))
         self.assertEqual(rows["input shim (remote_controller.py)"], "current")
         self.assertIn("outdated", rows["fast key injection (local_machine.py)"])
