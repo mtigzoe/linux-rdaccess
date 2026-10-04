@@ -1028,7 +1028,8 @@ class LocalMachine:
             }
 
             def getInputHandler(self, event):
-                return self.table.get((event.hw_code, event.modifiers & test.SHIFT))
+                # Orca keybindings match the full modifier state, not just Shift.
+                return self.table.get((event.hw_code, event.modifiers))
 
         class Script:
             keyBindings = Bindings()
@@ -1180,6 +1181,7 @@ class LocalMachine:
         KE("d", self.D_CODE)  # translated press -> M
         rel = KE("d", self.D_CODE, modifiers=self.CTRL, pressed=False)
         self.assertEqual(rel._handler.function, "landmark_next")
+        self.assertEqual(rel.modifiers, self.CTRL)  # restored after Orca matched plain M-up
         self.assertFalse(c._module._LRD_D["swapped"])
 
     def test_landmark_release_keeps_translated_identity_if_browse_mode_changes(self):
