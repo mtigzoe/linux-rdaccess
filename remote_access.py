@@ -1054,7 +1054,8 @@ _LEGACY_BRAILLE_HANDLER = (
 
 
 LOCAL_MACHINE_MARKER_V1 = "# linux-rdaccess low-latency XTest key injection"
-LOCAL_MACHINE_MARKER = LOCAL_MACHINE_MARKER_V1 + " v2"
+LOCAL_MACHINE_MARKER_V2 = LOCAL_MACHINE_MARKER_V1 + " v2"
+LOCAL_MACHINE_MARKER = LOCAL_MACHINE_MARKER_V1 + " v3"
 LEGACY_LOCAL_MACHINE_RELATIVE = Path("orca-scripts/local_machine.py")
 
 # Upstream writes every key name (including typed passwords) to a debug log,
@@ -1086,7 +1087,6 @@ class _LrdXTest:
         self._x11 = None
         self._xt = None
         self._dpy = None
-        self._codes = {}
         self._failed = False
 
     def _open(self):
@@ -1116,11 +1116,11 @@ class _LrdXTest:
             try:
                 if self._dpy is None:
                     self._open()
-                code = self._codes.get(name)
-                if code is None:
-                    sym = self._x11.XStringToKeysym(str(name).encode("ascii"))
-                    code = self._x11.XKeysymToKeycode(self._dpy, sym) if sym else 0
-                    self._codes[name] = code
+                # XKB layout changes can remap keysyms to different
+                # keycodes while Orca stays running. Resolve on every event
+                # rather than keeping a process-lifetime keycode cache.
+                sym = self._x11.XStringToKeysym(str(name).encode("ascii"))
+                code = self._x11.XKeysymToKeycode(self._dpy, sym) if sym else 0
                 if not code:
                     return False
                 if not self._xt.XTestFakeKeyEvent(self._dpy, code, 1 if pressed else 0, 0):
