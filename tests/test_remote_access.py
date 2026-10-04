@@ -289,6 +289,25 @@ class RemoteController:
         self.assertEqual(sum(e[0] == "cancel" for e in c.local_machine.events), 2)
         self.assertEqual(c.transport.events, [{"type": "cancel"}])
 
+    def test_elements_list_prefers_native_orca_list_without_synthetic_keys(self):
+        import sys
+        import types
+
+        c, _, _ = self._patched_controller()
+        module = types.ModuleType("linux_rdaccess_orca_adapter")
+
+        class Adapter:
+            @staticmethod
+            def show_structural_list(key):
+                return key == "m"
+
+        module.OrcaRuntimeAdapter = Adapter
+        c._linux_rdaccess_send_structural_list = lambda *args: self.fail(
+            "synthetic key fallback must not run"
+        )
+        with mock.patch.dict(sys.modules, {"linux_rdaccess_orca_adapter": module}):
+            c._linux_rdaccess_open_structural_list("m", None)
+
     def test_elements_list_cancel_does_not_open_headings_fallback(self):
         import sys
         import types
