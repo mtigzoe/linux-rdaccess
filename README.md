@@ -202,7 +202,7 @@ network thread (GTK is not thread-safe). Run `linux-rdaccess doctor` to check th
 patches are active; set `LINUX_RDACCESS_DEBUG=1` to log key-handling stalls
 (duration only, never which key) to `~/.local/share/orca/orca-remote-slow-events.log`.
 
-The current patches are controller **v31** and local-machine **v8**. Update the
+The current patches are controller **v32** and local-machine **v8**. Update the
 installed command from the repository with `python3 linux_rdaccess.py install`,
 then run `linux-rdaccess connect` to update the Orca-side files and restart Orca.
 `doctor` verifies the connected patch hooks, valid Python, and the installed
@@ -211,6 +211,61 @@ speech resumes when the relay disconnects. Prototype RDP debug logs and dry-run
 output also redact speech, protocol payloads, and backend exception messages.
 See the [hardening audit](docs/compatibility-audit-2026-10-04-hardening.md) for the
 source evidence, regressions and remaining desktop checks.
+
+## Live X11 + AT-SPI diagnostics
+
+For live testing on the existing Linux Mint XFCE/X11 desktop, use the bounded
+diagnostic driver in `diagnostics/live_x11.py`. It inspects the real X11 and
+AT-SPI state that Orca uses, while keeping accessible names redacted in terminal
+output by default.
+
+Install the diagnostic dependencies on Linux Mint:
+
+    sudo apt install -y python3-pyatspi python3-gi gir1.2-atspi-2.0 at-spi2-core xdotool xinput wmctrl x11-utils x11-xserver-utils x11-xkb-utils xvfb
+
+Inspect the detected `:0` desktop and XKB lock indicators:
+
+    python3 diagnostics/live_x11.py --display :0
+
+Watch Num Lock, Caps Lock, and Scroll Lock state changes without listening for
+ordinary typed keys:
+
+    python3 diagnostics/live_x11.py --display :0 --watch-locks 30
+
+This is useful for end-to-end NVDA Remote testing: start the lock watcher, press
+Num Lock from Windows NVDA, and compare the before/after XKB state. A successful
+Linux state change with no NVDA announcement points to missing remote feedback
+rather than failed key injection.
+
+Inspect visible Thunar or Firefox windows:
+
+    python3 diagnostics/live_x11.py --display :0 --target thunar
+    python3 diagnostics/live_x11.py --display :0 --target firefox
+
+If more than one matching window is found, choose the reported numeric window
+ID explicitly. To activate one Thunar window and exercise a bounded local
+Tab/Shift+Tab focus test:
+
+    python3 diagnostics/live_x11.py --display :0 --target thunar --window 12345 --activate --key Tab --key Shift+Tab
+
+The local key mode reuses the production XTest injection path and refuses
+arbitrary text input. It is useful for isolating Linux/X11/AT-SPI behavior, but
+it does **not** prove that a key traversed Windows NVDA Remote. End-to-end
+testing should use the read-only/watch modes while the input comes from Windows.
+
+The driver reports JSON containing XKB state, selected-window metadata, redacted
+AT-SPI focus information, step timing, and focus transitions. It never provides
+a general text-entry command and does not inspect clipboard, braille input,
+speech text, or the Remote Access key.
+
+Optional screenshots are explicit and private because they may contain visible
+user content:
+
+    python3 diagnostics/live_x11.py --display :0 --target firefox --window 12345 --screenshot /private/path/debug.png
+
+See [docs/live-x11-diagnostics.md](docs/live-x11-diagnostics.md) for the complete
+safety model, supported keys, Num Lock investigation notes, and Xvfb verification
+commands.
 
 ## VS Code on Linux
 
@@ -716,7 +771,7 @@ Additional tools:
 
 - The public NVDA Remote relay may reject older Linux TLS stacks. Hosting the Remote Access session locally on the Windows NVDA machine avoids that dependency.
 - Orca versions differ in speech and braille APIs; compatibility shims may be required.
-- X11 keyboard injection currently relies on `xdotool`; Wayland requires a different injection backend.
+- X11 keyboard injection uses in-process XTest for supported keys and falls back to `xdotool` when required; Wayland requires a different injection backend.
 - Braille forwarding requires converting Orca's visible braille line into raw NVDA Remote cell values.
 
 ### xrdp path
