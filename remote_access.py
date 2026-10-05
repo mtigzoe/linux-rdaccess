@@ -103,6 +103,22 @@ if "old_speakCharacter" in globals() and not hasattr(old_speakCharacter, "_linux
     old_speakCharacter = _linux_rdaccess_muted_old_speak_character
 """
 
+CUSTOMIZATION_EVENT_API_MARKER = "# linux-rdaccess Orca keyboard-event API compatibility v1"
+_CUSTOMIZATION_EVENT_API_HOOK = CUSTOMIZATION_EVENT_API_MARKER + '''
+# Orca 42 exposes isPressedKey; newer Orca Remote uses is_pressed_key.
+# Keep the legacy process wrapper's native-handler and injection-marker paths.
+def _linux_rdaccess_event_is_pressed(event):
+    method = getattr(event, "isPressedKey", None)
+    if not callable(method):
+        method = getattr(event, "is_pressed_key", None)
+    if not callable(method):
+        raise AttributeError("unsupported Orca keyboard-event API")
+    return bool(method())
+'''
+_CUSTOMIZATION_EVENT_FUNCTIONS = (
+    "_patched_process_key", "_should_run_shortcut_directly", "_run_direct_shortcut",
+)
+
 
 
 @dataclass(frozen=True)
@@ -203,6 +219,94 @@ def _module_stores(tree, name):
             visit(child)
     visit(tree)
     return found
+
+
+def _customization_event_functions(tree):
+    functions = []
+    for name in _CUSTOMIZATION_EVENT_FUNCTIONS:
+        matches = [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
+                   and node.name == name]
+        if len(matches) > 1:
+            raise ValueError("ambiguous legacy keyboard-event hook")
+        functions.extend(matches)
+    return functions
+
+
+def _customization_event_helper_shadowed(function):
+    name = "_linux_rdaccess_event_is_pressed"
+    for node in ast.walk(function):
+        if (isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store) and node.id == name
+                or isinstance(node, ast.arg) and node.arg == name
+                or isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name == name
+                or isinstance(node, ast.alias) and (node.asname or node.name.split(".")[0]) == name
+                or isinstance(node, ast.ExceptHandler) and node.name == name
+                or isinstance(node, (ast.MatchAs, ast.MatchStar)) and node.name == name
+                or isinstance(node, ast.MatchMapping) and node.rest == name):
+            return True
+    return False
+
+
+def legacy_customization_event_api_patch_current(text: str) -> bool:
+    """Verify the actual helper and all owned legacy keyboard-event calls."""
+    if text.count(CUSTOMIZATION_EVENT_API_MARKER) != 1 or _CUSTOMIZATION_EVENT_API_HOOK not in text:
+        return False
+    try:
+        tree = ast.parse(text, feature_version=(3, 10))
+        functions = _customization_event_functions(tree)
+    except (SyntaxError, ValueError):
+        return False
+    helpers = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+               and node.name == "_linux_rdaccess_event_is_pressed"]
+    expected = ast.parse(_CUSTOMIZATION_EVENT_API_HOOK).body[0]
+    if (len(helpers) != 1 or _binding_count(tree.body, expected.name) != 1
+            or not _ast_equal(helpers[0], expected) or not _debug_path_disabled(tree)):
+        return False
+    if any(_customization_event_helper_shadowed(function) for function in functions):
+        return False
+    return not any(
+        isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name) and node.func.value.id == "event_self"
+        and node.func.attr in ("is_pressed_key", "isPressedKey")
+        for function in functions for node in ast.walk(function)
+    )
+
+
+def _patch_legacy_customization_event_api(text: str) -> str:
+    # Fixing the wrapper makes its raw-key debug calls reachable on Orca 42.
+    # Keep that upstream file logger disabled before enabling those paths.
+    text = _silence_dbg(text)
+    if CUSTOMIZATION_EVENT_API_MARKER in text:
+        if not legacy_customization_event_api_patch_current(text):
+            raise ValueError("incomplete legacy keyboard-event API patch")
+        return text
+    tree = ast.parse(text, feature_version=(3, 10))
+    if _binding_count(tree.body, "_linux_rdaccess_event_is_pressed"):
+        raise ValueError("conflicting legacy keyboard-event API helper")
+    edits = []
+    for function in _customization_event_functions(tree):
+        if _customization_event_helper_shadowed(function):
+            raise ValueError("shadowed legacy keyboard-event API helper")
+        for node in ast.walk(function):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and isinstance(node.func.value, ast.Name) and node.func.value.id == "event_self"
+                    and node.func.attr in ("is_pressed_key", "isPressedKey")):
+                continue
+            if node.args or node.keywords:
+                raise ValueError("unsupported legacy keyboard-event call")
+            edits.append(node)
+    # AST positions are UTF-8 byte offsets; avoid changing comments or strings.
+    data = text.encode("utf-8")
+    starts = [0]
+    for line in data.splitlines(keepends=True):
+        starts.append(starts[-1] + len(line))
+    for node in sorted(edits, key=lambda item: (item.lineno, item.col_offset), reverse=True):
+        start = starts[node.lineno - 1] + node.col_offset
+        end = starts[node.end_lineno - 1] + node.end_col_offset
+        data = data[:start] + b"_linux_rdaccess_event_is_pressed(event_self)" + data[end:]
+    result = data.decode("utf-8").rstrip("\n") + "\n\n" + _CUSTOMIZATION_EVENT_API_HOOK
+    if not legacy_customization_event_api_patch_current(result):
+        raise ValueError("updated legacy keyboard-event API patch is incomplete")
+    return result
 
 
 def _replace_configuration_values(text: str, replacements: dict[str, str], *, role: str | None = None) -> str:
@@ -315,6 +419,8 @@ def update_legacy_orca_customizations(
             raise ValueError("unrecognized local speech preference patch")
         text = text.rstrip("\n") + "\n\n" + _LOCAL_SPEECH_PREF_HOOK
 
+    text = _patch_legacy_customization_event_api(text)
+
     try:
         compile(text, str(path), "exec")
     except SyntaxError:
@@ -413,7 +519,8 @@ LEGACY_COMPAT_MARKER_V31 = "# linux-rdaccess NVDA/Orca input compatibility v31"
 LEGACY_COMPAT_MARKER_V32 = "# linux-rdaccess NVDA/Orca input compatibility v32"
 LEGACY_COMPAT_MARKER_V33 = "# linux-rdaccess NVDA/Orca input compatibility v33"
 LEGACY_COMPAT_MARKER_V34 = "# linux-rdaccess NVDA/Orca input compatibility v34"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v35"
+LEGACY_COMPAT_MARKER_V35 = "# linux-rdaccess NVDA/Orca input compatibility v35"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v36"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -536,14 +643,32 @@ _LEGACY_HELPERS = '''\
         if result is not False:
             if pressed:
                 forwarded[held] = dict(payload)
-                vk_code = payload.get("vk_code")
-                if vk_code in self._LRD_LOCK_VKS:
-                    self._linux_rdaccess_run_main(
-                        lambda vk=vk_code: self._linux_rdaccess_script_call(
-                            "presentLockState", vk))
             else:
                 forwarded.pop(held, None)
+                vk_code = payload.get("vk_code")
+                if vk_code in self._LRD_LOCK_VKS:
+                    # XKB can clear an already-on lock only on key-up. Read
+                    # after the successful owned release, before another key
+                    # can toggle it again, and carry that state to Orca's loop.
+                    enabled = self._linux_rdaccess_read_lock_state(vk_code)
+                    if type(enabled) is bool:
+                        self._linux_rdaccess_run_main(
+                            lambda vk=vk_code, state=enabled:
+                                self._linux_rdaccess_script_call(
+                                    "presentLockState", vk, state))
         return result
+
+    @staticmethod
+    def _linux_rdaccess_read_lock_state(vk_code):
+        """Snapshot XKB without touching Orca state on the receive thread."""
+        try:
+            from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _adapter
+            return _adapter.read_lock_state(vk_code)
+        except ImportError:
+            return None
+        except Exception:
+            log.error("linux-rdaccess: lock-state snapshot unavailable")
+            return None
 
     def _linux_rdaccess_reset_keys(self):
         """Release forwarded held keys and clear compatibility state.
@@ -2101,6 +2226,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V35,
                 LEGACY_COMPAT_MARKER_V34,
                 LEGACY_COMPAT_MARKER_V33,
                 LEGACY_COMPAT_MARKER_V32,

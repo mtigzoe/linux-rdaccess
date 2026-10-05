@@ -166,3 +166,126 @@ Then test Caps Lock separately. Continue with one remote action at a time for
 focus/title/status, Thunar traversal, Say All/Ctrl, mode toggles, Elements List,
 pass-next, table/frame candidates, held keys/keypad identity, and real braille.
 The live audit remains open while those checks are pending.
+
+## Follow-up — October 5, 2026
+
+The sections above preserve the earlier v32 checkpoint and its validation
+results. The current controller is v36. This follow-up records a subsequently
+confirmed native-keyboard failure and the remaining compatibility work; it does
+not establish end-to-end Firefox speech or full NVDA compatibility.
+
+### Native keyboard path repaired
+
+The legacy customization called `KeyboardEvent.is_pressed_key()`, but installed
+Orca 42 exposes `isPressedKey()`. This raised an exception inside the patched
+native keyboard-event processor. Direct adapter commands such as title reporting
+could still work while ordinary keyboard navigation failed in this path.
+
+The customization now uses `_linux_rdaccess_event_is_pressed(event)`, which
+accepts the installed camel-case API and the snake-case API. The repair preserves
+the native-handler and injected-key-marker paths. Its
+`CUSTOMIZATION_EVENT_API_MARKER` is accompanied by a validator that checks the
+actual helper and the affected calls; a marker alone does not establish a
+complete repair. The upstream raw-key file logger remains disabled.
+
+The repair was applied to the live installation. `linux-rdaccess doctor`
+reported all four compatibility checks current: native Orca keyboard events,
+the controller input shim, fast key injection, and the Orca API adapter. This
+confirms the installed patch checks, not successful Windows-to-Firefox navigation
+or speech. New implementation test results belong to the follow-up round report,
+not the historical validation table above.
+
+Windows configuration was independently checked: **desktop** keyboard layout,
+`NVDAModifierKeys=7` (Caps Lock, numpad Insert, and extended Insert), and
+`handleInjectedKeys=true` (Handle keys from other applications enabled).
+
+### Plain arrows in Firefox
+
+Orca 42 already binds plain Down to next-line navigation and plain Up to
+previous-line navigation. Its caret handler moves the document caret, speaks the
+resulting line, and updates braille. The web script uses that handler only when
+`caretNavigationEnabled` is true, focus mode is off, the caret context is within
+document content, and Shift is absent. Browser chrome and interactive controls
+instead need their normal application handling. At document boundaries, no new
+movement or speech can be valid.
+
+The repaired native path must now be tested with one observed remote arrow at a
+time. Record the active Gecko script, document/chrome role, focus mode, caret
+navigation setting, caret context before and after, and resulting speech/braille.
+Those observations distinguish input delivery, mode, caret movement, and output
+failures. Ordinary arrows must not receive a global screen-reader translation.
+
+One separate source-supported collision can disable this behavior: NVDA+F12
+reports time/date, whereas Orca+F12 toggles caret navigation. The controller does
+not currently intercept NVDA+F12. When the forwarded NVDA modifier is also an
+Orca modifier, that shortcut can turn off document arrow reading. This is a
+remaining compatibility risk, not the confirmed cause of the user's Firefox
+failure.
+
+Sources:
+
+- [Orca 42 web-script mode checks](https://github.com/GNOME/orca/blob/ORCA_42_0/src/orca/scripts/web/script.py#L1028).
+- Installed Orca 42 `caret_navigation.py`: arrow bindings, `_next_line`,
+  `_previous_line`, and the Orca+F12 caret-navigation toggle.
+- [NVDA 2026.2 date/time binding](https://github.com/nvaccess/nvda/blob/release-2026.2/source/globalCommands.py#L411).
+- [Orca reading commands and modes](https://help.gnome.org/orca/commands_reading.html).
+
+### Compatibility boundaries and collisions
+
+The current direct command mappings provide a useful desktop subset. Unmapped
+NVDA chords still reach Orca's ordinary handling, which can execute a different
+command when the two screen readers share a modifier. That fallback is not a
+claim of compatibility.
+
+| Area | Remaining gap or collision |
+| --- | --- |
+| Desktop/laptop layout | Laptop NVDA+Down means next review line, but the shim forces Say All. Laptop NVDA+End means end of the review line, but the shim forces status reporting. Laptop NVDA+A means caret Say All and can reach Orca's browse/focus toggle. Laptop NVDA+L and NVDA+Shift+End lack their current-line and status equivalents. |
+| Caret reporting | Desktop NVDA+Up has no current-line implementation. Orca's `sayLine(obj)` offers a caret-based operation to assess; entering flat review is not equivalent. Selection, formatting, caret location, and link destination need individual semantic checks. |
+| Repeated commands | Focus/title/status mappings provide first-press equivalents. NVDA's repeated spelling and clipboard variants are not implemented by those direct calls. |
+| Structural navigation | D/Shift+D translation exists. M means NVDA frame versus Orca landmark; O means embedded object versus Orca chunk; A means annotation versus Orca clickable. N/nonlinked text, W/spelling errors, and heading levels 7–9 lack matching enabled structural objects in Orca 42. Shared letters and comma/Shift+comma container commands still need predicate and boundary tests. |
+| Table navigation | NVDA Ctrl+Alt+Arrow differs from Orca Shift+Alt+Arrow. First/last row, first/last column, and row/column reading need separate comparisons. Editable grids must retain their application shortcuts. |
+| Find and refresh | NVDA+Ctrl+F, NVDA+F3/Shift+F3, and NVDA+F5 lack explicit document equivalents. Orca Find searches flat-review window contents and is not automatically an equivalent document search. |
+| Object and review navigation | NVDA navigator-object hierarchy and object/document review are not supplied by the direct adapter. Orca flat review is a spatial representation of visible contents; its keypad item operations do not prove NVDA word-review semantics. NumpadPlus means review Say All in NVDA and caret Say All in Orca. |
+| Other fall-through commands | NVDA+B/read-active-window can invoke Orca+B/next-bookmark. NVDA+F12 can toggle caret navigation. Shift speech-pause semantics, input help, and other unmapped commands need explicit behavior and collision checks. |
+
+Layout handling must be explicit before adding laptop aliases. Physical remote
+key messages do not identify whether Windows NVDA interprets them using desktop
+or laptop layout. A future compatibility setting must select the intended layout
+and resolve conflicting gestures accordingly. For the verified current Windows
+configuration, the test baseline is desktop; laptop support remains a separate
+coverage target.
+
+References:
+[NVDA system-caret commands](https://download.nvaccess.org/documentation/en/userGuide.html#SystemCaret),
+[NVDA review commands](https://download.nvaccess.org/documentation/en/userGuide.html#ReviewingText),
+[NVDA browse-mode commands](https://download.nvaccess.org/documentation/en/userGuide.html#BrowseMode),
+and [Orca flat-review limits](https://help.gnome.org/orca/howto_flat_review.html).
+The installed Orca 42 `common_keyboardmap.py`, `desktop_keyboardmap.py`, and
+`structural_navigation.py` provide the local binding evidence for this table.
+
+### Scoped compatibility test matrix
+
+Use the controlled [Firefox navigation fixture](../tests/fixtures/firefox-navigation.html)
+for initial document, editor, select, button, and mode tests. Add dedicated
+fixtures for tables, frames, embedded objects, and review behavior before
+claiming coverage of those cases. Each case needs both a state-change observation
+and output evidence; a successful injection call alone is insufficient.
+
+| Context | Actions | Required observation |
+| --- | --- | --- |
+| Static document in browse mode | Down, Down, Up; Left/Right; Ctrl+Left/Right; Home/End; Ctrl+Home/End | Correct caret/object transitions and expected speech/braille, without duplicate movement. |
+| Start/end of document | Up at start; Down at end | Bounded behavior without incorrect wrap or manufactured output. |
+| Browser chrome | Address bar and menus; arrows and Tab | Native navigation and focus feedback. |
+| Editable content | Input, textarea, contenteditable; arrows and Shift-selection | Editing and selection preserved, with no document-navigation interception. |
+| Interactive widgets | Select/listbox, radio group, ARIA application/grid | Widget operation and presentation in focus mode. |
+| Mode transitions | NVDA+Space; Tab into/out of editor; NVDA+Shift+Space | Correct mode announcement and restored arrow/letter behavior. |
+| Structural content | Heading, landmark, link, form, container, frame, embedded object | Correct category, forward/reverse traversal, and boundary behavior. |
+| Tables | Static cells, spans, edges, editable grid | Correct cell coordinates/content and preserved application shortcuts. |
+| Reading/reporting | Say All/Ctrl stop; current line; focus/title/status | Correct cursor ownership and output; repeated-press semantics assessed separately. |
+| Layout/modifier boundaries | Desktop/laptop; Insert/Caps; Num Lock on/off | No command collision, lock toggle, stuck modifier, or keypad substitution. |
+| Lifecycle and braille | Reconnect/handoff; held-key release; real display pan/routing | Released key state, discarded stale work, and verified hardware output. |
+
+Windows Firefox navigation and speech remain **unverified** at this follow-up.
+The first acceptance check is the user's plain Up/Down case through the repaired
+native path, followed by the desktop fixture cases above. Source alignment and
+Linux-side tests do not replace these end-to-end observations.

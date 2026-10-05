@@ -371,6 +371,27 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
         ):
             self.assertFalse(OrcaRuntimeAdapter.present_lock_state(0x90))
 
+    def test_lock_snapshot_does_not_access_orca_script(self):
+        with mock.patch.object(
+            OrcaRuntimeAdapter, "_xkb_named_lock_state", return_value=False
+        ) as query, mock.patch.object(
+            OrcaRuntimeAdapter, "active_script", side_effect=AssertionError("Orca API")
+        ):
+            self.assertIs(OrcaRuntimeAdapter.read_lock_state(0x90), False)
+            self.assertIsNone(OrcaRuntimeAdapter.read_lock_state(0x91))
+        query.assert_called_once_with("Num Lock")
+
+    def test_lock_presentation_uses_snapshot_without_reading_later_state(self):
+        calls = []
+        script = types.SimpleNamespace(presentMessage=lambda message: calls.append(message))
+        with self._fake_orca(script), mock.patch.object(
+            OrcaRuntimeAdapter, "read_lock_state", side_effect=AssertionError("stale read")
+        ):
+            self.assertTrue(OrcaRuntimeAdapter.present_lock_state(0x90, True))
+            self.assertTrue(OrcaRuntimeAdapter.present_lock_state(0x90, False))
+            self.assertFalse(OrcaRuntimeAdapter.present_lock_state(0x90, "off"))
+        self.assertEqual(calls, ["Num Lock on", "Num Lock off"])
+
     def test_where_am_i_uses_orca42_basic_handler(self):
         calls = []
         script = types.SimpleNamespace(

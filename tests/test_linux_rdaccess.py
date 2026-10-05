@@ -251,6 +251,22 @@ class DoctorTests(unittest.TestCase):
             (base / "orca-scripts" / "local_machine.py").write_text(local, encoding="utf-8")
         return cfg
 
+    def test_native_keyboard_hook_status_checks_functional_patch(self):
+        import remote_access
+        cfg = self._orca()
+        label = "native Orca keyboard events (orca-customizations.py)"
+        self.assertIn("not patched", dict(linux_rdaccess.patch_status(cfg))[label])
+        source = (
+            "def _patched_process_key(event_self):\n"
+            "    return event_self.is_pressed_key()\n"
+        )
+        cfg.write_text(remote_access._patch_legacy_customization_event_api(source), encoding="utf-8")
+        self.assertEqual(dict(linux_rdaccess.patch_status(cfg))[label], "current")
+        cfg.write_text(remote_access.CUSTOMIZATION_EVENT_API_MARKER, encoding="utf-8")
+        self.assertIn("incomplete", dict(linux_rdaccess.patch_status(cfg))[label])
+        cfg.unlink()
+        self.assertEqual(dict(linux_rdaccess.patch_status(cfg))[label], "missing")
+
     def test_reports_current_outdated_unpatched_and_missing(self):
         from remote_access import (LEGACY_COMPAT_MARKER, LOCAL_MACHINE_MARKER_V1)
         cfg = self._orca(controller="x\n" + LEGACY_COMPAT_MARKER, local="x\n" + LOCAL_MACHINE_MARKER_V1 + " v1")

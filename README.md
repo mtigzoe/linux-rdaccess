@@ -96,6 +96,16 @@ The goal is to make Windows NVDA control Linux applications through Orca and AT-
 
 Orca provides native browse/focus modes and structural navigation for web content. Common single-letter navigation such as headings, links, form fields, buttons, combo boxes, entries, radio buttons, checkboxes, and heading levels is passed through to Orca/Firefox.
 
+Plain Up/Down use Orca's native previous/next-line navigation in web document
+browse mode. The customization patch supports Orca 42's keyboard-event API so
+the upstream Remote wrapper reaches Orca's native event processor. `doctor`
+checks this patch separately from input injection. Browser chrome, editable
+fields, and focus mode retain the application's normal arrow handling.
+
+Compatibility currently covers a subset of NVDA's desktop commands. Laptop
+layout, object/review navigation, table shortcuts, and some unmapped NVDA chords
+need additional work; see the [shortcut audit](docs/nvda-orca-shortcut-audit-2026-10-05.md).
+
 linux-rdaccess additionally translates:
 
     NVDA+Space
@@ -135,8 +145,9 @@ way of typing. Plain Shift+Space and plain F2 (Thunar rename) are untouched.
 
 Not translated: NVDA+Up and review keys (Orca's flat review would leave braille
 following the review cursor). Numpad review keys already match Orca's desktop
-layout and pass through unchanged. CapsLock as NVDA key only gets the
-keep-modifier chords, because releasing it would toggle CapsLock.
+layout and pass through unchanged. CapsLock presses are deferred so translated
+NVDA commands can call Orca directly without toggling Caps Lock. A standalone
+CapsLock press is forwarded as one complete press/release.
 
 ### Linux GUI and file manager
 
@@ -209,7 +220,14 @@ network thread (GTK is not thread-safe). Run `linux-rdaccess doctor` to check th
 patches are active; set `LINUX_RDACCESS_DEBUG=1` to log key-handling stalls
 (duration only, never which key) to `~/.local/share/orca/orca-remote-slow-events.log`.
 
-The current patches are controller **v32** and local-machine **v8**. Update the
+Caps Lock and Num Lock feedback reads the actual named XKB indicator after a
+successful key release, when X11 has completed the toggle. The state is captured
+before queuing the Orca announcement, so quick consecutive toggles retain their
+individual on/off results. Num Lock auto-repeat produces one toggle and one
+announcement per press. CapsLock used for a translated NVDA command produces
+neither a lock toggle nor a lock announcement.
+
+The current patches are controller **v36** and local-machine **v10**. Update the
 installed command from the repository with `python3 linux_rdaccess.py install`,
 then run `linux-rdaccess connect` to update the Orca-side files and restart Orca.
 `doctor` verifies the connected patch hooks, valid Python, and the installed

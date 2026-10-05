@@ -357,6 +357,19 @@ class RemoteController:
             self.assertIn(remote_access.LEGACY_COMPAT_MARKER, result)
             self.assertNotIn(remote_access.LEGACY_COMPAT_MARKER_V34 + "\n", result)
 
+    def test_v35_patch_is_replaced_from_backup(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "remote_controller.py"
+            old = self.UPSTREAM_CONTROLLER + "\n" + remote_access.LEGACY_COMPAT_MARKER_V35 + "\n"
+            path.write_text(old, encoding="utf-8")
+            path.with_name(path.name + ".linux-rdaccess-backup").write_text(
+                self.UPSTREAM_CONTROLLER, encoding="utf-8"
+            )
+            self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
+            result = path.read_text(encoding="utf-8")
+            self.assertIn(remote_access.LEGACY_COMPAT_MARKER, result)
+            self.assertNotIn(remote_access.LEGACY_COMPAT_MARKER_V35 + "\n", result)
+
     def test_v33_patch_is_replaced_from_backup(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "remote_controller.py"
@@ -1110,6 +1123,7 @@ class RemoteController:
 
     def test_numlock_repeat_is_consumed_and_announced_once(self):
         c, _, _ = self._patched_controller()
+        c._linux_rdaccess_read_lock_state = lambda vk: True
         presented = []
         c._linux_rdaccess_script_call = (
             lambda method, *args: presented.append((method, args)) or True
@@ -1117,15 +1131,18 @@ class RemoteController:
         self._key(c, 0x90, True)
         self._key(c, 0x90, True)   # Windows auto-repeat
         self._key(c, 0x90, True)   # another auto-repeat
+        self.assertEqual(presented, [])  # XKB may not unlock before release
         self._key(c, 0x90, False)
         self.assertEqual(
             [k for k in self._names(c) if k[0] == 0x90],
             [(0x90, True), (0x90, False)],
         )
-        self.assertEqual(presented, [("presentLockState", (0x90,))])
+        self.assertEqual(presented, [("presentLockState", (0x90, True))])
 
     def test_fresh_numlock_presses_each_toggle_and_announce(self):
         c, _, _ = self._patched_controller()
+        states = iter((True, False))
+        c._linux_rdaccess_read_lock_state = lambda vk: next(states)
         presented = []
         c._linux_rdaccess_script_call = (
             lambda method, *args: presented.append((method, args)) or True
@@ -1139,7 +1156,7 @@ class RemoteController:
         )
         self.assertEqual(
             presented,
-            [("presentLockState", (0x90,)), ("presentLockState", (0x90,))],
+            [("presentLockState", (0x90, True)), ("presentLockState", (0x90, False))],
         )
 
     def test_failed_numlock_injection_never_announces(self):
@@ -1155,16 +1172,18 @@ class RemoteController:
 
     def test_plain_capslock_announces_only_when_physical_toggle_is_forwarded(self):
         c, _, _ = self._patched_controller()
+        c._linux_rdaccess_read_lock_state = lambda vk: True
         presented = []
         c._linux_rdaccess_script_call = (
             lambda method, *args: presented.append((method, args)) or True
         )
         self._key(c, 0x14, True)
         self._key(c, 0x14, False)
-        self.assertEqual(presented, [("presentLockState", (0x14,))])
+        self.assertEqual(presented, [("presentLockState", (0x14, True))])
 
     def test_plain_capslock_preserves_original_remote_key_payload(self):
         c, _, _ = self._patched_controller()
+        c._linux_rdaccess_read_lock_state = lambda vk: True
         presented = []
         c._linux_rdaccess_script_call = (
             lambda method, *args: presented.append((method, args)) or True
@@ -1184,7 +1203,7 @@ class RemoteController:
             [("key", 0x14, True, "Caps_Lock"),
              ("key", 0x14, False, "Caps_Lock")],
         )
-        self.assertEqual(presented, [("presentLockState", (0x14,))])
+        self.assertEqual(presented, [("presentLockState", (0x14, True))])
 
     def test_capslock_used_as_nvda_modifier_does_not_announce_lock_state(self):
         import os

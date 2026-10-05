@@ -13,6 +13,7 @@ import subprocess
 import sys
 
 from remote_access import (
+    CUSTOMIZATION_EVENT_API_MARKER,
     LEGACY_COMPAT_MARKER,
     LEGACY_COMPAT_MARKER_V1,
     LEGACY_LOCAL_MACHINE_RELATIVE,
@@ -23,6 +24,7 @@ from remote_access import (
     disable_legacy_orca_connection,
     load_config,
     legacy_controller_patch_current,
+    legacy_customization_event_api_patch_current,
     legacy_local_machine_patch_current,
     print_status,
     update_legacy_orca_customizations,
@@ -297,6 +299,18 @@ def patch_status(orca_config: Path) -> list[tuple[str, str]]:
          LOCAL_MACHINE_MARKER, LOCAL_MACHINE_MARKER_V1, legacy_local_machine_patch_current),
     )
     rows = []
+    label = "native Orca keyboard events (orca-customizations.py)"
+    try:
+        customization = orca_config.expanduser().read_text(encoding="utf-8")
+    except OSError:
+        rows.append((label, "missing"))
+    else:
+        if legacy_customization_event_api_patch_current(customization):
+            rows.append((label, "current"))
+        elif CUSTOMIZATION_EVENT_API_MARKER in customization:
+            rows.append((label, "incomplete patch - repair required"))
+        else:
+            rows.append((label, "not patched - run: linux-rdaccess connect"))
     for label, path, current, old, valid in checks:
         try:
             text = path.read_text(encoding="utf-8")

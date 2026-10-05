@@ -342,6 +342,119 @@ class BrailleValidationTests(Harness, unittest.TestCase):
             self.assertNotIn('scriptPath', record)
 
 
+class LockFeedbackTests(Harness, unittest.TestCase):
+    def test_snapshot_is_after_successful_release_and_not_while_lock_is_held(self):
+        for vk in (0x14, 0x90):
+            with self.subTest(vk=vk):
+                c, _, _ = self._patched_controller()
+                events = []
+                c.local_machine.send_key = lambda **kw: events.append(
+                    ('key', bool(kw['pressed']))) or True
+                c._linux_rdaccess_read_lock_state = lambda code: events.append(
+                    ('snapshot', code)) or False
+                c._linux_rdaccess_script_call = lambda *args: events.append(args)
+                self._key(c, vk, True)
+                self._key(c, vk, True)
+                self.assertFalse(any(item[0] == 'snapshot' for item in events))
+                self._key(c, vk, False)
+                self.assertEqual(events, [
+                    ('key', True), ('key', False), ('snapshot', vk),
+                    ('presentLockState', vk, False),
+                ])
+
+    def test_delayed_callbacks_preserve_each_completed_toggle_snapshot(self):
+        for vk in (0x14, 0x90):
+            with self.subTest(vk=vk):
+                c, _, _ = self._patched_controller(inline=False)
+                queue, patches = self._fake_glib()
+                presented = []
+                snapshots = iter((True, False))
+                c._linux_rdaccess_read_lock_state = lambda code: next(snapshots)
+                c._linux_rdaccess_script_call = lambda *args: presented.append(args)
+                with patches:
+                    for _ in range(2):
+                        self._key(c, vk, True)
+                        self._key(c, vk, False)
+                    self.assertEqual(presented, [])
+                    for callback in queue:
+                        callback()
+                self.assertEqual(presented, [
+                    ('presentLockState', vk, True), ('presentLockState', vk, False),
+                ])
+
+    def test_failed_release_is_silent_until_successful_owned_retry(self):
+        c, _, _ = self._patched_controller()
+        presented = []
+        c._linux_rdaccess_read_lock_state = mock.Mock(return_value=False)
+        c._linux_rdaccess_script_call = lambda *args: presented.append(args)
+        results = iter((True, False, True))
+        c.local_machine.send_key = lambda **kw: next(results)
+        self._key(c, 0x90, True)
+        self._key(c, 0x90, False)
+        c._linux_rdaccess_read_lock_state.assert_not_called()
+        self.assertEqual(presented, [])
+        self._key(c, 0x90, False)
+        self.assertEqual(presented, [('presentLockState', 0x90, False)])
+        c._linux_rdaccess_read_lock_state.assert_called_once_with(0x90)
+
+    def test_unowned_and_duplicate_releases_do_not_snapshot_or_announce(self):
+        c, _, _ = self._patched_controller()
+        c._linux_rdaccess_read_lock_state = mock.Mock(return_value=True)
+        c._linux_rdaccess_script_call = mock.Mock()
+        self._key(c, 0x90, False)
+        self._key(c, 0x90, True)
+        self._key(c, 0x90, False)
+        self._key(c, 0x90, False)
+        c._linux_rdaccess_read_lock_state.assert_called_once_with(0x90)
+        c._linux_rdaccess_script_call.assert_called_once_with('presentLockState', 0x90, True)
+
+    def test_unavailable_snapshot_never_queues_presentation(self):
+        c, _, _ = self._patched_controller()
+        c._linux_rdaccess_read_lock_state = lambda code: None
+        c._linux_rdaccess_script_call = mock.Mock()
+        self._key(c, 0x90, True)
+        self._key(c, 0x90, False)
+        c._linux_rdaccess_script_call.assert_not_called()
+
+    def test_capslock_nvda_command_never_reads_or_presents_lock_state(self):
+        c, _, _ = self._patched_controller()
+        c._linux_rdaccess_read_lock_state = mock.Mock()
+        commands = []
+        c._linux_rdaccess_script_call = lambda *args: commands.append(args)
+        self._key(c, 0x14, True)
+        self._key(c, 0x54, True)
+        self._key(c, 0x54, False)
+        self._key(c, 0x14, False)
+        c._linux_rdaccess_read_lock_state.assert_not_called()
+        self.assertEqual(commands, [('presentTitle',)])
+        self.assertFalse(any(event[0] == 'key' and event[1] == 0x14
+                             for event in c.local_machine.events))
+
+    def test_queued_feedback_expires_on_handoff(self):
+        c, _, _ = self._patched_controller(inline=False)
+        queue, patches = self._fake_glib()
+        c._linux_rdaccess_read_lock_state = lambda code: True
+        c._linux_rdaccess_script_call = mock.Mock()
+        with patches:
+            self._key(c, 0x90, True)
+            self._key(c, 0x90, False)
+            c.toggle_control()
+            for callback in queue:
+                callback()
+        c._linux_rdaccess_script_call.assert_not_called()
+
+    def test_snapshot_uses_adapter_without_presenting_on_receive_thread(self):
+        c, _, _ = self._patched_controller()
+        adapter = types.SimpleNamespace(read_lock_state=mock.Mock(return_value=False))
+        module = types.ModuleType('linux_rdaccess_orca_adapter')
+        module.OrcaRuntimeAdapter = adapter
+        c._linux_rdaccess_script_call = mock.Mock()
+        with mock.patch.dict(sys.modules, {'linux_rdaccess_orca_adapter': module}):
+            self.assertIs(c._linux_rdaccess_read_lock_state(0x90), False)
+        adapter.read_lock_state.assert_called_once_with(0x90)
+        c._linux_rdaccess_script_call.assert_not_called()
+
+
 class CompatibilityPatchTests(unittest.TestCase):
     def test_previous_remote_and_local_versions_upgrade_without_duplicate_hooks(self):
         with tempfile.TemporaryDirectory() as temp:
