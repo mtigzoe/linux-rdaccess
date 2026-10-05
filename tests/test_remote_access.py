@@ -344,6 +344,19 @@ class RemoteController:
                 remote_access.patch_legacy_orca_remote_controller(path)
             self.assertEqual(path.read_text(encoding="utf-8"), broken)
 
+    def test_v34_patch_is_replaced_from_backup(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "remote_controller.py"
+            old = self.UPSTREAM_CONTROLLER + "\n" + remote_access.LEGACY_COMPAT_MARKER_V34 + "\n"
+            path.write_text(old, encoding="utf-8")
+            path.with_name(path.name + ".linux-rdaccess-backup").write_text(
+                self.UPSTREAM_CONTROLLER, encoding="utf-8"
+            )
+            self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
+            result = path.read_text(encoding="utf-8")
+            self.assertIn(remote_access.LEGACY_COMPAT_MARKER, result)
+            self.assertNotIn(remote_access.LEGACY_COMPAT_MARKER_V34 + "\n", result)
+
     def test_v33_patch_is_replaced_from_backup(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "remote_controller.py"
@@ -1150,6 +1163,29 @@ class RemoteController:
         self._key(c, 0x14, False)
         self.assertEqual(presented, [("presentLockState", (0x14,))])
 
+    def test_plain_capslock_preserves_original_remote_key_payload(self):
+        c, _, _ = self._patched_controller()
+        presented = []
+        c._linux_rdaccess_script_call = (
+            lambda method, *args: presented.append((method, args)) or True
+        )
+        c._on_remote_key(
+            key_name="Caps_Lock", pressed=True, modifiers=7,
+            vk_code=0x14, scan_code=58, extended=False,
+        )
+        c._on_remote_key(
+            key_name="Caps_Lock", pressed=False, modifiers=7,
+            vk_code=0x14, scan_code=58, extended=False,
+        )
+        caps = [event for event in c.local_machine.events
+                if event[0] == "key" and event[1] == 0x14]
+        self.assertEqual(
+            caps,
+            [("key", 0x14, True, "Caps_Lock"),
+             ("key", 0x14, False, "Caps_Lock")],
+        )
+        self.assertEqual(presented, [("presentLockState", (0x14,))])
+
     def test_capslock_used_as_nvda_modifier_does_not_announce_lock_state(self):
         import os
         c, _, home = self._patched_controller()
@@ -1634,6 +1670,16 @@ class LocalMachine:
                 self.assertEqual(resolve(name, vk, False), name)
                 self.assertEqual(resolve(None, vk, None), name)
         self.assertEqual(resolve(None, 0x0C, False), 'KP_Begin')
+
+    def test_lock_vks_resolve_when_remote_key_name_is_missing(self):
+        module, _, _ = self._patched_local()
+        resolve = module.LocalMachine._resolve_key
+        self.assertEqual(resolve(None, 0x14, False), 'Caps_Lock')
+        self.assertEqual(resolve(None, 0x14, True), 'Caps_Lock')
+        self.assertEqual(resolve(None, 0x90, False), 'Num_Lock')
+        self.assertEqual(resolve(None, 0x90, True), 'Num_Lock')
+        # An explicit peer-provided key name still has priority.
+        self.assertEqual(resolve('PeerCaps', 0x14, False), 'PeerCaps')
 
     def test_local_machine_v5_patch_is_upgraded_to_current(self):
         module, path, _ = self._patched_local()
