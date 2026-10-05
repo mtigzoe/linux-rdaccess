@@ -51,6 +51,13 @@ Apply the saved configuration and connect:
 
     linux-rdaccess connect
 
+If Orca cannot be restarted automatically from your current shell, apply the
+configuration without restarting Orca, then start Orca in the active XFCE
+graphical session with the helper script:
+
+    linux-rdaccess connect --no-restart
+    ./start-orca-session.sh
+
 Disconnect while keeping the saved configuration:
 
     linux-rdaccess disconnect
