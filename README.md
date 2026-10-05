@@ -267,6 +267,36 @@ See [docs/live-x11-diagnostics.md](docs/live-x11-diagnostics.md) for the complet
 safety model, supported keys, Num Lock investigation notes, and Xvfb verification
 commands.
 
+
+### Optional Windows NVDA speech probe
+
+For controlled end-to-end tests, an opt-in Windows NVDA diagnostic add-on can
+report when NVDA actually queues speech after a Linux action. The probe is
+disabled by default, writes nothing to disk, and sends only to Windows loopback.
+Use an SSH LocalForward so the data stays inside the existing Remote-SSH
+connection.
+
+On Linux, start the receiver:
+
+    python3 diagnostics/nvda_speech_probe.py
+
+To let Codex verify the exact announcement during a controlled test:
+
+    python3 diagnostics/nvda_speech_probe.py --show-text
+
+Install the Windows diagnostic add-on from a Windows checkout or copy of this
+repository:
+
+    powershell -ExecutionPolicy Bypass -File .\tools\install_nvda_speech_probe.ps1
+
+After restarting NVDA, press NVDA+Ctrl+Shift+F12 to enable the probe and press it
+again immediately after the test to disable it. Exact speech can contain
+sensitive information, including typed characters depending on NVDA settings, so
+do not leave the probe enabled during ordinary computer use.
+
+See [docs/nvda-speech-probe.md](docs/nvda-speech-probe.md) for the SSH
+LocalForward setup, privacy model, and interpretation of results.
+
 ## VS Code on Linux
 
 VS Code on Linux is supported through Orca. For reliable screen-reader behavior, run:
