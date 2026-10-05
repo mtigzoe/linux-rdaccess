@@ -163,14 +163,14 @@ class RestartTests(unittest.TestCase):
         )
 
     @mock.patch("linux_rdaccess.graphical_session_env")
-    @mock.patch("linux_rdaccess.subprocess.run")
-    def test_restart_orca_uses_replace_and_graphical_env(self, run, graphical_env):
+    @mock.patch("linux_rdaccess.subprocess.Popen")
+    def test_restart_orca_uses_replace_without_waiting(self, popen, graphical_env):
         graphical_env.return_value = {"DISPLAY": ":0"}
-        run.return_value.returncode = 0
         self.assertEqual(linux_rdaccess.restart_orca(), 0)
-        run.assert_called_once()
-        self.assertEqual(run.call_args.args[0], ["orca", "--replace"])
-        self.assertEqual(run.call_args.kwargs["env"], {"DISPLAY": ":0"})
+        popen.assert_called_once()
+        self.assertEqual(popen.call_args.args[0], ["orca", "--replace"])
+        self.assertEqual(popen.call_args.kwargs["env"], {"DISPLAY": ":0"})
+        self.assertTrue(popen.call_args.kwargs["start_new_session"])
 
 
 class VSCodeSetupTests(unittest.TestCase):
