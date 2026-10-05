@@ -306,29 +306,15 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
             self.assertTrue(OrcaRuntimeAdapter.present_status_bar())
         self.assertEqual(snake_calls, [("title", None), ("status", None)])
 
-    def test_present_lock_state_uses_actual_gdk_numlock_state(self):
+    def test_present_lock_state_uses_authoritative_xkb_state(self):
         calls = []
         script = types.SimpleNamespace(
             presentMessage=lambda message: calls.append(message)
         )
-
-        class FakeKeymap:
-            def get_num_lock_state(self):
-                return True
-
-            def get_caps_lock_state(self):
-                return False
-
-        gdk = types.SimpleNamespace(
-            Keymap=types.SimpleNamespace(get_default=lambda: FakeKeymap())
-        )
-        repository = types.ModuleType("gi.repository")
-        repository.Gdk = gdk
-        gi = types.ModuleType("gi")
-        gi.repository = repository
-        with self._fake_orca(script), mock.patch.dict(
-            sys.modules,
-            {"gi": gi, "gi.repository": repository},
+        with self._fake_orca(script), mock.patch.object(
+            OrcaRuntimeAdapter,
+            "_xkb_named_lock_state",
+            side_effect=lambda name: {"Num Lock": True, "Caps Lock": False}[name],
         ):
             self.assertTrue(OrcaRuntimeAdapter.present_lock_state(0x90))
             self.assertTrue(OrcaRuntimeAdapter.present_lock_state(0x14))
@@ -340,16 +326,8 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
         )
         with self._fake_orca(script):
             self.assertFalse(OrcaRuntimeAdapter.present_lock_state(0x91))
-
-        repository = types.ModuleType("gi.repository")
-        repository.Gdk = types.SimpleNamespace(
-            Keymap=types.SimpleNamespace(get_default=lambda: None)
-        )
-        gi = types.ModuleType("gi")
-        gi.repository = repository
-        with self._fake_orca(script), mock.patch.dict(
-            sys.modules,
-            {"gi": gi, "gi.repository": repository},
+        with self._fake_orca(script), mock.patch.object(
+            OrcaRuntimeAdapter, "_xkb_named_lock_state", return_value=None
         ):
             self.assertFalse(OrcaRuntimeAdapter.present_lock_state(0x90))
 
