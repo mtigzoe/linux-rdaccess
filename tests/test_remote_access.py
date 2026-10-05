@@ -869,6 +869,79 @@ class RemoteController:
         })
         self.assertNotEqual(action, "keyboard")
 
+    # Display navigation keys (arrows, Enter, Tab, Escape ...) are bound by NVDA
+    # to "kb:<key>" scripts and arrive with scriptPath [..., "kb:upArrow"]. They
+    # type no characters, so they must reach Linux; character keys must not.
+    def _braille_keys(self, c, home, **payload):
+        import os
+        calls, patches = self._with_fake_orca(c, home)
+        c.local_machine.events.clear()
+        with patches, mock.patch.dict(os.environ, {"HOME": home}):
+            c._on_remote_braille_input(**payload)
+        return [e[1:] for e in c.local_machine.events if e[0] == "key"]
+
+    def test_display_arrow_key_is_forwarded_to_linux(self):
+        c, _, home = self._patched_controller()
+        keys = self._braille_keys(
+            c, home, id="joystickUp", model="bnote", source="eurobraille",
+            dots=0, space=False,
+            scriptPath=["globalCommands", "GlobalCommands", "kb:upArrow"])
+        self.assertEqual(keys, [(0x26, True, "Up"), (0x26, False, "Up")])
+
+    def test_display_modified_key_presses_and_releases_modifiers_around_key(self):
+        c, _, home = self._patched_controller()
+        keys = self._braille_keys(
+            c, home, id="chord", scriptPath=["globalCommands", "GlobalCommands", "kb:shift+tab"])
+        self.assertEqual(keys, [
+            (0xA0, True, "Shift_L"), (0x09, True, "Tab"),
+            (0x09, False, "Tab"), (0xA0, False, "Shift_L")])
+
+    def test_display_space_dot_chord_bound_to_a_command_key_is_forwarded(self):
+        # space+dots chords are how many displays emit Escape/Enter/arrows.
+        c, _, home = self._patched_controller()
+        keys = self._braille_keys(
+            c, home, id="space+dot1", dots=1, space=True,
+            scriptPath=["globalCommands", "GlobalCommands", "kb:escape"])
+        self.assertEqual(keys, [(0x1B, True, "Escape"), (0x1B, False, "Escape")])
+
+    def test_display_character_keys_are_never_forwarded_or_traced(self):
+        import os
+        c, _, home = self._patched_controller()
+        for name in ("kb:a", "kb:control+a", "kb:space", "kb:literal-password",
+                     "kb:shift+a", "kb:control+control+tab", "kb:", "kb:windows+tab"):
+            with self.subTest(name=name):
+                keys = self._braille_keys(
+                    c, home, scriptPath=["globalCommands", "GlobalCommands", name])
+                self.assertEqual(keys, [])
+        action, record = c._linux_rdaccess_classify_braille({
+            "scriptPath": ["globalCommands", "GlobalCommands", "kb:a"]})
+        self.assertEqual(action, "keyboard")
+        self.assertEqual(record, {"redacted": "braille-keyboard-input"})
+
+    def test_display_key_from_unexpected_script_location_is_not_forwarded(self):
+        c, _, home = self._patched_controller()
+        keys = self._braille_keys(
+            c, home, scriptPath=["someAddon", "Commands", "kb:upArrow"])
+        self.assertEqual(keys, [])
+
+    def test_display_key_does_not_release_a_modifier_the_controller_holds(self):
+        c, _, home = self._patched_controller()
+        self._key(c, 0xA0, True)  # Windows Shift is physically held
+        c.local_machine.events.clear()
+        keys = self._braille_keys(
+            c, home, scriptPath=["globalCommands", "GlobalCommands", "kb:shift+downArrow"])
+        self.assertEqual(keys, [(0x28, True, "Down"), (0x28, False, "Down")])
+
+    def test_display_key_is_traced_without_character_content(self):
+        import os
+        c, _, home = self._patched_controller()
+        with mock.patch.dict(os.environ, {"LINUX_RDACCESS_BRAILLE_TRACE": "1"}):
+            self._braille_keys(
+                c, home, id="joystickUp",
+                scriptPath=["globalCommands", "GlobalCommands", "kb:upArrow"])
+        text = Path(home, ".local/share/orca/orca-remote-braille-input.log").read_text()
+        self.assertNotIn("joystickUp", text)
+
     def test_typed_braille_never_triggers_pan_or_route(self):
         import os
         c, _, home = self._patched_controller()

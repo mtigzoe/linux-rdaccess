@@ -9,3 +9,5 @@ Each `*-upstream.txt` is the minimal synthetic upstream source used as its
 one-time backup. The local source includes the verified VK-based `send_key`
 shape. These fixtures contain no real connection secrets or application data.
 Tests upgrade the historical output directly; they do not rename current markers.
+
+Controller v31 was generated from `9e34a06` (the branch head before the display-key forwarding change).

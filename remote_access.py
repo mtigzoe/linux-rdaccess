@@ -409,7 +409,8 @@ LEGACY_COMPAT_MARKER_V27 = "# linux-rdaccess NVDA/Orca input compatibility v27"
 LEGACY_COMPAT_MARKER_V28 = "# linux-rdaccess NVDA/Orca input compatibility v28"
 LEGACY_COMPAT_MARKER_V29 = "# linux-rdaccess NVDA/Orca input compatibility v29"
 LEGACY_COMPAT_MARKER_V30 = "# linux-rdaccess NVDA/Orca input compatibility v30"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v31"
+LEGACY_COMPAT_MARKER_V31 = "# linux-rdaccess NVDA/Orca input compatibility v31"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v32"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -427,6 +428,22 @@ _LEGACY_HELPERS = '''\
         "braille_scrollForward": "pan_forward",
         "braille_routeTo": "route",
         "braille_toFocus": "to_focus",
+    }
+    # Display keys NVDA binds to "kb:<key>" emulation scripts. Only keys that
+    # cannot type a character are forwarded; "kb:a", "kb:space" and any unknown
+    # name stay redacted braille-keyboard input. name: (X key, vk, extended).
+    _LRD_BRAILLE_KEYS = {
+        "upArrow": ("Up", 0x26, True), "downArrow": ("Down", 0x28, True),
+        "leftArrow": ("Left", 0x25, True), "rightArrow": ("Right", 0x27, True),
+        "home": ("Home", 0x24, True), "end": ("End", 0x23, True),
+        "pageUp": ("Prior", 0x21, True), "pageDown": ("Next", 0x22, True),
+        "enter": ("Return", 0x0D, False), "tab": ("Tab", 0x09, False),
+        "escape": ("Escape", 0x1B, False), "backspace": ("BackSpace", 0x08, False),
+        "delete": ("Delete", 0x2E, True),
+    }
+    _LRD_BRAILLE_MODIFIERS = {
+        "shift": ("Shift_L", 0xA0), "control": ("Control_L", 0xA2),
+        "alt": ("Alt_L", 0xA4),
     }
     _LRD_TRACE_MAX_BYTES = 262144
     _LRD_OTHER_MOD_VKS = (
@@ -819,6 +836,61 @@ _LEGACY_HELPERS = '''\
         if self._linux_rdaccess_script_call("bypassNextCommand") is False:
             self._lrd_bypass_next = False
 
+    @classmethod
+    def _linux_rdaccess_parse_braille_key(cls, name):
+        """Return (modifier names, key name) for an allowlisted kb: gesture."""
+        if not isinstance(name, str) or not name.startswith("kb:"):
+            return None
+        parts = name[3:].split("+")
+        key, mods = parts[-1], parts[:-1]
+        if key not in cls._LRD_BRAILLE_KEYS or len(set(mods)) != len(mods):
+            return None
+        if any(mod not in cls._LRD_BRAILLE_MODIFIERS for mod in mods):
+            return None
+        return tuple(mods), key
+
+    def _linux_rdaccess_send_braille_key(self, name):
+        """Inject one display navigation key, borrowing held modifiers."""
+        parsed = self._linux_rdaccess_parse_braille_key(name)
+        if parsed is None:
+            return
+        mods, key = parsed
+        x_name, vk, extended = self._LRD_BRAILLE_KEYS[key]
+        forwarded = getattr(self, "_lrd_forwarded", {})
+        # A synthetic release must not release a key the controller holds.
+        if (vk, extended) in forwarded:
+            return
+        send = self._linux_rdaccess_forward_key
+        pressed_modifiers = []
+        try:
+            for mod in mods:
+                mod_name, mod_vk = self._LRD_BRAILLE_MODIFIERS[mod]
+                generic_vk = {0xA0: 0x10, 0xA2: 0x11, 0xA4: 0x12}[mod_vk]
+                if any(held_vk in (mod_vk, generic_vk) and not held_ext
+                       for held_vk, held_ext in getattr(self, "_lrd_forwarded", {})):
+                    continue
+                if send(key_name=mod_name, pressed=True, modifiers=None,
+                        vk_code=mod_vk, scan_code=0, extended=False) is False:
+                    return
+                pressed_modifiers.append((mod_name, mod_vk))
+            for down in (True, False):
+                if send(key_name=x_name, pressed=down, modifiers=None,
+                        vk_code=vk, scan_code=0, extended=extended) is False:
+                    return
+        finally:
+            if (vk, extended) in getattr(self, "_lrd_forwarded", {}):
+                try:
+                    send(key_name=x_name, pressed=False, modifiers=None,
+                         vk_code=vk, scan_code=0, extended=extended)
+                except Exception:
+                    log.error("linux-rdaccess: failed to release braille key")
+            for mod_name, mod_vk in reversed(pressed_modifiers):
+                try:
+                    send(key_name=mod_name, pressed=False, modifiers=None,
+                         vk_code=mod_vk, scan_code=0, extended=False)
+                except Exception:
+                    log.error("linux-rdaccess: failed to release braille modifier")
+
     def _linux_rdaccess_classify_braille(self, kwargs):
         """Validate protocol shapes; persist only canonical command metadata."""
         invalid = (None, {"redacted": "invalid-braille-input"})
@@ -842,6 +914,12 @@ _LEGACY_HELPERS = '''\
                 or not isinstance(space, (bool, int)) or space < 0):
             return invalid
         ids = ([gesture_id] if gesture_id else []) + list(identifiers)
+        # A display key bound to a non-character emulated key is a command, even
+        # when it is a space+dots chord, so it is decided before the typed-input
+        # test below. Nothing about the id/identifiers is recorded for it.
+        if (script and tuple(script[:2]) == ("globalCommands", "GlobalCommands")
+                and self._linux_rdaccess_parse_braille_key(name) is not None):
+            return "key", {"action": "key", "scriptPath": ["globalCommands", "GlobalCommands", name]}
 
         def is_input(value):
             import re as _re
@@ -940,6 +1018,8 @@ _LEGACY_HELPERS = '''\
         elif action == "to_focus":
             self._linux_rdaccess_run_main(
                 lambda: self._linux_rdaccess_script_call("goBrailleHome"))
+        elif action == "key":
+            self._linux_rdaccess_send_braille_key(kwargs["scriptPath"][2])
         elif action == "route":
             index = kwargs.get("routingIndex")
             if "cellIndexes" in kwargs:
@@ -1965,6 +2045,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V31,
                 LEGACY_COMPAT_MARKER_V30,
                 LEGACY_COMPAT_MARKER_V29,
                 LEGACY_COMPAT_MARKER_V28,
