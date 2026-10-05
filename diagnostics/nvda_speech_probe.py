@@ -44,6 +44,19 @@ def decode_event(raw: bytes) -> dict:
     return {"type": "speech", "text": text, "segments": segments, "sequence": sequence}
 
 
+def read_connection_event(connection: socket.socket, *, timeout: float = 1.0) -> dict | None:
+    """Read one event without letting empty/tunnel-probe connections kill the listener."""
+    connection.settimeout(timeout)
+    try:
+        with connection.makefile("rb") as stream:
+            raw = stream.readline(MAX_LINE_BYTES + 1)
+    except (socket.timeout, TimeoutError, OSError):
+        return None
+    if not raw:
+        return None
+    return decode_event(raw)
+
+
 def public_event(event: dict, *, show_text: bool, received_at: float | None = None) -> dict:
     """Return terminal-safe output, revealing text only after explicit opt-in."""
     result = {
@@ -98,13 +111,13 @@ def serve(*, host: str, port: int, show_text: bool, once: bool, timeout: float) 
             with connection:
                 if not ipaddress.ip_address(address[0]).is_loopback:
                     continue
-                connection.settimeout(1.0)
-                with connection.makefile("rb") as stream:
-                    raw = stream.readline(MAX_LINE_BYTES + 1)
                 try:
-                    event = decode_event(raw)
+                    event = read_connection_event(connection)
                 except ProbeError as exc:
                     print(json.dumps({"error": str(exc)}), flush=True)
+                    continue
+                if event is None:
+                    # VS Code/SSH port-forward probes may connect without sending data.
                     continue
                 print(json.dumps(
                     public_event(event, show_text=show_text, received_at=time.monotonic()),
