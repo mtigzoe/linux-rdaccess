@@ -138,6 +138,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return serve(host=args.host, port=args.port, show_text=args.show_text, once=args.once, timeout=args.timeout)
+    except KeyboardInterrupt:
+        print(json.dumps({"status": "stopped"}), flush=True)
+        return 130
     except (ProbeError, OSError) as exc:
         message = str(exc) if isinstance(exc, ProbeError) else "speech probe receiver unavailable"
         print(json.dumps({"error": message}), flush=True)
