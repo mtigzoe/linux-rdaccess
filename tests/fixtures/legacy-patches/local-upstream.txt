@@ -1,0 +1,41 @@
+import os, time
+_DBG_LOG = os.path.expanduser("~/.local/share/orca/orca-remote-debug.log")
+
+def _dbg(msg):
+    try:
+        with open(_DBG_LOG, "a") as f:
+            f.write("[%.3f] LM: %s\n" % (time.time(), msg))
+    except Exception:
+        pass
+
+class LocalMachine:
+    fallback_calls = []
+
+    clip_threads = []
+
+    def set_clipboard_text(self, text=None, **kwargs):
+        import threading
+        LocalMachine.clip_threads.append((threading.current_thread().name, text))
+
+    def _send_key_xdotool(self, key, pressed):
+        LocalMachine.fallback_calls.append((key, pressed))
+        return True
+
+    def send_key(self, key_name=None, pressed=None, modifiers=None,
+                 vk_code=None, scan_code=None, extended=None, **kwargs):
+        if pressed is None:
+            return
+        key = self._resolve_key(key_name, vk_code, extended)
+        if key is None:
+            return
+        if self._send_key_xdotool(key, pressed):
+            return
+
+    @staticmethod
+    def _resolve_key(key_name, vk_code, extended):
+        # Legacy resolver ignores extended for navigation/keypad VKs.
+        if key_name:
+            return key_name
+        return {0x21: 'Prior', 0x22: 'Next', 0x23: 'End', 0x24: 'Home',
+                0x25: 'Left', 0x26: 'Up', 0x27: 'Right', 0x28: 'Down',
+                0x2D: 'Insert', 0x2E: 'Delete', 0x0C: None}.get(vk_code)

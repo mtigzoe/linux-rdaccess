@@ -16,6 +16,57 @@ from tests import test_remote_access as fixtures
 
 
 class XTestOwnershipTests(Harness, unittest.TestCase):
+    def test_failed_xtest_repeat_does_not_split_initial_press_ownership(self):
+        helper, events = self.helper(results=(1, 0, 1))
+        self.assertTrue(helper.key('a', True))
+        self.assertTrue(helper.key('a', True))
+        self.assertNotIn('a', helper._fallback_down)
+        helper._x11.XKeysymToKeycode = lambda *args: 44
+        self.assertTrue(helper.key('a', False))
+        self.assertEqual(events, [(38, 1), (38, 1), (38, 0)])
+
+    def result_machine(self, results):
+        source = self.UPSTREAM_LOCAL.replace('    @staticmethod\n', '''    def send_key(self, key_name=None, pressed=None, vk_code=None, extended=None):
+        key = self._resolve_key(key_name, vk_code, extended)
+        if self._send_key_xdotool(key, pressed):
+            return
+
+    @staticmethod
+''').replace('        return True\n', '        return False\n', 1)
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'local.py'
+            path.write_text(source)
+            remote_access.patch_legacy_orca_local_machine(path)
+            namespace = {}
+            exec(path.read_text(), namespace)
+        helper, events = self.helper(results=results)
+        namespace['_LRD_XTEST'] = helper
+        return namespace['LocalMachine'](), helper, events
+
+    def test_failed_initial_fallback_does_not_pin_next_gesture_to_fallback(self):
+        machine, helper, events = self.result_machine((0, 1))
+        self.assertIs(machine.send_key(key_name='a', pressed=True), False)
+        self.assertNotIn('a', helper._fallback_down)
+        self.assertIs(machine.send_key(key_name='a', pressed=True), True)
+        self.assertEqual(events, [(38, 1), (38, 1)])
+
+    def test_failed_fallback_release_keeps_fallback_ownership_for_retry(self):
+        machine, helper, events = self.result_machine((0, 1))
+        # Reserve a successful fallback press; the next upstream release fails.
+        helper._fallback_down.add('a')
+        self.assertIs(machine.send_key(key_name='a', pressed=False), False)
+        self.assertIn('a', helper._fallback_down)
+        self.assertIs(machine.send_key(key_name='a', pressed=False), False)
+        self.assertEqual(events, [])
+
+    def test_failed_xtest_and_fallback_release_preserves_original_code_for_retry(self):
+        machine, helper, events = self.result_machine((1, 0, 1))
+        self.assertIs(machine.send_key(key_name='a', pressed=True), True)
+        self.assertIs(machine.send_key(key_name='a', pressed=False), False)
+        helper._x11.XKeysymToKeycode = lambda *args: 44
+        self.assertIs(machine.send_key(key_name='a', pressed=False), True)
+        self.assertEqual(events, [(38, 1), (38, 0), (38, 0)])
+
     def test_legacy_backend_exception_log_does_not_persist_private_text(self):
         self.addCleanup(logging.disable, logging.root.manager.disable)
         logging.disable(logging.NOTSET)

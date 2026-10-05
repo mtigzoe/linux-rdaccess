@@ -1599,7 +1599,7 @@ class LocalMachine:
             self.assertFalse(helper.key("Down", False))
             self.assertTrue(helper._failed)
 
-    def test_per_keypress_debug_log_is_off_by_default_and_opt_in(self):
+    def test_per_keypress_debug_log_stays_disabled_when_debugging(self):
         import os
         module, _, home = self._patched_local()
         log = Path(home, ".local/share/orca/orca-remote-debug.log")
@@ -1610,8 +1610,8 @@ class LocalMachine:
             module._dbg("key=SECRET")
         self.assertFalse(log.exists())
         with mock.patch.dict(os.environ, {"LINUX_RDACCESS_DEBUG": "1"}):
-            module._dbg("key=visible-when-opted-in")
-        self.assertIn("visible-when-opted-in", log.read_text(encoding="utf-8"))
+            module._dbg("key=SECRET")
+        self.assertFalse(log.exists())
 
     def test_controller_debug_log_is_silenced_too(self):
         import os
@@ -1624,6 +1624,9 @@ class LocalMachine:
         ns["_DBG_LOG"] = str(log)
         env = {k: v for k, v in os.environ.items() if k != "LINUX_RDACCESS_DEBUG"}
         with mock.patch.dict(os.environ, env, clear=True):
+            ns["_dbg"]("name='SECRET'")
+        self.assertFalse(log.exists())
+        with mock.patch.dict(os.environ, {"LINUX_RDACCESS_DEBUG": "1"}):
             ns["_dbg"]("name='SECRET'")
         self.assertFalse(log.exists())
 

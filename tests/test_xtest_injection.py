@@ -13,6 +13,7 @@ import tempfile
 import time
 import types
 import unittest
+from unittest import mock
 
 import remote_access
 
@@ -21,6 +22,11 @@ def _dbg(msg):
     pass
 
 class LocalMachine:
+    def send_key(self, key_name=None, pressed=None, vk_code=None, extended=None):
+        key = self._resolve_key(key_name, vk_code, extended)
+        if self._send_key_xdotool(key, pressed):
+            return
+
     def _send_key_xdotool(self, key, pressed):
         raise AssertionError("fell back to the xdotool process")
 
@@ -69,6 +75,22 @@ class XTestInjectionTests(unittest.TestCase):
         buf = ctypes.create_string_buffer(32)
         self.x11.XQueryKeymap(self.observer, buf)
         return bool(buf.raw[code // 8] & (1 << (code % 8)))
+
+    def test_complete_send_key_retains_failed_release_until_retry(self):
+        self.assertTrue(self.machine.send_key(key_name='Down', pressed=True))
+        time.sleep(0.02)
+        self.assertTrue(self._is_down('Down'))
+        helper = self.module._LRD_XTEST
+        original_code = helper._down_codes['Down']
+        with mock.patch.object(helper._xt, 'XTestFakeKeyEvent', return_value=0):
+            with self.assertRaises(AssertionError):
+                self.machine.send_key(key_name='Down', pressed=False)
+        self.assertEqual(helper._down_codes['Down'], original_code)
+        self.assertTrue(self._is_down('Down'))
+        self.assertTrue(self.machine.send_key(key_name='Down', pressed=False))
+        time.sleep(0.02)
+        self.assertFalse(self._is_down('Down'))
+        self.assertNotIn('Down', helper._down_codes)
 
     def test_keys_really_reach_the_server_without_a_subprocess(self):
         for name in ("Down", "KP_Add", "KP_Enter", "KP_Up", "Insert"):

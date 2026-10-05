@@ -14,6 +14,7 @@ import secrets
 import shutil
 import sys
 import tempfile
+import textwrap
 from typing import Literal
 
 DEFAULT_HOST = "nvdaremote.com"
@@ -46,7 +47,7 @@ if (
             return None
         old_speakCharacter = _linux_rdaccess_muted_old_speak_character
 """
-_LOCAL_SPEECH_PREF_HOOK = """# linux-rdaccess local Orca speech preference
+_LOCAL_SPEECH_PREF_HOOK_V2 = """# linux-rdaccess local Orca speech preference
 # Keep forwarding wrappers installed; mute only while the remote transport is
 # actually connected in slave mode, and restore local output on disconnect.
 def _linux_rdaccess_local_speech_muted():
@@ -68,6 +69,37 @@ if "old_speakCharacter" in globals():
         if _linux_rdaccess_local_speech_muted():
             return None
         return _linux_rdaccess_saved_old_speak_character(*args, **kwargs)
+    old_speakCharacter = _linux_rdaccess_muted_old_speak_character
+"""
+
+_LOCAL_SPEECH_PREF_HOOK = """# linux-rdaccess local Orca speech preference
+# Keep forwarding wrappers installed; mute only while the remote transport is
+# actually connected in slave mode, and restore local output on disconnect.
+def _linux_rdaccess_local_speech_muted():
+    peer = globals().get("transport")
+    return (LINUX_RDACCESS_MUTE_LOCAL_ORCA_SPEECH
+            and getattr(peer, "connected", False)
+            and getattr(peer, "connection_type", None) == "slave")
+
+def _linux_rdaccess_wrap_local_speech(original):
+    def wrapped(*args, **kwargs):
+        if _linux_rdaccess_local_speech_muted():
+            return None
+        return original(*args, **kwargs)
+    wrapped._linux_rdaccess_original = original
+    return wrapped
+
+if "old_speak" in globals() and not hasattr(old_speak, "_linux_rdaccess_original"):
+    _linux_rdaccess_saved_old_speak = (
+        globals().get("_linux_rdaccess_saved_old_speak", old_speak)
+        if old_speak is globals().get("_linux_rdaccess_muted_old_speak") else old_speak)
+    _linux_rdaccess_muted_old_speak = _linux_rdaccess_wrap_local_speech(_linux_rdaccess_saved_old_speak)
+    old_speak = _linux_rdaccess_muted_old_speak
+if "old_speakCharacter" in globals() and not hasattr(old_speakCharacter, "_linux_rdaccess_original"):
+    _linux_rdaccess_saved_old_speak_character = (
+        globals().get("_linux_rdaccess_saved_old_speak_character", old_speakCharacter)
+        if old_speakCharacter is globals().get("_linux_rdaccess_muted_old_speak_character") else old_speakCharacter)
+    _linux_rdaccess_muted_old_speak_character = _linux_rdaccess_wrap_local_speech(_linux_rdaccess_saved_old_speak_character)
     old_speakCharacter = _linux_rdaccess_muted_old_speak_character
 """
 
@@ -142,7 +174,12 @@ def _write_private_text(path: Path, text: str) -> None:
     """Publish secret-bearing text from a file private from its creation."""
     fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        try:
+            handle = os.fdopen(fd, "w", encoding="utf-8")
+        except BaseException:
+            os.close(fd)
+            raise
+        with handle:
             handle.write(text)
         os.replace(temporary, path)
     finally:
@@ -154,10 +191,24 @@ def save_config(config: RemoteAccessConfig, path: Path = DEFAULT_CONFIG) -> None
     _write_private_text(path, json.dumps(asdict(config), indent=2) + "\n")
 
 
+def _module_stores(tree, name):
+    """Assignments in module control flow, excluding separate local scopes."""
+    found = []
+    def visit(node):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            return
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store) and node.id == name:
+            found.append(node)
+        for child in ast.iter_child_nodes(node):
+            visit(child)
+    visit(tree)
+    return found
+
+
 def _replace_configuration_values(text: str, replacements: dict[str, str], *, role: str | None = None) -> str:
     """Edit real Python values, rejecting missing/ambiguous assignments."""
     try:
-        tree = ast.parse(text)
+        tree = ast.parse(text, feature_version=(3, 10))
     except SyntaxError:
         raise ValueError("legacy configuration is invalid Python") from None
     edits = []
@@ -169,16 +220,31 @@ def _replace_configuration_values(text: str, replacements: dict[str, str], *, ro
             raise ValueError(f"expected one top-level assignment for {name}")
         if isinstance(assignments[0], ast.Assign) and len(assignments[0].targets) != 1:
             raise ValueError(f"chained assignment is unsupported for {name}")
+        target = assignments[0].targets[0] if isinstance(assignments[0], ast.Assign) else assignments[0].target
+        if _module_stores(tree, name) != [target]:
+            raise ValueError(f"unsupported additional assignment for {name}")
         edits.append((assignments[0].value, value))
     if role is not None:
-        roles = [keyword.value for node in ast.walk(tree) if isinstance(node, ast.Call)
-                 and (getattr(node.func, "id", None) == "RelayTransport"
-                      or getattr(node.func, "attr", None) == "RelayTransport")
-                 for keyword in node.keywords if keyword.arg == "connection_type"]
+        calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+                 and any(keyword.arg == "connection_type" for keyword in node.keywords)
+                 and not (isinstance(node.func, ast.Attribute) and node.func.attr == "reconnect"
+                          and isinstance(node.func.value, ast.Name) and node.func.value.id == "transport")]
+        direct = [node.value for node in tree.body if isinstance(node, (ast.Assign, ast.AnnAssign))]
+        if any(call not in direct or not (
+                getattr(call.func, "id", None) == "RelayTransport"
+                or getattr(call.func, "attr", None) == "RelayTransport") for call in calls):
+            raise ValueError("unsupported nested or indirect transport constructor")
+        roles = [keyword.value for call in calls for keyword in call.keywords
+                 if keyword.arg == "connection_type"]
         if not roles:
-            roles = [node.value for node in tree.body if isinstance(node, ast.Assign)
+            assignments = [node for node in tree.body if isinstance(node, (ast.Assign, ast.AnnAssign))
                      and any(isinstance(target, ast.Name) and target.id == "connection_type"
-                             for target in node.targets)]
+                             for target in (node.targets if isinstance(node, ast.Assign) else [node.target]))]
+            if any(isinstance(node, ast.Assign) and len(node.targets) != 1 for node in assignments):
+                raise ValueError("unsupported chained transport role")
+            if len(_module_stores(tree, "connection_type")) != len(assignments):
+                raise ValueError("unsupported additional transport role assignment")
+            roles = [node.value for node in assignments]
         if len(roles) != 1 or not isinstance(roles[0], ast.Constant) or roles[0].value not in ("slave", "master"):
             raise ValueError("expected one supported transport connection_type")
         edits.append((roles[0], json.dumps(role)))
@@ -228,6 +294,7 @@ def update_legacy_orca_customizations(
         "YOUR_NVDAREMOTE_KEY": json.dumps(config.key),
     }
     text = _replace_configuration_values(text, replacements, role=config.orca_connection_type)
+    text = _redact_legacy_logs(text)
 
     pref_name = "LINUX_RDACCESS_MUTE_LOCAL_ORCA_SPEECH"
     pref_value = "True" if config.mute_local_orca_speech else "False"
@@ -237,8 +304,12 @@ def update_legacy_orca_customizations(
     else:
         text = text.rstrip("\n") + "\n\n" + pref_name + " = " + pref_value + "\n"
 
-    if _LOCAL_SPEECH_PREF_HOOK_V1 in text:
-        text = text.replace(_LOCAL_SPEECH_PREF_HOOK_V1, _LOCAL_SPEECH_PREF_HOOK, 1)
+    if text.count(LOCAL_SPEECH_PREF_MARKER) > 1:
+        raise ValueError("multiple local speech preference patches")
+    previous_hook = next((hook for hook in (_LOCAL_SPEECH_PREF_HOOK_V1, _LOCAL_SPEECH_PREF_HOOK_V2)
+                          if hook in text), None)
+    if previous_hook is not None:
+        text = text.replace(previous_hook, _LOCAL_SPEECH_PREF_HOOK, 1)
     elif _LOCAL_SPEECH_PREF_HOOK not in text:
         if LOCAL_SPEECH_PREF_MARKER in text:
             raise ValueError("unrecognized local speech preference patch")
@@ -265,7 +336,20 @@ def update_legacy_orca_customizations(
         try:
             _patch_legacy_transport_logging(transport_path)
         except (ValueError, OSError) as exc:
-            print(f"warning: transport logging patch not applied: {exc}", file=sys.stderr)
+            print("warning: transport logging patch not applied; repair required", file=sys.stderr)
+
+    callback_path = path.parent / "orca-scripts" / "callback_manager.py"
+    if callback_path.exists():
+        original = callback_path.read_text(encoding="utf-8")
+        updated = _redact_legacy_logs(original).replace('logger.exception(', 'logger.error(')
+        if updated != original:
+            compile(updated, str(callback_path), "exec")
+            backup = callback_path.with_name(callback_path.name + '.linux-rdaccess-backup')
+            if not backup.exists():
+                _write_private_text(backup, original)
+            else:
+                backup.chmod(0o600)
+            _write_private_text(callback_path, updated)
 
     remote_controller = path.parent / LEGACY_REMOTE_CONTROLLER_RELATIVE
     if remote_controller.exists():
@@ -282,7 +366,7 @@ def update_legacy_orca_customizations(
             patch_legacy_orca_remote_controller(remote_controller)
         except (ValueError, OSError) as exc:
             print(
-                f"warning: NVDA input compatibility patch not applied: {exc}",
+                "warning: NVDA input compatibility patch not applied; repair required",
                 file=sys.stderr,
             )
     local_machine = path.parent / LEGACY_LOCAL_MACHINE_RELATIVE
@@ -291,7 +375,7 @@ def update_legacy_orca_customizations(
             patch_legacy_orca_local_machine(local_machine)
         except (ValueError, OSError) as exc:
             print(
-                f"warning: low-latency key injection patch not applied: {exc}",
+                "warning: low-latency key injection patch not applied; repair required",
                 file=sys.stderr,
             )
 
@@ -324,7 +408,8 @@ LEGACY_COMPAT_MARKER_V26 = "# linux-rdaccess NVDA/Orca input compatibility v26"
 LEGACY_COMPAT_MARKER_V27 = "# linux-rdaccess NVDA/Orca input compatibility v27"
 LEGACY_COMPAT_MARKER_V28 = "# linux-rdaccess NVDA/Orca input compatibility v28"
 LEGACY_COMPAT_MARKER_V29 = "# linux-rdaccess NVDA/Orca input compatibility v29"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v30"
+LEGACY_COMPAT_MARKER_V30 = "# linux-rdaccess NVDA/Orca input compatibility v30"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v31"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -388,7 +473,8 @@ _LEGACY_HELPERS = '''\
             except Exception:
                 log.error("linux-rdaccess: failed to cancel speech")
 
-        self._linux_rdaccess_run_main(run)
+        if self._linux_rdaccess_run_main(run) is False:
+            self._lrd_local_stop_pending = False
 
     def _linux_rdaccess_stop_nvda_speech(self):
         """Tell the controlling NVDA to stop speaking *now*.
@@ -422,10 +508,11 @@ _LEGACY_HELPERS = '''\
         pressed = bool(kwargs.get("pressed"))
         if not pressed and held not in forwarded:
             return False
-        result = self.local_machine.send_key(**kwargs)
+        payload = dict(forwarded[held], pressed=pressed) if held in forwarded else kwargs
+        result = self.local_machine.send_key(**payload)
         if result is not False:
             if pressed:
-                forwarded[held] = dict(kwargs)
+                forwarded[held] = dict(payload)
             else:
                 forwarded.pop(held, None)
         return result
@@ -657,8 +744,9 @@ _LEGACY_HELPERS = '''\
                         lambda: self._linux_rdaccess_show_elements_list(modifiers))
                 elif action == "pass_next":
                     self._lrd_bypass_next = True
-                    self._linux_rdaccess_run_main(
-                        self._linux_rdaccess_activate_bypass)
+                    if self._linux_rdaccess_run_main(
+                            self._linux_rdaccess_activate_bypass) is False:
+                        self._lrd_bypass_next = False
                 elif action == "where_am_i":
                     self._linux_rdaccess_run_main(
                         lambda: self._linux_rdaccess_script_call("whereAmI"))
@@ -796,8 +884,13 @@ _LEGACY_HELPERS = '''\
         except OSError:
             pass
         fd = _os.open(path, _os.O_WRONLY | _os.O_APPEND | _os.O_CREAT, 0o600)
-        _os.fchmod(fd, 0o600)
-        with _os.fdopen(fd, "a", encoding="utf-8") as handle:
+        try:
+            handle = _os.fdopen(fd, "a", encoding="utf-8")
+        except BaseException:
+            _os.close(fd)
+            raise
+        with handle:
+            _os.fchmod(handle.fileno(), 0o600)
             handle.write(_json.dumps(record, sort_keys=True) + "\\n")
         try:
             _os.chmod(path, 0o600)
@@ -823,8 +916,15 @@ _LEGACY_HELPERS = '''\
             from gi.repository import GLib
         except Exception:
             invoke()
-            return
-        GLib.idle_add(invoke)
+            return True
+        try:
+            source = GLib.idle_add(invoke)
+            if source == 0:
+                raise RuntimeError("idle source was not registered")
+        except Exception:
+            log.error("linux-rdaccess: failed to schedule Orca operation")
+            return False
+        return True
 
     def _linux_rdaccess_handle_braille_input(self, kwargs):
         self._linux_rdaccess_sync_state()
@@ -1193,7 +1293,15 @@ _LEGACY_SLOW_EVENT_HOOK = (
     "            try:\n"
     "                _p = __import__(\"os\").path.expanduser(\n"
     "                    \"~/.local/share/orca/orca-remote-slow-events.log\")\n"
-    "                with open(_p, \"a\") as _f:\n"
+    "                _os = __import__(\"os\")\n"
+    "                _fd = _os.open(_p, _os.O_WRONLY | _os.O_APPEND | _os.O_CREAT, 0o600)\n"
+    "                try:\n"
+    "                    _f = _os.fdopen(_fd, \"a\", encoding=\"utf-8\")\n"
+    "                except BaseException:\n"
+    "                    _os.close(_fd)\n"
+    "                    raise\n"
+    "                with _f:\n"
+    "                    _os.fchmod(_f.fileno(), 0o600)\n"
     "                    _f.write(\"%.3f key-event handling took %.0f ms (%s)\\n\" % (\n"
     "                        __import__(\"time\").time(), _ms,\n"
     "                        \"press\" if kwargs.get(\"pressed\") else \"release\"))\n"
@@ -1247,13 +1355,15 @@ _LEGACY_RESET_HOOKS = (
     "_lrd_original_client_left = getattr(RemoteController, \"_on_client_left\", None)\n"
     "if _lrd_original_client_left is not None:\n"
     "    def _lrd_on_client_left(self, client=None, **kwargs):\n"
-    "        if isinstance(client, dict):\n"
-    "            known = getattr(self, \"connected_clients\", {}).get(client.get(\"id\"), {})\n"
-    "            role = client.get(\"connection_type\") or known.get(\"connection_type\")\n"
-    "            if role == \"master\":\n"
-    "                self._linux_rdaccess_reset_keys()\n"
-    "                self._lrd_state = None\n"
-    "        return _lrd_original_client_left(self, client=client, **kwargs)\n"
+    "        # A reconnect can start a new receiver before the old one exits.\n"
+    "        with self._LRD_INPUT_LOCK:\n"
+    "            if isinstance(client, dict):\n"
+    "                known = getattr(self, \"connected_clients\", {}).get(client.get(\"id\"), {})\n"
+    "                role = client.get(\"connection_type\") or known.get(\"connection_type\")\n"
+    "                if role == \"master\":\n"
+    "                    self._linux_rdaccess_reset_keys()\n"
+    "                    self._lrd_state = None\n"
+    "            return _lrd_original_client_left(self, client=client, **kwargs)\n"
     "    RemoteController._on_client_left = _lrd_on_client_left\n"
     "\n"
     "_lrd_original_clipboard = getattr(RemoteController, \"_on_remote_clipboard\", None)\n"
@@ -1287,15 +1397,16 @@ LOCAL_MACHINE_MARKER_V3 = LOCAL_MACHINE_MARKER_V1 + " v3"
 LOCAL_MACHINE_MARKER_V4 = LOCAL_MACHINE_MARKER_V1 + " v4"
 LOCAL_MACHINE_MARKER_V5 = LOCAL_MACHINE_MARKER_V1 + " v5"
 LOCAL_MACHINE_MARKER_V6 = LOCAL_MACHINE_MARKER_V1 + " v6"
-LOCAL_MACHINE_MARKER = LOCAL_MACHINE_MARKER_V1 + " v7"
+LOCAL_MACHINE_MARKER_V7 = LOCAL_MACHINE_MARKER_V1 + " v7"
+LOCAL_MACHINE_MARKER = LOCAL_MACHINE_MARKER_V1 + " v8"
 LEGACY_LOCAL_MACHINE_RELATIVE = Path("orca-scripts/local_machine.py")
 
 # Upstream writes every key name (including typed passwords) to a debug log,
-# opening the file twice per key event. Silence it unless explicitly enabled.
+# opening the file twice per key event. This path is never safe to persist.
+# LINUX_RDACCESS_DEBUG controls the separate timing-only logger.
 _DBG_RE = re.compile(r"^def _dbg\(msg\):\n", re.MULTILINE)
 _DBG_GUARD = (
-    "    if not __import__(\"os\").environ.get(\"LINUX_RDACCESS_DEBUG\"):\n"
-    "        return  # linux-rdaccess: no per-keypress file logging by default\n"
+    "    return  # linux-rdaccess: raw input logging disabled\n"
 )
 
 
@@ -1304,9 +1415,47 @@ def _silence_dbg(text: str) -> str:
     # Preserve their fixed diagnostic message without persisting the traceback.
     text = text.replace("log.exception(", "log.error(")
     match = _DBG_RE.search(text)
-    if match is None or "linux-rdaccess: no per-keypress" in text:
+    if match is None or _DBG_GUARD in text:
         return text
     return text[:match.end()] + _DBG_GUARD + text[match.end():]
+
+
+def _redact_legacy_logs(text: str) -> str:
+    """Keep fixed upstream diagnostics without evaluating remote payloads."""
+    text = text.replace('log.info("Joined channel: %s" % channel)',
+                        'log.info("Joined remote channel")')
+    tree = ast.parse(text)
+    lines = text.encode('utf-8').splitlines(keepends=True)
+    starts = [0]
+    for line in lines:
+        starts.append(starts[-1] + len(line))
+    edits = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and (
+                isinstance(node.func, ast.Name) and node.func.id == 'print' and any(
+                    not isinstance(arg, ast.Constant) for arg in node.args)
+                or isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == 'traceback' and node.func.attr == 'print_exc'):
+            edits.append((starts[node.lineno - 1] + node.col_offset,
+                          starts[node.end_lineno - 1] + node.end_col_offset,
+                          b'print("Orca Remote: diagnostic details redacted")'))
+            continue
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name) and node.func.value.id in ('log', 'logger')
+                and node.func.attr in ('debug', 'info', 'warning', 'error', 'exception')):
+            continue
+        fixed = (len(node.args) == 1 and isinstance(node.args[0], ast.Constant)
+                 and isinstance(node.args[0].value, str) and not node.keywords)
+        if fixed:
+            continue
+        level = 'error' if node.func.attr == 'exception' else node.func.attr
+        replacement = f'{node.func.value.id}.{level}("linux-rdaccess: legacy diagnostic details redacted")'.encode()
+        edits.append((starts[node.lineno - 1] + node.col_offset,
+                      starts[node.end_lineno - 1] + node.end_col_offset, replacement))
+    data = text.encode('utf-8')
+    for start, end, replacement in sorted(edits, reverse=True):
+        data = data[:start] + replacement + data[end:]
+    return data.decode('utf-8')
 
 
 _XTEST_HELPER = '''
@@ -1327,7 +1476,7 @@ _LRD_KEYPAD_NAMES = {
 # upstream's xdotool path for anything we cannot map.
 class _LrdXTest:
     def __init__(self):
-        self._lock = __import__("threading").Lock()
+        self._lock = __import__("threading").RLock()
         self._x11 = None
         self._xt = None
         self._dpy = None
@@ -1364,7 +1513,7 @@ class _LrdXTest:
         return False
 
     def key(self, name, pressed):
-        """Return True when the event was injected."""
+        """Return True for injection or an already-owned failed repeat."""
         if not name:
             return False
         with self._lock:
@@ -1400,6 +1549,10 @@ class _LrdXTest:
                 if not code:
                     return self._fall_back(name, pressed)
                 if not self._xt.XTestFakeKeyEvent(self._dpy, code, 1 if pressed else 0, 0):
+                    if pressed and name in self._down_codes:
+                        # The original press remains down. Drop this rejected
+                        # repeat instead of giving its release to another backend.
+                        return True
                     if not pressed:
                         # Upstream fallback will handle this release; forget
                         # the held mapping so the next fresh press can resolve
@@ -1418,6 +1571,8 @@ class _LrdXTest:
                     # The event has already been queued. Replaying it through
                     # xdotool can double-toggle a lock or duplicate text input.
                     return True
+                if pressed and name in self._down_codes:
+                    return True
                 if self._dpy is None:
                     self._failed = True
                     self._failed_environment = environment
@@ -1425,6 +1580,50 @@ class _LrdXTest:
 
 
 _LRD_XTEST = _LrdXTest()
+
+
+def _lrd_wrap_local_key_results(original):
+    import inspect
+    signature = inspect.signature(original)
+    if "vk_code" not in signature.parameters:
+        return original
+
+    def send_key(self, *args, **kwargs):
+        bound = signature.bind(self, *args, **kwargs)
+        bound.apply_defaults()
+        pressed = bound.arguments.get("pressed")
+        if pressed is None:
+            return original(self, *args, **kwargs)
+        key = self._resolve_key(bound.arguments.get("key_name"),
+                                bound.arguments.get("vk_code"),
+                                bound.arguments.get("extended"))
+        # XTest's False only selects fallback: it does not confirm that the
+        # complete upstream backend chain actually injected the event. Keep
+        # its ownership changes transactional through that final result.
+        helper = _LRD_XTEST
+        with helper._lock:
+            code = helper._down_codes.get(key)
+            fallback = key in helper._fallback_down
+            succeeded = False
+            try:
+                succeeded = original(self, *args, **kwargs) is True
+                return succeeded
+            finally:
+                if not succeeded:
+                    if code is None:
+                        helper._down_codes.pop(key, None)
+                    else:
+                        helper._down_codes[key] = code
+                    if fallback:
+                        helper._fallback_down.add(key)
+                    else:
+                        helper._fallback_down.discard(key)
+
+    return send_key
+
+
+if hasattr(LocalMachine, "send_key") and hasattr(LocalMachine, "_resolve_key"):
+    LocalMachine.send_key = _lrd_wrap_local_key_results(LocalMachine.send_key)
 
 
 def _lrd_call_on_main(func, *args, **kwargs):
@@ -1461,14 +1660,15 @@ _XDOTOOL_HOOK = (
 
 def _valid_patch_python(text: str) -> bool:
     try:
-        ast.parse(text)
-    except SyntaxError:
+        ast.parse(text, feature_version=(3, 10))
+        compile(text, "<legacy patch>", "exec")
+    except (SyntaxError, ValueError):
         return False
     return True
 
 
 def _patch_local_key_results(text: str) -> str:
-    """Expose real backend success from legacy LocalMachine.send_key."""
+    """Expose backend results only for source control flow we can establish."""
     try:
         tree = ast.parse(text)
     except SyntaxError:
@@ -1481,40 +1681,225 @@ def _patch_local_key_results(text: str) -> str:
     if len(methods) != 1:
         raise ValueError("ambiguous legacy send_key implementation")
     method = methods[0]
-    lines = text.splitlines(keepends=True)
-    parents = {child: node for node in ast.walk(method) for child in ast.iter_child_nodes(node)}
+    if method.decorator_list or method.body[0].lineno == method.lineno:
+        raise ValueError("unsupported decorated or inline legacy send_key")
+    nodes = list(ast.walk(method))
+    parents = {child: node for node in nodes for child in ast.iter_child_nodes(node)}
     backend_names = {"_send_key_xdotool", "_send_key_portal", "_send_key_ydotool"}
-    for node in ast.walk(method):
-        if not isinstance(node, ast.Return) or node.value is not None:
+
+    def backend_call(node):
+        return (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name) and node.func.value.id == "self"
+                and node.func.attr in backend_names)
+
+    def backend_test(node):
+        return (backend_call(node) or (isinstance(node, ast.BoolOp)
+                and isinstance(node.op, ast.Or) and all(backend_call(value) for value in node.values)))
+
+    def always_returns(body):
+        for node in body:
+            if isinstance(node, ast.Return):
+                return True
+            if isinstance(node, ast.If) and always_returns(node.body) and always_returns(node.orelse):
+                return True
+        return False
+
+    for node in nodes:
+        if isinstance(node, ast.stmt) and node is not method and not isinstance(
+                node, (ast.If, ast.Return, ast.Assign, ast.AnnAssign, ast.Expr, ast.Pass)):
+            raise ValueError("unsupported legacy send_key control flow")
+        if backend_call(node):
+            parent = parents[node]
+            if isinstance(parent, ast.BoolOp):
+                parent = parents[parent]
+            if not isinstance(parent, ast.If) or not backend_test(parent.test):
+                raise ValueError("unverified legacy backend result use")
+            if not always_returns(parent.body):
+                raise ValueError("legacy backend success can fall through without a result")
+        # An unknown helper could itself inject input. Do not label its result
+        # as failure merely because its name differs from the known backends.
+        if isinstance(node, ast.Call) and not backend_call(node):
+            func = node.func
+            allowed = (isinstance(func, ast.Name) and func.id == "_dbg") or (
+                isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name)
+                and ((func.value.id == "self" and func.attr in (
+                    "_resolve_key", "_is_wayland_session", "_portal_denied", "_warn_no_key_backend"))
+                     or (func.value.id == "log" and func.attr in ("debug", "info", "warning", "error"))))
+            if not allowed:
+                raise ValueError("unverified helper in legacy send_key")
+
+    lines = text.encode("utf-8").splitlines(keepends=True)
+    starts = [0]
+    for line in lines:
+        starts.append(starts[-1] + len(line))
+    marker = "# linux-rdaccess: report injection results"
+    method_text = ast.get_source_segment(text, method) or ""
+    current = marker in method_text
+    edits = []
+    for node in nodes:
+        if not isinstance(node, ast.Return):
             continue
-        parent = parents.get(node)
-        succeeded = (isinstance(parent, ast.If) and isinstance(parent.test, ast.Call)
-                     and getattr(parent.test.func, "attr", None) in backend_names)
-        lines[node.lineno - 1] = " " * node.col_offset + f"return {succeeded}\n"
-    lines.insert(method.end_lineno, "        return False\n")
-    first_body_line = method.body[0].lineno - 1
-    lines.insert(first_body_line, "        # linux-rdaccess: report injection results\n")
-    return "".join(lines)
+        succeeded = False
+        child = node
+        while child is not method:
+            parent = parents[child]
+            if isinstance(parent, ast.If) and child in parent.body and backend_test(parent.test):
+                succeeded = True
+            child = parent
+        value = node.value
+        if value is not None and (not isinstance(value, ast.Constant)
+                                  or value.value is not None and type(value.value) is not bool):
+            raise ValueError("unsupported legacy send_key return value")
+        if value is not None and type(value.value) is bool and value.value != succeeded:
+            raise ValueError("legacy send_key return disagrees with backend ownership")
+        if current:
+            if value is None or type(value.value) is not bool:
+                raise ValueError("incomplete legacy backend result patch")
+            continue
+        edits.append((starts[node.lineno - 1] + node.col_offset,
+                      starts[node.end_lineno - 1] + node.end_col_offset,
+                      ("return " + str(succeeded)).encode("utf-8")))
+    if current:
+        return text
+    data = text.encode("utf-8")
+    for begin, end, value in sorted(edits, reverse=True):
+        data = data[:begin] + value + data[end:]
+    result = data.decode("utf-8").splitlines(keepends=True)
+    # Value edits preserve line counts. Keep the actual indentation and avoid
+    # deleting conditions/comments on lines containing an inline return.
+    first = method.body[0].lineno - 1
+    indent = result[first][:len(result[first]) - len(result[first].lstrip())]
+    result.insert(method.end_lineno, indent + "return False\n")
+    result.insert(first, indent + marker + "\n")
+    return "".join(result)
+
+
+def _ast_equal(left, right) -> bool:
+    return ast.dump(left, include_attributes=False) == ast.dump(right, include_attributes=False)
+
+
+def _binding_count(body, name):
+    tree = ast.Module(body=body, type_ignores=[])
+    count = len(_module_stores(tree, name))
+    def definitions(node):
+        nonlocal count
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            count += node.name == name
+            return
+        for child in ast.iter_child_nodes(node):
+            definitions(child)
+    definitions(tree)
+    return count
+
+
+def _unique_class(tree, name):
+    matches = [node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == name]
+    return matches[0] if len(matches) == 1 and _binding_count(tree.body, name) == 1 else None
+
+
+def _unique_method(cls, name):
+    matches = [node for node in cls.body if isinstance(node, ast.FunctionDef) and node.name == name]
+    return matches[0] if len(matches) == 1 and _binding_count(cls.body, name) == 1 else None
+
+
+def _patch_tail_matches(tree, source) -> bool:
+    expected = ast.parse(textwrap.dedent(source)).body
+    actual = tree.body[-len(expected):]
+    return len(actual) == len(expected) and all(_ast_equal(a, b) for a, b in zip(actual, expected))
+
+
+def _debug_path_disabled(tree) -> bool:
+    functions = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "_dbg"]
+    if not functions:
+        return not any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                       and node.func.id == "_dbg" for node in ast.walk(tree))
+    return (len(functions) == 1 and _binding_count(tree.body, "_dbg") == 1
+            and isinstance(functions[0].body[0], ast.Return)
+            and functions[0].body[0].value is None)
 
 
 def legacy_local_machine_patch_current(text: str) -> bool:
-    return (all(part in text for part in (_XTEST_HELPER, _XDOTOOL_HOOK))
-            and "log.exception(" not in text
-            and (_RESOLVE_KEY_DEF_RE.search(text) is None or _RESOLVE_KEY_HOOK in text)
-            and (_CLIPBOARD_DEF_RE.search(text) is None or _CLIPBOARD_HOOK in text)
-            and ("    def send_key(self, key_name=None" not in text
-                 or "        # linux-rdaccess: report injection results" in text)
-            and _valid_patch_python(text))
+    if (not _valid_patch_python(text) or "log.exception(" in text
+            or not all(part in text for part in (_XTEST_HELPER, _XDOTOOL_HOOK))):
+        return False
+    tree = ast.parse(text)
+    cls = _unique_class(tree, "LocalMachine")
+    if cls is None or not _debug_path_disabled(tree) or not _patch_tail_matches(tree, _XTEST_HELPER):
+        return False
+    for name, hook, required in (
+        ("_send_key_xdotool", _XDOTOOL_HOOK, True),
+        ("_resolve_key", _RESOLVE_KEY_HOOK, False),
+        ("set_clipboard_text", _CLIPBOARD_HOOK, False),
+    ):
+        method = _unique_method(cls, name)
+        if method is None:
+            if required or any(isinstance(node, ast.FunctionDef) and node.name == name for node in cls.body):
+                return False
+            continue
+        expected = ast.parse(textwrap.dedent(hook)).body
+        if len(method.body) < len(expected) or not all(
+                _ast_equal(a, b) for a, b in zip(method.body, expected)):
+            return False
+    try:
+        if _patch_local_key_results(text) != text:
+            return False
+    except ValueError:
+        return False
+    return True
 
 
 def legacy_controller_patch_current(text: str) -> bool:
-    return (all(part in text for part in (
-        _LEGACY_HELPERS, _LEGACY_KEY_CALL, _LEGACY_BRAILLE_HANDLER,
-        _LEGACY_RESET_HOOKS, _LEGACY_SLOW_EVENT_HOOK,
-        _LEGACY_ORCA_D_HOOK.strip("\n")))
-        and "        self._linux_rdaccess_forward_key(\n" in text
-        and "log.exception(" not in text
-        and _valid_patch_python(text))
+    if (not _valid_patch_python(text) or "log.exception(" in text
+            or not all(part in text for part in (
+                _LEGACY_HELPERS, _LEGACY_KEY_CALL, _LEGACY_BRAILLE_HANDLER,
+                _LEGACY_RESET_HOOKS, _LEGACY_SLOW_EVENT_HOOK, _LEGACY_ORCA_D_HOOK.strip("\n")))):
+        return False
+    tree = ast.parse(text)
+    cls = _unique_class(tree, "RemoteController")
+    tail = _LEGACY_RESET_HOOKS + "\n" + _LEGACY_SLOW_EVENT_HOOK + "\n" + _LEGACY_ORCA_D_HOOK
+    if cls is None or not _debug_path_disabled(tree) or not _patch_tail_matches(tree, tail):
+        return False
+    expected_helpers = ast.parse("class _Expected:\n" + _LEGACY_HELPERS).body[0]
+    for expected in expected_helpers.body:
+        if isinstance(expected, ast.FunctionDef):
+            actual = _unique_method(cls, expected.name)
+            if actual is None or not _ast_equal(actual, expected):
+                return False
+        else:
+            if sum(_ast_equal(actual, expected) for actual in cls.body) != 1:
+                return False
+            if isinstance(expected, ast.Assign) and any(
+                    isinstance(target, ast.Name) and _binding_count(cls.body, target.id) != 1
+                    for target in expected.targets):
+                return False
+    braille = _unique_method(cls, "_on_remote_braille_input")
+    expected_braille = ast.parse("class _Expected:\n" + _LEGACY_BRAILLE_HANDLER).body[0].body[0]
+    if braille is None or not _ast_equal(braille, expected_braille):
+        return False
+    key = _unique_method(cls, "_on_remote_key")
+    if key is None:
+        return False
+    expected_filter = ast.parse(textwrap.dedent(_LEGACY_KEY_CALL)).body[0]
+    expected_forward = ast.parse("self._linux_rdaccess_forward_key(key_name=key_name, pressed=pressed, "
+                                 "modifiers=modifiers, vk_code=vk_code, scan_code=scan_code, extended=extended)").body[0]
+    if len(key.body) < 2 or not _ast_equal(key.body[-2], expected_filter) or not _ast_equal(key.body[-1], expected_forward):
+        return False
+    # Only the verified None guard, no-op _dbg calls and a docstring can precede
+    # the filter. In particular an early unconditional return cannot disable it.
+    for node in key.body[:-2]:
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+            continue
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name) and node.value.func.id == "_dbg":
+            continue
+        if (isinstance(node, ast.If) and not node.orelse
+                and _ast_equal(node.test, ast.parse("pressed is None", mode="eval").body)
+                and isinstance(node.body[-1], ast.Return) and node.body[-1].value is None
+                and all(isinstance(child, ast.Expr) and isinstance(child.value, ast.Call)
+                        and isinstance(child.value.func, ast.Name) and child.value.func.id == "_dbg"
+                        for child in node.body[:-1])):
+            continue
+        return False
+    return True
 
 
 def patch_legacy_orca_local_machine(path: Path) -> bool:
@@ -1534,6 +1919,7 @@ def patch_legacy_orca_local_machine(path: Path) -> bool:
         if not backup.exists():
             raise ValueError(f"older patch found but backup is missing: {backup}")
         text = backup.read_text(encoding="utf-8")
+    text = _redact_legacy_logs(text)
     text = _patch_local_key_results(text)
     match = _XDOTOOL_DEF_RE.search(text)
     if match is None:
@@ -1576,6 +1962,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V30,
                 LEGACY_COMPAT_MARKER_V29,
                 LEGACY_COMPAT_MARKER_V28,
                 LEGACY_COMPAT_MARKER_V27,
@@ -1613,6 +2000,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
             raise ValueError(f"older compatibility patch found but backup is missing: {backup}")
         text = backup.read_text(encoding="utf-8")
 
+    text = _redact_legacy_logs(text)
     key_def = re.search(r"^    def _on_remote_key\(([^)]*)\):\n", text, re.MULTILINE)
     if key_def is None:
         raise ValueError(f"legacy _on_remote_key was not found in {path}")

@@ -124,10 +124,15 @@ def install_user_files(
     share_dir: Path = DEFAULT_SHARE_DIR,
     bin_path: Path = DEFAULT_BIN,
 ) -> None:
+    names = ("linux_rdaccess.py", "remote_access.py", "nvda_remote_check.py", "orca_adapter.py")
+    # Check the whole runtime bundle before replacing any installed member.
+    for name in names:
+        if not (source_dir / name).is_file():
+            raise FileNotFoundError(source_dir / name)
     share_dir.mkdir(parents=True, exist_ok=True)
     bin_path.parent.mkdir(parents=True, exist_ok=True)
 
-    for name in ("linux_rdaccess.py", "remote_access.py", "nvda_remote_check.py", "orca_adapter.py"):
+    for name in names:
         if (source_dir / name).resolve() != (share_dir / name).resolve():
             shutil.copy2(source_dir / name, share_dir / name)
 
@@ -300,6 +305,18 @@ def patch_status(orca_config: Path) -> list[tuple[str, str]]:
             rows.append((label, "outdated - run: linux-rdaccess connect"))
         else:
             rows.append((label, "not patched - run: linux-rdaccess connect"))
+    label = "Orca API adapter (linux_rdaccess_orca_adapter.py)"
+    try:
+        installed = (base / "orca-scripts/linux_rdaccess_orca_adapter.py").read_text(encoding="utf-8")
+    except OSError:
+        rows.append((label, "missing"))
+    else:
+        try:
+            expected = (Path(__file__).parent / "orca_adapter.py").read_text(encoding="utf-8")
+        except OSError:
+            rows.append((label, "unknown - CLI adapter source missing"))
+        else:
+            rows.append((label, "current" if installed == expected else "outdated - run: linux-rdaccess connect"))
     return rows
 
 
