@@ -104,18 +104,22 @@ def graphical_session_env(
 
 
 def restart_orca() -> int:
+    """Replace Orca without waiting for the long-lived screen reader to exit."""
     try:
-        completed = subprocess.run(
+        subprocess.Popen(
             ["orca", "--replace"],
-            check=False,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             env=graphical_session_env(),
+            start_new_session=True,
         )
     except FileNotFoundError:
         print("Orca was not found in PATH.")
         return 1
-    return completed.returncode
+    except OSError:
+        print("Orca could not be started.")
+        return 1
+    return 0
 
 
 def install_user_files(
