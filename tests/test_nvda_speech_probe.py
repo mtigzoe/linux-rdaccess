@@ -71,6 +71,30 @@ class SpeechProbeProtocolTests(unittest.TestCase):
 		self.assertFalse(probe._loopback("0.0.0.0"))
 		self.assertFalse(probe._loopback("192.168.1.50"))
 
+	def test_empty_tunnel_probe_connection_is_ignored(self):
+		server, client = probe.socket.socketpair()
+		try:
+			self.assertIsNone(probe.read_connection_event(server, timeout=0.01))
+		finally:
+			server.close()
+			client.close()
+
+	def test_valid_connection_event_is_decoded(self):
+		server, client = probe.socket.socketpair()
+		try:
+			client.sendall(
+				json.dumps({"type": "speech", "text": "hello", "segments": 1, "sequence": 9}).encode()
+				+ b"\n"
+			)
+			event = probe.read_connection_event(server, timeout=0.1)
+			self.assertIsNotNone(event)
+			assert event is not None
+			self.assertEqual(event["text"], "hello")
+			self.assertEqual(event["sequence"], 9)
+		finally:
+			server.close()
+			client.close()
+
 
 class SpeechProbeSharedTests(unittest.TestCase):
 	def test_sequence_text_ignores_non_text_commands(self):
