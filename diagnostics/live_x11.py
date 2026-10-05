@@ -126,12 +126,19 @@ class Focus:
         queue = [desktop]
         visited = 0
         deadline = time.monotonic() + 1.5
+        def children(obj, limit):
+            for index in range(min(obj.get_child_count(), limit)):
+                if time.monotonic() >= deadline:
+                    break
+                child = obj.get_child_at_index(index)
+                if child is not None:
+                    queue.append(child)
         while queue and visited < 2000 and time.monotonic() < deadline:
             obj = queue.pop()
             visited += 1
             try:
                 if obj == desktop:
-                    queue.extend(obj.get_child_at_index(i) for i in range(min(obj.get_child_count(), 100)))
+                    children(obj, 100)
                     continue
                 if obj.get_role() == self.atspi.Role.APPLICATION and pid is not None:
                     if obj.get_process_id() != pid:
@@ -142,7 +149,7 @@ class Focus:
                     name = None if role == self.atspi.Role.PASSWORD_TEXT else obj.get_name()
                     return {"object": obj, "name": name, "role": role.value_nick,
                             "states": sorted(state.value_nick for state in states.get_states())}
-                queue.extend(obj.get_child_at_index(i) for i in range(min(obj.get_child_count(), 200)))
+                children(obj, 200)
             except Exception:
                 continue
         return None
@@ -166,13 +173,56 @@ class Focus:
 
 
 def injection_backend():
-    """Instantiate the exact production XTest class, without loading Orca hooks."""
+    """Reuse production XTest and transactional ownership, without Orca hooks."""
     import remote_access
     tree = ast.parse(remote_access._XTEST_HELPER)
-    node = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "_LrdXTest")
+    nodes = [node for node in tree.body if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+             and node.name in ("_LrdXTest", "_lrd_wrap_local_key_results")]
     namespace = {}
-    exec(compile(ast.Module(body=[node], type_ignores=[]), "<production-XTest>", "exec"), namespace)
-    return namespace["_LrdXTest"]()
+    exec(compile(ast.Module(body=nodes, type_ignores=[]), "<production-XTest>", "exec"), namespace)
+    helper = namespace["_LrdXTest"]()
+    namespace["_LRD_XTEST"] = helper
+
+    class Backend:
+        @staticmethod
+        def _resolve_key(key_name, vk_code, extended):
+            return key_name
+
+        def send_key(self, key_name=None, pressed=None, vk_code=None, extended=None):
+            return helper.key(key_name, pressed)
+
+        def key(self, name, pressed):
+            return self.send_key(key_name=name, pressed=pressed)
+
+        def __getattr__(self, name):
+            return getattr(helper, name)
+
+        def close(self):
+            if helper._dpy and not helper._down_codes:
+                helper._x11.XCloseDisplay.argtypes = [ctypes.c_void_p]
+                helper._x11.XCloseDisplay(helper._dpy)
+                helper._dpy = None
+
+    Backend.send_key = namespace["_lrd_wrap_local_key_results"](Backend.send_key)
+    return Backend()
+
+
+def require_released(backend, key: str):
+    """Do not borrow a physical/remote key which was already held down."""
+    if backend._dpy is None:
+        backend._open()
+    query = backend._x11.XQueryKeymap
+    query.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+    query.restype = ctypes.c_int
+    bits = ctypes.create_string_buffer(32)
+    query(backend._dpy, bits)
+    names = KEYS[key] + ("Shift_L", "Shift_R", "Control_L", "Control_R", "Alt_L", "Alt_R",
+                         "Super_L", "Super_R", "Insert", "KP_Insert", "Caps_Lock")
+    for name in names:
+        sym = backend._x11.XStringToKeysym(name.encode("ascii"))
+        code = backend._x11.XKeysymToKeycode(backend._dpy, sym) if sym else 0
+        if code and bits.raw[code // 8] & (1 << (code % 8)):
+            raise DiagnosticError("Test input or modifier already held; retry when released")
 
 
 def inject(backend, key: str):
@@ -187,10 +237,13 @@ def inject(backend, key: str):
             held.append(name)
     finally:
         for name in reversed(held):
-            if not backend.key(name, False):
-                # Try the same owned release once more, never a second backend.
+            try:
                 if not backend.key(name, False):
-                    failed = True
+                    # Try the same owned release once more, never a second backend.
+                    if not backend.key(name, False):
+                        failed = True
+            except Exception:
+                failed = True
         if failed:
             raise DiagnosticError("Test release failed")
 
@@ -201,6 +254,9 @@ def exercise(window: dict, key: str, focus: Focus, backend, timeout: float):
     if int(command(["xdotool", "getactivewindow"]).strip()) != window["window_id"]:
         raise DiagnosticError("Target window is not active")
     before = focus.read(window["pid"])
+    require_released(backend, key)
+    if int(command(["xdotool", "getactivewindow"]).strip()) != window["window_id"]:
+        raise DiagnosticError("Target window is not active")
     started = time.monotonic()
     inject(backend, key)
     input_ms = (time.monotonic() - started) * 1000
@@ -226,7 +282,11 @@ def screenshot(window_id: int, path: Path):
     gi.require_version("Gdk", "3.0")
     gi.require_version("GdkX11", "3.0")
     from gi.repository import Gdk, GdkX11
-    window = GdkX11.X11Window.foreign_new_for_display(Gdk.Display.get_default(), window_id)
+    Gdk.init([])
+    display = Gdk.Display.get_default()
+    if display is None:
+        raise DiagnosticError("Screenshot display unavailable")
+    window = GdkX11.X11Window.foreign_new_for_display(display, window_id)
     if window is None:
         raise DiagnosticError("Screenshot target unavailable")
     pixbuf = Gdk.pixbuf_get_from_window(window, 0, 0, window.get_width(), window.get_height())
@@ -235,7 +295,8 @@ def screenshot(window_id: int, path: Path):
     fd, temporary = tempfile.mkstemp(prefix=".lrd-screenshot-", dir=path.parent)
     os.close(fd)
     try:
-        pixbuf.savev(temporary, "png", [], [])
+        if not pixbuf.savev(temporary, "png", [], []):
+            raise DiagnosticError("Screenshot save failed")
         os.chmod(temporary, 0o600)
         os.replace(temporary, path)
     finally:
@@ -290,7 +351,11 @@ def main(argv=None) -> int:
                 if args.window:
                     windows = [item for item in windows if item["window_id"] == args.window]
                 if len(windows) != 1:
-                    raise DiagnosticError("Select one existing target window with --window")
+                    if args.activate or args.key or args.screenshot or args.window:
+                        raise DiagnosticError("Select one existing target window with --window")
+                    result["selection_required"] = True
+                    print(json.dumps(result), flush=True)
+                    return 0
                 window = windows[0]
                 focus = Focus()
                 if args.activate:
@@ -298,8 +363,11 @@ def main(argv=None) -> int:
                 result["focus"] = focus.public(focus.read(window["pid"]))
                 if args.key:
                     backend = injection_backend()
-                    result["steps"] = [dict(step=index, **exercise(window, key, focus, backend, args.timeout))
-                                       for index, key in enumerate(args.key, 1)]
+                    try:
+                        result["steps"] = [dict(step=index, **exercise(window, key, focus, backend, args.timeout))
+                                           for index, key in enumerate(args.key, 1)]
+                    finally:
+                        backend.close()
                 if args.screenshot:
                     screenshot(window["window_id"], args.screenshot)
                     result["screenshot_saved_privately"] = True
