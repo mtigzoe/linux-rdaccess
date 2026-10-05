@@ -1493,7 +1493,8 @@ LOCAL_MACHINE_MARKER_V4 = LOCAL_MACHINE_MARKER_V1 + " v4"
 LOCAL_MACHINE_MARKER_V5 = LOCAL_MACHINE_MARKER_V1 + " v5"
 LOCAL_MACHINE_MARKER_V6 = LOCAL_MACHINE_MARKER_V1 + " v6"
 LOCAL_MACHINE_MARKER_V7 = LOCAL_MACHINE_MARKER_V1 + " v7"
-LOCAL_MACHINE_MARKER = LOCAL_MACHINE_MARKER_V1 + " v8"
+LOCAL_MACHINE_MARKER_V8 = LOCAL_MACHINE_MARKER_V1 + " v8"
+LOCAL_MACHINE_MARKER = LOCAL_MACHINE_MARKER_V1 + " v9"
 LEGACY_LOCAL_MACHINE_RELATIVE = Path("orca-scripts/local_machine.py")
 
 # Upstream writes every key name (including typed passwords) to a debug log,
@@ -1595,6 +1596,7 @@ class _LrdXTest:
         x11.XKeysymToKeycode.restype = ctypes.c_ubyte
         x11.XKeysymToKeycode.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
         x11.XFlush.argtypes = [ctypes.c_void_p]
+        x11.XSync.argtypes = [ctypes.c_void_p, ctypes.c_int]
         xt.XTestFakeKeyEvent.argtypes = [
             ctypes.c_void_p, ctypes.c_uint, ctypes.c_int, ctypes.c_ulong]
         dpy = x11.XOpenDisplay(None)
@@ -1663,6 +1665,10 @@ class _LrdXTest:
                 else:
                     self._down_codes.pop(name, None)
                 self._x11.XFlush(self._dpy)
+                if name in ("Caps_Lock", "Num_Lock"):
+                    # Make the resulting XKB state authoritative before the
+                    # controller schedules lock-state presentation.
+                    self._x11.XSync(self._dpy, 0)
                 return True
             except Exception:
                 if injected:
