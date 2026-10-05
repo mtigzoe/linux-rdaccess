@@ -107,6 +107,7 @@ supply Python string subclasses; no broader subclass semantics were invented.
 - X-server command: `xvfb-run -a python3 -m unittest -v tests.test_xtest_injection` — **5 passed**. This includes actual held/released state, keypad identity, unknown fallback, failure retry and latency.
 - Full command: `xvfb-run -a python3 -m unittest discover -s tests -t . -v` — **462 passed, no skips**.
 - `python3 -m compileall -q .`, `git diff --check`, and staged diff checks passed.
+- The first Python 3.10 CI job passed its Linux tests but accidentally compiled the separately checked-out Windows rdAccess consumer, whose Python 3.12 syntax is not a Linux target. CI compilation now excludes that consumer checkout; semantic contract checks still run on both matrix entries.
 - Temporary copies of the actual legacy customization and all four legacy modules were updated twice; compilation, controller/local current validators and idempotence passed. The real desktop installation was untouched.
 - Production changes are committed at `dbb809c` and `d00f6eb6d8fba6dbb2a4226bc125fd92b2cc1a16`. The final documentation/CI commit's SHA, fetched remote equality, exact-SHA Actions result, clean tree and PR state are supplied in the completion message because a commit cannot contain its own SHA.
 

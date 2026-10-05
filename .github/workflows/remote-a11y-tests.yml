@@ -63,7 +63,9 @@ jobs:
       - name: Run full repository test suite and compile check
         run: |
           python -m unittest discover -s tests -t . -v
-          python -m compileall -q .
+          # The checked-out Windows consumer uses Python 3.12 syntax; only
+          # Linux producer/runtime files have the Mint Python 3.10 target.
+          python -m compileall -q -x '(^|/)rdAccess/' .
 
       - name: Generate Linux semantic fixtures
         run: |
