@@ -289,7 +289,12 @@ repository:
 
     powershell -ExecutionPolicy Bypass -File .\tools\install_nvda_speech_probe.ps1
 
-After restarting NVDA, press NVDA+Ctrl+Shift+F12 to enable the probe and press it
+To remove the diagnostic add-on later:
+
+    powershell -ExecutionPolicy Bypass -File .\tools\install_nvda_speech_probe.ps1 -Uninstall
+
+After installing or uninstalling, restart NVDA. When installed, press
+NVDA+Ctrl+Shift+F12 to enable the probe and press it
 again immediately after the test to disable it. Exact speech can contain
 sensitive information, including typed characters depending on NVDA settings, so
 do not leave the probe enabled during ordinary computer use.
