@@ -411,7 +411,8 @@ LEGACY_COMPAT_MARKER_V29 = "# linux-rdaccess NVDA/Orca input compatibility v29"
 LEGACY_COMPAT_MARKER_V30 = "# linux-rdaccess NVDA/Orca input compatibility v30"
 LEGACY_COMPAT_MARKER_V31 = "# linux-rdaccess NVDA/Orca input compatibility v31"
 LEGACY_COMPAT_MARKER_V32 = "# linux-rdaccess NVDA/Orca input compatibility v32"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v33"
+LEGACY_COMPAT_MARKER_V33 = "# linux-rdaccess NVDA/Orca input compatibility v33"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v34"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -461,6 +462,7 @@ _LEGACY_HELPERS = '''\
     _LRD_ACTION_CHORDS = {
         0x09: "where_am_i",                          # NVDA+Tab
         0x23: "status_bar",                          # NVDA+End
+        0x4E: "preferences",                         # NVDA+N
         0x54: "title",                               # NVDA+T
         0x71: "pass_next",                           # NVDA+F2
         0x76: "elements_list",                       # NVDA+F7
@@ -784,6 +786,9 @@ _LEGACY_HELPERS = '''\
                 elif action == "title":
                     self._linux_rdaccess_run_main(
                         lambda: self._linux_rdaccess_script_call("presentTitle"))
+                elif action == "preferences":
+                    self._linux_rdaccess_run_main(
+                        lambda: self._linux_rdaccess_script_call("showPreferences"))
                 elif action == "status_bar":
                     self._linux_rdaccess_run_main(
                         lambda: self._linux_rdaccess_script_call("presentStatusBar"))
@@ -1180,6 +1185,7 @@ _LEGACY_HELPERS = '''\
                 "togglePresentationMode": "toggle_presentation_mode",
                 "toggleStructuralNavigation": "toggle_structural_navigation",
                 "sayAll": "say_all",
+                "showPreferences": "show_preferences",
                 "presentLockState": "present_lock_state",
             }
             adapter_method = handlers.get(method)
@@ -1218,6 +1224,17 @@ _LEGACY_HELPERS = '''\
                     handler = getattr(nav, "toggle_structural_navigation", None)
                 if callable(handler):
                     return handler(script, None) is not False
+                return unavailable()
+            if method == "showPreferences":
+                try:
+                    from orca import orca as _orca
+                    handler = getattr(_orca, "showPreferencesGUI", None)
+                    if not callable(handler):
+                        handler = getattr(_orca, "show_preferences_gui", None)
+                    if callable(handler):
+                        return handler(script, None) is not False
+                except Exception:
+                    pass
                 return unavailable()
             if method == "whereAmI":
                 handler = None
@@ -2066,6 +2083,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V33,
                 LEGACY_COMPAT_MARKER_V32,
                 LEGACY_COMPAT_MARKER_V31,
                 LEGACY_COMPAT_MARKER_V30,
