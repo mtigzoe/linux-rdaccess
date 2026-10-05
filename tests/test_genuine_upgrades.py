@@ -48,7 +48,7 @@ class GenuineUpgradeTests(unittest.TestCase):
                     path.write_text(historical)
                     if backup_content is not None:
                         path.with_name(path.name + '.linux-rdaccess-backup').write_text(backup_content)
-                    with self.assertRaises((ValueError, SyntaxError)):
+                    with self.assertRaises(ValueError):
                         patch(path)
                     self.assertEqual(path.read_text(), historical)
 

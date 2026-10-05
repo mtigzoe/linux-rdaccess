@@ -1424,7 +1424,10 @@ def _redact_legacy_logs(text: str) -> str:
     """Keep fixed upstream diagnostics without evaluating remote payloads."""
     text = text.replace('log.info("Joined channel: %s" % channel)',
                         'log.info("Joined remote channel")')
-    tree = ast.parse(text)
+    try:
+        tree = ast.parse(text, feature_version=(3, 10))
+    except SyntaxError:
+        raise ValueError("legacy diagnostics source is invalid Python") from None
     lines = text.encode('utf-8').splitlines(keepends=True)
     starts = [0]
     for line in lines:

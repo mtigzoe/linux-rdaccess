@@ -92,6 +92,8 @@ Historical fixtures were generated with real patchers at `7fdeefd` (v29/v6)
 and the starting SHA (v30/v7), not made by renaming current version comments.
 Tests upgrade all four, retain their original backups, tighten broad backup
 permissions, reject missing/corrupt backups, and verify current idempotence.
+Malformed backup diagnostics raise a fixed `ValueError`, so the updater's repair
+warning handles them without exposing Python's raw syntax-error source line.
 Old upgrades restore the one-time backup; unknown manual changes to old patched
 files cannot be merged automatically. Current helper tampering is rejected.
 
