@@ -268,6 +268,46 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
             [("presentation", None), ("structural", True, None)],
         )
 
+    def test_show_preferences_uses_orca_global_preferences_command(self):
+        calls = []
+        script = types.SimpleNamespace()
+        orca_pkg = types.ModuleType("orca")
+        state = types.ModuleType("orca.orca_state")
+        state.activeScript = script
+        orca_module = types.ModuleType("orca.orca")
+        orca_module.showPreferencesGUI = (
+            lambda script_obj=None, event=None: calls.append((script_obj, event)) or True
+        )
+        orca_pkg.orca_state = state
+        orca_pkg.orca = orca_module
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "orca": orca_pkg,
+                "orca.orca": orca_module,
+                "orca.orca_state": state,
+            },
+        ):
+            self.assertTrue(OrcaRuntimeAdapter.show_preferences())
+        self.assertEqual(calls, [(script, None)])
+
+    def test_show_preferences_returns_false_when_orca_command_is_unavailable(self):
+        orca_pkg = types.ModuleType("orca")
+        state = types.ModuleType("orca.orca_state")
+        state.activeScript = types.SimpleNamespace()
+        orca_module = types.ModuleType("orca.orca")
+        orca_pkg.orca_state = state
+        orca_pkg.orca = orca_module
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "orca": orca_pkg,
+                "orca.orca": orca_module,
+                "orca.orca_state": state,
+            },
+        ):
+            self.assertFalse(OrcaRuntimeAdapter.show_preferences())
+
     def test_say_all_supports_legacy_and_snake_case_handlers(self):
         legacy_calls = []
         legacy = types.SimpleNamespace(
