@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import ast
+import contextlib
+import io
 import importlib.util
 import json
 from pathlib import Path
@@ -94,6 +96,20 @@ class SpeechProbeProtocolTests(unittest.TestCase):
 		finally:
 			server.close()
 			client.close()
+
+	def test_ctrl_c_exits_without_traceback(self):
+		original = probe.serve
+		try:
+			def interrupted(**kwargs):
+				raise KeyboardInterrupt
+			probe.serve = interrupted
+			output = io.StringIO()
+			with contextlib.redirect_stdout(output):
+				code = probe.main([])
+			self.assertEqual(code, 130)
+			self.assertEqual(json.loads(output.getvalue()), {"status": "stopped"})
+		finally:
+			probe.serve = original
 
 
 class SpeechProbeSharedTests(unittest.TestCase):
