@@ -410,7 +410,8 @@ LEGACY_COMPAT_MARKER_V28 = "# linux-rdaccess NVDA/Orca input compatibility v28"
 LEGACY_COMPAT_MARKER_V29 = "# linux-rdaccess NVDA/Orca input compatibility v29"
 LEGACY_COMPAT_MARKER_V30 = "# linux-rdaccess NVDA/Orca input compatibility v30"
 LEGACY_COMPAT_MARKER_V31 = "# linux-rdaccess NVDA/Orca input compatibility v31"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v32"
+LEGACY_COMPAT_MARKER_V32 = "# linux-rdaccess NVDA/Orca input compatibility v32"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v33"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -419,6 +420,8 @@ _LEGACY_HELPERS = '''\
     # dots, speech text or connection keys.
     _LRD_INPUT_LOCK = __import__("threading").RLock()
     _LRD_CTRL_VKS = (0x11, 0xA2, 0xA3)
+    _LRD_LOCK_VKS = (0x14, 0x90)  # Caps Lock, Num Lock
+    _LRD_REPEAT_TOGGLE_VKS = (0x90,)  # repeated key-down would re-toggle
     _LRD_MODIFIER_VKS = (
         0x10, 0xA0, 0xA1, 0x11, 0xA2, 0xA3, 0x12, 0xA4, 0xA5,
         0x5B, 0x5C, 0x2D, 0x14,
@@ -530,6 +533,11 @@ _LEGACY_HELPERS = '''\
         if result is not False:
             if pressed:
                 forwarded[held] = dict(payload)
+                vk_code = payload.get("vk_code")
+                if vk_code in self._LRD_LOCK_VKS:
+                    self._linux_rdaccess_run_main(
+                        lambda vk=vk_code: self._linux_rdaccess_script_call(
+                            "presentLockState", vk))
             else:
                 forwarded.pop(held, None)
         return result
@@ -649,6 +657,12 @@ _LEGACY_HELPERS = '''\
                     return True
                 self._linux_rdaccess_flush_pending_caps()
                 return False
+
+        # Lock keys toggle state on key-down. Remote auto-repeat must not
+        # re-toggle Linux several times for one physical press. Preserve
+        # ordinary repeat behavior and consume only verified lock-toggle repeats.
+        if repeat and vk_code in self._LRD_REPEAT_TOGGLE_VKS:
+            return True
 
         # Interrupt stale speech on a real action, as NVDA does. Plain
         # modifier keys (and their auto-repeat) must not cut off speech that
@@ -1166,6 +1180,7 @@ _LEGACY_HELPERS = '''\
                 "togglePresentationMode": "toggle_presentation_mode",
                 "toggleStructuralNavigation": "toggle_structural_navigation",
                 "sayAll": "say_all",
+                "presentLockState": "present_lock_state",
             }
             adapter_method = handlers.get(method)
             adapter_args = args
@@ -2045,6 +2060,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V32,
                 LEGACY_COMPAT_MARKER_V31,
                 LEGACY_COMPAT_MARKER_V30,
                 LEGACY_COMPAT_MARKER_V29,
