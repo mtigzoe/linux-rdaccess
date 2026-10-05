@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""List the applications visible on the AT-SPI bus (is accessibility working in this session?).
+"""Count available applications on the AT-SPI bus without printing their names.
 
     python3 diagnostics/atspi_probe.py            # all applications
     python3 diagnostics/atspi_probe.py --limit 5
@@ -23,9 +23,10 @@ def main() -> int:
     print(f"AT-SPI import OK; applications: {count}")
     for i in range(min(count, args.limit) if args.limit else count):
         try:
-            print(i, desktop.get_child_at_index(i).get_name())
+            available = desktop.get_child_at_index(i) is not None
+            print(i, "available" if available else "unavailable")
         except Exception as exc:  # an app can vanish between the count and the query
-            print(i, "<error>", exc)
+            print(i, "<source unavailable>")
     return 0
 
 

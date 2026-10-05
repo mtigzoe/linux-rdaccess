@@ -4,8 +4,8 @@
 Run inside the xrdp session. Needs NVDA + rdAccess on the Windows client.
 
     python3 atspi_nvda_bridge.py            # speak through NVDA
-    python3 atspi_nvda_bridge.py --dry-run  # no NVDA: print what would be spoken
-    python3 atspi_nvda_bridge.py --debug    # also log every handled event
+    python3 atspi_nvda_bridge.py --dry-run  # no NVDA: print speech state only
+    python3 atspi_nvda_bridge.py --debug    # log event state without text
 
 Architecture: one GLib main loop does everything, on one thread.
   * AT-SPI events arrive as GLib callbacks (Atspi dispatches on the default context).
@@ -47,7 +47,7 @@ class DryRunLink:
         pass
 
     def speak(self, text: str, interrupt: bool = False) -> bool:
-        print(f"[speak{' !' if interrupt else ''}] {text}", flush=True)
+        print(f"[speak{' !' if interrupt else ''}] text redacted", flush=True)
         return True
 
     def close(self) -> None:
@@ -78,7 +78,7 @@ class Bridge:
             try:
                 self.listener.deregister(event_type)
             except GLib.Error as exc:
-                log.debug("deregister %s: %s", event_type, exc)
+                log.debug("listener deregistration failed")
         self._registered.clear()
 
     def _on_event(self, event: Atspi.Event, _user_data=None) -> None:
@@ -91,14 +91,14 @@ class Bridge:
             )
         except GLib.Error as exc:
             # The application usually exited between the event and our query.
-            log.debug("%s: source went away (%s)", event.type, exc)
+            log.debug("event source unavailable")
             return
         except Exception:
-            log.exception("failed to handle %s", event.type)
+            log.error("failed to handle accessibility event")
             return
         if announcement is None:
             return
-        log.debug("%s -> %r", event.type, announcement.text)
+        log.debug("accessibility announcement handled")
         self.link.speak(announcement.text, interrupt=announcement.interrupt and self.interrupt)
 
     def say_ready(self) -> None:
@@ -120,7 +120,7 @@ def install_signal_handlers(loop: GLib.MainLoop) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--debug", action="store_true", help="log every handled event and DVC detail")
-    parser.add_argument("--dry-run", action="store_true", help="print speech instead of sending it to NVDA")
+    parser.add_argument("--dry-run", action="store_true", help="print speech state without text instead of sending it to NVDA")
     parser.add_argument("--no-interrupt", action="store_true", help="never send 'cancel' before speech")
     args = parser.parse_args()
     logging.basicConfig(
@@ -155,7 +155,7 @@ def main() -> int:
         loop.run()
         return 0
     except RuntimeError as exc:
-        log.error("%s", exc)
+        log.error("accessibility bridge failed")
         return 1
     finally:
         bridge.stop()

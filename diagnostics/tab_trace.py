@@ -4,7 +4,7 @@
 Run inside the xrdp session, then press Tab in a Linux application over the Remote Desktop window.
 For every Tab it prints one line:
 
-    Tab #3 -> focus event after 0.04s: 'Cancel, push button'
+    Tab #3 -> focus event after 0.04s: object:state-changed:focused (label redacted)
     Tab #4 -> NO AT-SPI focus event within 0.6s
 
 Reading the result:
@@ -136,7 +136,7 @@ def main() -> int:
             ["xinput", "test-xi2", "--root"], stdout=subprocess.PIPE, text=True, bufsize=1
         )
     except OSError as exc:
-        print(f"cannot run xinput ({exc}); install the xinput package", file=sys.stderr)
+        print("cannot run xinput; install the xinput package", file=sys.stderr)
         return 1
     threading.Thread(target=reader, args=(proc,), daemon=True).start()
 
@@ -149,9 +149,9 @@ def main() -> int:
             target = event.source
             if event.type == "object:active-descendant-changed" and hasattr(event.any_data, "get_name"):
                 target = event.any_data
-            description = f"{event.type} {target.get_name()!r} ({target.get_role_name()})"
+            description = f"{event.type} (label redacted)"
         except GLib.Error as exc:
-            description = f"{event.type} <source gone: {exc}>"
+            description = f"{event.type} <source unavailable>"
         with lock:
             line = correlator.focus_event(description)
         if line:

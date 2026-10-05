@@ -77,7 +77,7 @@ class NvdaBrailleLink:
             self._channel = self._open_channel()
         except RuntimeError as exc:
             self._next_open = self._clock() + self._retry_interval
-            log.warning("%s (retrying every %.0fs)", exc, self._retry_interval)
+            log.warning("braille channel open failed (retrying every %.0fs)", self._retry_interval)
             return
         self._rx = Receiver()
         self._seen_xon = 0
@@ -149,7 +149,7 @@ class NvdaBrailleLink:
     def _drop(self, reason, quiet=False):
         if self._channel is not None:
             if not quiet:
-                log.warning("braille channel lost (%s); will reopen", reason)
+                log.warning("braille channel lost; will reopen")
             try:
                 self._channel.close()
             except Exception:

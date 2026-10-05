@@ -96,7 +96,7 @@ class NvdaA11yLink:
             return
         for msg in self._rx.drain():
             if msg.get("type") != "ping":
-                log.debug("a11y rx %s", msg)
+                log.debug("received an A11Y protocol message")
             pong_nonce = decode_pong(msg)
             if pong_nonce is not None:
                 if pong_nonce == self._awaiting_pong_nonce:
@@ -156,7 +156,7 @@ class NvdaA11yLink:
         try:
             self._on_action(object_id, action_index)
         except Exception:
-            log.exception("failed to handle remote A11Y action for %s", object_id)
+            log.error("failed to handle remote A11Y action")
 
     def send_text_update(
         self,
@@ -194,7 +194,7 @@ class NvdaA11yLink:
             self._channel = self._open_channel()
         except RuntimeError as exc:
             self._next_open_at = self._clock() + self._retry_interval
-            log.debug("%s (A11Y retry in %.0fs)", exc, self._retry_interval)
+            log.debug("A11Y channel open failed (retry in %.0fs)", self._retry_interval)
             return
         self._rx = Receiver()
         self._seen_xon_count = 0
@@ -226,7 +226,7 @@ class NvdaA11yLink:
             try:
                 self._on_ready()
             except Exception:
-                log.exception("a11y on_ready callback failed; replaying cached state")
+                log.error("a11y on_ready callback failed; replaying cached state")
         self._send_pending_focus()
         # _send_pending_focus() can drop the channel; text must follow its focus.
         self._send_pending_text()
@@ -294,7 +294,7 @@ class NvdaA11yLink:
     def _drop(self, reason: str, quiet: bool = False) -> None:
         if self._channel is not None:
             if not quiet:
-                log.warning("a11y channel lost (%s); will reopen", reason)
+                log.warning("a11y channel lost; will reopen")
             try:
                 self._channel.close()
             except Exception:

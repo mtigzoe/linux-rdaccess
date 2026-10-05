@@ -63,11 +63,11 @@ def main() -> int:
         messages = rx.drain()
         print(f"[info] client sent {len(messages)} JSON message(s), {rx.legacy_frames} legacy frame(s) skipped")
         for m in messages:
-            print(f"[rx] {m}")
+            print("[rx] protocol message received")
 
         # 3. Speak.
         send_json(ch, "speak", sequence=[args.text])
-        print(f"[tx] speak: {args.text!r}")
+        print("[tx] speech sent (text redacted)")
 
         # 4. NVDA sends {"type":"index","index":0} when it finishes speaking.
         def done_speaking() -> bool:
@@ -76,7 +76,7 @@ def main() -> int:
         pump(ch, rx, 15.0, until=done_speaking)
         done = done_speaking()
         for m in rx.drain():
-            print(f"[rx] {m}")
+            print("[rx] protocol message received")
         print("[ok] NVDA reported done speaking" if done else "[warn] no done-speaking index seen")
         return 0
     finally:

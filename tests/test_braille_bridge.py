@@ -1,6 +1,10 @@
 """Tests for atspi_nvda_braille_bridge (needs the Atspi typelib and liblouis; skipped without them)."""
 
 import unittest
+import logging
+import contextlib
+import io
+from unittest import mock
 
 try:
     import gi
@@ -65,6 +69,24 @@ class ListenerRegistrationTests(unittest.TestCase):
 
 
 class SpeechAndBrailleAgreeTests(unittest.TestCase):
+    def test_dry_run_output_does_not_persist_speech(self):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            bridge.DryRunLink().speak('private-speech-text', interrupt=True)
+        self.assertNotIn('private-speech-text', output.getvalue())
+
+    def test_debugging_does_not_log_application_text_or_callback_exceptions(self):
+        logging.disable(logging.NOTSET)
+        self.addCleanup(logging.disable, logging.CRITICAL)
+        b, speech, braille = self.make()
+        secret = 'private-application-text'
+        with self.assertLogs('bridge', level='DEBUG') as logs:
+            b._on_event(FakeEvent('object:state-changed:focused', 1, FakeAccessible(secret)))
+            with mock.patch.object(b.announcer, 'handle', side_effect=RuntimeError(secret)):
+                b._on_event(FakeEvent('object:state-changed:focused', 1, FakeAccessible(secret)))
+        self.assertNotIn(secret, str(logs.output))
+        self.assertEqual(speech.spoken, [(secret + ', push button', True)])
+
     def make(self, cells=80):
         speech, braille = SpeechLink(), BrailleLink(cells)
         return bridge.Bridge(speech, braille_link=braille), speech, braille
@@ -88,8 +110,11 @@ class SpeechAndBrailleAgreeTests(unittest.TestCase):
 
     def test_each_of_two_identically_labelled_controls_reaches_both_outputs(self):
         b, speech, braille = self.make()
-        b._on_event(FakeEvent("object:state-changed:focused", 1, FakeAccessible("Browse")))
-        b._on_event(FakeEvent("object:state-changed:focused", 1, FakeAccessible("Browse")))
+        # Retain both simulated controls: ephemeral Python objects can reuse
+        # id(), unlike the stable AT-SPI identities exercised by this case.
+        first, second = FakeAccessible("Browse"), FakeAccessible("Browse")
+        b._on_event(FakeEvent("object:state-changed:focused", 1, first))
+        b._on_event(FakeEvent("object:state-changed:focused", 1, second))
         self.assertEqual(len(speech.spoken), 2)
         self.assertEqual(len(braille.shown), 2)
 
