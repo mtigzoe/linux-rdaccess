@@ -412,7 +412,8 @@ LEGACY_COMPAT_MARKER_V30 = "# linux-rdaccess NVDA/Orca input compatibility v30"
 LEGACY_COMPAT_MARKER_V31 = "# linux-rdaccess NVDA/Orca input compatibility v31"
 LEGACY_COMPAT_MARKER_V32 = "# linux-rdaccess NVDA/Orca input compatibility v32"
 LEGACY_COMPAT_MARKER_V33 = "# linux-rdaccess NVDA/Orca input compatibility v33"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v34"
+LEGACY_COMPAT_MARKER_V34 = "# linux-rdaccess NVDA/Orca input compatibility v34"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v35"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -579,16 +580,15 @@ _LEGACY_HELPERS = '''\
             marker["code"] = None
 
     def _linux_rdaccess_flush_pending_caps(self):
-        """Forward a deferred CapsLock press when it was not an NVDA command."""
-        held = getattr(self, "_lrd_caps_pending", None)
-        if held is None:
+        """Forward the original deferred CapsLock press when it was not an NVDA command."""
+        pending = getattr(self, "_lrd_caps_pending", None)
+        if pending is None:
             return
+        _held, payload = pending
         self._lrd_caps_pending = None
         self._lrd_caps_used = False
         try:
-            self._linux_rdaccess_forward_key(
-                key_name=None, pressed=True, modifiers=None,
-                vk_code=held[0], scan_code=0, extended=held[1])
+            self._linux_rdaccess_forward_key(**payload)
         except Exception:
             log.error("linux-rdaccess: failed to forward deferred CapsLock")
 
@@ -645,13 +645,23 @@ _LEGACY_HELPERS = '''\
             pending = getattr(self, "_lrd_caps_pending", None)
             if pressed:
                 if not repeat:
-                    self._lrd_caps_pending = held
+                    self._lrd_caps_pending = (
+                        held,
+                        {
+                            "key_name": key_name,
+                            "pressed": True,
+                            "modifiers": modifiers,
+                            "vk_code": vk_code,
+                            "scan_code": scan_code,
+                            "extended": extended,
+                        },
+                    )
                     self._lrd_caps_used = any(
                         k != held and k[0] in self._LRD_NVDA_VKS
                         for k in self._lrd_down
                     )
                 return True
-            if pending == held:
+            if pending is not None and pending[0] == held:
                 used = bool(getattr(self, "_lrd_caps_used", False))
                 if used:
                     self._lrd_caps_pending = None
@@ -1511,7 +1521,8 @@ LOCAL_MACHINE_MARKER_V5 = LOCAL_MACHINE_MARKER_V1 + " v5"
 LOCAL_MACHINE_MARKER_V6 = LOCAL_MACHINE_MARKER_V1 + " v6"
 LOCAL_MACHINE_MARKER_V7 = LOCAL_MACHINE_MARKER_V1 + " v7"
 LOCAL_MACHINE_MARKER_V8 = LOCAL_MACHINE_MARKER_V1 + " v8"
-LOCAL_MACHINE_MARKER = LOCAL_MACHINE_MARKER_V1 + " v9"
+LOCAL_MACHINE_MARKER_V9 = LOCAL_MACHINE_MARKER_V1 + " v9"
+LOCAL_MACHINE_MARKER = LOCAL_MACHINE_MARKER_V1 + " v10"
 LEGACY_LOCAL_MACHINE_RELATIVE = Path("orca-scripts/local_machine.py")
 
 # Upstream writes every key name (including typed passwords) to a debug log,
@@ -1584,6 +1595,9 @@ _LRD_KEYPAD_NAMES = {
     0x23: "KP_End", 0x24: "KP_Home", 0x25: "KP_Left",
     0x26: "KP_Up", 0x27: "KP_Right", 0x28: "KP_Down",
     0x2D: "KP_Insert", 0x2E: "KP_Delete",
+}
+_LRD_LOCK_KEY_NAMES = {
+    0x14: "Caps_Lock", 0x90: "Num_Lock",
 }
 
 # Upstream starts one `xdotool` process per key event (~38 ms each, measured),
@@ -1760,6 +1774,10 @@ _XDOTOOL_DEF_RE = re.compile(r"^    def _send_key_xdotool\(self, key, pressed\):
 _RESOLVE_KEY_DEF_RE = re.compile(
     r"^    def _resolve_key\(key_name, vk_code, extended\):\n", re.MULTILINE)
 _RESOLVE_KEY_HOOK = (
+    "        if not key_name:\n"
+    "            lock_name = _LRD_LOCK_KEY_NAMES.get(vk_code)\n"
+    "            if lock_name is not None:\n"
+    "                return lock_name\n"
     "        if not key_name and extended is not None and not extended:\n"
     "            keypad_name = _LRD_KEYPAD_NAMES.get(vk_code)\n"
     "            if keypad_name is not None:\n"
@@ -2083,6 +2101,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V34,
                 LEGACY_COMPAT_MARKER_V33,
                 LEGACY_COMPAT_MARKER_V32,
                 LEGACY_COMPAT_MARKER_V31,
