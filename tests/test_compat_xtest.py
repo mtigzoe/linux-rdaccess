@@ -123,7 +123,8 @@ class LocalMachine:
         helper._x11 = types.SimpleNamespace(
             XStringToKeysym=lambda name: 1,
             XKeysymToKeycode=lambda *args: 38,
-            XFlush=mock.Mock(side_effect=OSError('flush failed') if flush_error else None))
+            XFlush=mock.Mock(side_effect=OSError('flush failed') if flush_error else None),
+            XSync=mock.Mock())
 
         def inject(display, code, pressed, delay):
             events.append((code, pressed))
@@ -147,6 +148,20 @@ class LocalMachine:
         self.assertEqual(events, [(38, 1), (38, 0)])
         self.assertEqual(helper._down_codes, {})
 
+    def test_lock_keys_sync_x_server_before_returning(self):
+        helper, _ = self.helper(results=(1, 1, 1, 1))
+        self.assertTrue(helper.key('Caps_Lock', True))
+        self.assertTrue(helper.key('Caps_Lock', False))
+        self.assertTrue(helper.key('Num_Lock', True))
+        self.assertTrue(helper.key('Num_Lock', False))
+        self.assertEqual(helper._x11.XSync.call_count, 4)
+
+    def test_ordinary_keys_do_not_add_xsync_latency(self):
+        helper, _ = self.helper(results=(1, 1))
+        self.assertTrue(helper.key('Down', True))
+        self.assertTrue(helper.key('Down', False))
+        helper._x11.XSync.assert_not_called()
+
     def test_initial_display_failure_retries_only_when_environment_changes(self):
         module, _, _ = self._patched_local()
         helper = module._LrdXTest()
@@ -158,7 +173,8 @@ class LocalMachine:
                 raise OSError('display unavailable')
             helper._dpy = object()
             helper._x11 = types.SimpleNamespace(XStringToKeysym=lambda name: 1,
-                XKeysymToKeycode=lambda *args: 38, XFlush=lambda *args: None)
+                XKeysymToKeycode=lambda *args: 38, XFlush=lambda *args: None,
+                XSync=lambda *args: None)
             helper._xt = types.SimpleNamespace(XTestFakeKeyEvent=lambda *args: 1)
 
         helper._open = open_display
