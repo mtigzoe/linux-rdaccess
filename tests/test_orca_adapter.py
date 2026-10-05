@@ -306,6 +306,53 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
             self.assertTrue(OrcaRuntimeAdapter.present_status_bar())
         self.assertEqual(snake_calls, [("title", None), ("status", None)])
 
+    def test_present_lock_state_uses_actual_gdk_numlock_state(self):
+        calls = []
+        script = types.SimpleNamespace(
+            presentMessage=lambda message: calls.append(message)
+        )
+
+        class FakeKeymap:
+            def get_num_lock_state(self):
+                return True
+
+            def get_caps_lock_state(self):
+                return False
+
+        gdk = types.SimpleNamespace(
+            Keymap=types.SimpleNamespace(get_default=lambda: FakeKeymap())
+        )
+        repository = types.ModuleType("gi.repository")
+        repository.Gdk = gdk
+        gi = types.ModuleType("gi")
+        gi.repository = repository
+        with self._fake_orca(script), mock.patch.dict(
+            sys.modules,
+            {"gi": gi, "gi.repository": repository},
+        ):
+            self.assertTrue(OrcaRuntimeAdapter.present_lock_state(0x90))
+            self.assertTrue(OrcaRuntimeAdapter.present_lock_state(0x14))
+        self.assertEqual(calls, ["Num Lock on", "Caps Lock off"])
+
+    def test_present_lock_state_rejects_unknown_or_unavailable_state(self):
+        script = types.SimpleNamespace(
+            presentMessage=lambda message: self.fail("must not present")
+        )
+        with self._fake_orca(script):
+            self.assertFalse(OrcaRuntimeAdapter.present_lock_state(0x91))
+
+        repository = types.ModuleType("gi.repository")
+        repository.Gdk = types.SimpleNamespace(
+            Keymap=types.SimpleNamespace(get_default=lambda: None)
+        )
+        gi = types.ModuleType("gi")
+        gi.repository = repository
+        with self._fake_orca(script), mock.patch.dict(
+            sys.modules,
+            {"gi": gi, "gi.repository": repository},
+        ):
+            self.assertFalse(OrcaRuntimeAdapter.present_lock_state(0x90))
+
     def test_where_am_i_uses_orca42_basic_handler(self):
         calls = []
         script = types.SimpleNamespace(
