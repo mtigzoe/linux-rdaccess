@@ -344,6 +344,19 @@ class RemoteController:
                 remote_access.patch_legacy_orca_remote_controller(path)
             self.assertEqual(path.read_text(encoding="utf-8"), broken)
 
+    def test_v33_patch_is_replaced_from_backup(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "remote_controller.py"
+            old = self.UPSTREAM_CONTROLLER + "\n" + remote_access.LEGACY_COMPAT_MARKER_V33 + "\n"
+            path.write_text(old, encoding="utf-8")
+            path.with_name(path.name + ".linux-rdaccess-backup").write_text(
+                self.UPSTREAM_CONTROLLER, encoding="utf-8"
+            )
+            self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
+            result = path.read_text(encoding="utf-8")
+            self.assertIn(remote_access.LEGACY_COMPAT_MARKER, result)
+            self.assertNotIn(remote_access.LEGACY_COMPAT_MARKER_V33 + "\n", result)
+
     def test_v32_patch_is_replaced_from_backup(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "remote_controller.py"
@@ -1202,6 +1215,46 @@ class RemoteController:
         self.assertEqual(calls, [("sayAll", None), ("presentation", None)])
         self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [])
         self.assertEqual([k for k in self._names(c) if k[0] == 0x28], [])
+
+    def test_nvda_n_opens_orca_preferences_and_consumes_the_key(self):
+        c, _, _ = self._patched_controller()
+        calls = []
+        c._linux_rdaccess_script_call = (
+            lambda method, *args: calls.append((method, args)) or True
+        )
+        self._key(c, 0x2D, True, extended=True)  # Insert/NVDA
+        self._key(c, 0x4E, True)                 # N
+        self._key(c, 0x4E, False)
+        self.assertEqual(calls, [("showPreferences", ())])
+        self.assertEqual([k for k in self._names(c) if k[0] == 0x4E], [])
+
+    def test_capslock_nvda_n_opens_preferences_without_toggling_capslock(self):
+        c, _, _ = self._patched_controller()
+        calls = []
+        c._linux_rdaccess_script_call = (
+            lambda method, *args: calls.append((method, args)) or True
+        )
+        self._key(c, 0x14, True)                 # CapsLock/NVDA
+        self._key(c, 0x4E, True)
+        self._key(c, 0x4E, False)
+        self._key(c, 0x14, False)
+        self.assertEqual(calls, [("showPreferences", ())])
+        self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [])
+        self.assertEqual([k for k in self._names(c) if k[0] == 0x4E], [])
+
+    def test_plain_n_is_not_consumed_as_preferences(self):
+        c, _, _ = self._patched_controller()
+        calls = []
+        c._linux_rdaccess_script_call = (
+            lambda method, *args: calls.append((method, args)) or True
+        )
+        self._key(c, 0x4E, True)
+        self._key(c, 0x4E, False)
+        self.assertEqual(calls, [])
+        self.assertEqual(
+            [k for k in self._names(c) if k[0] == 0x4E],
+            [(0x4E, True), (0x4E, False)],
+        )
 
     def test_title_and_status_use_direct_orca_apis_without_keypad_sequences(self):
         import os
