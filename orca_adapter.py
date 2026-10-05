@@ -226,6 +226,21 @@ class OrcaRuntimeAdapter:
         return True
 
     @classmethod
+    def show_preferences(cls) -> bool:
+        """Open Orca's global preferences dialog using Orca's own command."""
+        try:
+            from orca import orca as orca_module
+        except Exception:
+            return False
+        handler = getattr(orca_module, "showPreferencesGUI", None)
+        if not callable(handler):
+            handler = getattr(orca_module, "show_preferences_gui", None)
+        if not callable(handler):
+            return False
+        result = handler(cls.active_script(), None)
+        return result is not False
+
+    @classmethod
     def say_all(cls) -> bool:
         return cls.call_script(
             ("sayAll", "say_all"),
