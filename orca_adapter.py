@@ -9,6 +9,8 @@ used by newer code when available.
 
 from __future__ import annotations
 
+import ctypes
+import ctypes.util
 from types import SimpleNamespace
 from typing import Any, Callable, Iterable
 
@@ -244,25 +246,52 @@ class OrcaRuntimeAdapter:
             default_event=True,
         )
 
+    @staticmethod
+    def _xkb_named_lock_state(name: str) -> bool | None:
+        """Read an authoritative named XKB indicator from the active X11 display."""
+        try:
+            x11 = ctypes.CDLL(ctypes.util.find_library("X11") or "libX11.so.6")
+            x11.XOpenDisplay.restype = ctypes.c_void_p
+            x11.XOpenDisplay.argtypes = [ctypes.c_char_p]
+            x11.XCloseDisplay.argtypes = [ctypes.c_void_p]
+            x11.XInternAtom.restype = ctypes.c_ulong
+            x11.XInternAtom.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int]
+            x11.XkbGetNamedIndicator.argtypes = [
+                ctypes.c_void_p, ctypes.c_ulong,
+                ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int),
+                ctypes.c_void_p, ctypes.POINTER(ctypes.c_int),
+            ]
+            x11.XkbGetNamedIndicator.restype = ctypes.c_int
+            display = x11.XOpenDisplay(None)
+            if not display:
+                return None
+            try:
+                atom = x11.XInternAtom(display, name.encode("ascii"), 1)
+                if not atom:
+                    return None
+                index, on, real = ctypes.c_int(), ctypes.c_int(), ctypes.c_int()
+                if not x11.XkbGetNamedIndicator(
+                    display, atom, ctypes.byref(index), ctypes.byref(on), None,
+                    ctypes.byref(real)
+                ):
+                    return None
+                return bool(on.value)
+            finally:
+                x11.XCloseDisplay(display)
+        except Exception:
+            return None
+
     @classmethod
     def present_lock_state(cls, vk_code: int) -> bool:
         """Present the actual X11 lock state through Orca speech/braille."""
         lock = {
-            0x14: ("Caps Lock", "get_caps_lock_state"),
-            0x90: ("Num Lock", "get_num_lock_state"),
+            0x14: ("Caps Lock", "Caps Lock"),
+            0x90: ("Num Lock", "Num Lock"),
         }.get(vk_code)
         if lock is None:
             return False
-        try:
-            from gi.repository import Gdk
-            keymap = Gdk.Keymap.get_default()
-            if keymap is None:
-                return False
-            query = getattr(keymap, lock[1], None)
-            if not callable(query):
-                return False
-            enabled = bool(query())
-        except Exception:
+        enabled = cls._xkb_named_lock_state(lock[1])
+        if enabled is None:
             return False
         return cls.call_script(
             ("presentMessage", "present_message"),
