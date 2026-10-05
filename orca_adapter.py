@@ -245,6 +245,31 @@ class OrcaRuntimeAdapter:
         )
 
     @classmethod
+    def present_lock_state(cls, vk_code: int) -> bool:
+        """Present the actual X11 lock state through Orca speech/braille."""
+        lock = {
+            0x14: ("Caps Lock", "get_caps_lock_state"),
+            0x90: ("Num Lock", "get_num_lock_state"),
+        }.get(vk_code)
+        if lock is None:
+            return False
+        try:
+            from gi.repository import Gdk
+            keymap = Gdk.Keymap.get_default()
+            if keymap is None:
+                return False
+            query = getattr(keymap, lock[1], None)
+            if not callable(query):
+                return False
+            enabled = bool(query())
+        except Exception:
+            return False
+        return cls.call_script(
+            ("presentMessage", "present_message"),
+            f"{lock[0]} {'on' if enabled else 'off'}",
+        )
+
+    @classmethod
     def where_am_i(cls) -> bool:
         # Orca 42's default script exposes whereAmIBasic(inputEvent), not
         # whereAmI. Keep older/newer aliases as fallbacks.
