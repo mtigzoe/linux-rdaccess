@@ -49,6 +49,15 @@ class LiveDiagnosticTests(unittest.TestCase):
                 self.assertNotIn('private-sentinel', output.getvalue())
                 self.assertEqual(json.loads(output.getvalue())["error"], "Invalid diagnostic arguments")
 
+    def test_ctrl_c_exits_cleanly_without_traceback(self):
+        output = io.StringIO()
+        with mock.patch.object(live, 'PrivateParser') as parser_cls:
+            parser = parser_cls.return_value
+            parser.parse_args.side_effect = KeyboardInterrupt
+            with contextlib.redirect_stdout(output):
+                self.assertEqual(live.main([]), 130)
+        self.assertEqual(json.loads(output.getvalue()), {"status": "stopped"})
+
     def test_failed_chord_down_releases_its_successful_modifier(self):
         backend = mock.Mock()
         backend.key.side_effect = [True, False, True]
