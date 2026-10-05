@@ -344,6 +344,19 @@ class RemoteController:
                 remote_access.patch_legacy_orca_remote_controller(path)
             self.assertEqual(path.read_text(encoding="utf-8"), broken)
 
+    def test_v32_patch_is_replaced_from_backup(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "remote_controller.py"
+            old = self.UPSTREAM_CONTROLLER + "\n" + remote_access.LEGACY_COMPAT_MARKER_V32 + "\n"
+            path.write_text(old, encoding="utf-8")
+            path.with_name(path.name + ".linux-rdaccess-backup").write_text(
+                self.UPSTREAM_CONTROLLER, encoding="utf-8"
+            )
+            self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
+            result = path.read_text(encoding="utf-8")
+            self.assertIn(remote_access.LEGACY_COMPAT_MARKER, result)
+            self.assertNotIn(remote_access.LEGACY_COMPAT_MARKER_V32 + "\n", result)
+
     def test_v2_patch_is_replaced_from_backup(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "remote_controller.py"
@@ -1068,6 +1081,83 @@ class RemoteController:
             [k for k in self._names(c) if k[0] == 0x14],
             [(0x14, True), (0x14, False)],
         )
+
+    def test_numlock_repeat_is_consumed_and_announced_once(self):
+        c, _, _ = self._patched_controller()
+        presented = []
+        c._linux_rdaccess_script_call = (
+            lambda method, *args: presented.append((method, args)) or True
+        )
+        self._key(c, 0x90, True)
+        self._key(c, 0x90, True)   # Windows auto-repeat
+        self._key(c, 0x90, True)   # another auto-repeat
+        self._key(c, 0x90, False)
+        self.assertEqual(
+            [k for k in self._names(c) if k[0] == 0x90],
+            [(0x90, True), (0x90, False)],
+        )
+        self.assertEqual(presented, [("presentLockState", (0x90,))])
+
+    def test_fresh_numlock_presses_each_toggle_and_announce(self):
+        c, _, _ = self._patched_controller()
+        presented = []
+        c._linux_rdaccess_script_call = (
+            lambda method, *args: presented.append((method, args)) or True
+        )
+        for _ in range(2):
+            self._key(c, 0x90, True)
+            self._key(c, 0x90, False)
+        self.assertEqual(
+            [k for k in self._names(c) if k[0] == 0x90],
+            [(0x90, True), (0x90, False), (0x90, True), (0x90, False)],
+        )
+        self.assertEqual(
+            presented,
+            [("presentLockState", (0x90,)), ("presentLockState", (0x90,))],
+        )
+
+    def test_failed_numlock_injection_never_announces(self):
+        c, _, _ = self._patched_controller()
+        presented = []
+        c._linux_rdaccess_script_call = (
+            lambda method, *args: presented.append((method, args)) or True
+        )
+        c.local_machine.send_key = lambda **kwargs: False
+        self._key(c, 0x90, True)
+        self._key(c, 0x90, False)
+        self.assertEqual(presented, [])
+
+    def test_plain_capslock_announces_only_when_physical_toggle_is_forwarded(self):
+        c, _, _ = self._patched_controller()
+        presented = []
+        c._linux_rdaccess_script_call = (
+            lambda method, *args: presented.append((method, args)) or True
+        )
+        self._key(c, 0x14, True)
+        self._key(c, 0x14, False)
+        self.assertEqual(presented, [("presentLockState", (0x14,))])
+
+    def test_capslock_used_as_nvda_modifier_does_not_announce_lock_state(self):
+        import os
+        c, _, home = self._patched_controller()
+        calls, patches = self._with_fake_orca(c, home)
+        presented = []
+        original = c._linux_rdaccess_script_call
+
+        def record(method, *args):
+            if method == "presentLockState":
+                presented.append((method, args))
+                return True
+            return original(method, *args)
+
+        c._linux_rdaccess_script_call = record
+        with patches, mock.patch.dict(os.environ, {"HOME": home}):
+            self._key(c, 0x14, True)
+            self._key(c, 0x54, True)   # CapsLock+T
+            self._key(c, 0x54, False)
+            self._key(c, 0x14, False)
+        self.assertEqual(calls, [("title", None)])
+        self.assertEqual(presented, [])
 
     def test_capslock_nvda_modifier_is_never_forwarded_for_translated_command(self):
         import os
