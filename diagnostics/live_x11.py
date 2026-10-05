@@ -376,6 +376,9 @@ def main(argv=None) -> int:
         finally:
             xkb.close()
         return 0
+    except KeyboardInterrupt:
+        print(json.dumps({"status": "stopped"}), flush=True)
+        return 130
     except Exception as exc:
         message = str(exc) if isinstance(exc, DiagnosticError) else "Diagnostic unavailable"
         print(json.dumps({"error": message}), flush=True)
