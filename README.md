@@ -182,7 +182,8 @@ keystroke), so held arrow keys, fast typing and multi-key chords queued up and
 played out late. `linux-rdaccess connect` now also patches `local_machine.py` to
 inject keys in-process through XTest (about 0.03 ms per keystroke) and falls back
 to `xdotool` for any key it cannot map. Upstream's per-keypress debug log (which
-recorded key names, including typed passwords) is disabled. Setting
+recorded key names, including typed passwords) is permanently disabled in both
+patched modules, including when debugging is enabled. Setting
 `LINUX_RDACCESS_DEBUG=1` enables timing diagnostics only. Speech interruption on held keys
 is limited to once per 150 ms.
 
@@ -201,12 +202,14 @@ network thread (GTK is not thread-safe). Run `linux-rdaccess doctor` to check th
 patches are active; set `LINUX_RDACCESS_DEBUG=1` to log key-handling stalls
 (duration only, never which key) to `~/.local/share/orca/orca-remote-slow-events.log`.
 
-The current patches are controller **v30** and local-machine **v7**. Update the
+The current patches are controller **v31** and local-machine **v8**. Update the
 installed command from the repository with `python3 linux_rdaccess.py install`,
 then run `linux-rdaccess connect` to update the Orca-side files and restart Orca.
-`doctor` verifies the complete patch, including valid Python, rather than only
-its version comment. Local Orca speech resumes when the relay disconnects.
-See the [follow-up audit](docs/compatibility-audit-2026-10-04-followup.md) for the
+`doctor` verifies the connected patch hooks, valid Python, and the installed
+Orca adapter against the adapter shipped beside the running CLI. Local Orca
+speech resumes when the relay disconnects. Prototype RDP debug logs and dry-run
+output also redact speech, protocol payloads, and backend exception messages.
+See the [hardening audit](docs/compatibility-audit-2026-10-04-hardening.md) for the
 source evidence, regressions and remaining desktop checks.
 
 ## VS Code on Linux
