@@ -848,7 +848,8 @@ LEGACY_COMPAT_MARKER_V68 = "# linux-rdaccess NVDA/Orca input compatibility v68"
 LEGACY_COMPAT_MARKER_V69 = "# linux-rdaccess NVDA/Orca input compatibility v69"
 LEGACY_COMPAT_MARKER_V70 = "# linux-rdaccess NVDA/Orca input compatibility v70"
 LEGACY_COMPAT_MARKER_V71 = "# linux-rdaccess NVDA/Orca input compatibility v71"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v72"
+LEGACY_COMPAT_MARKER_V72 = "# linux-rdaccess NVDA/Orca input compatibility v72"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v73"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -2951,11 +2952,61 @@ _LRD_TABLE_EDGE_KEYS = {
 }
 
 
+def _lrd_resolve_table_edge(script, action_name):
+    nav = getattr(script, "structuralNavigation", None)
+    if nav is None:
+        nav = getattr(script, "structural_navigation", None)
+    objects = getattr(nav, "enabledObjects", None) if nav is not None else None
+    if objects is None and nav is not None:
+        objects = getattr(nav, "enabled_objects", None)
+    cell_obj = objects.get("tableCell") if isinstance(objects, dict) else None
+    if cell_obj is None:
+        return None
+
+    utilities = getattr(script, "utilities", None)
+    get_context = getattr(utilities, "getCaretContext", None)
+    get_cell = getattr(nav, "getCellForObj", None)
+    get_coords = getattr(nav, "getCellCoordinates", None)
+    get_table = getattr(nav, "getTableForCell", None)
+    go_cell = getattr(nav, "goCell", None)
+    row_col_count = getattr(utilities, "rowAndColumnCount", None)
+    if not all(callable(x) for x in (
+            get_context, get_cell, get_coords, get_table, go_cell, row_col_count)):
+        return None
+    obj, _offset = get_context()
+    this_cell = get_cell(obj)
+    if this_cell is None:
+        return None
+    current = list(get_coords(this_cell, False))
+    if len(current) != 2 or min(current) < 0:
+        return None
+    table = get_table(this_cell)
+    if table is None:
+        return None
+    rows, columns = row_col_count(table, False)
+    if rows <= 0 or columns <= 0:
+        return None
+    row, column = current
+    if action_name == "firstRow":
+        desired = [0, column]
+    elif action_name == "lastRow":
+        desired = [rows - 1, column]
+    elif action_name == "firstColumn":
+        desired = [row, 0]
+    else:
+        desired = [row, columns - 1]
+    return nav, cell_obj, this_cell, current, desired
+
+
 def _lrd_consume_table_edge(event=None):
     action = getattr(event, "_lrd_table_edge_action", None) if event is not None else None
     if not action:
         return True
-    nav, cell_obj, this_cell, current, desired = action
+    script, action_name = action
+    resolved = _lrd_resolve_table_edge(script, action_name)
+    if resolved is None:
+        return True
+    nav, cell_obj, this_cell, current, desired = resolved
     nav.goCell(cell_obj, this_cell, current, desired)
     return True
 
@@ -2987,52 +3038,15 @@ def _lrd_maybe_table_edge(event, keybindings):
     gate = getattr(script, "useStructuralNavigationModel", None)
     if not callable(gate) or not gate():
         return False
-    nav = getattr(script, "structuralNavigation", None)
-    if nav is None:
-        nav = getattr(script, "structural_navigation", None)
-    objects = getattr(nav, "enabledObjects", None) if nav is not None else None
-    if objects is None and nav is not None:
-        objects = getattr(nav, "enabled_objects", None)
-    cell_obj = objects.get("tableCell") if isinstance(objects, dict) else None
-    if cell_obj is None:
+    if _lrd_resolve_table_edge(script, action_name) is None:
         return False
-
-    utilities = getattr(script, "utilities", None)
-    get_context = getattr(utilities, "getCaretContext", None)
-    get_cell = getattr(nav, "getCellForObj", None)
-    get_coords = getattr(nav, "getCellCoordinates", None)
-    get_table = getattr(nav, "getTableForCell", None)
-    go_cell = getattr(nav, "goCell", None)
-    row_col_count = getattr(utilities, "rowAndColumnCount", None)
-    if not all(callable(x) for x in (
-            get_context, get_cell, get_coords, get_table, go_cell, row_col_count)):
-        return False
-    obj, _offset = get_context()
-    this_cell = get_cell(obj)
-    if this_cell is None:
-        return False
-    current = list(get_coords(this_cell, False))
-    if len(current) != 2 or min(current) < 0:
-        return False
-    table = get_table(this_cell)
-    if table is None:
-        return False
-    rows, columns = row_col_count(table, False)
-    if rows <= 0 or columns <= 0:
-        return False
-    row, column = current
-    if action_name == "firstRow":
-        desired = [0, column]
-    elif action_name == "lastRow":
-        desired = [rows - 1, column]
-    elif action_name == "firstColumn":
-        desired = [row, 0]
-    else:
-        desired = [row, columns - 1]
 
     held[event.hw_code] = event.modifiers
     event._handler = None
-    event._lrd_table_edge_action = (nav, cell_obj, this_cell, current, desired)
+    # Orca runs consumers later on GLib. Store only stable command identity;
+    # re-read caret/cell/table at consume time so focus changes cannot make
+    # this command operate on a stale AT-SPI cell.
+    event._lrd_table_edge_action = (script, action_name)
     event._consumer = _lrd_consume_table_edge
     return True
 
@@ -3901,6 +3915,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V72,
                 LEGACY_COMPAT_MARKER_V71,
                 LEGACY_COMPAT_MARKER_V70,
                 LEGACY_COMPAT_MARKER_V69,
