@@ -853,7 +853,8 @@ LEGACY_COMPAT_MARKER_V73 = "# linux-rdaccess NVDA/Orca input compatibility v73"
 LEGACY_COMPAT_MARKER_V74 = "# linux-rdaccess NVDA/Orca input compatibility v74"
 LEGACY_COMPAT_MARKER_V75 = "# linux-rdaccess NVDA/Orca input compatibility v75"
 LEGACY_COMPAT_MARKER_V76 = "# linux-rdaccess NVDA/Orca input compatibility v76"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v77"
+LEGACY_COMPAT_MARKER_V77 = "# linux-rdaccess NVDA/Orca input compatibility v77"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v78"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -1052,10 +1053,6 @@ _LEGACY_HELPERS = '''\
             (0x4D, False, False, True,  False),  # NVDA+Alt+M: math interaction
             (0x24, False, False, True,  True),   # NVDA+Alt+Home: review selection start
             (0x23, False, False, True,  True),   # NVDA+Alt+End: review selection end
-            (0x25, False, True,  True,  True),   # NVDA+Ctrl+Alt+Left: speak row
-            (0x27, False, True,  True,  True),   # NVDA+Ctrl+Alt+Right: say row
-            (0x26, False, True,  True,  True),   # NVDA+Ctrl+Alt+Up: speak column
-            (0x28, False, True,  True,  True),   # NVDA+Ctrl+Alt+Down: say column
         } or (
             layout == "desktop"
             and gesture in {
@@ -4045,6 +4042,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V77,
                 LEGACY_COMPAT_MARKER_V76,
                 LEGACY_COMPAT_MARKER_V75,
                 LEGACY_COMPAT_MARKER_V74,
