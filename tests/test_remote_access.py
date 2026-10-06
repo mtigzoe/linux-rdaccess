@@ -2566,12 +2566,19 @@ class LocalMachine:
         """Fake Orca 42 pieces with the same shouldConsume order as the real one."""
         import sys, types
         test = self
+        # This fixture is reused by tests/test_pass_next.py; keep added browse
+        # keycodes self-contained instead of requiring every borrowing class
+        # to duplicate these constants.
+        a_code = getattr(self, "A_CODE", 38)
+        n_code = getattr(self, "N_CODE", 57)
+        o_code = getattr(self, "O_CODE", 32)
+        w_code = getattr(self, "W_CODE", 25)
         kb = types.ModuleType("orca.keybindings")
         kb.SHIFT_MODIFIER_MASK, kb.CTRL_MODIFIER_MASK = self.SHIFT, self.CTRL
         kb.ALT_MODIFIER_MASK, kb.ORCA_MODIFIER_MASK = self.ALT, self.ORCA
         kb.getKeycode = lambda key: {
-            "a": self.A_CODE, "m": self.M_CODE, "n": self.N_CODE,
-            "o": self.O_CODE, "w": self.W_CODE, "d": self.D_CODE,
+            "a": a_code, "m": self.M_CODE, "n": n_code,
+            "o": o_code, "w": w_code, "d": self.D_CODE,
             "Left": self.LEFT, "Right": self.RIGHT,
             "Up": self.UP, "Down": self.DOWN,
         }.get(key)
@@ -2597,10 +2604,10 @@ class LocalMachine:
                 (test.D_CODE, test.SHIFT): live_region,
                 # These are intentionally different from NVDA browse-mode
                 # semantics: A=annotation there, O=embedded object there.
-                (test.A_CODE, 0): clickable_next,
-                (test.A_CODE, test.SHIFT): clickable_prev,
-                (test.O_CODE, 0): chunk_next,
-                (test.O_CODE, test.SHIFT): chunk_prev,
+                (a_code, 0): clickable_next,
+                (a_code, test.SHIFT): clickable_prev,
+                (o_code, 0): chunk_next,
+                (o_code, test.SHIFT): chunk_prev,
                 # Orca 42 binds table cell navigation to Shift+Alt+Arrow.
                 (test.LEFT, test.SHIFT | test.ALT): cell_left,
                 (test.RIGHT, test.SHIFT | test.ALT): cell_right,
