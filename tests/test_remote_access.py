@@ -2558,7 +2558,7 @@ class LocalMachine:
     # ---- NVDA D (landmark) -> Orca M, browse mode only -------------------
 
     SHIFT, CTRL, ALT, ORCA = 1, 4, 8, 256
-    A_CODE, M_CODE, N_CODE, O_CODE, W_CODE, D_CODE = 38, 58, 57, 32, 25, 40
+    A_CODE, F_CODE, M_CODE, N_CODE, O_CODE, W_CODE, D_CODE = 38, 41, 58, 57, 32, 25, 40
     LEFT, RIGHT, UP, DOWN = 113, 114, 111, 116
     KP_DOWN = 88
 
@@ -2570,6 +2570,7 @@ class LocalMachine:
         # keycodes self-contained instead of requiring every borrowing class
         # to duplicate these constants.
         a_code = getattr(self, "A_CODE", 38)
+        f_code = getattr(self, "F_CODE", 41)
         n_code = getattr(self, "N_CODE", 57)
         o_code = getattr(self, "O_CODE", 32)
         w_code = getattr(self, "W_CODE", 25)
@@ -2577,7 +2578,7 @@ class LocalMachine:
         kb.SHIFT_MODIFIER_MASK, kb.CTRL_MODIFIER_MASK = self.SHIFT, self.CTRL
         kb.ALT_MODIFIER_MASK, kb.ORCA_MODIFIER_MASK = self.ALT, self.ORCA
         kb.getKeycode = lambda key: {
-            "a": a_code, "m": self.M_CODE, "n": n_code,
+            "a": a_code, "f": f_code, "m": self.M_CODE, "n": n_code,
             "o": o_code, "w": w_code, "d": self.D_CODE,
             "Left": self.LEFT, "Right": self.RIGHT,
             "Up": self.UP, "Down": self.DOWN,
@@ -2685,6 +2686,7 @@ class LocalMachine:
     def test_remote_mismatched_browse_letters_are_consumed_not_misrouted(self):
         cases = (
             ("a", self.A_CODE, 0x41),
+            ("f", self.F_CODE, 0x46),
             ("m", self.M_CODE, 0x4D),
             ("n", self.N_CODE, 0x4E),
             ("o", self.O_CODE, 0x4F),
@@ -2706,6 +2708,7 @@ class LocalMachine:
     def test_local_mismatched_browse_letters_are_never_suppressed(self):
         cases = (
             ("a", self.A_CODE),
+            ("f", self.F_CODE),
             ("m", self.M_CODE),
             ("n", self.N_CODE),
             ("o", self.O_CODE),
