@@ -134,8 +134,9 @@ linux-rdaccess additionally translates:
 This lets Windows NVDA users use the familiar NVDA browse/focus gesture while controlling Firefox on Linux.
 
 Other NVDA chords translated to native Orca commands (desktop NVDA layout;
-only with the NVDA key held and no Shift/Ctrl/Alt/Win):
+only with the NVDA key held and no Shift/Ctrl/Alt/Win unless noted):
 
+    NVDA+1     Toggle input help using Orca learn mode
     NVDA+Up    Current caret line (without entering flat review)
     NVDA+Down  Say all
     NVDA+Tab   Where am I
@@ -144,7 +145,16 @@ only with the NVDA key held and no Shift/Ctrl/Alt/Win):
     NVDA+F12   Time; press twice quickly for date
 
 The clock uses Orca's configured format and Linux time zone. NVDA+F12 is consumed
-instead of reaching Orca's caret-navigation toggle. Current-line reporting uses
+instead of reaching Orca's caret-navigation toggle. NVDA+1 toggles Orca learn
+mode on and off rather than falling through to Orca's bookmark-1 command.
+
+Known NVDA commands which have no proven Orca 42 equivalent are consumed when
+their physical gesture would otherwise run an unrelated Orca command:
+NVDA+2 through NVDA+6 (Orca bookmarks), NVDA+B / NVDA+Shift+B (next/previous
+Orca bookmark), NVDA+S (Orca speech silence), and NVDA+Ctrl+Space (Orca
+application preferences). These suppress incorrect side effects; they do not
+yet implement the corresponding NVDA setting, foreground-window, battery,
+speech-mode, or embedded-object behavior. Current-line reporting uses
 Orca's native caret context and does not move the caret or review cursor; it
 does not implement NVDA's double/triple-press spelling and character details.
 
@@ -253,7 +263,7 @@ individual on/off results. Num Lock auto-repeat produces one toggle and one
 announcement per press. CapsLock used for a translated NVDA command produces
 neither a lock toggle nor a lock announcement.
 
-The current patches are controller **v42** and local-machine **v10**. Update the
+The current patches are controller **v46** and local-machine **v10**. Update the
 installed command from the repository with `python3 linux_rdaccess.py install`,
 then run `linux-rdaccess connect` to update the Orca-side files and restart Orca.
 `doctor` verifies the connected patch hooks, valid Python, and the installed
