@@ -847,7 +847,8 @@ LEGACY_COMPAT_MARKER_V67 = "# linux-rdaccess NVDA/Orca input compatibility v67"
 LEGACY_COMPAT_MARKER_V68 = "# linux-rdaccess NVDA/Orca input compatibility v68"
 LEGACY_COMPAT_MARKER_V69 = "# linux-rdaccess NVDA/Orca input compatibility v69"
 LEGACY_COMPAT_MARKER_V70 = "# linux-rdaccess NVDA/Orca input compatibility v70"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v71"
+LEGACY_COMPAT_MARKER_V71 = "# linux-rdaccess NVDA/Orca input compatibility v71"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v72"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -2778,12 +2779,30 @@ def _lrd_maybe_nvda_browse(event, keybindings):
         return False
 
     script = getattr(event, "_script", None)
-    gate = getattr(script, "useStructuralNavigationModel", None)
-    if not callable(gate) or not gate():
-        return False
+    utilities = getattr(script, "utilities", None)
+    in_document = getattr(utilities, "inDocumentContent", None)
+    if not callable(in_document):
+        in_document = getattr(utilities, "in_document_content", None)
+    document_active = False
+    if callable(in_document):
+        try:
+            document_active = bool(in_document())
+        except Exception:
+            document_active = False
+    else:
+        # Older/non-web scripts might lack the document helper. Retain the
+        # structural-navigation gate only as a conservative fallback.
+        gate = getattr(script, "useStructuralNavigationModel", None)
+        document_active = bool(callable(gate) and gate())
 
     held[event.hw_code] = event.modifiers
     event._handler = None
+    if not document_active:
+        # These are NVDA tree-interceptor commands. Outside document content
+        # they must not fall through as unrelated Orca-modifier commands
+        # (notably Orca+V toggles speech verbosity).
+        event._consumer = _lrd_consume_unsupported_browse
+        return True
     if action == "layout":
         method = getattr(script, "toggleLayoutMode", None)
         if not callable(method):
@@ -3882,6 +3901,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V71,
                 LEGACY_COMPAT_MARKER_V70,
                 LEGACY_COMPAT_MARKER_V69,
                 LEGACY_COMPAT_MARKER_V68,
