@@ -2573,7 +2573,7 @@ class LocalMachine:
     LEFT, RIGHT, UP, DOWN = 113, 114, 111, 116
     KP_DOWN = 88
 
-    def _orca_env(self, browse=True):
+    def _orca_env(self, browse=True, in_document=True):
         """Fake Orca 42 pieces with the same shouldConsume order as the real one."""
         import sys, types
         test = self
@@ -2610,6 +2610,7 @@ class LocalMachine:
         cell_up = SimpleNamespace(function="cell_up")
         cell_down = SimpleNamespace(function="cell_down")
         other_nav = SimpleNamespace(function="other_nav")
+        verbosity = SimpleNamespace(function="verbosity")
         form_calls = []
         form_field = SimpleNamespace(
             goNext=lambda script, event: form_calls.append("next"),
@@ -2644,6 +2645,7 @@ class LocalMachine:
                 (test.DOWN, test.SHIFT | test.ALT): cell_down,
                 # An unrelated structural command on the same chord shape.
                 (test.KP_DOWN, test.SHIFT | test.ALT): other_nav,
+                (55, test.ORCA): verbosity,
             }
 
             def getInputHandler(self, event):
@@ -2672,6 +2674,9 @@ class LocalMachine:
         script.findPrevious = lambda event=None: script.find_calls.append("previous")
         script.layout_calls = []
         script.toggleLayoutMode = lambda event: script.layout_calls.append("toggle")
+        script.utilities = SimpleNamespace(
+            inDocumentContent=lambda obj=None: in_document,
+        )
 
         class KeyboardEvent:
             def __init__(self, string, hw_code, modifiers=0, pressed=True):
@@ -2697,9 +2702,9 @@ class LocalMachine:
             "orca": orca, "orca.input_event": ie, "orca.keybindings": kb})
         return KeyboardEvent, script, patches
 
-    def _hooked(self, browse=True):
+    def _hooked(self, browse=True, in_document=True):
         c, _, _ = self._patched_controller()
-        KeyboardEvent, script, patches = self._orca_env(browse)
+        KeyboardEvent, script, patches = self._orca_env(browse, in_document)
         patches.start()
         self.addCleanup(patches.stop)
         self.assertTrue(c._module._lrd_install_orca_hook())
@@ -2768,22 +2773,27 @@ class LocalMachine:
                     consumer(ev)
                     self.assertEqual(script.heading_calls, [(direction, level)])
 
-    def test_remote_nvda_v_uses_orca_layout_mode_only_in_browse_mode(self):
+    def test_remote_nvda_v_works_in_document_focus_mode_without_orca_verbosity(self):
         for browse in (True, False):
             with self.subTest(browse=browse):
-                c, KE, script = self._hooked(browse=browse)
+                c, KE, script = self._hooked(browse=browse, in_document=True)
                 self._key(c, 0x2D, True, extended=True)
                 self._key(c, 0x56, True)
-                ev = KE("v", 55)
+                ev = KE("v", 55, modifiers=self.ORCA)
                 consumer = getattr(ev, "_consumer", None)
-                if browse:
-                    self.assertIsNotNone(consumer)
-                    consumer(ev)
-                    self.assertEqual(script.layout_calls, ["toggle"])
-                else:
-                    self.assertIsNone(consumer)
-                    self.assertFalse(ev.consume)
-                    self.assertEqual(script.layout_calls, [])
+                self.assertIsNotNone(consumer)
+                consumer(ev)
+                self.assertEqual(script.layout_calls, ["toggle"])
+                self.assertIsNone(ev._handler)
+
+    def test_remote_nvda_v_in_browser_chrome_never_runs_orca_verbosity(self):
+        c, KE, script = self._hooked(browse=False, in_document=False)
+        self._key(c, 0x2D, True, extended=True)
+        self._key(c, 0x56, True)
+        ev = KE("v", 55, modifiers=self.ORCA)
+        self.assertIsNotNone(getattr(ev, "_consumer", None))
+        self.assertIsNone(ev._handler)
+        self.assertEqual(script.layout_calls, [])
 
     def test_caps_nvda_v_never_toggles_caps_while_browse_context_is_decided(self):
         c, KE, script = self._hooked(browse=True)
@@ -2795,37 +2805,32 @@ class LocalMachine:
         self._key(c, 0x14, False)
         self.assertNotIn((0x14, True), self._names(c))
 
-    def test_remote_nvda_shift_f10_is_consumed_only_in_browse_mode(self):
+    def test_remote_nvda_shift_f10_is_consumed_in_document_browse_or_focus_mode(self):
         for browse in (True, False):
             with self.subTest(browse=browse):
-                c, KE, _ = self._hooked(browse=browse)
+                c, KE, _ = self._hooked(browse=browse, in_document=True)
                 self._key(c, 0x2D, True, extended=True)
                 self._key(c, 0xA0, True)
                 self._key(c, 0x79, True)
-                ev = KE("F10", 76, modifiers=self.SHIFT)
-                if browse:
-                    self.assertIsNotNone(getattr(ev, "_consumer", None))
-                else:
-                    self.assertIsNone(getattr(ev, "_consumer", None))
+                ev = KE("F10", 76, modifiers=self.SHIFT | self.ORCA)
+                self.assertIsNotNone(getattr(ev, "_consumer", None))
+                self.assertIsNone(ev._handler)
 
-    def test_remote_nvda_f3_find_commands_are_consumed_only_in_browse_mode(self):
+    def test_remote_nvda_f3_find_commands_work_in_document_browse_or_focus_mode(self):
         for shift, expected in ((False, "next"), (True, "previous")):
             for browse in (True, False):
                 with self.subTest(shift=shift, browse=browse):
-                    c, KE, script = self._hooked(browse=browse)
+                    c, KE, script = self._hooked(browse=browse, in_document=True)
                     self._key(c, 0x2D, True, extended=True)
                     if shift:
                         self._key(c, 0xA0, True)
                     self._key(c, 0x72, True)
-                    ev = KE("F3", 69, modifiers=self.SHIFT if shift else 0)
+                    mods = self.ORCA | (self.SHIFT if shift else 0)
+                    ev = KE("F3", 69, modifiers=mods)
                     consumer = getattr(ev, "_consumer", None)
-                    if browse:
-                        self.assertIsNotNone(consumer)
-                        consumer(ev)
-                        self.assertEqual(script.find_calls, [expected])
-                    else:
-                        self.assertIsNone(consumer)
-                        self.assertEqual(script.find_calls, [])
+                    self.assertIsNotNone(consumer)
+                    consumer(ev)
+                    self.assertEqual(script.find_calls, [expected])
 
     def test_caps_nvda_f3_never_toggles_caps_during_browse_context_decision(self):
         c, KE, _ = self._hooked(browse=True)
