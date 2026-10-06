@@ -2628,6 +2628,7 @@ class LocalMachine:
         n_code = getattr(self, "N_CODE", 57)
         o_code = getattr(self, "O_CODE", 32)
         w_code = getattr(self, "W_CODE", 25)
+        f10_code = getattr(self, "F10_CODE", 76)
         kb = types.ModuleType("orca.keybindings")
         kb.SHIFT_MODIFIER_MASK, kb.CTRL_MODIFIER_MASK = self.SHIFT, self.CTRL
         kb.ALT_MODIFIER_MASK, kb.ORCA_MODIFIER_MASK = self.ALT, self.ORCA
@@ -2712,6 +2713,8 @@ class LocalMachine:
         script.structuralNavigation.enabledObjects["heading"] = heading
         script.form_calls = form_calls
         script.heading_calls = heading_calls
+        script.layout_calls = []
+        script.toggleLayoutMode = lambda event=None: script.layout_calls.append("toggle")
         script.find_calls = []
         script.findNext = lambda event=None: script.find_calls.append("next")
         script.findPrevious = lambda event=None: script.find_calls.append("previous")
@@ -2953,6 +2956,36 @@ class LocalMachine:
                 self._remote_browse_command(c, vk, alt=True, extended=True)
                 ev = KE(event_string, code, modifiers=self.ALT)
                 self.assertIsNone(getattr(ev, "_consumer", None))
+
+    def test_remote_nvda_v_uses_orca_web_layout_mode_only_in_browse_mode(self):
+        for browse in (True, False):
+            with self.subTest(browse=browse):
+                c, KE, script = self._hooked(browse=browse)
+                self._key(c, 0x2D, True, extended=True)
+                self._key(c, 0x56, True)
+                ev = KE("v", 55, modifiers=self.ORCA)
+                consumer = getattr(ev, "_consumer", None)
+                if browse:
+                    self.assertIsNotNone(consumer)
+                    consumer(ev)
+                    self.assertEqual(script.layout_calls, ["toggle"])
+                else:
+                    self.assertIsNone(consumer)
+                    self.assertEqual(script.layout_calls, [])
+
+    def test_remote_nvda_shift_f10_native_selection_command_is_consumed_only_in_browse_mode(self):
+        for browse in (True, False):
+            with self.subTest(browse=browse):
+                c, KE, _script = self._hooked(browse=browse)
+                self._key(c, 0x2D, True, extended=True)
+                self._key(c, 0xA0, True)
+                self._key(c, 0x79, True)
+                ev = KE("F10", 76, modifiers=self.ORCA | self.SHIFT)
+                consumer = getattr(ev, "_consumer", None)
+                if browse:
+                    self.assertIsNotNone(consumer)
+                else:
+                    self.assertIsNone(consumer)
 
     def test_local_mismatched_browse_letters_are_never_suppressed(self):
         cases = (
