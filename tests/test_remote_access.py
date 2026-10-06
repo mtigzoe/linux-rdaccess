@@ -2593,6 +2593,7 @@ class LocalMachine:
             "o": o_code, "w": w_code, "d": self.D_CODE,
             "7": 17, "8": 18, "9": 19,
             "Home": 110, "End": 115, "Page_Up": 112, "Page_Down": 117,
+            "F10": 76, "v": 55,
             "Left": self.LEFT, "Right": self.RIGHT,
             "Up": self.UP, "Down": self.DOWN,
         }.get(key)
@@ -2666,6 +2667,8 @@ class LocalMachine:
         script.structuralNavigation.enabledObjects["heading"] = heading
         script.form_calls = form_calls
         script.heading_calls = heading_calls
+        script.layout_calls = []
+        script.toggleLayoutMode = lambda event: script.layout_calls.append("toggle")
 
         class KeyboardEvent:
             def __init__(self, string, hw_code, modifiers=0, pressed=True):
@@ -2761,6 +2764,46 @@ class LocalMachine:
                     self.assertIsNotNone(consumer)
                     consumer(ev)
                     self.assertEqual(script.heading_calls, [(direction, level)])
+
+    def test_remote_nvda_v_uses_orca_layout_mode_only_in_browse_mode(self):
+        for browse in (True, False):
+            with self.subTest(browse=browse):
+                c, KE, script = self._hooked(browse=browse)
+                self._key(c, 0x2D, True, extended=True)
+                self._key(c, 0x56, True)
+                ev = KE("v", 55)
+                consumer = getattr(ev, "_consumer", None)
+                if browse:
+                    self.assertIsNotNone(consumer)
+                    consumer(ev)
+                    self.assertEqual(script.layout_calls, ["toggle"])
+                else:
+                    self.assertIsNone(consumer)
+                    self.assertFalse(ev.consume)
+                    self.assertEqual(script.layout_calls, [])
+
+    def test_caps_nvda_v_never_toggles_caps_while_browse_context_is_decided(self):
+        c, KE, script = self._hooked(browse=True)
+        self._key(c, 0x14, True)
+        self._key(c, 0x56, True)
+        ev = KE("v", 55)
+        self.assertIsNotNone(getattr(ev, "_consumer", None))
+        self._key(c, 0x56, False)
+        self._key(c, 0x14, False)
+        self.assertNotIn((0x14, True), self._names(c))
+
+    def test_remote_nvda_shift_f10_is_consumed_only_in_browse_mode(self):
+        for browse in (True, False):
+            with self.subTest(browse=browse):
+                c, KE, _ = self._hooked(browse=browse)
+                self._key(c, 0x2D, True, extended=True)
+                self._key(c, 0xA0, True)
+                self._key(c, 0x79, True)
+                ev = KE("F10", 76, modifiers=self.SHIFT)
+                if browse:
+                    self.assertIsNotNone(getattr(ev, "_consumer", None))
+                else:
+                    self.assertIsNone(getattr(ev, "_consumer", None))
 
     def test_local_mismatched_browse_letters_are_never_suppressed(self):
         cases = (
