@@ -1148,6 +1148,53 @@ class RemoteController:
                 self._key(c, vk, False)
                 self.assertNotIn((vk, True), self._names(c))
 
+    def test_remaining_documented_nvda_global_commands_do_not_leak_to_linux(self):
+        cases = (
+            # vk, shift, ctrl, alt, extended, layout
+            (0x44, True,  False, False, False, "desktop"), # NVDA+Shift+D audio ducking
+            (0x53, True,  False, False, False, "desktop"), # desktop NVDA+Shift+S sleep
+            (0x5A, True,  False, False, False, "laptop"),  # laptop NVDA+Shift+Z sleep
+            (0x26, False, True,  False, True,  "desktop"), # synth ring
+            (0x28, False, True,  False, True,  "desktop"),
+            (0x25, False, True,  False, True,  "desktop"),
+            (0x27, False, True,  False, True,  "desktop"),
+            (0x21, False, True,  False, True,  "desktop"),
+            (0x22, False, True,  False, True,  "desktop"),
+            (0x26, True,  True,  False, True,  "laptop"),
+            (0x28, True,  True,  False, True,  "laptop"),
+            (0x25, True,  True,  False, True,  "laptop"),
+            (0x27, True,  True,  False, True,  "laptop"),
+            (0x21, True,  True,  False, True,  "laptop"),
+            (0x22, True,  True,  False, True,  "laptop"),
+            (0x4B, False, False, True,  False, "desktop"), # braille auto scroll
+            (0x4C, False, False, True,  False, "desktop"),
+            (0x4A, False, False, True,  False, "desktop"),
+            (0x46, True,  False, False, False, "desktop"), # review formatting
+            (0x44, False, False, False, False, "desktop"), # annotation summary
+            (0x54, False, False, True,  False, "desktop"), # braille mode
+            (0x4D, False, False, True,  False, "desktop"), # math interaction
+            (0x46, False, True,  False, False, "desktop"), # Ctrl+F handled elsewhere? plain VK_F with Ctrl only
+            (0x71, False, True,  False, False, "desktop"), # NVDA+Ctrl+F2 display model
+            (0x69, False, False, False, False, "desktop"), # NVDA+Numpad3, flattened next (VK_NUMPAD3)
+            (0x69, False, False, False, False, "desktop"),
+            (0xDB, True,  False, False, False, "laptop"),  # Shift+NVDA+[ previous in flow
+            (0xDD, True,  False, False, False, "laptop"),  # Shift+NVDA+] next in flow
+        )
+        for vk, shift, ctrl, alt, extended, layout in cases:
+            with self.subTest(vk=vk, shift=shift, ctrl=ctrl, alt=alt, layout=layout):
+                c, _, _ = self._patched_controller()
+                with mock.patch.dict(os.environ, {"LINUX_RDACCESS_NVDA_LAYOUT": layout}):
+                    self._key(c, 0x2D, True, extended=True)
+                    if shift:
+                        self._key(c, 0xA0, True)
+                    if ctrl:
+                        self._key(c, 0xA2, True)
+                    if alt:
+                        self._key(c, 0xA4, True)
+                    self._key(c, vk, True, extended=extended)
+                    self._key(c, vk, False, extended=extended)
+                self.assertNotIn((vk, True), self._names(c))
+
     def test_other_documented_unimplemented_nvda_commands_do_not_reach_linux_apps(self):
         # Representative NVDA 2026.2 global commands which linux-rdaccess does
         # not yet emulate. They must not become ordinary Linux app shortcuts.
