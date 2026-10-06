@@ -250,6 +250,21 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
             self.assertIs(OrcaRuntimeAdapter.show_structural_list("h", script=script), True)
         handler.assert_called_once_with(script, None)
 
+    def test_mouse_review_uses_orca_input_handler(self):
+        calls = []
+        handler = types.SimpleNamespace(
+            function=lambda script, event=None: calls.append((script, event)))
+        script = types.SimpleNamespace(
+            inputEventHandlers={"toggleMouseReviewHandler": handler})
+        with self._fake_orca(script):
+            self.assertIs(OrcaRuntimeAdapter.toggle_mouse_review(), True)
+        self.assertEqual(calls, [(script, None)])
+
+    def test_mouse_review_is_unsupported_without_native_handler(self):
+        script = types.SimpleNamespace(inputEventHandlers={})
+        with self._fake_orca(script):
+            self.assertIsNone(OrcaRuntimeAdapter.toggle_mouse_review())
+
     def test_input_help_toggles_orca42_learn_mode(self):
         calls = []
         script = types.SimpleNamespace(
