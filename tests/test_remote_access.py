@@ -1071,6 +1071,43 @@ class RemoteController:
         self.assertEqual(calls, [("sayAll", None)])
         self.assertEqual(self._names(c), [(0x2D, True)])
 
+    def test_laptop_layout_uses_exact_caret_reading_aliases(self):
+        import os
+        c, _, _ = self._patched_controller()
+        calls = []
+        c._linux_rdaccess_run_main = lambda func: (func(), True)[1]
+        c._linux_rdaccess_script_call = lambda method, *args: calls.append(method) or True
+        with mock.patch.dict(os.environ, {"LINUX_RDACCESS_NVDA_LAYOUT": "laptop"}):
+            self._key(c, 0x2D, True, extended=True)   # NVDA
+            self._key(c, 0x41, True); self._key(c, 0x41, False)  # NVDA+A: caret Say All
+            self._key(c, 0x4C, True); self._key(c, 0x4C, False)  # NVDA+L: current line
+            self._key(c, 0xA0, True)                 # Shift
+            self._key(c, 0x23, True, extended=True)
+            self._key(c, 0x23, False, extended=True) # NVDA+Shift+End: status
+            self._key(c, 0xA0, False)
+        self.assertEqual(calls, ["sayAll", "presentCurrentLine", "presentStatusBar"])
+        names = self._names(c)
+        self.assertNotIn((0x41, True), names)
+        self.assertNotIn((0x4C, True), names)
+        self.assertNotIn((0x23, True), names)
+
+    def test_laptop_review_gestures_do_not_run_desktop_commands(self):
+        import os
+        c, _, _ = self._patched_controller()
+        calls = []
+        c._linux_rdaccess_run_main = lambda func: (func(), True)[1]
+        c._linux_rdaccess_script_call = lambda method, *args: calls.append(method) or True
+        with mock.patch.dict(os.environ, {"LINUX_RDACCESS_NVDA_LAYOUT": "laptop"}):
+            self._key(c, 0x2D, True, extended=True)
+            self._key(c, 0x28, True, extended=True)
+            self._key(c, 0x28, False, extended=True) # NVDA+Down: review next line
+            self._key(c, 0x23, True, extended=True)
+            self._key(c, 0x23, False, extended=True) # NVDA+End: review line end
+        self.assertEqual(calls, [])
+        names = self._names(c)
+        self.assertNotIn((0x28, True), names)
+        self.assertNotIn((0x23, True), names)
+
     def test_direct_say_all_does_not_swallow_nonextended_key_with_same_vk(self):
         import os
         c, _, home = self._patched_controller()
