@@ -1135,6 +1135,26 @@ class RemoteController:
                 self._key(c, vk, False)
                 self.assertNotIn((vk, True), self._names(c))
 
+    def test_nvda_ctrl_settings_chords_do_not_run_orca_laptop_review_commands(self):
+        for vk in (0x55, 0x4B, 0x4D, 0x4F):  # U/K/M/O
+            with self.subTest(vk=vk):
+                c, _, _ = self._patched_controller()
+                self._key(c, 0x2D, True, extended=True)
+                self._key(c, 0xA2, True)
+                self._key(c, vk, True)
+                self._key(c, vk, True)
+                self._key(c, vk, False)
+                self.assertNotIn((vk, True), self._names(c))
+
+    def test_nvda_ctrl_u_with_both_physical_ctrl_keys_is_still_consumed(self):
+        c, _, _ = self._patched_controller()
+        self._key(c, 0x2D, True, extended=True)
+        self._key(c, 0xA2, True)
+        self._key(c, 0xA3, True)
+        self._key(c, 0x55, True)
+        self._key(c, 0x55, False)
+        self.assertNotIn((0x55, True), self._names(c))
+
     def test_nvda_shift_b_with_both_physical_shift_keys_is_still_consumed(self):
         c, _, _ = self._patched_controller()
         self._key(c, 0x2D, True, extended=True)
