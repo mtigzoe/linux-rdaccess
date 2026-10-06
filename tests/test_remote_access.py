@@ -1120,6 +1120,18 @@ class RemoteController:
         self.assertEqual(calls, ["toggleInputHelp"])
         self.assertNotIn((0x31, True), self._names(c))
 
+    def test_nvda_u_cycles_orca_progress_output_once(self):
+        c, _, _ = self._patched_controller()
+        calls = []
+        c._linux_rdaccess_run_main = lambda func: (func(), True)[1]
+        c._linux_rdaccess_script_call = lambda method, *args: calls.append(method) or True
+        self._key(c, 0x2D, True, extended=True)
+        self._key(c, 0x55, True)
+        self._key(c, 0x55, True)
+        self._key(c, 0x55, False)
+        self.assertEqual(calls, ["cycleProgressBarOutput"])
+        self.assertNotIn((0x55, True), self._names(c))
+
     def test_nvda_m_toggles_orca_mouse_review_in_both_layouts(self):
         import os
         for layout in ("desktop", "laptop"):
