@@ -122,9 +122,13 @@ class DirectCommandTests(Harness, unittest.TestCase):
             controller._linux_rdaccess_script_call.assert_not_called()
             self.assertIn(('key', 0x7B, True), [event[:3] for event in controller.local_machine.events])
 
-    def test_extra_modifiers_keep_nvda_up_and_f12_for_the_application(self):
-        for vk, extended in ((0x26, True), (0x7B, False)):
-            for extra in (0xA0, 0xA2, 0xA4, 0x5B):
+    def test_only_unrelated_extra_modifiers_keep_nvda_commands_for_the_application(self):
+        cases = (
+            (0x26, True, (0x5B,)),                # NVDA+Win+Up is not an NVDA command
+            (0x7B, False, (0xA0, 0xA2, 0xA4, 0x5B)),  # modified NVDA+F12 variants are unbound
+        )
+        for vk, extended, extras in cases:
+            for extra in extras:
                 with self.subTest(vk=vk, extra=extra):
                     controller, _, _ = self._patched_controller()
                     controller._linux_rdaccess_script_call = mock.Mock()
