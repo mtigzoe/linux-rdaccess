@@ -98,6 +98,85 @@ class ElementsListTests(unittest.TestCase):
         self.assertIs(FakeLabel.last.mnemonic, FakeCombo.last)
         self.assertEqual(calls, ["k"])
 
+    def test_elements_list_remembers_last_selected_category(self):
+        class FakeBox:
+            def pack_start(self, *args):
+                pass
+
+        class FakeCombo:
+            last = None
+            starts = []
+
+            def __init__(self):
+                self.items = []
+                self.active = None
+                FakeCombo.last = self
+
+            def append(self, key, name):
+                self.items.append((key, name))
+
+            def set_active(self, index):
+                self.active = index
+                FakeCombo.starts.append(index)
+
+            def get_active_id(self):
+                return self.items[self.active][0]
+
+            def grab_focus(self):
+                pass
+
+        class FakeLabel:
+            def __init__(self, label):
+                pass
+            def set_use_underline(self, value):
+                pass
+            def set_xalign(self, value):
+                pass
+            def set_mnemonic_widget(self, widget):
+                pass
+
+        class FakeDialog:
+            invocation = 0
+            def __init__(self, title):
+                self.box = FakeBox()
+            def set_modal(self, value):
+                pass
+            def add_button(self, *args):
+                pass
+            def get_content_area(self):
+                return self.box
+            def show_all(self):
+                pass
+            def run(self):
+                if FakeDialog.invocation == 0:
+                    FakeCombo.last.active = 3
+                FakeDialog.invocation += 1
+                return 1
+            def destroy(self):
+                pass
+
+        fake_gtk = types.SimpleNamespace(
+            Dialog=FakeDialog,
+            Label=FakeLabel,
+            ComboBoxText=FakeCombo,
+            ResponseType=types.SimpleNamespace(CANCEL=0, OK=1),
+        )
+        gi = types.ModuleType("gi")
+        gi.require_version = lambda *args: None
+        repository = types.ModuleType("gi.repository")
+        repository.Gtk = fake_gtk
+        gi.repository = repository
+
+        import orca_adapter
+        calls = []
+        with mock.patch.dict(sys.modules, {"gi": gi, "gi.repository": repository}), \
+                mock.patch.object(orca_adapter, "_ELEMENT_LIST_LAST_INDEX", 0, create=True):
+            self.assertTrue(orca_adapter.show_elements_list(calls.append))
+            self.assertTrue(orca_adapter.show_elements_list(calls.append))
+
+        self.assertEqual(FakeCombo.starts, [0, 3])
+        self.assertEqual(calls, ["b", "b"])
+
     def test_nvda_elements_categories_match_nvda_2026_2_default_order(self):
         self.assertEqual(
             ELEMENT_LIST_TYPES,
