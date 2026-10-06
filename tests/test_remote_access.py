@@ -2985,6 +2985,28 @@ class LocalMachine:
                     self.assertIsNone(consumer)
                     self.assertEqual(script.layout_calls, [])
 
+    def test_remote_nvda_table_read_commands_are_consumed_only_in_browse_mode(self):
+        cases = (
+            (0x27, "Right", self.RIGHT),
+            (0x28, "Down", self.DOWN),
+            (0x25, "Left", self.LEFT),
+            (0x26, "Up", self.UP),
+        )
+        for browse in (True, False):
+            for vk, name, code in cases:
+                with self.subTest(browse=browse, name=name):
+                    c, KE, _script = self._hooked(browse=browse)
+                    self._key(c, 0x2D, True, extended=True)
+                    self._key(c, 0xA2, True)
+                    self._key(c, 0xA4, True)
+                    self._key(c, vk, True, extended=True)
+                    ev = KE(name, code, modifiers=self.ORCA | self.CTRL | self.ALT)
+                    consumer = getattr(ev, "_consumer", None)
+                    if browse:
+                        self.assertIsNotNone(consumer)
+                    else:
+                        self.assertIsNone(consumer)
+
     def test_remote_nvda_shift_f10_native_selection_command_is_consumed_only_in_browse_mode(self):
         for browse in (True, False):
             with self.subTest(browse=browse):
