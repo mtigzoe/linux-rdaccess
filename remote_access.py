@@ -849,7 +849,8 @@ LEGACY_COMPAT_MARKER_V69 = "# linux-rdaccess NVDA/Orca input compatibility v69"
 LEGACY_COMPAT_MARKER_V70 = "# linux-rdaccess NVDA/Orca input compatibility v70"
 LEGACY_COMPAT_MARKER_V71 = "# linux-rdaccess NVDA/Orca input compatibility v71"
 LEGACY_COMPAT_MARKER_V72 = "# linux-rdaccess NVDA/Orca input compatibility v72"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v73"
+LEGACY_COMPAT_MARKER_V73 = "# linux-rdaccess NVDA/Orca input compatibility v73"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v74"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -1542,16 +1543,19 @@ _LEGACY_HELPERS = '''\
         # toggles the Linux lock merely because the NVDA modifier was CapsLock.
         if pressed and self._lrd_nvda_down and not repeat:
             shifts = [k for k in self._lrd_down if k[0] in self._LRD_SHIFT_VKS]
-            ctrl_alt_win = any(
-                k[0] in self._LRD_CTRL_VKS or k[0] in (0x12, 0xA4, 0xA5, 0x5B, 0x5C)
+            ctrl = any(k[0] in self._LRD_CTRL_VKS for k in self._lrd_down)
+            alt_win = any(
+                k[0] in (0x12, 0xA4, 0xA5, 0x5B, 0x5C)
                 for k in self._lrd_down
             )
             browse_action = None
-            if vk_code == 0x56 and not shifts and not ctrl_alt_win:       # NVDA+V
+            if vk_code == 0x46 and ctrl and not shifts and not alt_win:   # NVDA+Ctrl+F
+                browse_action = "find"
+            elif vk_code == 0x56 and not shifts and not ctrl and not alt_win:  # NVDA+V
                 browse_action = "layout"
-            elif vk_code == 0x72 and not ctrl_alt_win:                    # NVDA+F3/Shift+F3
+            elif vk_code == 0x72 and not ctrl and not alt_win:            # NVDA+F3/Shift+F3
                 browse_action = "findPrevious" if shifts else "findNext"
-            elif vk_code == 0x79 and shifts and not ctrl_alt_win:         # NVDA+Shift+F10
+            elif vk_code == 0x79 and shifts and not ctrl and not alt_win: # NVDA+Shift+F10
                 browse_action = "nativeSelection"
             if browse_action is not None:
                 self._lrd_navigation_marker = ("_LRD_NVDA_BROWSE", browse_action, held)
@@ -2754,6 +2758,15 @@ def _lrd_consume_layout_mode(event=None):
     return True
 
 
+def _lrd_consume_find(event=None):
+    action = getattr(event, "_lrd_find_action", None) if event is not None else None
+    if not action:
+        return True
+    method, script = action
+    method(script, event)
+    return True
+
+
 def _lrd_maybe_nvda_browse(event, keybindings):
     pressed = event.isPressedKey()
     held = _LRD_NVDA_BROWSE["held"]
@@ -2766,7 +2779,10 @@ def _lrd_maybe_nvda_browse(event, keybindings):
         return True
 
     key = str(getattr(event, "event_string", "") or "")
-    if key.lower() == "v":
+    if (key.lower() == "f"
+            and event.modifiers & keybindings.CTRL_MODIFIER_MASK):
+        action = "find"
+    elif key.lower() == "v":
         action = "layout"
     elif key == "F3":
         action = ("findPrevious"
@@ -2804,7 +2820,15 @@ def _lrd_maybe_nvda_browse(event, keybindings):
         # (notably Orca+V toggles speech verbosity).
         event._consumer = _lrd_consume_unsupported_browse
         return True
-    if action == "layout":
+    if action == "find":
+        handlers = getattr(script, "inputEventHandlers", None)
+        find_handler = handlers.get("findHandler") if isinstance(handlers, dict) else None
+        method = getattr(find_handler, "function", None)
+        if callable(method):
+            event._lrd_find_action = (method, script)
+            event._consumer = _lrd_consume_find
+            return True
+    elif action == "layout":
         method = getattr(script, "toggleLayoutMode", None)
         if not callable(method):
             method = getattr(script, "toggle_layout_mode", None)
@@ -3915,6 +3939,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V73,
                 LEGACY_COMPAT_MARKER_V72,
                 LEGACY_COMPAT_MARKER_V71,
                 LEGACY_COMPAT_MARKER_V70,
