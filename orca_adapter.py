@@ -18,20 +18,11 @@ from typing import Any, Callable, Iterable
 
 
 ELEMENT_LIST_TYPES = (
-    ("Headings", "h"),
     ("Links", "k"),
+    ("Headings", "h"),
     ("Form fields", "f"),
     ("Buttons", "b"),
-    ("Edit fields", "e"),
-    ("Checkboxes", "x"),
-    ("Combo boxes", "c"),
-    ("Radio buttons", "r"),
-    ("Lists", "l"),
-    ("List items", "i"),
-    ("Tables", "t"),
     ("Landmarks", "m"),
-    ("Images", "g"),
-    ("Paragraphs", "p"),
 )
 
 
