@@ -833,7 +833,8 @@ LEGACY_COMPAT_MARKER_V53 = "# linux-rdaccess NVDA/Orca input compatibility v53"
 LEGACY_COMPAT_MARKER_V54 = "# linux-rdaccess NVDA/Orca input compatibility v54"
 LEGACY_COMPAT_MARKER_V55 = "# linux-rdaccess NVDA/Orca input compatibility v55"
 LEGACY_COMPAT_MARKER_V56 = "# linux-rdaccess NVDA/Orca input compatibility v56"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v57"
+LEGACY_COMPAT_MARKER_V57 = "# linux-rdaccess NVDA/Orca input compatibility v57"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v58"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -885,7 +886,6 @@ _LEGACY_HELPERS = '''\
         0x09: "where_am_i",                          # NVDA+Tab
         0x23: "status_bar",                          # NVDA+End
         0x26: "current_line",                        # desktop NVDA+Up
-        0x4E: "preferences",                         # NVDA+N
         0x54: "title",                               # NVDA+T
         0x71: "pass_next",                           # NVDA+F2
         0x76: "elements_list",                       # NVDA+F7
@@ -978,6 +978,49 @@ _LEGACY_HELPERS = '''\
             }
             return (vk_code, shift, bool(extended)) in ctrl_gestures
         return (vk_code, shift, bool(extended)) in gestures
+
+    def _linux_rdaccess_known_unimplemented(self, vk_code, extended):
+        """Whether this exact documented NVDA command is not yet emulated."""
+        down = getattr(self, "_lrd_down", set())
+        shift = any(k[0] in self._LRD_SHIFT_VKS for k in down)
+        ctrl = any(k[0] in self._LRD_CTRL_VKS for k in down)
+        alt = any(k[0] in (0x12, 0xA4, 0xA5) for k in down)
+        win = any(k[0] in (0x5B, 0x5C) for k in down)
+        if win:
+            return False
+        gesture = (vk_code, shift, ctrl, alt, bool(extended))
+        return gesture in {
+            (0x4E, False, False, False, False),  # NVDA+N: NVDA menu
+            (0x51, False, False, False, False),  # NVDA+Q: quit NVDA
+            (0x43, False, False, False, False),  # NVDA+C: clipboard report
+            (0x52, False, False, False, False),  # NVDA+R: OCR
+            (0x58, False, False, False, False),  # NVDA+X: repeat last speech
+            (0x78, False, False, False, False),  # NVDA+F9: review mark
+            (0x78, True,  False, False, False),  # NVDA+Shift+F9
+            (0x79, False, False, False, False),  # NVDA+F10: select/copy review
+            (0x72, False, True,  False, False),  # NVDA+Ctrl+F3: reload plugins
+            (0x1B, False, True,  False, False),  # NVDA+Ctrl+Escape: screen curtain
+            (0x57, True,  False, False, False),  # NVDA+Shift+W: magnifier
+            (0xBB, True,  False, False, False),  # NVDA+Shift+=: zoom in
+            (0xBD, True,  False, False, False),  # NVDA+Shift+-: zoom out
+            (0x49, True,  False, False, False),  # NVDA+Shift+I: color filter
+            (0x4C, True,  False, False, False),  # NVDA+Shift+L: overview
+            (0x53, False, False, True,  False),  # NVDA+Alt+S: sound split
+            (0x52, False, False, True,  False),  # NVDA+Alt+R: Remote connect
+            (0x09, False, False, True,  False),  # NVDA+Alt+Tab: Remote key control
+            (0x25, False, False, True,  True),   # NVDA+Alt+Arrow: magnifier pan
+            (0x27, False, False, True,  True),
+            (0x26, False, False, True,  True),
+            (0x28, False, False, True,  True),
+            (0x25, True,  False, True,  True),   # NVDA+Shift+Alt+Arrow: edge pan
+            (0x27, True,  False, True,  True),
+            (0x26, True,  False, True,  True),
+            (0x28, True,  False, True,  True),
+            (0x54, False, True,  True,  False),  # NVDA+Ctrl+Alt+T
+            (0x70, False, False, False, False),  # NVDA+F1
+            (0x70, False, True,  False, False),  # NVDA+Ctrl+F1
+            (0x70, True,  True,  False, False),  # NVDA+Ctrl+Shift+F1
+        }
 
     def _linux_rdaccess_clock_command(self):
         """Select time/date for consecutive complete NVDA+F12 gestures."""
@@ -1362,6 +1405,17 @@ _LEGACY_HELPERS = '''\
             self._lrd_navigation_marker = (
                 "_LRD_T", {0x25: "Left", 0x26: "Up", 0x27: "Right", 0x28: "Down"}[vk_code], held)
 
+        if (
+            pressed
+            and self._lrd_nvda_down
+            and not repeat
+            and self._linux_rdaccess_known_unimplemented(vk_code, extended)
+        ):
+            self._lrd_swapped.add(held)
+            if getattr(self, "_lrd_caps_pending", None) is not None:
+                self._lrd_caps_used = True
+            return True
+
         # Some NVDA commands have no proven Orca-42 equivalent but collide
         # with unrelated Orca modifier bindings. Consume those exact remote
         # gestures rather than navigating bookmarks or changing Orca speech
@@ -1542,9 +1596,6 @@ _LEGACY_HELPERS = '''\
                 elif action == "title":
                     self._linux_rdaccess_run_main(
                         lambda: self._linux_rdaccess_script_call("presentTitle"))
-                elif action == "preferences":
-                    self._linux_rdaccess_run_main(
-                        lambda: self._linux_rdaccess_script_call("showPreferences"))
                 elif action == "status_bar":
                     self._linux_rdaccess_run_main(
                         lambda: self._linux_rdaccess_script_call("presentStatusBar"))
@@ -3367,6 +3418,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V57,
                 LEGACY_COMPAT_MARKER_V56,
                 LEGACY_COMPAT_MARKER_V55,
                 LEGACY_COMPAT_MARKER_V54,
