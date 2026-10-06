@@ -823,7 +823,8 @@ LEGACY_COMPAT_MARKER_V43 = "# linux-rdaccess NVDA/Orca input compatibility v43"
 LEGACY_COMPAT_MARKER_V44 = "# linux-rdaccess NVDA/Orca input compatibility v44"
 LEGACY_COMPAT_MARKER_V45 = "# linux-rdaccess NVDA/Orca input compatibility v45"
 LEGACY_COMPAT_MARKER_V46 = "# linux-rdaccess NVDA/Orca input compatibility v46"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v47"
+LEGACY_COMPAT_MARKER_V47 = "# linux-rdaccess NVDA/Orca input compatibility v47"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v48"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -1636,10 +1637,16 @@ _LEGACY_HELPERS = '''\
                 except Exception:
                     log.error("linux-rdaccess: failed to release braille key")
             for mod_name, mod_vk in reversed(pressed_modifiers):
-                try:
-                    send(key_name=mod_name, pressed=False, modifiers=None,
-                         vk_code=mod_vk, scan_code=0, extended=False)
-                except Exception:
+                identity = (mod_vk, False)
+                for _attempt in range(2):
+                    if identity not in getattr(self, "_lrd_forwarded", {}):
+                        break
+                    try:
+                        send(key_name=mod_name, pressed=False, modifiers=None,
+                             vk_code=mod_vk, scan_code=0, extended=False)
+                    except Exception:
+                        pass
+                if identity in getattr(self, "_lrd_forwarded", {}):
                     log.error("linux-rdaccess: failed to release braille modifier")
 
     def _linux_rdaccess_classify_braille(self, kwargs):
@@ -1845,11 +1852,17 @@ _LEGACY_HELPERS = '''\
                 except Exception:
                     log.error("linux-rdaccess: failed to release structural-list key")
             for name, mod_vk, mod_ext in reversed(pressed_modifiers):
-                try:
-                    send(
-                        key_name=name, pressed=False, modifiers=None,
-                        vk_code=mod_vk, scan_code=0, extended=mod_ext)
-                except Exception:
+                identity = (mod_vk, mod_ext)
+                for _attempt in range(2):
+                    if identity not in getattr(self, "_lrd_forwarded", {}):
+                        break
+                    try:
+                        send(
+                            key_name=name, pressed=False, modifiers=None,
+                            vk_code=mod_vk, scan_code=0, extended=mod_ext)
+                    except Exception:
+                        pass
+                if identity in getattr(self, "_lrd_forwarded", {}):
                     log.error(
                         "linux-rdaccess: failed to release structural-list modifier")
 
@@ -3239,6 +3252,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V47,
                 LEGACY_COMPAT_MARKER_V46,
                 LEGACY_COMPAT_MARKER_V45,
                 LEGACY_COMPAT_MARKER_V44,
