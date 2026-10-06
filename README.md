@@ -151,7 +151,8 @@ mode on and off rather than falling through to Orca's bookmark-1 command.
 Known NVDA commands which have no proven Orca 42 equivalent are consumed when
 their physical gesture would otherwise run an unrelated Orca command:
 NVDA+2 through NVDA+6 (Orca bookmarks), NVDA+B / NVDA+Shift+B (next/previous
-Orca bookmark), NVDA+S (Orca speech silence), and NVDA+Ctrl+Space (Orca
+Orca bookmark), NVDA+F (Orca character-attributes report), NVDA+S (Orca speech
+silence), and NVDA+Ctrl+Space (Orca
 application preferences). These suppress incorrect side effects; they do not
 yet implement the corresponding NVDA setting, foreground-window, battery,
 speech-mode, or embedded-object behavior. Current-line reporting uses
@@ -270,7 +271,7 @@ individual on/off results. Num Lock auto-repeat produces one toggle and one
 announcement per press. CapsLock used for a translated NVDA command produces
 neither a lock toggle nor a lock announcement.
 
-The current patches are controller **v48** and local-machine **v10**. Update the
+The current patches are controller **v49** and local-machine **v10**. Update the
 installed command from the repository with `python3 linux_rdaccess.py install`,
 then run `linux-rdaccess connect` to update the Orca-side files and restart Orca.
 `doctor` verifies the connected patch hooks, valid Python, and the installed
