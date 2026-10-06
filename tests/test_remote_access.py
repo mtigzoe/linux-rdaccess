@@ -2672,6 +2672,10 @@ class LocalMachine:
         script.find_calls = []
         script.findNext = lambda event=None: script.find_calls.append("next")
         script.findPrevious = lambda event=None: script.find_calls.append("previous")
+        script.inputEventHandlers = {
+            "findHandler": SimpleNamespace(
+                function=lambda script_arg, event=None: script.find_calls.append("find"))
+        }
         script.layout_calls = []
         script.toggleLayoutMode = lambda event: script.layout_calls.append("toggle")
         script.utilities = SimpleNamespace(
@@ -2815,6 +2819,30 @@ class LocalMachine:
                 ev = KE("F10", 76, modifiers=self.SHIFT | self.ORCA)
                 self.assertIsNotNone(getattr(ev, "_consumer", None))
                 self.assertIsNone(ev._handler)
+
+    def test_remote_nvda_ctrl_f_opens_orca_find_in_document_browse_or_focus_mode(self):
+        for browse in (True, False):
+            with self.subTest(browse=browse):
+                c, KE, script = self._hooked(browse=browse, in_document=True)
+                self._key(c, 0x2D, True, extended=True)
+                self._key(c, 0xA2, True)
+                self._key(c, 0x46, True)
+                ev = KE("f", self.F_CODE, modifiers=self.ORCA | self.CTRL)
+                consumer = getattr(ev, "_consumer", None)
+                self.assertIsNotNone(consumer)
+                consumer(ev)
+                self.assertEqual(script.find_calls, ["find"])
+                self.assertIsNone(ev._handler)
+
+    def test_remote_nvda_ctrl_f_in_browser_chrome_does_not_open_app_find(self):
+        c, KE, script = self._hooked(browse=False, in_document=False)
+        self._key(c, 0x2D, True, extended=True)
+        self._key(c, 0xA2, True)
+        self._key(c, 0x46, True)
+        ev = KE("f", self.F_CODE, modifiers=self.ORCA | self.CTRL)
+        self.assertIsNotNone(getattr(ev, "_consumer", None))
+        self.assertIsNone(ev._handler)
+        self.assertEqual(script.find_calls, [])
 
     def test_remote_nvda_f3_find_commands_work_in_document_browse_or_focus_mode(self):
         for shift, expected in ((False, "next"), (True, "previous")):
