@@ -1173,10 +1173,9 @@ class RemoteController:
             (0x44, False, False, False, False, "desktop"), # annotation summary
             (0x54, False, False, True,  False, "desktop"), # braille mode
             (0x4D, False, False, True,  False, "desktop"), # math interaction
-            (0x46, False, True,  False, False, "desktop"), # Ctrl+F handled elsewhere? plain VK_F with Ctrl only
             (0x71, False, True,  False, False, "desktop"), # NVDA+Ctrl+F2 display model
-            (0x69, False, False, False, False, "desktop"), # NVDA+Numpad3, flattened next (VK_NUMPAD3)
-            (0x69, False, False, False, False, "desktop"),
+            (0x63, False, False, False, False, "desktop"), # NVDA+Numpad3 flattened next
+            (0x69, False, False, False, False, "desktop"), # NVDA+Numpad9 flattened previous
             (0xDB, True,  False, False, False, "laptop"),  # Shift+NVDA+[ previous in flow
             (0xDD, True,  False, False, False, "laptop"),  # Shift+NVDA+] next in flow
         )
