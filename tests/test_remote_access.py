@@ -2922,38 +2922,36 @@ class LocalMachine:
         self._key(c, 0x14, False)
         self.assertNotIn((0x14, True), self._names(c))
 
-    def test_browse_only_nvda_commands_are_consumed_only_in_browse_mode(self):
+    def test_browse_only_nvda_modifier_commands_are_consumed_without_app_fallthrough(self):
         cases = (
             ("v", 0x56, 55, dict(nvda=True)),               # NVDA+V screen layout
             ("F10", 0x79, 76, dict(nvda=True, shift=True)), # NVDA+Shift+F10 native selection
-            ("Up", 0x26, self.UP, dict(alt=True, extended=True)),
-            ("Down", 0x28, self.DOWN, dict(alt=True, extended=True)),
         )
         for event_string, vk, code, kwargs in cases:
+            for browse in (True, False):
+                with self.subTest(event=event_string, browse=browse):
+                    c, KE, _ = self._hooked(browse=browse)
+                    self._remote_browse_command(c, vk, **kwargs)
+                    modifiers = self.ORCA | (self.SHIFT if kwargs.get("shift") else 0)
+                    ev = KE(event_string, code, modifiers=modifiers)
+                    self.assertIsNotNone(getattr(ev, "_consumer", None))
+                    self.assertIsNone(ev._handler)
+
+    def test_alt_arrow_collapse_expand_is_consumed_only_in_browse_mode(self):
+        for event_string, vk, code in (
+            ("Up", 0x26, self.UP),
+            ("Down", 0x28, self.DOWN),
+        ):
             with self.subTest(event=event_string, browse=True):
                 c, KE, _ = self._hooked(browse=True)
-                self._remote_browse_command(c, vk, **kwargs)
-                modifiers = 0
-                if kwargs.get("shift"):
-                    modifiers |= self.SHIFT
-                if kwargs.get("alt"):
-                    modifiers |= self.ALT
-                if kwargs.get("nvda"):
-                    modifiers |= self.ORCA
-                ev = KE(event_string, code, modifiers=modifiers)
+                self._remote_browse_command(c, vk, alt=True, extended=True)
+                ev = KE(event_string, code, modifiers=self.ALT)
                 self.assertIsNotNone(getattr(ev, "_consumer", None))
                 self.assertIsNone(ev._handler)
             with self.subTest(event=event_string, browse=False):
                 c, KE, _ = self._hooked(browse=False)
-                self._remote_browse_command(c, vk, **kwargs)
-                modifiers = 0
-                if kwargs.get("shift"):
-                    modifiers |= self.SHIFT
-                if kwargs.get("alt"):
-                    modifiers |= self.ALT
-                if kwargs.get("nvda"):
-                    modifiers |= self.ORCA
-                ev = KE(event_string, code, modifiers=modifiers)
+                self._remote_browse_command(c, vk, alt=True, extended=True)
+                ev = KE(event_string, code, modifiers=self.ALT)
                 self.assertIsNone(getattr(ev, "_consumer", None))
 
     def test_local_mismatched_browse_letters_are_never_suppressed(self):
