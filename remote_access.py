@@ -854,7 +854,8 @@ LEGACY_COMPAT_MARKER_V74 = "# linux-rdaccess NVDA/Orca input compatibility v74"
 LEGACY_COMPAT_MARKER_V75 = "# linux-rdaccess NVDA/Orca input compatibility v75"
 LEGACY_COMPAT_MARKER_V76 = "# linux-rdaccess NVDA/Orca input compatibility v76"
 LEGACY_COMPAT_MARKER_V77 = "# linux-rdaccess NVDA/Orca input compatibility v77"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v78"
+LEGACY_COMPAT_MARKER_V78 = "# linux-rdaccess NVDA/Orca input compatibility v78"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v79"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -1053,6 +1054,10 @@ _LEGACY_HELPERS = '''\
             (0x4D, False, False, True,  False),  # NVDA+Alt+M: math interaction
             (0x24, False, False, True,  True),   # NVDA+Alt+Home: review selection start
             (0x23, False, False, True,  True),   # NVDA+Alt+End: review selection end
+            (0x25, False, True,  True,  True),   # NVDA+Ctrl+Alt+Left: speak row
+            (0x27, False, True,  True,  True),   # NVDA+Ctrl+Alt+Right: say row
+            (0x26, False, True,  True,  True),   # NVDA+Ctrl+Alt+Up: speak column
+            (0x28, False, True,  True,  True),   # NVDA+Ctrl+Alt+Down: say column
         } or (
             layout == "desktop"
             and gesture in {
@@ -1580,16 +1585,6 @@ _LEGACY_HELPERS = '''\
                 browse_action = "findPrevious" if shifts else "findNext"
             elif vk_code == 0x79 and shifts and not ctrl and not alt_win: # NVDA+Shift+F10
                 browse_action = "nativeSelection"
-            elif (
-                vk_code in (0x25, 0x26, 0x27, 0x28)
-                and bool(extended) and ctrl and not shifts
-                and any(k[0] in (0x12, 0xA4, 0xA5) for k in self._lrd_down)
-                and not any(k[0] in (0x5B, 0x5C) for k in self._lrd_down)
-            ):
-                browse_action = {
-                    0x25: "tableReadLeft", 0x26: "tableReadUp",
-                    0x27: "tableReadRight", 0x28: "tableReadDown",
-                }[vk_code]
             if browse_action is not None:
                 self._lrd_navigation_marker = ("_LRD_NVDA_BROWSE", browse_action, held)
                 if getattr(self, "_lrd_caps_pending", None) is not None:
@@ -2877,14 +2872,6 @@ def _lrd_maybe_nvda_browse(event, keybindings):
                   else "findNext")
     elif key == "F10":
         action = "nativeSelection"
-    elif (
-        key in ("Left", "Right", "Up", "Down")
-        and event.modifiers & keybindings.ORCA_MODIFIER_MASK
-        and event.modifiers & keybindings.CTRL_MODIFIER_MASK
-        and event.modifiers & keybindings.ALT_MODIFIER_MASK
-        and not event.modifiers & keybindings.SHIFT_MODIFIER_MASK
-    ):
-        action = "tableRead" + key
     elif key in ("Up", "Down") and event.modifiers & keybindings.ALT_MODIFIER_MASK:
         action = "collapseExpandUp" if key == "Up" else "collapseExpandDown"
     else:
@@ -4042,6 +4029,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V78,
                 LEGACY_COMPAT_MARKER_V77,
                 LEGACY_COMPAT_MARKER_V76,
                 LEGACY_COMPAT_MARKER_V75,
