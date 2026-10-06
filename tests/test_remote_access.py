@@ -1088,6 +1088,22 @@ class RemoteController:
                 self._key(c, vk, False)
                 self.assertNotIn((vk, True), self._names(c))
 
+    def test_nvda_ctrl_space_does_not_open_orca_app_preferences_or_toggle_caps(self):
+        for nvda_vk, nvda_extended in ((0x2D, True), (0x14, False)):
+            with self.subTest(nvda_vk=nvda_vk):
+                c, _, _ = self._patched_controller()
+                self._key(c, nvda_vk, True, extended=nvda_extended)
+                self._key(c, 0xA2, True)
+                self._key(c, 0x20, True)
+                self._key(c, 0x20, True)
+                self._key(c, 0x20, False)
+                self._key(c, 0xA2, False)
+                self._key(c, nvda_vk, False, extended=nvda_extended)
+                names = self._names(c)
+                self.assertNotIn((0x20, True), names)
+                if nvda_vk == 0x14:
+                    self.assertNotIn((0x14, True), names)
+
     def test_nvda_say_all_calls_orca_directly_and_consumes_repeat(self):
         import os
         c, _, home = self._patched_controller()
