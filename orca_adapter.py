@@ -34,6 +34,7 @@ def show_elements_list(send_structural_list: Callable[[str], Any]) -> bool | Non
     Orca owns the actual structural-navigation result list. linux-rdaccess only
     provides the familiar NVDA+F7 entry point and category selection.
     """
+    global _ELEMENT_LIST_LAST_INDEX
     try:
         import gi
         gi.require_version("Gtk", "3.0")
@@ -67,7 +68,6 @@ def show_elements_list(send_structural_list: Callable[[str], Any]) -> bool | Non
 
     response = dialog.run()
     key = combo.get_active_id()
-    global _ELEMENT_LIST_LAST_INDEX
     if key:
         try:
             _ELEMENT_LIST_LAST_INDEX = next(
