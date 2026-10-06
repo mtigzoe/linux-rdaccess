@@ -1,5 +1,38 @@
 # NVDA-to-Orca shortcut audit — October 5, 2026
 
+> **Current follow-up (October 6):** PR #14 remains open and unmerged. The
+> current generated patches are controller **v76** and local-machine/XTest
+> **v11**. The original v32/v8 sections below are retained as historical
+> checkpoints; they are not the current compatibility inventory.
+
+## Current October 6 compatibility boundary
+
+Source-backed mappings now include desktop/laptop layout selection, caret-line
+reporting, input help, punctuation level, mouse review, progress-bar output,
+browse/focus mode, pass-next, Elements List, time/date, D→landmark, F form-field
+navigation, heading levels 7–9, Ctrl+Alt table-cell navigation, and first/last
+row/column table-edge commands. Known NVDA gestures with no proven Orca 42
+equivalent are consumed instead of being allowed to run an unrelated Orca or
+Linux application command.
+
+The remaining source/static gaps are:
+
+| Area | Current boundary |
+| --- | --- |
+| Object/review navigation | NVDA navigator-object and review-cursor semantics are not equivalent to Orca flat review. Known conflicting gestures are consumed rather than falsely translated. |
+| Repeated report commands | NVDA's second/third presses for focus, caret line, title and status perform spelling/character-description/copy variants. The first-press equivalents are implemented; repeat semantics remain unimplemented. |
+| Structural objects | NVDA A/M/N/O/W mean annotation/frame/non-link block/embedded object/spelling error. Orca 42 has no matching structural objects, so these are browse-mode suppressed. |
+| Table reading | Cell movement and row/column edges are implemented. NVDA's non-moving full-row/full-column reading commands remain unsupported because Orca 42's table presenter moves the caret. |
+| Browse collapse/expand | NVDA Alt+Up/Down is contained to browse mode, but Orca 42 has no equivalent virtual-caret collapse/expand API. |
+| Braille | Pan, routing and to-focus are mapped. NVDA tether/follows-focus and braille previous/next-line semantics have no proven Orca 42 equivalents and need live hardware validation. |
+| Keypad identity | Legacy non-extended Home/End/Arrow/Delete payloads without key name/scan code are ambiguous between navigation cluster and keypad; the bridge deliberately does not guess. |
+| Lock/reconnect/output | Automated ownership/generation/XKB checks exist, but real Windows NVDA + NVDA Remote + Orca lock announcements, speech cancellation timing and braille hardware behavior still require live testing. |
+| Application matrix | Thunar, XFCE panel/menu, Settings Manager, GTK file/auth dialogs, notifications, Update/Software Manager, Mousepad/Xed, Firefox and VS Code still require end-to-end NVDA/Orca validation. |
+
+NVDA+F7 now uses the NVDA 2026.2 default category set and order (Links,
+Headings, Form fields, Buttons, Landmarks) and remembers the last selected
+category. Orca owns the structural result list itself.
+
 Starting revision: `3404d8439139ad4c45af9a8ce50acf736dab41c6`, checked after
 fetch on `feature/nvda-orca-input-compat`. PR #14 is open and unmerged.
 Controller compatibility remains **v32**; local-machine/XTest remains **v8**.
