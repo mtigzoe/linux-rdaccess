@@ -817,7 +817,8 @@ LEGACY_COMPAT_MARKER_V37 = "# linux-rdaccess NVDA/Orca input compatibility v37"
 LEGACY_COMPAT_MARKER_V38 = "# linux-rdaccess NVDA/Orca input compatibility v38"
 LEGACY_COMPAT_MARKER_V39 = "# linux-rdaccess NVDA/Orca input compatibility v39"
 LEGACY_COMPAT_MARKER_V40 = "# linux-rdaccess NVDA/Orca input compatibility v40"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v41"
+LEGACY_COMPAT_MARKER_V41 = "# linux-rdaccess NVDA/Orca input compatibility v41"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v42"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -882,6 +883,12 @@ _LEGACY_HELPERS = '''\
     # binding has none (verified against Orca 42 key matching).
     _LRD_CHORDS = {
     }
+
+    def _linux_rdaccess_nvda_layout(self):
+        """Return the configured Windows NVDA keyboard layout."""
+        value = __import__("os").environ.get(
+            "LINUX_RDACCESS_NVDA_LAYOUT", "desktop").strip().lower()
+        return value if value in ("desktop", "laptop") else "desktop"
 
     def _linux_rdaccess_clock_command(self):
         """Select time/date for consecutive complete NVDA+F12 gestures."""
@@ -1086,6 +1093,7 @@ _LEGACY_HELPERS = '''\
         """Return True when the event was fully handled here."""
         self._linux_rdaccess_sync_state()
         self._lrd_navigation_marker = None
+        nvda_layout = self._linux_rdaccess_nvda_layout()
         pressed = bool(pressed)
         held = self._linux_rdaccess_key_identity(vk_code, extended, key_name)
         repeat = pressed and held in self._lrd_down
@@ -1265,12 +1273,49 @@ _LEGACY_HELPERS = '''\
             self._lrd_navigation_marker = (
                 "_LRD_T", {0x25: "Left", 0x26: "Up", 0x27: "Right", 0x28: "Down"}[vk_code], held)
 
-        # NVDA+Down has an exact Orca Say All method. Only the extended
+        # NVDA's desktop and laptop layouts reuse several physical gestures
+        # for different commands. Select the Windows layout explicitly rather
+        # than applying desktop semantics universally.
+        if pressed and self._lrd_nvda_down and not repeat and nvda_layout == "laptop":
+            shifts = [k for k in self._lrd_down if k[0] in self._LRD_SHIFT_VKS]
+            other = [
+                k for k in self._lrd_down
+                if k[0] in self._LRD_OTHER_MOD_VKS and k[0] not in self._LRD_SHIFT_VKS
+            ]
+            action = None
+            if vk_code == 0x41 and not shifts and not other:          # NVDA+A
+                action = "sayAll"
+            elif vk_code == 0x4C and not shifts and not other:        # NVDA+L
+                action = "presentCurrentLine"
+            elif vk_code == 0x23 and bool(extended) and shifts and not other:
+                action = "presentStatusBar"                            # NVDA+Shift+End
+            elif (
+                bool(extended)
+                and vk_code in (0x23, 0x26, 0x28)
+                and not shifts
+                and not other
+            ):
+                # Laptop NVDA+End/Up/Down are review commands. Orca flat review
+                # is not proven equivalent to NVDA review, so consume these
+                # instead of running the conflicting desktop command.
+                action = "unsupported_review"
+
+            if action is not None:
+                self._lrd_swapped.add(held)
+                if getattr(self, "_lrd_caps_pending", None) is not None:
+                    self._lrd_caps_used = True
+                if action != "unsupported_review":
+                    self._linux_rdaccess_run_main(
+                        lambda action=action: self._linux_rdaccess_script_call(action))
+                return True
+
+        # Desktop NVDA+Down has an exact Orca Say All method. Only the extended
         # navigation Down key is NVDA's gesture; the non-extended VK form is
         # the numeric keypad key and must continue to pass through unchanged.
         if (
             pressed
             and self._lrd_nvda_down
+            and nvda_layout == "desktop"
             and not repeat
             and vk_code == 0x28
             and bool(extended)
@@ -1309,6 +1354,8 @@ _LEGACY_HELPERS = '''\
         # NVDA-only actions that do not map cleanly to one Orca key.
         if pressed and self._lrd_nvda_down and not repeat:
             action = self._LRD_ACTION_CHORDS.get(vk_code)
+            if nvda_layout == "laptop" and action in ("status_bar", "current_line"):
+                action = None
             if (
                 action is not None
                 and not any(k[0] in self._LRD_OTHER_MOD_VKS for k in self._lrd_down)
@@ -3125,6 +3172,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V41,
                 LEGACY_COMPAT_MARKER_V40,
                 LEGACY_COMPAT_MARKER_V39,
                 LEGACY_COMPAT_MARKER_V38,
