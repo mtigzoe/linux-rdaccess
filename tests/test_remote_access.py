@@ -2593,7 +2593,7 @@ class LocalMachine:
             "o": o_code, "w": w_code, "d": self.D_CODE,
             "7": 17, "8": 18, "9": 19,
             "Home": 110, "End": 115, "Page_Up": 112, "Page_Down": 117,
-            "F10": 76, "v": 55,
+            "F3": 69, "F10": 76, "v": 55,
             "Left": self.LEFT, "Right": self.RIGHT,
             "Up": self.UP, "Down": self.DOWN,
         }.get(key)
@@ -2804,6 +2804,31 @@ class LocalMachine:
                     self.assertIsNotNone(getattr(ev, "_consumer", None))
                 else:
                     self.assertIsNone(getattr(ev, "_consumer", None))
+
+    def test_remote_nvda_f3_find_commands_are_consumed_only_in_browse_mode(self):
+        for shift in (False, True):
+            for browse in (True, False):
+                with self.subTest(shift=shift, browse=browse):
+                    c, KE, _ = self._hooked(browse=browse)
+                    self._key(c, 0x2D, True, extended=True)
+                    if shift:
+                        self._key(c, 0xA0, True)
+                    self._key(c, 0x72, True)
+                    ev = KE("F3", 69, modifiers=self.SHIFT if shift else 0)
+                    if browse:
+                        self.assertIsNotNone(getattr(ev, "_consumer", None))
+                    else:
+                        self.assertIsNone(getattr(ev, "_consumer", None))
+
+    def test_caps_nvda_f3_never_toggles_caps_during_browse_context_decision(self):
+        c, KE, _ = self._hooked(browse=True)
+        self._key(c, 0x14, True)
+        self._key(c, 0x72, True)
+        ev = KE("F3", 69)
+        self.assertIsNotNone(getattr(ev, "_consumer", None))
+        self._key(c, 0x72, False)
+        self._key(c, 0x14, False)
+        self.assertNotIn((0x14, True), self._names(c))
 
     def test_local_mismatched_browse_letters_are_never_suppressed(self):
         cases = (
