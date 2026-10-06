@@ -1264,6 +1264,10 @@ _LEGACY_HELPERS = '''\
         if isinstance(table, dict):
             _lrd_clear_navigation_markers(table)
             table["held"] = {}
+        table_edge = globals().get("_LRD_TABLE_EDGE")
+        if isinstance(table_edge, dict):
+            _lrd_clear_navigation_markers(table_edge)
+            table_edge["held"] = {}
         browse_unsupported = globals().get("_LRD_BROWSE_UNSUPPORTED")
         if isinstance(browse_unsupported, dict):
             _lrd_clear_navigation_markers(browse_unsupported)
@@ -1496,6 +1500,26 @@ _LEGACY_HELPERS = '''\
                 k[0] in self._LRD_OTHER_MOD_VKS and k[0] not in (0x10, 0xA0, 0xA1)
                 for k in self._lrd_down):
             self._lrd_navigation_marker = ("_LRD_D", "d", held)
+
+        # NVDA table-edge commands keep the current column/row while moving to
+        # the first/last row/column. Orca 42 has no equivalent keybinding, so
+        # publish provenance and invoke its native table APIs on the main thread.
+        if (
+            pressed
+            and bool(extended)
+            and vk_code in (0x21, 0x22, 0x24, 0x23)
+            and not self._lrd_nvda_down
+            and any(k[0] in self._LRD_CTRL_VKS for k in self._lrd_down)
+            and any(k[0] in (0x12, 0xA4, 0xA5) for k in self._lrd_down)
+            and not any(k[0] in self._LRD_SHIFT_VKS + (0x5B, 0x5C)
+                        for k in self._lrd_down)
+        ):
+            self._lrd_navigation_marker = (
+                "_LRD_TABLE_EDGE",
+                {0x21: "first_row", 0x22: "last_row",
+                 0x24: "first_col", 0x23: "last_col"}[vk_code],
+                held,
+            )
 
         # NVDA's table commands are Ctrl+Alt+Arrow. Mark only an extended arrow
         # with Ctrl and Alt held and no Shift/Win/NVDA key; the Orca-side hook
@@ -3244,7 +3268,90 @@ def _lrd_maybe_table_edge(event, keybindings):
 # the identity chosen for its press. Opt out with
 # LINUX_RDACCESS_NVDA_TABLE_KEYS=0.
 _LRD_T = {"pending": [], "held": {}}
+_LRD_TABLE_EDGE = {"pending": [], "held": {}}
 _LRD_TABLE_ARROWS = ("Left", "Right", "Up", "Down")
+
+
+def _lrd_consume_table_edge(event=None):
+    action = getattr(event, "_lrd_table_edge_action", None) if event is not None else None
+    if not action:
+        return True
+    nav, cell_object, cell, current, desired = action
+    nav.goCell(cell_object, cell, current, desired)
+    return True
+
+
+def _lrd_maybe_handle_table_edge(event, keybindings):
+    pressed = event.isPressedKey()
+    held = _LRD_TABLE_EDGE["held"]
+    if not pressed:
+        if event.hw_code not in held:
+            return False
+        held.pop(event.hw_code, None)
+        event._handler = None
+        event._consumer = _lrd_consume_unsupported_browse
+        return True
+
+    keys = {
+        keybindings.getKeycode("Page_Up"): "first_row",
+        keybindings.getKeycode("Page_Down"): "last_row",
+        keybindings.getKeycode("Home"): "first_col",
+        keybindings.getKeycode("End"): "last_col",
+    }
+    command = keys.get(event.hw_code)
+    if command is None:
+        return False
+    ctrl, alt = keybindings.CTRL_MODIFIER_MASK, keybindings.ALT_MODIFIER_MASK
+    tracked = (
+        keybindings.SHIFT_MODIFIER_MASK | ctrl | alt | keybindings.ORCA_MODIFIER_MASK)
+    if event.modifiers & tracked != ctrl | alt:
+        return False
+    if not _lrd_take_navigation_marker(_LRD_TABLE_EDGE, command):
+        return False
+
+    script = getattr(event, "_script", None)
+    gate = getattr(script, "useStructuralNavigationModel", None)
+    nav = getattr(script, "structuralNavigation", None)
+    if nav is None:
+        nav = getattr(script, "structural_navigation", None)
+    if not callable(gate) or not gate() or nav is None:
+        return False
+
+    try:
+        obj, _offset = script.utilities.getCaretContext()
+        cell = nav.getCellForObj(obj)
+        if cell is None:
+            raise LookupError
+        current = nav.getCellCoordinates(cell, False)
+        table = nav.getTableForCell(cell)
+        if table is None:
+            raise LookupError
+        rows, cols = script.utilities.rowAndColumnCount(table, False)
+        if rows <= 0 or cols <= 0:
+            raise LookupError
+        row, col = current
+        if command == "first_row":
+            desired = [0, col]
+        elif command == "last_row":
+            desired = [rows - 1, col]
+        elif command == "first_col":
+            desired = [row, 0]
+        else:
+            desired = [row, cols - 1]
+        cell_object = (getattr(nav, "enabledObjects", None) or {}).get("tableCell")
+        if cell_object is None or not callable(getattr(nav, "goCell", None)):
+            raise LookupError
+    except Exception:
+        event._handler = None
+        event._consumer = _lrd_consume_unsupported_browse
+        held[event.hw_code] = event.modifiers
+        return True
+
+    held[event.hw_code] = event.modifiers
+    event._handler = None
+    event._lrd_table_edge_action = (nav, cell_object, cell, current, desired)
+    event._consumer = _lrd_consume_table_edge
+    return True
 
 
 def _lrd_maybe_swap_table(event, keybindings):
@@ -3342,6 +3449,11 @@ def _lrd_install_orca_hook():
                 return True, "linux-rdaccess translated NVDA table edge command"
         except Exception:
             log.error("linux-rdaccess: table edge navigation translation failed")
+        try:
+            if _lrd_maybe_handle_table_edge(self, keybindings):
+                return True, "linux-rdaccess handled NVDA table-edge command"
+        except Exception:
+            log.error("linux-rdaccess: table-edge navigation failed")
         restore = None
         try:
             restore = _lrd_maybe_swap_d(self, keybindings)
