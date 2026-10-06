@@ -845,7 +845,8 @@ LEGACY_COMPAT_MARKER_V65 = "# linux-rdaccess NVDA/Orca input compatibility v65"
 LEGACY_COMPAT_MARKER_V66 = "# linux-rdaccess NVDA/Orca input compatibility v66"
 LEGACY_COMPAT_MARKER_V67 = "# linux-rdaccess NVDA/Orca input compatibility v67"
 LEGACY_COMPAT_MARKER_V68 = "# linux-rdaccess NVDA/Orca input compatibility v68"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v69"
+LEGACY_COMPAT_MARKER_V69 = "# linux-rdaccess NVDA/Orca input compatibility v69"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v70"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -1545,6 +1546,8 @@ _LEGACY_HELPERS = '''\
             browse_action = None
             if vk_code == 0x56 and not shifts and not ctrl_alt_win:       # NVDA+V
                 browse_action = "layout"
+            elif vk_code == 0x72 and not ctrl_alt_win:                    # NVDA+F3/Shift+F3
+                browse_action = "findPrevious" if shifts else "findNext"
             elif vk_code == 0x79 and shifts and not ctrl_alt_win:         # NVDA+Shift+F10
                 browse_action = "nativeSelection"
             if browse_action is not None:
@@ -2762,6 +2765,10 @@ def _lrd_maybe_nvda_browse(event, keybindings):
     key = str(getattr(event, "event_string", "") or "")
     if key.lower() == "v":
         action = "layout"
+    elif key == "F3":
+        action = ("findPrevious"
+                  if event.modifiers & keybindings.SHIFT_MODIFIER_MASK
+                  else "findNext")
     elif key == "F10":
         action = "nativeSelection"
     else:
@@ -3859,6 +3866,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V69,
                 LEGACY_COMPAT_MARKER_V68,
                 LEGACY_COMPAT_MARKER_V67,
                 LEGACY_COMPAT_MARKER_V66,
