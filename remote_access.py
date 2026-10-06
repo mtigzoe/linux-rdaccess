@@ -838,7 +838,8 @@ LEGACY_COMPAT_MARKER_V58 = "# linux-rdaccess NVDA/Orca input compatibility v58"
 LEGACY_COMPAT_MARKER_V59 = "# linux-rdaccess NVDA/Orca input compatibility v59"
 LEGACY_COMPAT_MARKER_V60 = "# linux-rdaccess NVDA/Orca input compatibility v60"
 LEGACY_COMPAT_MARKER_V61 = "# linux-rdaccess NVDA/Orca input compatibility v61"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v62"
+LEGACY_COMPAT_MARKER_V62 = "# linux-rdaccess NVDA/Orca input compatibility v62"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v63"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -1244,6 +1245,10 @@ _LEGACY_HELPERS = '''\
         if isinstance(table, dict):
             _lrd_clear_navigation_markers(table)
             table["held"] = {}
+        browse_unsupported = globals().get("_LRD_BROWSE_UNSUPPORTED")
+        if isinstance(browse_unsupported, dict):
+            _lrd_clear_navigation_markers(browse_unsupported)
+            browse_unsupported["held"] = {}
 
     def _linux_rdaccess_flush_pending_caps(self):
         """Forward the original deferred CapsLock press when it was not an NVDA command."""
@@ -1433,6 +1438,24 @@ _LEGACY_HELPERS = '''\
                     self._lrd_bypass_keys[held] = request
                 return True
             return False
+
+        # NVDA and Orca assign different browse-mode meanings to A/M/N/O/W.
+        # Mark only a remote plain/Shift letter; the Orca-side hook consumes it
+        # only when Orca itself says structural navigation is active.
+        if (
+            pressed
+            and vk_code in (0x41, 0x4D, 0x4E, 0x4F, 0x57)
+            and not self._lrd_nvda_down
+            and not any(
+                k[0] in self._LRD_OTHER_MOD_VKS and k[0] not in self._LRD_SHIFT_VKS
+                for k in self._lrd_down
+            )
+        ):
+            self._lrd_navigation_marker = (
+                "_LRD_BROWSE_UNSUPPORTED",
+                {0x41: "a", 0x4D: "m", 0x4E: "n", 0x4F: "o", 0x57: "w"}[vk_code],
+                held,
+            )
 
         # Remember that a plain (or Shift) D came from the remote session, so the
         # Orca-side hook below can turn it into the landmark key in browse mode
@@ -2647,6 +2670,58 @@ def _lrd_maybe_swap_d(event, keybindings):
     return original
 
 
+# NVDA browse mode and Orca 42 disagree on these single-letter commands:
+# A annotation vs clickable, M frame vs landmark, O embedded object vs chunk,
+# while N non-link block and W spelling error have no Orca 42 equivalents.
+# Consume only a freshly proven remote key while Orca's structural model is
+# active. Local Linux input and focus-mode/editable typing are untouched.
+_LRD_BROWSE_UNSUPPORTED = {"pending": [], "held": {}}
+_LRD_BROWSE_UNSUPPORTED_KEYS = ("a", "m", "n", "o", "w")
+
+
+def _lrd_consume_unsupported_browse(event=None):
+    return True
+
+
+def _lrd_maybe_suppress_browse(event, keybindings):
+    pressed = event.isPressedKey()
+    held = _LRD_BROWSE_UNSUPPORTED["held"]
+
+    if not pressed:
+        if event.hw_code not in held:
+            return False
+        held.pop(event.hw_code, None)
+        event._handler = None
+        event._consumer = _lrd_consume_unsupported_browse
+        return True
+
+    key = str(getattr(event, "event_string", "") or "").lower()
+    if key not in _LRD_BROWSE_UNSUPPORTED_KEYS:
+        return False
+    blocked = (
+        keybindings.CTRL_MODIFIER_MASK
+        | keybindings.ALT_MODIFIER_MASK
+        | keybindings.ORCA_MODIFIER_MASK
+    )
+    if event.modifiers & blocked:
+        return False
+
+    # Claim the remote provenance before asking Orca's mode gate. A remote key
+    # refused in focus mode must not leave a token for a later local key.
+    if not _lrd_take_navigation_marker(_LRD_BROWSE_UNSUPPORTED, key):
+        return False
+
+    script = getattr(event, "_script", None)
+    gate = getattr(script, "useStructuralNavigationModel", None)
+    if not callable(gate) or not gate():
+        return False
+
+    held[event.hw_code] = event.modifiers
+    event._handler = None
+    event._consumer = _lrd_consume_unsupported_browse
+    return True
+
+
 # NVDA's table commands are Ctrl+Alt+Arrow; Orca 42 binds the same actions to
 # Shift+Alt+Arrow (structural navigation, tableCell). Translate only an arrow
 # that arrived from the remote session with exactly Ctrl+Alt held, and only
@@ -2734,6 +2809,11 @@ def _lrd_install_orca_hook():
                 return False, "linux-rdaccess passed remote gesture to application"
         except Exception:
             log.error("linux-rdaccess: native bypass dispatch failed")
+        try:
+            if _lrd_maybe_suppress_browse(self, keybindings):
+                return True, "linux-rdaccess suppressed mismatched NVDA browse command"
+        except Exception:
+            log.error("linux-rdaccess: browse command suppression failed")
         restore = None
         try:
             restore = _lrd_maybe_swap_d(self, keybindings)
@@ -3496,6 +3576,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V62,
                 LEGACY_COMPAT_MARKER_V61,
                 LEGACY_COMPAT_MARKER_V60,
                 LEGACY_COMPAT_MARKER_V59,
