@@ -15,6 +15,7 @@ on:
       - "fix/*"
     paths:
       - "*.py"
+      - "*.sh"
       - "diagnostics/*.py"
       - "tests/**"
       - "a11y_link.py"

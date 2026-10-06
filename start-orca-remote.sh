@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-session_pid="$(pgrep -u "$USER" -n xfce4-session || true)"
+# $USER is not always set (non-login shells, services); the numeric uid is.
+proc_root="${LINUX_RDACCESS_PROC_ROOT:-/proc}"
+session_pid="$(pgrep -u "$(id -u)" -n xfce4-session || true)"
 if [[ -z "$session_pid" ]]; then
   echo "Could not find an active xfce4-session." >&2
   exit 1
@@ -13,7 +15,7 @@ while IFS= read -r -d '' entry; do
       export "$entry"
       ;;
   esac
-done < "/proc/$session_pid/environ"
+done < "$proc_root/$session_pid/environ"
 
 if [[ -z "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" ]]; then
   echo "No graphical display found in the active XFCE session." >&2

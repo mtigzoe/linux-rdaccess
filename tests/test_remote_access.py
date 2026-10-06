@@ -370,6 +370,20 @@ class RemoteController:
             self.assertIn(remote_access.LEGACY_COMPAT_MARKER, result)
             self.assertNotIn(remote_access.LEGACY_COMPAT_MARKER_V35 + "\n", result)
 
+    def test_v37_patch_is_replaced_from_backup(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "remote_controller.py"
+            old = self.UPSTREAM_CONTROLLER + "\n" + remote_access.LEGACY_COMPAT_MARKER_V37 + "\n"
+            path.write_text(old, encoding="utf-8")
+            path.with_name(path.name + ".linux-rdaccess-backup").write_text(
+                self.UPSTREAM_CONTROLLER, encoding="utf-8"
+            )
+            self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
+            result = path.read_text(encoding="utf-8")
+            self.assertIn(remote_access.LEGACY_COMPAT_MARKER, result)
+            self.assertNotIn(remote_access.LEGACY_COMPAT_MARKER_V37 + "\n", result)
+            self.assertTrue(remote_access.legacy_controller_patch_current(result))
+
     def test_v36_patch_is_replaced_from_backup(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "remote_controller.py"
@@ -2416,7 +2430,7 @@ class LocalMachine:
         self.assertEqual(release.modifiers, self.ALT)     # restored afterwards
         again = KE("Down", self.DOWN, modifiers=self.ALT, pressed=False)
         self.assertIsNone(again._handler)                 # state cleared
-        self.assertFalse(c._module._LRD_T["swapped"])
+        self.assertEqual(c._module._LRD_T["held"], {})
 
     def test_other_key_releases_never_inherit_the_table_translation(self):
         c, KE, _ = self._hooked()
@@ -2424,7 +2438,7 @@ class LocalMachine:
         KE("Down", self.DOWN, modifiers=self.CTRL_ALT)
         other = KE("Left", self.LEFT, modifiers=self.ALT, pressed=False)
         self.assertIsNone(other._handler)
-        self.assertTrue(c._module._LRD_T["swapped"])      # Down's release still pending
+        self.assertIn(self.DOWN, c._module._LRD_T["held"])   # Down's release still pending
 
     def test_stray_release_does_not_translate(self):
         c, KE, _ = self._hooked()
@@ -2436,7 +2450,7 @@ class LocalMachine:
         ev = KE("Down", self.DOWN, modifiers=self.SHIFT | self.ALT)
         self.assertEqual(ev._handler.function, "cell_down")     # Orca's own binding
         self.assertEqual(ev.modifiers, self.SHIFT | self.ALT)
-        self.assertFalse(c._module._LRD_T["swapped"])
+        self.assertEqual(c._module._LRD_T["held"], {})
 
     def test_one_remote_arrow_marks_exactly_one_orca_arrow(self):
         c, KE, _ = self._hooked()
@@ -2454,7 +2468,7 @@ class LocalMachine:
         self.assertGreater(c2._module._LRD_T["ts"], 0.0)
         c2.toggle_control()
         self.assertEqual(c2._module._LRD_T["ts"], 0.0)
-        self.assertFalse(c2._module._LRD_T["swapped"])
+        self.assertEqual(c2._module._LRD_T["held"], {})
         self.assertIsNone(KE2("Down", self.DOWN, modifiers=self.CTRL_ALT)._handler)
 
     def test_only_orca_table_cell_handlers_are_accepted(self):
@@ -2485,6 +2499,50 @@ class LocalMachine:
         self._remote_table_key(c2)
         ev = KE2("Down", self.DOWN, modifiers=self.CTRL_ALT)       # must not raise
         self.assertEqual(ev.modifiers, self.CTRL_ALT)
+
+    def test_rolling_between_table_keys_keeps_each_release_translated(self):
+        c, KE, _ = self._hooked()
+        self._remote_table_key(c, 0x28)
+        self.assertEqual(KE("Down", self.DOWN, modifiers=self.CTRL_ALT)._handler.function, "cell_down")
+        self._key(c, 0x27, True, extended=True)           # Right pressed while Down is held
+        self.assertEqual(KE("Right", self.RIGHT, modifiers=self.CTRL_ALT)._handler.function, "cell_right")
+        down_up = KE("Down", self.DOWN, modifiers=self.CTRL_ALT, pressed=False)
+        self.assertEqual(down_up._handler.function, "cell_down")      # was stranded before
+        right_up = KE("Right", self.RIGHT, modifiers=self.CTRL_ALT, pressed=False)
+        self.assertEqual(right_up._handler.function, "cell_right")
+        self.assertEqual(c._module._LRD_T["held"], {})
+
+    def test_untranslated_repeat_drops_the_earlier_translation_of_that_key(self):
+        c, KE, script = self._hooked()
+        self._remote_table_key(c)
+        KE("Down", self.DOWN, modifiers=self.CTRL_ALT)
+        script.state["browse"] = False                    # mode changes during auto-repeat
+        self._key(c, 0x28, True, extended=True)
+        KE("Down", self.DOWN, modifiers=self.CTRL_ALT)
+        self.assertEqual(c._module._LRD_T["held"], {})
+
+    def test_orca_lookup_failure_never_leaves_the_event_rewritten(self):
+        def fail_once(script):
+            real, calls = script.keyBindings.getInputHandler, []
+
+            def lookup(event):
+                calls.append(1)
+                if len(calls) == 1:             # the hook's own lookup, after the rewrite
+                    raise RuntimeError("secret")
+                return real(event)
+            script.keyBindings.getInputHandler = lookup
+        c, KE, script = self._hooked()
+        fail_once(script)
+        self._remote_table_key(c)
+        ev = KE("Down", self.DOWN, modifiers=self.CTRL_ALT)
+        self.assertEqual(ev.modifiers, self.CTRL_ALT)
+        self.assertEqual(c._module._LRD_T["held"], {})
+        c2, KE2, script2 = self._hooked()
+        fail_once(script2)
+        self._remote_d(c2)
+        ev2 = KE2("d", self.D_CODE, modifiers=self.SHIFT)
+        self.assertEqual((ev2.hw_code, ev2.modifiers), (self.D_CODE, self.SHIFT))
+        self.assertEqual(ev2._handler.function, "live_region")
 
     def test_remote_ctrl_alt_arrow_does_not_disturb_the_d_translation(self):
         c, KE, _ = self._hooked()

@@ -521,7 +521,8 @@ LEGACY_COMPAT_MARKER_V33 = "# linux-rdaccess NVDA/Orca input compatibility v33"
 LEGACY_COMPAT_MARKER_V34 = "# linux-rdaccess NVDA/Orca input compatibility v34"
 LEGACY_COMPAT_MARKER_V35 = "# linux-rdaccess NVDA/Orca input compatibility v35"
 LEGACY_COMPAT_MARKER_V36 = "# linux-rdaccess NVDA/Orca input compatibility v36"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v37"
+LEGACY_COMPAT_MARKER_V37 = "# linux-rdaccess NVDA/Orca input compatibility v37"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v38"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -707,9 +708,7 @@ _LEGACY_HELPERS = '''\
         table = globals().get("_LRD_T")
         if isinstance(table, dict):
             table["ts"] = 0.0
-            table["swapped"] = False
-            table["modifiers"] = 0
-            table["code"] = None
+            table["held"] = {}
 
     def _linux_rdaccess_flush_pending_caps(self):
         """Forward the original deferred CapsLock press when it was not an NVDA command."""
@@ -1490,7 +1489,12 @@ def _lrd_maybe_swap_d(event, keybindings):
         return None
     original = (event.hw_code, event.modifiers)
     event.hw_code = code
-    handler = script.keyBindings.getInputHandler(event)
+    try:
+        handler = script.keyBindings.getInputHandler(event)
+    except BaseException:
+        # Never leave the event rewritten if Orca's lookup fails.
+        event.hw_code, event.modifiers = original
+        raise
     if handler is None or handler.function not in nav.functions:
         event.hw_code, event.modifiers = original
         return None
@@ -1514,7 +1518,7 @@ def _lrd_maybe_swap_d(event, keybindings):
 # Arrow. Only Orca's own tableCell handlers are accepted. A release follows
 # the identity chosen for its press. Opt out with
 # LINUX_RDACCESS_NVDA_TABLE_KEYS=0.
-_LRD_T = {"ts": 0.0, "swapped": False, "modifiers": 0, "code": None}
+_LRD_T = {"ts": 0.0, "held": {}}
 _LRD_T_WINDOW = 1.0
 _LRD_TABLE_ARROWS = ("Left", "Right", "Up", "Down")
 
@@ -1524,30 +1528,28 @@ def _lrd_maybe_swap_table(event, keybindings):
     if __import__("os").environ.get("LINUX_RDACCESS_NVDA_TABLE_KEYS") == "0":
         return None
     pressed = event.isPressedKey()
+    held = _LRD_T["held"]
     if not pressed:
-        if not _LRD_T["swapped"]:
+        # Each translated arrow keeps its own identity, so rolling from one
+        # table key to another while the first is still down does not strand
+        # the first key's release. Other keys never inherit a translation.
+        modifiers = held.pop(event.hw_code, None)
+        if modifiers is None:
             return None
-        # Only the translated key's own release; Ctrl/Alt releases and other
-        # keys must never inherit the translation.
-        if event.hw_code != _LRD_T.get("code"):
-            return None
-        translated = _LRD_T.get("modifiers", 0)
-        _LRD_T["swapped"] = False
-        _LRD_T["modifiers"] = 0
-        _LRD_T["code"] = None
         original = (event.hw_code, event.modifiers)
-        event.modifiers = translated
+        event.modifiers = modifiers
         return original
 
     codes = {keybindings.getKeycode(name) for name in _LRD_TABLE_ARROWS}
     codes.discard(None)
     if event.hw_code not in codes:
         return None
+    # A new press (including auto-repeat) supersedes any earlier decision.
+    held.pop(event.hw_code, None)
     # The marker belongs to exactly one arrow that Orca evaluates, whether or
     # not it ends up translated.
     fresh = __import__("time").monotonic() - _LRD_T["ts"] <= _LRD_T_WINDOW
     _LRD_T["ts"] = 0.0
-    _LRD_T["swapped"] = False
     if not fresh:
         return None
     ctrl, alt = keybindings.CTRL_MODIFIER_MASK, keybindings.ALT_MODIFIER_MASK
@@ -1566,13 +1568,16 @@ def _lrd_maybe_swap_table(event, keybindings):
         return None
     original = (event.hw_code, event.modifiers)
     event.modifiers = (event.modifiers & ~ctrl) | keybindings.SHIFT_MODIFIER_MASK
-    handler = script.keyBindings.getInputHandler(event)
+    try:
+        handler = script.keyBindings.getInputHandler(event)
+    except BaseException:
+        # Never leave the event rewritten if Orca's lookup fails.
+        event.hw_code, event.modifiers = original
+        raise
     if handler is None or handler.function not in cell_functions:
         event.hw_code, event.modifiers = original
         return None
-    _LRD_T["swapped"] = True
-    _LRD_T["modifiers"] = event.modifiers
-    _LRD_T["code"] = event.hw_code
+    held[event.hw_code] = event.modifiers
     return original
 
 
@@ -2324,6 +2329,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V37,
                 LEGACY_COMPAT_MARKER_V36,
                 LEGACY_COMPAT_MARKER_V35,
                 LEGACY_COMPAT_MARKER_V34,

@@ -314,3 +314,20 @@ Orca at all. XFCE's default workspace shortcuts use Ctrl+Alt+Arrow; check them
 with `xfconf-query -c xfce4-keyboard-shortcuts -lv | grep -i "Primary>.*Alt"`
 before concluding the translation is broken. Line reading (NVDA+Up) is a
 separate round.
+
+### Controller v38 hardening
+
+- Both Orca-side key hooks (NVDA D and the table arrows) now restore the event
+  if Orca's handler lookup raises after the event was rewritten. Previously the
+  exception was logged but the event stayed rewritten, so Orca continued with a
+  modifier or key the user never pressed.
+- Table arrows keep one translation per key. Rolling from Ctrl+Alt+Down to
+  Ctrl+Alt+Right while Down is still held no longer strands Down's release.
+- Launchers: `start-orca-session.sh` uses only the current user's newest XFCE
+  session, reads `environ` NUL-separated (a value containing a newline could
+  forge another variable), keeps its log in a private state directory instead
+  of a predictable `/tmp` file, and detaches Orca from the terminal.
+  `start-orca-remote.sh` no longer needs `$USER` and is executable, as the
+  README runs it.
+- `graphical_session_env` chooses the user's newest session instead of the
+  first one `/proc` happens to list.

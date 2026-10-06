@@ -146,6 +146,61 @@ class RestartTests(unittest.TestCase):
             self.assertEqual(env["DBUS_SESSION_BUS_ADDRESS"], "unix:path=/run/user/1000/bus")
             self.assertEqual(env["XDG_RUNTIME_DIR"], "/run/user/1000")
 
+    def _fake_session(self, proc, pid, display, start=None, uid=1000, comm="xfce4-session"):
+        p = proc / str(pid)
+        p.mkdir()
+        (p / "comm").write_text(comm + "\n", encoding="utf-8")
+        (p / "status").write_text(f"Name:\t{comm}\nUid:\t{uid}\t{uid}\t{uid}\t{uid}\n", encoding="utf-8")
+        (p / "environ").write_bytes(
+            f"DISPLAY={display}\0DBUS_SESSION_BUS_ADDRESS=unix:path=/bus{display}\0"
+            f"XDG_RUNTIME_DIR=/run/user/{uid}\0".encode())
+        if start is not None:
+            fields = ["S"] + ["0"] * 18 + [str(start)] + ["0"] * 10
+            (p / "stat").write_text(f"{pid} ({comm} x) " + " ".join(fields) + "\n", encoding="utf-8")
+
+    class _OrderedProc:
+        """Lists /proc entries in a fixed order; real directory order is arbitrary."""
+
+        def __init__(self, root, order):
+            self._entries = [root / str(pid) for pid in order]
+
+        def iterdir(self):
+            return iter(self._entries)
+
+    def test_graphical_session_env_prefers_the_newest_session_of_the_user(self):
+        # An xrdp desktop started after a console login must win whatever order
+        # /proc lists the processes in, and a lower pid is not necessarily older.
+        for order in ((900, 300), (300, 900)):
+            with self.subTest(listing_order=order), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                self._fake_session(root, 900, ":0", 5000)
+                self._fake_session(root, 300, ":10", 90000)      # pid 300 started later
+                env = linux_rdaccess.graphical_session_env(
+                    proc_root=self._OrderedProc(root, order),
+                    base_env={"PATH": "/usr/bin"}, uid=1000)
+                self.assertEqual(env["DISPLAY"], ":10")
+                self.assertEqual(env["DBUS_SESSION_BUS_ADDRESS"], "unix:path=/bus:10")
+
+    def test_graphical_session_env_falls_back_to_highest_pid_without_stat(self):
+        with tempfile.TemporaryDirectory() as temp:
+            proc = Path(temp)
+            self._fake_session(proc, 400, ":0")
+            self._fake_session(proc, 200, ":5")
+            for order in ((400, 200), (200, 400)):
+                env = linux_rdaccess.graphical_session_env(
+                    proc_root=self._OrderedProc(proc, order),
+                    base_env={"PATH": "/usr/bin"}, uid=1000)
+                self.assertEqual(env["DISPLAY"], ":0")
+
+    def test_graphical_session_env_ignores_other_users_newer_sessions(self):
+        with tempfile.TemporaryDirectory() as temp:
+            proc = Path(temp)
+            self._fake_session(proc, 100, ":0", 10)
+            self._fake_session(proc, 900, ":11", 99999, uid=1001)
+            env = linux_rdaccess.graphical_session_env(
+                proc_root=proc, base_env={"PATH": "/usr/bin"}, uid=1000)
+            self.assertEqual(env["DISPLAY"], ":0")
+
     def test_graphical_session_env_keeps_complete_desktop_environment(self):
         env = {
             "PATH": "/usr/bin",

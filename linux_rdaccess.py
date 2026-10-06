@@ -73,6 +73,10 @@ def graphical_session_env(
         "XDG_SESSION_TYPE",
     }
 
+    # Several sessions of the same user can coexist (an xrdp desktop next to a
+    # console login). Directory order is arbitrary, so choose the newest one,
+    # as ``pgrep -n`` does in the helper scripts.
+    candidates: list[tuple[int, int, dict[str, str]]] = []
     for entry in proc_root.iterdir():
         if not entry.name.isdigit():
             continue
@@ -99,10 +103,22 @@ def graphical_session_env(
                 session_env[key] = value_b.decode(errors="ignore")
 
         if session_env.get("DISPLAY") or session_env.get("WAYLAND_DISPLAY"):
-            env.update(session_env)
-            return env
+            candidates.append((_process_start_time(entry), int(entry.name), session_env))
 
+    if candidates:
+        env.update(max(candidates, key=lambda item: item[:2])[2])
     return env
+
+
+def _process_start_time(entry: Path) -> int:
+    """Start time in clock ticks from /proc/<pid>/stat, or 0 when unavailable."""
+    try:
+        stat = (entry / "stat").read_text(encoding="utf-8")
+        # The command name may contain spaces and parentheses; the fields that
+        # follow the last ")" are fixed. starttime is field 22 (index 19 here).
+        return int(stat.rsplit(")", 1)[1].split()[19])
+    except (OSError, IndexError, ValueError):
+        return 0
 
 
 def restart_orca() -> int:
