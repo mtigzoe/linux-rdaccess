@@ -841,7 +841,8 @@ LEGACY_COMPAT_MARKER_V61 = "# linux-rdaccess NVDA/Orca input compatibility v61"
 LEGACY_COMPAT_MARKER_V62 = "# linux-rdaccess NVDA/Orca input compatibility v62"
 LEGACY_COMPAT_MARKER_V63 = "# linux-rdaccess NVDA/Orca input compatibility v63"
 LEGACY_COMPAT_MARKER_V64 = "# linux-rdaccess NVDA/Orca input compatibility v64"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v65"
+LEGACY_COMPAT_MARKER_V65 = "# linux-rdaccess NVDA/Orca input compatibility v65"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v66"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -1446,7 +1447,7 @@ _LEGACY_HELPERS = '''\
         # only when Orca itself says structural navigation is active.
         if (
             pressed
-            and vk_code in (0x41, 0x46, 0x4D, 0x4E, 0x4F, 0x57)
+            and vk_code in (0x41, 0x46, 0x4D, 0x4E, 0x4F, 0x57, 0x37, 0x38, 0x39)
             and not self._lrd_nvda_down
             and not any(
                 k[0] in self._LRD_OTHER_MOD_VKS and k[0] not in self._LRD_SHIFT_VKS
@@ -1456,7 +1457,7 @@ _LEGACY_HELPERS = '''\
             self._lrd_navigation_marker = (
                 "_LRD_BROWSE_UNSUPPORTED",
                 {0x41: "a", 0x46: "f", 0x4D: "m", 0x4E: "n",
-                 0x4F: "o", 0x57: "w"}[vk_code],
+                 0x4F: "o", 0x57: "w", 0x37: "7", 0x38: "8", 0x39: "9"}[vk_code],
                 held,
             )
 
@@ -2680,7 +2681,7 @@ def _lrd_maybe_swap_d(event, keybindings):
 # Consume only a freshly proven remote key while Orca's structural model is
 # active. Local Linux input and focus-mode/editable typing are untouched.
 _LRD_BROWSE_UNSUPPORTED = {"pending": [], "held": {}}
-_LRD_BROWSE_UNSUPPORTED_KEYS = ("a", "f", "m", "n", "o", "w")
+_LRD_BROWSE_UNSUPPORTED_KEYS = ("a", "f", "m", "n", "o", "w", "7", "8", "9")
 
 
 def _lrd_consume_unsupported_browse(event=None):
@@ -2689,6 +2690,14 @@ def _lrd_consume_unsupported_browse(event=None):
 
 def _lrd_consume_form_field(event=None):
     action = getattr(event, "_lrd_form_field_action", None) if event is not None else None
+    if not action:
+        return True
+    method, script = action
+    return method(script, event)
+
+
+def _lrd_consume_heading_level(event=None):
+    action = getattr(event, "_lrd_heading_level_action", None) if event is not None else None
     if not action:
         return True
     method, script = action
@@ -2749,6 +2758,31 @@ def _lrd_maybe_suppress_browse(event, keybindings):
             event._lrd_form_field_action = (method, script)
             event._consumer = _lrd_consume_form_field
             return True
+    elif key in ("7", "8", "9"):
+        nav = getattr(script, "structuralNavigation", None)
+        if nav is None:
+            nav = getattr(script, "structural_navigation", None)
+        objects = getattr(nav, "enabledObjects", None) if nav is not None else None
+        if objects is None and nav is not None:
+            objects = getattr(nav, "enabled_objects", None)
+        heading = objects.get("heading") if isinstance(objects, dict) else None
+        reverse = bool(event.modifiers & keybindings.SHIFT_MODIFIER_MASK)
+        factory_names = (
+            ("goPreviousAtLevelFactory", "go_previous_at_level_factory")
+            if reverse
+            else ("goNextAtLevelFactory", "go_next_at_level_factory")
+        )
+        factory = next(
+            (getattr(heading, name, None) for name in factory_names
+             if callable(getattr(heading, name, None))),
+            None,
+        )
+        if callable(factory):
+            method = factory(int(key))
+            if callable(method):
+                event._lrd_heading_level_action = (method, script)
+                event._consumer = _lrd_consume_heading_level
+                return True
     event._consumer = _lrd_consume_unsupported_browse
     return True
 
@@ -3607,6 +3641,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V65,
                 LEGACY_COMPAT_MARKER_V64,
                 LEGACY_COMPAT_MARKER_V63,
                 LEGACY_COMPAT_MARKER_V62,
