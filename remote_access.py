@@ -840,7 +840,8 @@ LEGACY_COMPAT_MARKER_V60 = "# linux-rdaccess NVDA/Orca input compatibility v60"
 LEGACY_COMPAT_MARKER_V61 = "# linux-rdaccess NVDA/Orca input compatibility v61"
 LEGACY_COMPAT_MARKER_V62 = "# linux-rdaccess NVDA/Orca input compatibility v62"
 LEGACY_COMPAT_MARKER_V63 = "# linux-rdaccess NVDA/Orca input compatibility v63"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v64"
+LEGACY_COMPAT_MARKER_V64 = "# linux-rdaccess NVDA/Orca input compatibility v64"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v65"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -2686,6 +2687,14 @@ def _lrd_consume_unsupported_browse(event=None):
     return True
 
 
+def _lrd_consume_form_field(event=None):
+    action = getattr(event, "_lrd_form_field_action", None) if event is not None else None
+    if not action:
+        return True
+    method, script = action
+    return method(script, event)
+
+
 def _lrd_maybe_suppress_browse(event, keybindings):
     pressed = event.isPressedKey()
     held = _LRD_BROWSE_UNSUPPORTED["held"]
@@ -2721,6 +2730,25 @@ def _lrd_maybe_suppress_browse(event, keybindings):
 
     held[event.hw_code] = event.modifiers
     event._handler = None
+    if key == "f":
+        nav = getattr(script, "structuralNavigation", None)
+        if nav is None:
+            nav = getattr(script, "structural_navigation", None)
+        objects = getattr(nav, "enabledObjects", None) if nav is not None else None
+        if objects is None and nav is not None:
+            objects = getattr(nav, "enabled_objects", None)
+        form = objects.get("formField") if isinstance(objects, dict) else None
+        reverse = bool(event.modifiers & keybindings.SHIFT_MODIFIER_MASK)
+        names = ("goPrevious", "go_previous") if reverse else ("goNext", "go_next")
+        method = next(
+            (getattr(form, name, None) for name in names
+             if callable(getattr(form, name, None))),
+            None,
+        )
+        if callable(method):
+            event._lrd_form_field_action = (method, script)
+            event._consumer = _lrd_consume_form_field
+            return True
     event._consumer = _lrd_consume_unsupported_browse
     return True
 
@@ -3579,6 +3607,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V64,
                 LEGACY_COMPAT_MARKER_V63,
                 LEGACY_COMPAT_MARKER_V62,
                 LEGACY_COMPAT_MARKER_V61,
