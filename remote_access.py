@@ -826,7 +826,8 @@ LEGACY_COMPAT_MARKER_V46 = "# linux-rdaccess NVDA/Orca input compatibility v46"
 LEGACY_COMPAT_MARKER_V47 = "# linux-rdaccess NVDA/Orca input compatibility v47"
 LEGACY_COMPAT_MARKER_V48 = "# linux-rdaccess NVDA/Orca input compatibility v48"
 LEGACY_COMPAT_MARKER_V49 = "# linux-rdaccess NVDA/Orca input compatibility v49"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v50"
+LEGACY_COMPAT_MARKER_V50 = "# linux-rdaccess NVDA/Orca input compatibility v50"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v51"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -918,6 +919,8 @@ _LEGACY_HELPERS = '''\
             (0x4F, True, False),   # NVDA+Shift+O: report navigator object
             (0x4D, True, False),   # NVDA+Shift+M: mouse to navigator
             (0x4E, True, False),   # NVDA+Shift+N: navigator to mouse
+            (0xDB, False, False),  # NVDA+[: left click
+            (0xDD, False, False),  # NVDA+]: right click
             (0x21, False, True),   # NVDA+PageUp: next review mode
             (0x22, False, True),   # NVDA+PageDown: previous review mode
             (0x2E, False, True),   # NVDA+Delete: caret/focus location
@@ -931,6 +934,8 @@ _LEGACY_HELPERS = '''\
             (0x27, False, True),   # NVDA+Right: next review character
             (0xBE, False, False),  # NVDA+Period: current review character
             (0xBE, True, False),   # NVDA+Shift+Period: current review line
+            (0x21, True, True),    # NVDA+Shift+PageUp: previous review page
+            (0x22, True, True),    # NVDA+Shift+PageDown: next review page
             (0x41, True, False),   # NVDA+Shift+A: review Say All
         }
         # Ctrl review commands are distinct from the plain/Shift gestures above.
@@ -938,7 +943,8 @@ _LEGACY_HELPERS = '''\
             ctrl_gestures = {
                 (0x24, False, True), (0x23, False, True),
                 (0x25, False, True), (0x27, False, True),
-                (0xBE, False, False), (0x21, True, True), (0x22, True, True),
+                (0xBE, False, False),
+                (0xDB, False, False), (0xDD, False, False),
             }
             return (vk_code, shift, bool(extended)) in ctrl_gestures
         return (vk_code, shift, bool(extended)) in gestures
@@ -3311,6 +3317,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V50,
                 LEGACY_COMPAT_MARKER_V49,
                 LEGACY_COMPAT_MARKER_V48,
                 LEGACY_COMPAT_MARKER_V47,
