@@ -818,7 +818,8 @@ LEGACY_COMPAT_MARKER_V38 = "# linux-rdaccess NVDA/Orca input compatibility v38"
 LEGACY_COMPAT_MARKER_V39 = "# linux-rdaccess NVDA/Orca input compatibility v39"
 LEGACY_COMPAT_MARKER_V40 = "# linux-rdaccess NVDA/Orca input compatibility v40"
 LEGACY_COMPAT_MARKER_V41 = "# linux-rdaccess NVDA/Orca input compatibility v41"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v42"
+LEGACY_COMPAT_MARKER_V42 = "# linux-rdaccess NVDA/Orca input compatibility v42"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v43"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -866,6 +867,7 @@ _LEGACY_HELPERS = '''\
     #        press count)
     # "drop" is needed where Orca binds the key with NO Orca modifier.
     _LRD_ACTION_CHORDS = {
+        0x31: "input_help",                          # NVDA+1
         0x09: "where_am_i",                          # NVDA+Tab
         0x23: "status_bar",                          # NVDA+End
         0x26: "current_line",                        # desktop NVDA+Up
@@ -1364,7 +1366,10 @@ _LEGACY_HELPERS = '''\
                 self._lrd_swapped.add(held)
                 if getattr(self, "_lrd_caps_pending", None) is not None:
                     self._lrd_caps_used = True
-                if action == "elements_list":
+                if action == "input_help":
+                    self._linux_rdaccess_run_main(
+                        lambda: self._linux_rdaccess_script_call("toggleInputHelp"))
+                elif action == "elements_list":
                     self._linux_rdaccess_run_main(
                         lambda: self._linux_rdaccess_show_elements_list(modifiers))
                 elif action == "pass_next":
@@ -1969,6 +1974,7 @@ _LEGACY_HELPERS = '''\
 
         try:
             handlers = {
+                "toggleInputHelp": "toggle_input_help",
                 "panBrailleLeft": "pan_braille_left",
                 "panBrailleRight": "pan_braille_right",
                 "processRoutingKey": "route_braille",
@@ -2014,6 +2020,20 @@ _LEGACY_HELPERS = '''\
             if script is None:
                 script = getattr(_state, "active_script", None)
             if script is None:
+                return unavailable()
+            if method == "toggleInputHelp":
+                enabled = getattr(_state, "learnModeEnabled", None)
+                if enabled is None:
+                    enabled = getattr(_state, "learn_mode_enabled", False)
+                names = (
+                    ("exitLearnMode", "exit_learn_mode")
+                    if bool(enabled)
+                    else ("enterLearnMode", "enter_learn_mode")
+                )
+                for name in names:
+                    handler = getattr(script, name, None)
+                    if callable(handler):
+                        return handler(None) is not False
                 return unavailable()
             if method == "toggleStructuralNavigation":
                 nav = getattr(script, "structuralNavigation", None)
@@ -3172,6 +3192,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V42,
                 LEGACY_COMPAT_MARKER_V41,
                 LEGACY_COMPAT_MARKER_V40,
                 LEGACY_COMPAT_MARKER_V39,
