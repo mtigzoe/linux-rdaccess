@@ -1199,6 +1199,35 @@ class RemoteController:
         self.assertNotIn((0x28, True), names)
         self.assertNotIn((0x23, True), names)
 
+    def test_laptop_unimplemented_nvda_object_review_commands_do_not_run_orca_commands(self):
+        import os
+        cases = (
+            (0x50, False, False),  # NVDA+P: symbol level, Orca+P toggles flat review
+            (0x0D, False, False),  # NVDA+Enter: activate navigator object, Orca+Return Where Am I
+            (0x08, False, False),  # NVDA+Backspace: navigator to focus, Orca+Backspace bypass next
+            (0x26, True, True),    # NVDA+Shift+Up: parent object, Orca+Shift+Up selection report
+            (0x27, True, True),    # NVDA+Shift+Right: next object
+            (0x25, True, True),    # NVDA+Shift+Left: previous object
+            (0x28, True, True),    # NVDA+Shift+Down: first child
+            (0x4F, True, False),   # NVDA+Shift+O: report navigator object
+            (0x4D, True, False),   # NVDA+Shift+M: move mouse to navigator object
+            (0x4E, True, False),   # NVDA+Shift+N: navigator object to mouse
+        )
+        for vk, shift, extended in cases:
+            with self.subTest(vk=vk, shift=shift):
+                c, _, _ = self._patched_controller()
+                calls = []
+                c._linux_rdaccess_run_main = lambda func: (func(), True)[1]
+                c._linux_rdaccess_script_call = lambda method, *args: calls.append(method) or True
+                with mock.patch.dict(os.environ, {"LINUX_RDACCESS_NVDA_LAYOUT": "laptop"}):
+                    self._key(c, 0x2D, True, extended=True)
+                    if shift:
+                        self._key(c, 0xA0, True)
+                    self._key(c, vk, True, extended=extended)
+                    self._key(c, vk, False, extended=extended)
+                self.assertEqual(calls, [])
+                self.assertNotIn((vk, True), self._names(c))
+
     def test_direct_say_all_does_not_swallow_nonextended_key_with_same_vk(self):
         import os
         c, _, home = self._patched_controller()
