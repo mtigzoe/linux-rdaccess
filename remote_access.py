@@ -1550,6 +1550,17 @@ _LEGACY_HELPERS = '''\
             elif vk_code == 0x79 and shift and not ctrl and not alt and not win:
                 self._lrd_navigation_marker = (
                     "_LRD_BROWSE_NVDA", "nvda_shift_f10", held)
+            elif (
+                vk_code in (0x25, 0x26, 0x27, 0x28)
+                and bool(extended) and ctrl and alt and not shift and not win
+            ):
+                self._lrd_navigation_marker = (
+                    "_LRD_BROWSE_NVDA",
+                    "nvda_table_read_" + {
+                        0x25: "left", 0x26: "up", 0x27: "right", 0x28: "down"
+                    }[vk_code],
+                    held,
+                )
 
         if (
             pressed
@@ -3041,6 +3052,13 @@ def _lrd_maybe_handle_nvda_browse(event, keybindings):
         marker_key = "nvda_v"
     elif key == "f10" and orca and shift and not ctrl_alt:
         marker_key = "nvda_shift_f10"
+    elif (
+        key in ("left", "right", "up", "down")
+        and orca and not shift
+        and ctrl_alt
+        == (keybindings.CTRL_MODIFIER_MASK | keybindings.ALT_MODIFIER_MASK)
+    ):
+        marker_key = "nvda_table_read_" + key
     if marker_key is None:
         return False
     if not _lrd_take_navigation_marker(_LRD_BROWSE_NVDA, marker_key):
