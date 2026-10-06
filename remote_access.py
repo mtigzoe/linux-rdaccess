@@ -902,7 +902,8 @@ _LEGACY_HELPERS = '''\
     _LRD_ACTION_CHORDS = {
         0x31: "input_help",                          # NVDA+1
         0x50: "punctuation",                         # NVDA+P
-        0x4D: "mouse_review",                         # NVDA+M
+        0x4D: "mouse_review",                        # NVDA+M
+        0x55: "progress_output",                     # NVDA+U
         0x09: "where_am_i",                          # NVDA+Tab
         0x23: "status_bar",                          # NVDA+End
         0x26: "current_line",                        # desktop NVDA+Up
@@ -1583,7 +1584,7 @@ _LEGACY_HELPERS = '''\
                 (vk_code in (0x32, 0x33, 0x34, 0x35, 0x36, 0x37)
                  and not shifts and not other)
                 or (vk_code == 0x42 and not other)
-                or (vk_code in (0x46, 0x4B, 0x53, 0x55)
+                or (vk_code in (0x46, 0x4B, 0x53)
                     and not shifts and not other)
                 or (vk_code in (
                         0x47, 0x53, 0x56, 0x41, 0x55, 0x4B, 0x4D, 0x4F,
@@ -1743,6 +1744,10 @@ _LEGACY_HELPERS = '''\
                     self._linux_rdaccess_run_main(
                         lambda: self._linux_rdaccess_script_call(
                             "toggleMouseReview"))
+                elif action == "progress_output":
+                    self._linux_rdaccess_run_main(
+                        lambda: self._linux_rdaccess_script_call(
+                            "cycleProgressBarOutput"))
                 elif action == "elements_list":
                     self._linux_rdaccess_run_main(
                         lambda: self._linux_rdaccess_show_elements_list(modifiers))
@@ -2359,6 +2364,7 @@ _LEGACY_HELPERS = '''\
             handlers = {
                 "toggleInputHelp": "toggle_input_help",
                 "toggleMouseReview": "toggle_mouse_review",
+                "cycleProgressBarOutput": "cycle_progress_bar_output",
                 "panBrailleLeft": "pan_braille_left",
                 "panBrailleRight": "pan_braille_right",
                 "processRoutingKey": "route_braille",
@@ -2405,6 +2411,34 @@ _LEGACY_HELPERS = '''\
                 script = getattr(_state, "active_script", None)
             if script is None:
                 return unavailable()
+            if method == "cycleProgressBarOutput":
+                try:
+                    from orca import settings_manager as _settings_manager
+                    manager = _settings_manager.getManager()
+                    current = (
+                        bool(manager.getSetting("speakProgressBarUpdates")),
+                        bool(manager.getSetting("beepProgressBarUpdates")),
+                    )
+                    states = (
+                        (False, False, "No progress bar updates"),
+                        (True, False, "Speak progress bar updates"),
+                        (False, True, "Beep for progress bar updates"),
+                        (True, True, "Beep and speak progress bar updates"),
+                    )
+                    index = next(
+                        (i for i, (speak, beep, _label) in enumerate(states)
+                         if (speak, beep) == current),
+                        len(states) - 1,
+                    )
+                    speak, beep, label = states[(index + 1) % len(states)]
+                    manager.setSetting("speakProgressBarUpdates", speak)
+                    manager.setSetting("beepProgressBarUpdates", beep)
+                    presenter = getattr(script, "presentMessage", None)
+                    if callable(presenter):
+                        presenter(label)
+                    return True
+                except Exception:
+                    return unavailable()
             if method == "toggleMouseReview":
                 handlers = getattr(script, "inputEventHandlers", None)
                 if handlers is None:
