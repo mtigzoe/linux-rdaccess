@@ -2596,6 +2596,12 @@ class LocalMachine:
         cell_up = types.SimpleNamespace(function="cell_up")
         cell_down = types.SimpleNamespace(function="cell_down")
         other_nav = types.SimpleNamespace(function="other_nav")
+        form_calls = []
+        form_field = types.SimpleNamespace(
+            goNext=lambda script, event: form_calls.append("next"),
+            goPrevious=lambda script, event: form_calls.append("previous"),
+            functions=[],
+        )
 
         class Bindings:
             table = {
@@ -2704,6 +2710,18 @@ class LocalMachine:
                         "remote mismatched NVDA browse command must be consumed",
                     )
                     self.assertIsNone(ev._handler)
+
+    def test_remote_f_uses_native_orca_form_field_navigation(self):
+        for shift, expected in ((False, "next"), (True, "previous")):
+            with self.subTest(shift=shift):
+                c, KE, script = self._hooked()
+                self._remote_browse_letter(c, 0x46, shift=shift)
+                ev = KE("F" if shift else "f", self.F_CODE,
+                        modifiers=self.SHIFT if shift else 0)
+                consumer = getattr(ev, "_consumer", None)
+                self.assertIsNotNone(consumer)
+                consumer(ev)
+                self.assertEqual(script.form_calls, [expected])
 
     def test_local_mismatched_browse_letters_are_never_suppressed(self):
         cases = (
