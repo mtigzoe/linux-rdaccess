@@ -1148,6 +1148,30 @@ class RemoteController:
                 self._key(c, vk, False)
                 self.assertNotIn((vk, True), self._names(c))
 
+    def test_nvda_selection_and_location_commands_do_not_fall_through(self):
+        cases = (
+            # vk, shift, ctrl, alt, extended, layout
+            (0x24, False, False, True,  True,  "desktop"), # NVDA+Alt+Home selection start
+            (0x23, False, False, True,  True,  "desktop"), # NVDA+Alt+End selection end
+            (0x26, True,  False, False, True,  "desktop"), # NVDA+Shift+Up current selection
+            (0x53, True,  False, False, False, "laptop"),  # NVDA+Shift+S current selection
+            (0xBE, True,  True,  False, False, "laptop"),  # NVDA+Ctrl+Shift+. focus accelerator
+        )
+        for vk, shift, ctrl, alt, extended, layout in cases:
+            with self.subTest(vk=vk, layout=layout):
+                c, _, _ = self._patched_controller()
+                with mock.patch.dict(os.environ, {"LINUX_RDACCESS_NVDA_LAYOUT": layout}):
+                    self._key(c, 0x2D, True, extended=True)
+                    if shift:
+                        self._key(c, 0xA0, True)
+                    if ctrl:
+                        self._key(c, 0xA2, True)
+                    if alt:
+                        self._key(c, 0xA4, True)
+                    self._key(c, vk, True, extended=extended)
+                    self._key(c, vk, False, extended=extended)
+                self.assertNotIn((vk, True), self._names(c))
+
     def test_remaining_documented_nvda_global_commands_do_not_leak_to_linux(self):
         cases = (
             # vk, shift, ctrl, alt, extended, layout
