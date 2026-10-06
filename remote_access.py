@@ -851,7 +851,8 @@ LEGACY_COMPAT_MARKER_V71 = "# linux-rdaccess NVDA/Orca input compatibility v71"
 LEGACY_COMPAT_MARKER_V72 = "# linux-rdaccess NVDA/Orca input compatibility v72"
 LEGACY_COMPAT_MARKER_V73 = "# linux-rdaccess NVDA/Orca input compatibility v73"
 LEGACY_COMPAT_MARKER_V74 = "# linux-rdaccess NVDA/Orca input compatibility v74"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v75"
+LEGACY_COMPAT_MARKER_V75 = "# linux-rdaccess NVDA/Orca input compatibility v75"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v76"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -901,6 +902,7 @@ _LEGACY_HELPERS = '''\
     _LRD_ACTION_CHORDS = {
         0x31: "input_help",                          # NVDA+1
         0x50: "punctuation",                         # NVDA+P
+        0x4D: "mouse_review",                         # NVDA+M
         0x09: "where_am_i",                          # NVDA+Tab
         0x23: "status_bar",                          # NVDA+End
         0x26: "current_line",                        # desktop NVDA+Up
@@ -1581,7 +1583,7 @@ _LEGACY_HELPERS = '''\
                 (vk_code in (0x32, 0x33, 0x34, 0x35, 0x36, 0x37)
                  and not shifts and not other)
                 or (vk_code == 0x42 and not other)
-                or (vk_code in (0x46, 0x4B, 0x4D, 0x53, 0x55)
+                or (vk_code in (0x46, 0x4B, 0x53, 0x55)
                     and not shifts and not other)
                 or (vk_code in (
                         0x47, 0x53, 0x56, 0x41, 0x55, 0x4B, 0x4D, 0x4F,
@@ -1737,6 +1739,10 @@ _LEGACY_HELPERS = '''\
                     self._linux_rdaccess_run_main(
                         lambda: self._linux_rdaccess_script_call(
                             "cycleSpeakingPunctuationLevel"))
+                elif action == "mouse_review":
+                    self._linux_rdaccess_run_main(
+                        lambda: self._linux_rdaccess_script_call(
+                            "toggleMouseReview"))
                 elif action == "elements_list":
                     self._linux_rdaccess_run_main(
                         lambda: self._linux_rdaccess_show_elements_list(modifiers))
@@ -2352,6 +2358,7 @@ _LEGACY_HELPERS = '''\
         try:
             handlers = {
                 "toggleInputHelp": "toggle_input_help",
+                "toggleMouseReview": "toggle_mouse_review",
                 "panBrailleLeft": "pan_braille_left",
                 "panBrailleRight": "pan_braille_right",
                 "processRoutingKey": "route_braille",
@@ -2397,6 +2404,18 @@ _LEGACY_HELPERS = '''\
             if script is None:
                 script = getattr(_state, "active_script", None)
             if script is None:
+                return unavailable()
+            if method == "toggleMouseReview":
+                handlers = getattr(script, "inputEventHandlers", None)
+                if handlers is None:
+                    handlers = getattr(script, "input_event_handlers", None)
+                handler_obj = (
+                    handlers.get("toggleMouseReviewHandler")
+                    if isinstance(handlers, dict) else None
+                )
+                function = getattr(handler_obj, "function", None)
+                if callable(function):
+                    return function(script, None) is not False
                 return unavailable()
             if method == "toggleInputHelp":
                 enabled = getattr(_state, "learnModeEnabled", None)
@@ -3944,6 +3963,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V75,
                 LEGACY_COMPAT_MARKER_V74,
                 LEGACY_COMPAT_MARKER_V73,
                 LEGACY_COMPAT_MARKER_V72,
