@@ -1099,12 +1099,15 @@ class RemoteController:
         c._linux_rdaccess_script_call = lambda method, *args: calls.append(method) or True
         with mock.patch.dict(os.environ, {"LINUX_RDACCESS_NVDA_LAYOUT": "laptop"}):
             self._key(c, 0x2D, True, extended=True)
+            self._key(c, 0x26, True, extended=True)
+            self._key(c, 0x26, False, extended=True) # NVDA+Up: review previous line
             self._key(c, 0x28, True, extended=True)
             self._key(c, 0x28, False, extended=True) # NVDA+Down: review next line
             self._key(c, 0x23, True, extended=True)
             self._key(c, 0x23, False, extended=True) # NVDA+End: review line end
         self.assertEqual(calls, [])
         names = self._names(c)
+        self.assertNotIn((0x26, True), names)
         self.assertNotIn((0x28, True), names)
         self.assertNotIn((0x23, True), names)
 
