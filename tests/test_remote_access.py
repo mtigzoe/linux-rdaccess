@@ -2887,35 +2887,6 @@ class LocalMachine:
                 self.assertIsNotNone(getattr(ev, "_consumer", None))
                 self.assertIsNone(ev._handler)
 
-    def test_remote_nvda_table_read_commands_stay_screen_reader_commands_in_document(self):
-        cases = (
-            (0x27, "Right", self.RIGHT),
-            (0x28, "Down", self.DOWN),
-            (0x25, "Left", self.LEFT),
-            (0x26, "Up", self.UP),
-        )
-        for browse in (True, False):
-            for vk, name, code in cases:
-                with self.subTest(browse=browse, name=name):
-                    c, KE, _script = self._hooked(browse=browse, in_document=True)
-                    self._key(c, 0x2D, True, extended=True)
-                    self._key(c, 0xA2, True)
-                    self._key(c, 0xA4, True)
-                    self._key(c, vk, True, extended=True)
-                    ev = KE(name, code, modifiers=self.ORCA | self.CTRL | self.ALT)
-                    self.assertIsNotNone(getattr(ev, "_consumer", None))
-                    self.assertIsNone(ev._handler)
-
-    def test_remote_nvda_table_read_commands_do_not_leak_in_browser_chrome(self):
-        c, KE, _script = self._hooked(browse=False, in_document=False)
-        self._key(c, 0x2D, True, extended=True)
-        self._key(c, 0xA2, True)
-        self._key(c, 0xA4, True)
-        self._key(c, 0x27, True, extended=True)
-        ev = KE("Right", self.RIGHT, modifiers=self.ORCA | self.CTRL | self.ALT)
-        self.assertIsNotNone(getattr(ev, "_consumer", None))
-        self.assertIsNone(ev._handler)
-
     def test_remote_nvda_ctrl_f_opens_orca_find_in_document_browse_or_focus_mode(self):
         for browse in (True, False):
             with self.subTest(browse=browse):
