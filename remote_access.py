@@ -837,7 +837,8 @@ LEGACY_COMPAT_MARKER_V57 = "# linux-rdaccess NVDA/Orca input compatibility v57"
 LEGACY_COMPAT_MARKER_V58 = "# linux-rdaccess NVDA/Orca input compatibility v58"
 LEGACY_COMPAT_MARKER_V59 = "# linux-rdaccess NVDA/Orca input compatibility v59"
 LEGACY_COMPAT_MARKER_V60 = "# linux-rdaccess NVDA/Orca input compatibility v60"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v61"
+LEGACY_COMPAT_MARKER_V61 = "# linux-rdaccess NVDA/Orca input compatibility v61"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v62"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -1200,7 +1201,14 @@ _LEGACY_HELPERS = '''\
         owned so a later reset can retry them.
         """
         forwarded = getattr(self, "_lrd_forwarded", {})
-        send = getattr(getattr(self, "local_machine", None), "send_key", None)
+        local_machine = getattr(self, "local_machine", None)
+        invalidate = getattr(local_machine, "_linux_rdaccess_invalidate_pending", None)
+        if callable(invalidate):
+            try:
+                invalidate()
+            except Exception:
+                log.error("linux-rdaccess: failed to invalidate queued local work")
+        send = getattr(local_machine, "send_key", None)
         if callable(send):
             order = lambda item: (isinstance(item[0], str), str(item[0]) if isinstance(item[0], str) else item[0] or 0, item[1])
             for held in sorted(list(forwarded), key=order):
@@ -2885,7 +2893,8 @@ LOCAL_MACHINE_MARKER_V6 = LOCAL_MACHINE_MARKER_V1 + " v6"
 LOCAL_MACHINE_MARKER_V7 = LOCAL_MACHINE_MARKER_V1 + " v7"
 LOCAL_MACHINE_MARKER_V8 = LOCAL_MACHINE_MARKER_V1 + " v8"
 LOCAL_MACHINE_MARKER_V9 = LOCAL_MACHINE_MARKER_V1 + " v9"
-LOCAL_MACHINE_MARKER = LOCAL_MACHINE_MARKER_V1 + " v10"
+LOCAL_MACHINE_MARKER_V10 = LOCAL_MACHINE_MARKER_V1 + " v10"
+LOCAL_MACHINE_MARKER = LOCAL_MACHINE_MARKER_V1 + " v11"
 LEGACY_LOCAL_MACHINE_RELATIVE = Path("orca-scripts/local_machine.py")
 
 # Upstream writes every key name (including typed passwords) to a debug log,
@@ -3124,13 +3133,36 @@ if hasattr(LocalMachine, "send_key") and hasattr(LocalMachine, "_resolve_key"):
     LocalMachine.send_key = _lrd_wrap_local_key_results(LocalMachine.send_key)
 
 
+_LRD_MAIN_GENERATION = [0]
+
+
+def _lrd_invalidate_pending_main_calls():
+    _LRD_MAIN_GENERATION[0] += 1
+
+
 def _lrd_call_on_main(func, *args, **kwargs):
-    """Run func on the GLib main loop (GTK is not thread-safe)."""
+    """Run func on GLib only if it still belongs to the current session."""
+    generation = _LRD_MAIN_GENERATION[0]
     try:
         from gi.repository import GLib
     except Exception:
-        return func(*args, **kwargs)
-    GLib.idle_add(lambda: (func(*args, **kwargs), False)[1])
+        if generation == _LRD_MAIN_GENERATION[0]:
+            return func(*args, **kwargs)
+        return None
+
+    def invoke():
+        if generation == _LRD_MAIN_GENERATION[0]:
+            func(*args, **kwargs)
+        return False
+
+    GLib.idle_add(invoke)
+
+
+def _lrd_local_invalidate_pending(self):
+    _lrd_invalidate_pending_main_calls()
+
+
+LocalMachine._linux_rdaccess_invalidate_pending = _lrd_local_invalidate_pending
 '''
 
 _XDOTOOL_DEF_RE = re.compile(r"^    def _send_key_xdotool\(self, key, pressed\):\n", re.MULTILINE)
@@ -3464,6 +3496,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V61,
                 LEGACY_COMPAT_MARKER_V60,
                 LEGACY_COMPAT_MARKER_V59,
                 LEGACY_COMPAT_MARKER_V58,
