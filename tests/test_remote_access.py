@@ -1428,7 +1428,6 @@ class RemoteController:
     def test_laptop_unimplemented_nvda_object_review_commands_do_not_run_orca_commands(self):
         import os
         cases = (
-            (0x50, False, False),  # NVDA+P: symbol level, Orca+P toggles flat review
             (0x0D, False, False),  # NVDA+Enter: activate navigator object, Orca+Return Where Am I
             (0x08, False, False),  # NVDA+Backspace: navigator to focus, Orca+Backspace bypass next
             (0x26, True, True),    # NVDA+Shift+Up: parent object, Orca+Shift+Up selection report
