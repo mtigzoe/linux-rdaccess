@@ -212,6 +212,13 @@ Implemented or under active testing:
     NVDA+Space browse/focus translation
     safe capture of NVDA braille-input gesture metadata
 
+Synthetic braille command modifiers and the NVDA+F7 structural-list fallback
+retain release ownership and make one bounded retry if a synthetic Shift/Ctrl/Alt
+key-up is rejected. This avoids leaving a modifier held until the next
+disconnect/reset. Braille callbacks share the controller input-ownership lock,
+so a control handoff cannot split an in-flight emulated key gesture across two
+sessions.
+
 Braille pan back/forward are mapped generically from the NVDA script path
 (`braille_scrollBack` / `braille_scrollForward`), not from a device model, and
 run the active Orca script's `panBrailleLeft` / `panBrailleRight` on the GLib
@@ -263,7 +270,7 @@ individual on/off results. Num Lock auto-repeat produces one toggle and one
 announcement per press. CapsLock used for a translated NVDA command produces
 neither a lock toggle nor a lock announcement.
 
-The current patches are controller **v47** and local-machine **v10**. Update the
+The current patches are controller **v48** and local-machine **v10**. Update the
 installed command from the repository with `python3 linux_rdaccess.py install`,
 then run `linux-rdaccess connect` to update the Orca-side files and restart Orca.
 `doctor` verifies the connected patch hooks, valid Python, and the installed
