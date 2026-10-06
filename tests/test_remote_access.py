@@ -2581,6 +2581,7 @@ class LocalMachine:
             "a": a_code, "f": f_code, "m": self.M_CODE, "n": n_code,
             "o": o_code, "w": w_code, "d": self.D_CODE,
             "7": 17, "8": 18, "9": 19,
+            "Home": 110, "End": 115, "Page_Up": 112, "Page_Down": 117,
             "Left": self.LEFT, "Right": self.RIGHT,
             "Up": self.UP, "Down": self.DOWN,
         }.get(key)
@@ -3167,6 +3168,49 @@ class LocalMachine:
     def test_stray_release_does_not_translate(self):
         c, KE, _ = self._hooked()
         self.assertIsNone(KE("Down", self.DOWN, modifiers=self.ALT, pressed=False)._handler)
+
+    def test_remote_table_edge_commands_preserve_row_or_column(self):
+        cases = (
+            ("firstRow", 0x21, "Page_Up", 112, [0, 3]),
+            ("lastRow", 0x22, "Page_Down", 117, [4, 3]),
+            ("firstColumn", 0x24, "Home", 110, [2, 0]),
+            ("lastColumn", 0x23, "End", 115, [2, 5]),
+        )
+        for name, vk, event_name, code, expected in cases:
+            with self.subTest(name=name):
+                c, KE, script = self._hooked()
+                cell, table, caret = object(), object(), object()
+                calls = []
+                nav = script.structuralNavigation
+                nav.getCellForObj = lambda obj, cell=cell: cell
+                nav.getCellCoordinates = lambda obj, prefer, cell=cell: [2, 3]
+                nav.getTableForCell = lambda obj, table=table: table
+                nav.goCell = lambda objtype, this, current, desired: calls.append(
+                    (this, list(current), list(desired)))
+                script.utilities = types.SimpleNamespace(
+                    getCaretContext=lambda: (caret, 0),
+                    rowAndColumnCount=lambda obj, prefer: (5, 6),
+                )
+                self._key(c, 0xA2, True)
+                self._key(c, 0xA4, True)
+                self._key(c, vk, True, extended=True)
+                ev = KE(event_name, code, modifiers=self.CTRL | self.ALT)
+                consumer = getattr(ev, "_consumer", None)
+                self.assertIsNotNone(consumer)
+                consumer(ev)
+                self.assertEqual(calls, [(cell, [2, 3], expected)])
+
+    def test_remote_table_edge_command_outside_table_is_not_consumed(self):
+        c, KE, script = self._hooked()
+        nav = script.structuralNavigation
+        nav.getCellForObj = lambda obj: None
+        script.utilities = types.SimpleNamespace(getCaretContext=lambda: (object(), 0))
+        self._key(c, 0xA2, True)
+        self._key(c, 0xA4, True)
+        self._key(c, 0x21, True, extended=True)
+        ev = KE("Page_Up", 112, modifiers=self.CTRL | self.ALT)
+        self.assertIsNone(getattr(ev, "_consumer", None))
+        self.assertFalse(ev.consume)
 
     def test_native_shift_alt_arrow_is_left_to_orca_untranslated(self):
         c, KE, _ = self._hooked()
