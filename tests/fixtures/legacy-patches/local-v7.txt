@@ -1,0 +1,180 @@
+import os, time
+_DBG_LOG = os.path.expanduser("~/.local/share/orca/orca-remote-debug.log")
+
+def _dbg(msg):
+    if not __import__("os").environ.get("LINUX_RDACCESS_DEBUG"):
+        return  # linux-rdaccess: no per-keypress file logging by default
+    try:
+        with open(_DBG_LOG, "a") as f:
+            f.write("[%.3f] LM: %s\n" % (time.time(), msg))
+    except Exception:
+        pass
+
+class LocalMachine:
+    fallback_calls = []
+
+    clip_threads = []
+
+    def set_clipboard_text(self, text=None, **kwargs):
+        if __import__("threading").current_thread() is not __import__("threading").main_thread():
+            # Gtk.Clipboard from the network thread can deadlock Orca.
+            _lrd_call_on_main(self.set_clipboard_text, text=text, **kwargs)
+            return
+        import threading
+        LocalMachine.clip_threads.append((threading.current_thread().name, text))
+
+    def _send_key_xdotool(self, key, pressed):
+        if _LRD_XTEST.key(key, pressed):  # linux-rdaccess low-latency XTest key injection v7
+            return True
+        LocalMachine.fallback_calls.append((key, pressed))
+        return True
+
+    def send_key(self, key_name=None, pressed=None, modifiers=None,
+                 vk_code=None, scan_code=None, extended=None, **kwargs):
+        # linux-rdaccess: report injection results
+        if pressed is None:
+            return False
+        key = self._resolve_key(key_name, vk_code, extended)
+        if key is None:
+            return False
+        if self._send_key_xdotool(key, pressed):
+            return True
+        return False
+
+    @staticmethod
+    def _resolve_key(key_name, vk_code, extended):
+        if not key_name and extended is not None and not extended:
+            keypad_name = _LRD_KEYPAD_NAMES.get(vk_code)
+            if keypad_name is not None:
+                return keypad_name
+        # Legacy resolver ignores extended for navigation/keypad VKs.
+        if key_name:
+            return key_name
+        return {0x21: 'Prior', 0x22: 'Next', 0x23: 'End', 0x24: 'Home',
+                0x25: 'Left', 0x26: 'Up', 0x27: 'Right', 0x28: 'Down',
+                0x2D: 'Insert', 0x2E: 'Delete', 0x0C: None}.get(vk_code)
+
+
+# linux-rdaccess low-latency XTest key injection v7
+# Windows navigation VKs identify the keypad when extended=False. Preserve
+# that identity before choosing XTest or any upstream injection fallback.
+_LRD_KEYPAD_NAMES = {
+    0x0C: "KP_Begin", 0x21: "KP_Prior", 0x22: "KP_Next",
+    0x23: "KP_End", 0x24: "KP_Home", 0x25: "KP_Left",
+    0x26: "KP_Up", 0x27: "KP_Right", 0x28: "KP_Down",
+    0x2D: "KP_Insert", 0x2E: "KP_Delete",
+}
+
+# Upstream starts one `xdotool` process per key event (~38 ms each, measured),
+# serially on the receive thread, so key bursts queue up and NVDA feels
+# "chunky". Inject through XTest in-process instead (~0.004 ms); fall back to
+# upstream's xdotool path for anything we cannot map.
+class _LrdXTest:
+    def __init__(self):
+        self._lock = __import__("threading").Lock()
+        self._x11 = None
+        self._xt = None
+        self._dpy = None
+        self._down_codes = {}
+        self._fallback_down = set()
+        self._failed = False
+        self._failed_environment = None
+
+    def _open(self):
+        import ctypes
+        import ctypes.util
+        x11 = ctypes.CDLL(ctypes.util.find_library("X11") or "libX11.so.6")
+        xt = ctypes.CDLL(ctypes.util.find_library("Xtst") or "libXtst.so.6")
+        x11.XOpenDisplay.restype = ctypes.c_void_p
+        x11.XOpenDisplay.argtypes = [ctypes.c_char_p]
+        x11.XStringToKeysym.restype = ctypes.c_ulong
+        x11.XStringToKeysym.argtypes = [ctypes.c_char_p]
+        x11.XKeysymToKeycode.restype = ctypes.c_ubyte
+        x11.XKeysymToKeycode.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+        x11.XFlush.argtypes = [ctypes.c_void_p]
+        xt.XTestFakeKeyEvent.argtypes = [
+            ctypes.c_void_p, ctypes.c_uint, ctypes.c_int, ctypes.c_ulong]
+        dpy = x11.XOpenDisplay(None)
+        if not dpy:
+            raise OSError("cannot open X display")
+        self._x11, self._xt, self._dpy = x11, xt, dpy
+
+    def _fall_back(self, name, pressed):
+        if pressed:
+            self._fallback_down.add(name)
+        else:
+            self._fallback_down.discard(name)
+            self._down_codes.pop(name, None)
+        return False
+
+    def key(self, name, pressed):
+        """Return True when the event was injected."""
+        if not name:
+            return False
+        with self._lock:
+            import os
+            environment = (os.environ.get("DISPLAY"), os.environ.get("XAUTHORITY"))
+            if self._failed:
+                # An initial open failure owns no live connection. Retry once
+                # when session credentials change, without polling/blocking.
+                if self._dpy is not None or environment == self._failed_environment:
+                    return self._fall_back(name, pressed)
+                self._failed = False
+            if name in self._fallback_down:
+                return self._fall_back(name, pressed)
+            injected = False
+            try:
+                if self._dpy is None:
+                    self._open()
+                # Keep one resolved keycode only for the lifetime of a
+                # held key. This preserves matching down/up events if the XKB
+                # layout changes while the key is held, while the next fresh
+                # press is resolved against the new layout.
+                code = self._down_codes.get(name)
+                if code is None:
+                    try:
+                        encoded_name = str(name).encode("ascii")
+                    except UnicodeEncodeError:
+                        # Let upstream xdotool/other backends handle names Xlib's
+                        # ASCII XStringToKeysym path cannot represent. One such
+                        # key must not disable XTest for the rest of the session.
+                        return self._fall_back(name, pressed)
+                    sym = self._x11.XStringToKeysym(encoded_name)
+                    code = self._x11.XKeysymToKeycode(self._dpy, sym) if sym else 0
+                if not code:
+                    return self._fall_back(name, pressed)
+                if not self._xt.XTestFakeKeyEvent(self._dpy, code, 1 if pressed else 0, 0):
+                    if not pressed:
+                        # Upstream fallback will handle this release; forget
+                        # the held mapping so the next fresh press can resolve
+                        # against the current keyboard layout.
+                        self._down_codes.pop(name, None)
+                    return self._fall_back(name, pressed)
+                injected = True
+                if pressed:
+                    self._down_codes[name] = code
+                else:
+                    self._down_codes.pop(name, None)
+                self._x11.XFlush(self._dpy)
+                return True
+            except Exception:
+                if injected:
+                    # The event has already been queued. Replaying it through
+                    # xdotool can double-toggle a lock or duplicate text input.
+                    return True
+                if self._dpy is None:
+                    self._failed = True
+                    self._failed_environment = environment
+                return self._fall_back(name, pressed)
+
+
+_LRD_XTEST = _LrdXTest()
+
+
+def _lrd_call_on_main(func, *args, **kwargs):
+    """Run func on the GLib main loop (GTK is not thread-safe)."""
+    try:
+        from gi.repository import GLib
+    except Exception:
+        return func(*args, **kwargs)
+    GLib.idle_add(lambda: (func(*args, **kwargs), False)[1])

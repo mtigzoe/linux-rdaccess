@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Linux remote navigation test</title>
+<style>body { max-width: 40rem; margin: 2rem; font: 18px/1.6 sans-serif; } textarea { display: block; }</style>
+<main>
+  <h1>Remote navigation test</h1>
+  <p>First paragraph. Arrow keys should read this text in browse mode.</p>
+  <p>Second paragraph. The previous and next lines should be different.</p>
+  <h2>Links and controls</h2>
+  <p><a href="#last-section">Go to the last section</a></p>
+  <label>Multiline test editor
+    <textarea rows="4" cols="40">Editor line one
+Editor line two
+Editor line three</textarea>
+  </label>
+  <label>Choose a number
+    <select><option>One</option><option>Two</option><option>Three</option></select>
+  </label>
+  <button type="button">Test button</button>
+  <h2 id="last-section">Last section</h2>
+  <p>Last paragraph. End of the controlled navigation test.</p>
+</main>
+</html>

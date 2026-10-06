@@ -1,6 +1,8 @@
 """Bridge tests that need the Atspi typelib (skipped where it is missing). No AT-SPI bus is needed."""
 
 import logging
+import contextlib
+import io
 import subprocess
 import sys
 import unittest
@@ -61,6 +63,25 @@ class RecordingLink:
 
 
 class BridgeEventTests(unittest.TestCase):
+    def test_dry_run_output_does_not_persist_speech(self):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            bridge.DryRunLink().speak('private-speech-text', interrupt=True)
+        self.assertNotIn('private-speech-text', output.getvalue())
+        self.assertIn('speak', output.getvalue())
+
+    def test_debugging_does_not_log_application_text_or_exceptions(self):
+        logging.disable(logging.NOTSET)
+        self.addCleanup(logging.disable, logging.CRITICAL)
+        b, link = self.make()
+        secret = 'private-application-text'
+        with self.assertLogs('bridge', level='DEBUG') as logs:
+            b._on_event(FakeEvent('object:state-changed:focused', 1, FakeAccessible(secret)))
+            b._on_event(FakeEvent('object:state-changed:focused', 1, FakeAccessible(raises=RuntimeError(secret))))
+            b._on_event(FakeEvent('object:state-changed:focused', 1, FakeAccessible(raises=GLib.Error(secret))))
+        self.assertNotIn(secret, str(logs.output))
+        self.assertEqual(link.spoken, [(secret + ', push button', True)])
+
     def make(self, **kw):
         link = RecordingLink()
         return bridge.Bridge(link, **kw), link

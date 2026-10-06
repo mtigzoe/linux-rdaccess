@@ -61,7 +61,7 @@ class DryRunLink:
         pass
 
     def speak(self, text: str, interrupt: bool = False) -> bool:
-        print(f"[speak{' !' if interrupt else ''}] {text}", flush=True)
+        print(f"[speak{' !' if interrupt else ''}] text redacted", flush=True)
         return True
 
     def close(self) -> None:
@@ -103,7 +103,7 @@ class Bridge:
             try:
                 self.listener.deregister(event_type)
             except GLib.Error as exc:
-                log.debug("deregister %s: %s", event_type, exc)
+                log.debug("listener deregistration failed")
         self._registered.clear()
 
     def _on_event(self, event: Atspi.Event, _user_data=None) -> None:
@@ -142,14 +142,14 @@ class Bridge:
             )
         except GLib.Error as exc:
             # The application usually exited between the event and our query.
-            log.debug("%s: source went away (%s)", event.type, exc)
+            log.debug("event source unavailable")
             return
         except Exception:
-            log.exception("failed to handle %s", event.type)
+            log.error("failed to handle accessibility event")
             return
         if announcement is None:
             return
-        log.debug("%s -> %r", event.type, announcement.text)
+        log.debug("accessibility announcement handled")
         self.link.speak(announcement.text, interrupt=announcement.interrupt and self.interrupt)
         if self.braille_link is not None:
             cells = text_to_braille_cells(announcement.text, self.braille_link.num_cells)
@@ -177,7 +177,7 @@ class Bridge:
                     object_registry=self._a11y_objects,
                 )
         except GLib.Error as exc:
-            log.debug("focus resync failed (%s)", exc)
+            log.debug("focus resync failed")
             return
         if payload is None:
             self._a11y_objects.clear()
@@ -185,17 +185,17 @@ class Bridge:
             log.debug("focus resync: nothing is focused")
         else:
             self.a11y_link.refresh_focus(**payload)
-            log.debug("focus resync: %s", payload["focus_id"])
+            log.debug("focus resync completed")
 
     def perform_remote_action(self, object_id: str, action_index: int) -> None:
         obj = self._a11y_objects.get(object_id)
         if obj is None:
-            log.warning("remote A11Y action target %s is not in the current snapshot", object_id)
+            log.warning("remote A11Y action target is not in the current snapshot")
             return
         if perform_action(obj, action_index):
-            log.debug("performed remote A11Y action %d on %s", action_index, object_id)
+            log.debug("performed remote A11Y action")
         else:
-            log.warning("remote A11Y action %d failed for %s", action_index, object_id)
+            log.warning("remote A11Y action failed")
 
     def say_ready(self) -> None:
         self.link.speak(READY_TEXT)
@@ -220,7 +220,7 @@ def install_signal_handlers(loop: GLib.MainLoop) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--debug", action="store_true", help="log every handled event and DVC detail")
-    parser.add_argument("--dry-run", action="store_true", help="print speech instead of sending it to NVDA")
+    parser.add_argument("--dry-run", action="store_true", help="print speech state without text instead of sending it to NVDA")
     parser.add_argument("--no-interrupt", action="store_true", help="never send 'cancel' before speech")
     args = parser.parse_args()
     logging.basicConfig(
@@ -277,7 +277,7 @@ def main() -> int:
         loop.run()
         return 0
     except RuntimeError as exc:
-        log.error("%s", exc)
+        log.error("accessibility bridge failed")
         return 1
     finally:
         bridge.stop()

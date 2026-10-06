@@ -36,9 +36,9 @@ def main() -> int:
             return
         try:
             src = event.source
-            print(f"{event.type} detail1={event.detail1} {src.get_name()!r} {src.get_role_name()}", flush=True)
+            print(f"{event.type} detail1={event.detail1} (label redacted)", flush=True)
         except GLib.Error as exc:  # application went away
-            print(f"{event.type} <source gone: {exc}>", flush=True)
+            print(f"{event.type} <source unavailable>", flush=True)
 
     listener = Atspi.EventListener.new(on_event)
     for event_type in args.types:

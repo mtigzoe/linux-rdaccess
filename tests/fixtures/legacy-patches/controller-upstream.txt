@@ -1,0 +1,42 @@
+import logging
+import os
+import time
+log = logging.getLogger("fake")
+_DBG_LOG = os.path.expanduser("~/.local/share/orca/orca-remote-debug.log")
+
+def _dbg(msg):
+    with open(_DBG_LOG, "a") as f:
+        f.write("RC: %s\n" % msg)
+
+class RemoteController:
+    control_state = 1
+
+    def _on_remote_key(self, key_name=None, pressed=None, modifiers=None,
+                       vk_code=None, scan_code=None, extended=None, **kwargs):
+        if pressed is None:
+            return
+        self.local_machine.send_key(
+            key_name=key_name, pressed=pressed, modifiers=modifiers,
+            vk_code=vk_code, scan_code=scan_code, extended=extended,
+        )
+
+    transport = None
+
+    def toggle_control(self):
+        self.control_state = 0 if self.control_state else 1
+
+    def _on_client_left(self, client=None, **kwargs):
+        if client:
+            self.connected_clients.pop(client.get('id'), None)
+
+    def _on_channel_joined(self, channel=None, **kwargs):
+        log.info("Joined channel: %s" % channel)
+
+    def _on_remote_sas(self, **kwargs):
+        pass
+
+    def _on_remote_braille_input(self, **kwargs):
+        log.debug("Remote braille input: %s" % kwargs)
+
+    def _on_remote_braille_info(self, name=None, numCells=None, **kwargs):
+        pass

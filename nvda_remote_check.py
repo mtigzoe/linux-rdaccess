@@ -4,10 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import os
 from pathlib import Path
-import re
 import shutil
 from dataclasses import asdict, dataclass
 from typing import Mapping
@@ -43,30 +43,30 @@ def parse_remote_config(text: str) -> RemoteConfig:
 
     The key value is reduced to a boolean immediately and is never returned.
     """
-    host_match = re.search(
-        r'^\s*YOUR_NVDAREMOTE_SERVER_ADDRESS\s*=\s*["\'](.*?)["\']\s*$',
-        text,
-        re.MULTILINE,
-    )
-    port_match = re.search(
-        r"^\s*YOUR_NVDAREMOTE_SERVER_PORT\s*=\s*(\d+)\s*$",
-        text,
-        re.MULTILINE,
-    )
-    key_match = re.search(
-        r'^\s*YOUR_NVDAREMOTE_KEY\s*=\s*["\'](.*?)["\']\s*$',
-        text,
-        re.MULTILINE,
-    )
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return RemoteConfig(server=None, port=None, key_configured=False)
 
-    server = host_match.group(1).strip() if host_match else None
+    def value(name):
+        assignments = [node for node in tree.body if isinstance(node, (ast.Assign, ast.AnnAssign))
+                       and any(isinstance(target, ast.Name) and target.id == name
+                               for target in (node.targets if isinstance(node, ast.Assign) else [node.target]))]
+        if len(assignments) != 1 or not isinstance(assignments[0].value, ast.Constant):
+            return None
+        return assignments[0].value.value
+
+    host = value("YOUR_NVDAREMOTE_SERVER_ADDRESS")
+    server = host.strip() if isinstance(host, str) else None
     if server in _PLACEHOLDER_HOSTS:
         server = None
 
-    port = int(port_match.group(1)) if port_match else None
+    port = value("YOUR_NVDAREMOTE_SERVER_PORT")
+    if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+        port = None
 
-    key_value = key_match.group(1) if key_match else ""
-    key_configured = key_value not in _PLACEHOLDER_KEYS
+    key_value = value("YOUR_NVDAREMOTE_KEY")
+    key_configured = isinstance(key_value, str) and key_value not in _PLACEHOLDER_KEYS
 
     return RemoteConfig(server=server, port=port, key_configured=key_configured)
 

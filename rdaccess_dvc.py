@@ -167,7 +167,7 @@ class Receiver:
 
     def feed(self, data: bytes) -> None:
         if data and log.isEnabledFor(logging.DEBUG):
-            log.debug("raw rx %s%s", data[:80].hex(" "), " ..." if len(data) > 80 else "")
+            log.debug("received %d bytes", len(data))
         self.buf += data
         while self.buf:
             b = self.buf[0]
@@ -335,14 +335,14 @@ class NvdaSpeechLink:
             return
         for msg in self._rx.drain():
             if msg.get("type") not in ("index", "ping"):
-                log.debug("rx %s", msg)
+                log.debug("received a protocol message")
         if self._rx.xon_count != self._seen_xon_count:
             self._seen_xon_count = self._rx.xon_count
             self._handshake()
 
     def speak(self, text: str, interrupt: bool = False) -> bool:
         if not self.ready:
-            log.debug("not ready, dropped: %r", text)
+            log.debug("not ready; speech dropped")
             return False
         try:
             if interrupt:
@@ -364,7 +364,7 @@ class NvdaSpeechLink:
             self._channel = self._open_channel()
         except RuntimeError as exc:
             self._next_open_at = self._clock() + self._retry_interval
-            log.warning("%s (retrying every %.0fs)", exc, self._retry_interval)
+            log.warning("channel open failed (retrying every %.0fs)", self._retry_interval)
             return
         self._rx = Receiver()
         self._seen_xon_count = 0
@@ -383,7 +383,7 @@ class NvdaSpeechLink:
     def _drop(self, reason: str, quiet: bool = False) -> None:
         if self._channel is not None:
             if not quiet:
-                log.warning("channel lost (%s); will reopen", reason)
+                log.warning("channel lost; will reopen")
             try:
                 self._channel.close()
             except Exception:  # closing a dead handle must never raise

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Firefox remote acceptance test</title>
+  <style>
+    body { max-width: 44rem; margin: 2rem auto; padding: 0 1rem; font: 18px/1.6 sans-serif; }
+    label, textarea { display: block; }
+    textarea, [contenteditable] { box-sizing: border-box; width: 100%; margin: 0.5rem 0 1.5rem; padding: 0.75rem; font: inherit; }
+    [contenteditable] { border: 2px solid #555; }
+    :focus-visible { outline: 3px solid #175db5; outline-offset: 3px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Firefox remote acceptance test</h1>
+    <p>This local page provides known text for remote keyboard, speech and braille checks. Reload the page to restore any edited text.</p>
+    <nav aria-label="Test sections">
+      <a href="#navigation">Browse navigation</a> |
+      <a href="#editors">Editors</a> |
+      <a href="#table-navigation">Table navigation</a> |
+      <a href="#reading">Continuous reading</a>
+    </nav>
+
+    <h2 id="navigation">Browse navigation</h2>
+    <p>Alpha paragraph. Apples grow beside the garden gate.</p>
+    <p>Bravo paragraph. Birds rest on the blue fence.</p>
+    <p>Charlie paragraph. Clouds pass over the quiet field.</p>
+    <ul><li>List item alpha.</li><li>List item bravo.</li></ul>
+
+    <h2 id="editors">Editors</h2>
+    <label for="single-editor">Single line editor</label>
+    <input id="single-editor" type="text" value="Single editor alpha">
+    <label for="plain-editor">Plain multiline editor</label>
+    <textarea id="plain-editor" rows="4">Plain editor alpha.
+Plain editor bravo.
+Plain editor charlie.</textarea>
+
+    <h3 id="rich-label">Rich multiline editor</h3>
+    <div id="rich-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-labelledby="rich-label">
+      <p>Rich editor alpha.</p>
+      <p>Rich editor bravo.</p>
+      <p>Rich editor charlie.</p>
+    </div>
+    <p><label><input type="checkbox"> Test checkbox</label></p>
+    <fieldset>
+      <legend>Test radio group</legend>
+      <label><input type="radio" name="test-choice" value="alpha" checked> Radio alpha</label>
+      <label><input type="radio" name="test-choice" value="bravo"> Radio bravo</label>
+    </fieldset>
+    <label for="test-select">Test selection</label>
+    <select id="test-select"><option>Choice alpha</option><option>Choice bravo</option></select>
+    <p><button type="button">Test button alpha</button> <button type="button">Test button bravo</button></p>
+    <p><a href="#navigation">Return to browse navigation</a></p>
+
+    <section aria-labelledby="deep-heading-label">
+      <h2 id="deep-heading-label">Deep heading levels</h2>
+      <div role="heading" aria-level="7">Level seven alpha</div>
+      <div role="heading" aria-level="8">Level eight alpha</div>
+      <div role="heading" aria-level="9">Level nine alpha</div>
+      <div role="heading" aria-level="7">Level seven bravo</div>
+      <div role="heading" aria-level="8">Level eight bravo</div>
+      <div role="heading" aria-level="9">Level nine bravo</div>
+    </section>
+
+    <h2 id="table-navigation">Table navigation</h2>
+    <table>
+      <caption>Coordinate table</caption>
+      <thead><tr><th scope="col">Row</th><th scope="col">Column A</th><th scope="col">Column B</th><th scope="col">Column C</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Row one</th><td>R1 A</td><td>R1 B</td><td>R1 C</td></tr>
+        <tr><th scope="row">Row two</th><td>R2 A</td><td>R2 B</td><td>R2 C</td></tr>
+        <tr><th scope="row">Row three</th><td>R3 A</td><td>R3 B</td><td>R3 C</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="reading">Continuous reading</h2>
+    <p>Reading segment one. A walker leaves the village at sunrise and follows a narrow path beside the river. The water moves slowly past the trees, and the first light reaches the bridge.</p>
+    <p>Reading segment two. At the bridge, the walker pauses to watch a small boat. Its owner checks a rope, folds a blanket, and places a basket beneath the seat before setting off downstream.</p>
+    <p>Reading segment three. Beyond the bridge stands a garden with a wooden gate. A neighbour opens it and points toward a bench where visitors can sit and listen to the birds in the orchard.</p>
+    <p>Reading segment four. The path climbs a gentle hill behind the orchard. From the top, the walker can see the village roofs, the river bend, and a field where two horses graze near a hedge.</p>
+    <p>Reading segment five. A breeze arrives as the walker returns toward the village. Leaves move across the path, a window opens above the bakery, and someone carries fresh bread to a table outside.</p>
+    <p>Reading segment six. The walker reaches the starting point and rests beside the garden gate. This is the final numbered reading segment. Continuous reading should reach this text if it has not been interrupted.</p>
+    <p>Braille reference: alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima mike november oscar papa quebec romeo sierra tango uniform victor whiskey xray yankee zulu.</p>
+  </main>
+</body>
+</html>

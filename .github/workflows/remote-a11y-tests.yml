@@ -2,26 +2,8 @@ name: Remote A11Y prototype tests
 
 on:
   pull_request:
-    paths:
-      - "a11y_link.py"
-      - "a11y_model.py"
-      - "atspi_nvda_braille_bridge.py"
-      - "nvda_remote_check.py"
-      - "tests/test_remote_access.py"
-      - "remote_access.py"
-      - "tests/test_linux_rdaccess.py"
-      - "linux_rdaccess.py"
-      - "tests/test_nvda_remote_check.py"
-      - "tests/test_a11y_link.py"
-      - "tests/test_a11y_model.py"
-      - "tools/generate_remote_a11y_fixture.py"
-      - "tools/generate_remote_a11y_role_matrix.py"
-      - "tools/generate_remote_a11y_state_matrix.py"
-      - "tools/generate_remote_a11y_navigation_fixture.py"
-      - "tools/generate_remote_a11y_action_fixture.py"
-      - "tools/decode_remote_a11y_action.py"
-      - "tools/generate_remote_a11y_text_fixture.py"
-      - ".github/workflows/remote-a11y-tests.yml"
+    branches:
+      - main
   push:
     branches:
       - "feature/remote-a11y-objects"
@@ -29,7 +11,13 @@ on:
       - "feature/remote-a11y-actions"
       - "feature/remote-a11y-text"
       - "feature/nvda-remote-*"
+      - "feature/nvda-orca-*"
+      - "fix/*"
     paths:
+      - "*.py"
+      - "*.sh"
+      - "diagnostics/*.py"
+      - "tests/**"
       - "a11y_link.py"
       - "a11y_model.py"
       - "atspi_nvda_braille_bridge.py"
@@ -43,6 +31,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.10", "3.12"]
     steps:
       - name: Checkout Linux producer
         uses: actions/checkout@v4
@@ -54,7 +45,7 @@ jobs:
           path: rdAccess
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python }}
       - name: Run Linux remote A11Y unit tests
         run: |
           python -m unittest -v \
@@ -64,6 +55,19 @@ jobs:
             tests.test_remote_access \
             tests.test_linux_rdaccess
           python -m py_compile nvda_remote_check.py remote_access.py linux_rdaccess.py tests/test_nvda_remote_check.py tests/test_remote_access.py tests/test_linux_rdaccess.py
+      - name: Key-injection latency test on a real X server
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb libxtst6
+          xvfb-run -a python -m unittest -v tests.test_xtest_injection tests.test_live_x11
+
+      - name: Run full repository test suite and compile check
+        run: |
+          python -m unittest discover -s tests -t . -v
+          # The checked-out Windows consumer uses Python 3.12 syntax; only
+          # Linux producer/runtime files have the Mint Python 3.10 target.
+          python -m compileall -q -x '(^|/)rdAccess/' .
+
       - name: Generate Linux semantic fixtures
         run: |
           python tools/generate_remote_a11y_fixture.py > linux-a11y-fixture.json

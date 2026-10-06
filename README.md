@@ -51,6 +51,13 @@ Apply the saved configuration and connect:
 
     linux-rdaccess connect
 
+If Orca cannot be restarted automatically from your current shell, apply the
+configuration without restarting Orca, then start Orca in the active XFCE
+graphical session with the helper script:
+
+    linux-rdaccess connect --no-restart
+    ./start-orca-session.sh
+
 Disconnect while keeping the saved configuration:
 
     linux-rdaccess disconnect
@@ -80,6 +87,469 @@ When autostart is enabled, Linux runs:
     linux-rdaccess connect --quiet
 
 after graphical login. The command applies the saved Orca Remote settings and starts Orca with `orca --replace`.
+
+## NVDA compatibility on Linux applications
+
+The goal is to make Windows NVDA control Linux applications through Orca and AT-SPI with familiar NVDA behavior while keeping Linux applications themselves in control of normal keyboard input.
+
+### Firefox and web content
+
+Orca provides native browse/focus modes and structural navigation for web content. Common single-letter navigation such as headings, links, form fields, buttons, combo boxes, entries, radio buttons, checkboxes, and heading levels is passed through to Orca/Firefox.
+
+Plain Up/Down use Orca's native previous/next-line navigation in web document
+browse mode. The customization patch supports Orca 42's keyboard-event API so
+the upstream Remote wrapper reaches Orca's native event processor. `doctor`
+checks this patch separately from input injection. Browser chrome, editable
+fields, and focus mode retain the application's normal arrow handling.
+
+NVDA's table commands Ctrl+Alt+Left/Right/Up/Down are translated to Orca 42's
+Shift+Alt+Arrow table-cell navigation, but only for an arrow that arrived from
+the remote session and only where Orca itself would use structural navigation
+(web document, browse mode). Editable grids, focus mode and non-document windows
+keep Ctrl+Alt+Arrow. NVDA's Ctrl+Alt+PageUp/PageDown/Home/End table-edge
+commands are implemented with Orca 42's native table APIs: they preserve the
+current column or row and re-read the caret/table when Orca's delayed consumer
+runs, which also preserves nested/non-uniform table context. Set
+`LINUX_RDACCESS_NVDA_TABLE_KEYS=0` to disable arrow translation. Desktop window
+managers may grab Ctrl+Alt+Arrow (XFCE uses it for workspaces) before Orca sees
+it; see the [shortcut audit](docs/nvda-orca-shortcut-audit-2026-10-05.md).
+Queued table arrows and landmark keys have separate, bounded pending claims,
+so fast presses retain their translations. Failed injection removes its claim.
+XTest does not identify individual input sources: a simultaneous local press
+of the same key can still be confused with a pending remote press. NVDA's
+NVDA+Ctrl+Alt+Arrow row/column reading commands remain controller-consumed:
+Orca 42 has no exact caret-preserving read-row/read-column equivalent, and
+forwarding those chords into X11 could let XFCE intercept Ctrl+Alt+Arrow before
+Orca sees them.
+
+Compatibility covers the NVDA global and browse-mode gestures for which Orca
+42 has a proven equivalent, and explicitly consumes known NVDA commands that
+would otherwise execute unrelated Orca or Linux application shortcuts. Desktop
+layout is the default. Set `LINUX_RDACCESS_NVDA_LAYOUT=laptop` in Orca's
+environment to select NVDA's laptop keyboard layout. Laptop NVDA+A (caret Say
+All), NVDA+L (current line), and NVDA+Shift+End (status) are translated
+directly. Laptop review/object gestures whose semantics differ from Orca flat
+review are consumed rather than misrouted.
+
+linux-rdaccess additionally translates:
+
+    NVDA+Space
+        Toggle Orca browse/focus mode as a manual command, including editor focus
+
+This lets Windows NVDA users use the familiar NVDA browse/focus gesture while controlling Firefox on Linux.
+NVDA+V uses Orca's native web layout/object mode toggle in document content;
+NVDA+Ctrl+F and NVDA+F3/Shift+F3 use Orca's native find commands. NVDA+Shift+F10
+(native selection mode) and Alt+Up/Down virtual-caret collapse/expand are
+consumed where Orca 42 has no equivalent, rather than falling through to an
+unrelated Orca or application command.
+
+Other NVDA chords translated to native Orca commands (desktop NVDA layout;
+only with the NVDA key held and no Shift/Ctrl/Alt/Win unless noted):
+
+    NVDA+1     Toggle input help using Orca learn mode
+    NVDA+M     Toggle Orca mouse review
+    NVDA+P     Cycle punctuation / speech-symbol level
+    NVDA+U     Cycle progress-bar output: off, speech, beep, both
+    NVDA+Up    Current caret line (without entering flat review)
+    NVDA+Down  Say all
+    NVDA+Tab   Where am I
+    NVDA+T     Window title
+    NVDA+End   Status bar
+    NVDA+F12   Time; press twice quickly for date
+
+The clock uses Orca's configured format and Linux time zone. NVDA+F12 is consumed
+instead of reaching Orca's caret-navigation toggle. NVDA+1 toggles Orca learn
+mode on and off rather than falling through to Orca's bookmark-1 command.
+
+Known NVDA commands which still have no proven Orca 42 equivalent are consumed
+when their physical gesture would otherwise run an unrelated Orca or Linux
+application command. Examples include NVDA+2 through NVDA+7, NVDA+B /
+NVDA+Shift+B, NVDA+F, NVDA+K, NVDA+S, NVDA+Ctrl+Space, and the unsupported
+navigator/review hierarchy commands. These suppress incorrect side effects; they
+do not claim equivalent functionality. Current-line reporting uses
+Orca's native caret context and does not move the caret or review cursor; it
+does not implement NVDA's double/triple-press spelling and character details.
+
+NVDA's D (landmark) is Orca's M (Orca's own D is "live region"). A D typed in the
+remote session is turned into the landmark key (Shift+D into previous landmark)
+only where Orca itself would use structural navigation, i.e. browse mode on web
+content. NVDA F/Shift+F use Orca's native form-field navigation, and heading
+levels 7 through 9 use Orca's native heading-level factories even though Orca
+42 only binds levels 1 through 6 by default. The decision is made on Orca's main thread inside `KeyboardEvent.shouldConsume`,
+using Orca's own `useStructuralNavigationModel()`, and is re-read for every key,
+so NVDA+Space toggling is followed immediately. Focus mode, edit fields, the
+address bar, Ctrl/Alt+D, NVDA+D and any D from the Linux keyboard are never
+translated. Set `LINUX_RDACCESS_NVDA_D_LANDMARK=0` in Orca's environment to turn
+it off. The other single-letter keys (H K F B E X C R L I T G P Q S O, 1-6)
+already match Orca 42 and are untouched. `tools/orca42_d_landmark_check.py` runs
+the hook through real Orca 42 key matching.
+
+Also translated (verified against Orca 42 key matching, which needs the modifier
+state to be exactly Orca, so Shift is released around the key and restored):
+
+    NVDA+Shift+Space   Single-letter navigation on/off   (Orca+Z)
+    NVDA+F2            Pass the next key to the app      (Orca+BackSpace)
+
+Orca+Z is Orca's toggle for structural-navigation keys. While it is off, the D
+landmark translation above is off too, so single-letter keys never get in the
+way of typing. Plain Shift+Space and plain F2 (Thunar rename) are untouched.
+
+NVDA Ctrl+Alt+PageUp/PageDown/Home/End table-edge commands are implemented with
+Orca's native table coordinates so they preserve the current column or row.
+NVDA's row/column reading commands remain unsupported because Orca 42 has no
+non-moving full-row/full-column presentation primitive.
+
+Desktop keypad object-navigation interception is deliberately limited to
+unambiguous keypad VKs (for example Numpad5, Minus, Divide, Multiply, and
+extended NumpadEnter). Legacy payloads containing only non-extended
+Home/End/Arrow/Delete VKs are not sufficient proof of a physical keypad key,
+so those ambiguous gestures remain a live-test gap rather than risking normal
+Linux navigation input.
+layout and pass through unchanged. CapsLock presses are deferred so translated
+NVDA commands can call Orca directly without toggling Caps Lock. A standalone
+CapsLock press is forwarded as one complete press/release.
+
+### Linux GUI and file manager
+
+Normal application navigation remains unchanged and is forwarded directly:
+
+    Tab / Shift+Tab
+    Arrow keys
+    Enter
+    Space
+    Home / End
+    Page Up / Page Down
+    standard Ctrl/Alt shortcuts
+
+This is intentional: file managers and desktop applications expose their focused controls through Orca/AT-SPI, so their native keyboard navigation should not be replaced by a screen-reader-specific layer.
+
+NVDA+F7 opens an NVDA-style category chooser using the NVDA 2026.2 default
+categories and order: Links, Headings, Form fields, Buttons, and Landmarks.
+The last selected category is remembered for the next invocation; Orca owns the
+actual structural-navigation result list.
+
+The compatibility layer is being extended for NVDA review commands, braille
+panning/routing, braille keyboard input, speech interruption, and other
+screen-reader-specific gestures.
+
+### Current compatibility work
+
+Implemented or under active testing:
+
+    remote keyboard navigation
+    NVDA speech from Linux
+    remote braille output
+    Ctrl/key speech interruption
+    NVDA+Space browse/focus translation
+    safe capture of NVDA braille-input gesture metadata
+
+Synthetic braille command modifiers and the NVDA+F7 structural-list fallback
+retain release ownership and make one bounded retry if a synthetic Shift/Ctrl/Alt
+key-up is rejected. This avoids leaving a modifier held until the next
+disconnect/reset. Braille callbacks share the controller input-ownership lock,
+so a control handoff cannot split an in-flight emulated key gesture across two
+sessions.
+
+Braille pan back/forward are mapped generically from the NVDA script path
+(`braille_scrollBack` / `braille_scrollForward`), not from a device model, and
+run the active Orca script's `panBrailleLeft` / `panBrailleRight` on the GLib
+main loop (so line wrapping and flat review work). Routing keys call the script's
+`processRoutingKey` with the cell index. Both are unverified on a live session.
+Braille keyboard input is still not forwarded.
+
+Optional gesture trace (`~/.local/share/orca/orca-remote-braille-input.log`):
+disabled by default. Set `LINUX_RDACCESS_BRAILLE_TRACE=1` in Orca's environment
+to enable it. The file and rotated copy are mode 0600; rotation occurs at 256 KiB.
+Only canonical supported command names are recorded; arbitrary identifiers,
+driver metadata and unknown script paths are redacted. Braille-keyboard input
+(dots/space) is typed text and remains
+recorded only as `redacted` even when tracing is enabled. The patch also removes
+upstream's debug line that logged the whole braille message.
+
+### Responsiveness
+
+Upstream legacy Orca Remote started one `xdotool` process per key event, serially
+on the receive thread. Measured on X11 that is about 38 ms per event (76 ms per
+keystroke), so held arrow keys, fast typing and multi-key chords queued up and
+played out late. `linux-rdaccess connect` now also patches `local_machine.py` to
+inject keys in-process through XTest (about 0.03 ms per keystroke) and falls back
+to `xdotool` for any key it cannot map. Upstream's per-keypress debug log (which
+recorded key names, including typed passwords) is permanently disabled in both
+patched modules, including when debugging is enabled. Setting
+`LINUX_RDACCESS_DEBUG=1` enables timing diagnostics only. Speech interruption on held keys
+is limited to once per 150 ms.
+
+Ctrl now sends the NVDA Remote `cancel` message to the controlling NVDA
+immediately. Other action keys cancel local Orca speech without sending an
+additional protocol message. Previously only Linux-side speech was stopped,
+and upstream defers the cancel to NVDA until the next utterance, so Ctrl with
+nothing spoken afterwards never silenced Windows. Bare Shift/Alt/Insert/CapsLock/Win
+do not cancel, so NVDA+key chords can keep reading.
+
+The Linux-side speech stop runs on Orca's GLib main loop, coalesced, never on the
+thread that receives keys: Orca's speech-dispatcher client is not thread-safe and
+a stop blocks until speech-dispatcher answers, which froze key forwarding during
+busy Firefox navigation. Remote clipboard writes are likewise moved off the
+network thread (GTK is not thread-safe). Run `linux-rdaccess doctor` to check the
+patches are active; set `LINUX_RDACCESS_DEBUG=1` to log key-handling stalls
+(duration only, never which key) to `~/.local/share/orca/orca-remote-slow-events.log`.
+
+Caps Lock and Num Lock feedback reads the actual named XKB indicator after a
+successful key release, when X11 has completed the toggle. The state is captured
+before queuing the Orca announcement, so quick consecutive toggles retain their
+individual on/off results. Num Lock auto-repeat produces one toggle and one
+announcement per press. CapsLock used for a translated NVDA command produces
+neither a lock toggle nor a lock announcement.
+
+The current patches are controller **v79** and local-machine **v11**. Update the
+installed command from the repository with `python3 linux_rdaccess.py install`,
+then run `linux-rdaccess connect` to update the Orca-side files and restart Orca.
+`doctor` verifies the connected patch hooks, valid Python, and the installed
+Orca adapter against the adapter shipped beside the running CLI. Local Orca
+speech resumes when the relay disconnects. Prototype RDP debug logs and dry-run
+output also redact speech, protocol payloads, and backend exception messages.
+Automatic startup uses the transport's retry worker so an unavailable relay
+does not permanently stop connection attempts. `doctor` checks this patch too.
+See the [hardening audit](docs/compatibility-audit-2026-10-04-hardening.md) for the
+source evidence, regressions and remaining desktop checks.
+The [October 6 audit](docs/compatibility-audit-2026-10-06.md) covers table/landmark
+burst handling, manual focus switching, command retries, current-line reporting
+and the clock shortcut conflict, plus automatic relay retries.
+The [follow-up audit](docs/compatibility-audit-2026-10-06-followup.md) records
+current-line context, modal focus, pass-next ordering and speech/Say All repairs,
+with the remaining eighteen acceptance areas.
+The [live acceptance record](docs/live-acceptance-2026-10-06.md) supplies a
+controlled Firefox page and the first Windows input, speech and braille checks.
+
+## Live X11 + AT-SPI diagnostics
+
+For live testing on the existing Linux Mint XFCE/X11 desktop, use the bounded
+diagnostic driver in `diagnostics/live_x11.py`. It inspects the real X11 and
+AT-SPI state that Orca uses, while keeping accessible names redacted in terminal
+output by default.
+
+Install the diagnostic dependencies on Linux Mint:
+
+    sudo apt install -y python3-pyatspi python3-gi gir1.2-atspi-2.0 at-spi2-core xdotool xinput wmctrl x11-utils x11-xserver-utils x11-xkb-utils xvfb
+
+Inspect the detected `:0` desktop and XKB lock indicators:
+
+    python3 diagnostics/live_x11.py --display :0
+
+Watch Num Lock, Caps Lock, and Scroll Lock state changes without listening for
+ordinary typed keys:
+
+    python3 diagnostics/live_x11.py --display :0 --watch-locks 30
+
+This is useful for end-to-end NVDA Remote testing: start the lock watcher, press
+Num Lock from Windows NVDA, and compare the before/after XKB state. A successful
+Linux state change with no NVDA announcement points to missing remote feedback
+rather than failed key injection.
+
+Inspect visible Thunar or Firefox windows:
+
+    python3 diagnostics/live_x11.py --display :0 --target thunar
+    python3 diagnostics/live_x11.py --display :0 --target firefox
+
+If more than one matching window is found, choose the reported numeric window
+ID explicitly. To activate one Thunar window and exercise a bounded local
+Tab/Shift+Tab focus test:
+
+    python3 diagnostics/live_x11.py --display :0 --target thunar --window 12345 --activate --key Tab --key Shift+Tab
+
+The local key mode reuses the production XTest injection path and refuses
+arbitrary text input. It is useful for isolating Linux/X11/AT-SPI behavior, but
+it does **not** prove that a key traversed Windows NVDA Remote. End-to-end
+testing should use the read-only/watch modes while the input comes from Windows.
+
+The driver reports JSON containing XKB state, selected-window metadata, redacted
+AT-SPI focus information, step timing, and focus transitions. It never provides
+a general text-entry command and does not inspect clipboard, braille input,
+speech text, or the Remote Access key.
+
+Optional screenshots are explicit and private because they may contain visible
+user content:
+
+    python3 diagnostics/live_x11.py --display :0 --target firefox --window 12345 --screenshot /private/path/debug.png
+
+See [docs/live-x11-diagnostics.md](docs/live-x11-diagnostics.md) for the complete
+safety model, supported keys, Num Lock investigation notes, and Xvfb verification
+commands.
+
+
+### Optional Windows NVDA speech probe
+
+For controlled end-to-end tests, an opt-in Windows NVDA diagnostic add-on can
+report when NVDA actually queues speech after a Linux action. The probe is
+disabled by default, writes nothing to disk, and sends only to Windows loopback.
+Use an SSH LocalForward so the data stays inside the existing Remote-SSH
+connection.
+
+On Linux, start the receiver:
+
+    python3 diagnostics/nvda_speech_probe.py
+
+To let Codex verify the exact announcement during a controlled test:
+
+    python3 diagnostics/nvda_speech_probe.py --show-text
+
+Install the Windows diagnostic add-on from a Windows checkout or copy of this
+repository:
+
+    powershell -ExecutionPolicy Bypass -File .\tools\install_nvda_speech_probe.ps1
+
+To remove the diagnostic add-on later:
+
+    powershell -ExecutionPolicy Bypass -File .\tools\install_nvda_speech_probe.ps1 -Uninstall
+
+After installing or uninstalling, restart NVDA. When installed, press
+NVDA+Ctrl+Shift+F12 to enable the probe and press it
+again immediately after the test to disable it. Exact speech can contain
+sensitive information, including typed characters depending on NVDA settings, so
+do not leave the probe enabled during ordinary computer use.
+
+See [docs/nvda-speech-probe.md](docs/nvda-speech-probe.md) for the SSH
+LocalForward setup, privacy model, and interpretation of results.
+
+## VS Code on Linux
+
+VS Code on Linux is supported through Orca. For reliable screen-reader behavior, run:
+
+    linux-rdaccess vscode-setup
+
+This preserves existing VS Code settings and enables:
+
+    "editor.accessibilitySupport": "on"
+
+It also defaults the Linux title bar to the custom accessible title bar unless you already chose another title-bar style.
+
+If the editor is still silent with Orca, launch VS Code with one of:
+
+    code --force-renderer-accessibility
+    ACCESSIBILITY_ENABLED=1 code
+
+`vscode-setup` edits `settings.json` in place (comments and trailing commas are kept) and keeps a one-time `.linux-rdaccess-backup`.
+
+Recommended Windows-NVDA-to-Linux workflow:
+
+    Windows NVDA
+        ↓
+    NVDA Remote
+        ↓
+    linux-rdaccess
+        ↓
+    Orca / AT-SPI
+        ↓
+    VS Code
+
+Keep VS Code in screen-reader/focus-oriented navigation. Normal VS Code shortcuts are forwarded unchanged, including:
+
+    Ctrl+P           Quick Open
+    Ctrl+Shift+P     Command Palette
+    Ctrl+G           Go to Line
+    Ctrl+Shift+O     Go to Symbol
+    Ctrl+Shift+M     Problems
+    F8               Next error or warning
+    Shift+F8         Previous error or warning
+    F7               Next diff
+    Shift+F7         Previous diff
+    Shift+Alt+F1     Accessibility Help on Linux
+    Ctrl+Space       Trigger suggestions
+
+Use the arrow keys in suggestion lists unless VS Code's own accessibility help for the current widget says otherwise (not yet verified over NVDA Remote).
+
+The compatibility layer should not replace VS Code's keyboard model. linux-rdaccess translates only screen-reader-specific gestures and carries Orca speech/braille back to NVDA.
+
+Targeted compatibility areas:
+
+    editor line/word/character navigation
+    Explorer tree navigation
+    Problems panel
+    suggestions/completion lists
+    Source Control
+    integrated terminal
+    diff viewer
+    accessibility help/view
+    speech interruption
+    braille pan/routing/input
+
+## Linux Mint / XFCE compatibility matrix
+
+linux-rdaccess targets reusable accessibility patterns first, then validates them against common Linux Mint/XFCE applications.
+
+Priority applications:
+
+| Priority | Application / area | What must work remotely |
+| --- | --- | --- |
+| 1 | Thunar File Manager | tree/list navigation, file/folder names, selection, rename, context menus, properties, mounted drives, trash |
+| 2 | XFCE panel and application menu | menu navigation, task buttons, tray items, notifications, clock, workspace controls |
+| 3 | GTK Open/Save dialogs | location entry, file list, folders, filename field, filters, action buttons |
+| 4 | xfce4-terminal | caret/line reading, command editing, selection, tabs, search, scrolling, braille |
+| 5 | XFCE Settings Manager | tabs, lists, checkboxes, combo boxes, sliders, spin buttons, dialogs |
+| 6 | Update / software tools | package lists, progress, authentication prompts, errors, reboot prompts |
+| 7 | Text editor | caret, selection, find/replace, menus, status bar, braille routing |
+| 8 | Firefox | browse/focus mode, structural navigation, forms, tables, landmarks |
+| 9 | VS Code | editor, Explorer, Problems, Source Control, terminal, suggestions, diffs |
+
+Reusable UI patterns that should be compatible across applications:
+
+    focus traversal
+    trees and lists
+    tables
+    menus and context menus
+    dialogs
+    tabs
+    toolbars
+    editable text
+    terminal text
+    progress bars
+    notifications
+    file pickers
+    authentication prompts
+    web/browse content
+    Electron applications
+
+Compatibility goals for each target:
+
+    speech output reaches Windows NVDA
+    Ctrl/key input interrupts stale speech
+    keyboard navigation follows the Linux application's native model
+    focused item/state/value changes are announced
+    braille output follows focus/caret
+    braille pan and routing work remotely
+    braille keyboard input is forwarded
+    reconnect does not lose the active graphical session
+
+## Thunar / file-manager compatibility test
+
+Thunar is the first Linux Mint/XFCE application target because it exercises several reusable GTK accessibility patterns.
+
+Remote NVDA test sequence:
+
+    1. Open Thunar.
+    2. Use Tab / Shift+Tab to move between side pane, file view, location controls, and toolbar.
+    3. In the file view, use Up/Down/Left/Right and Home/End.
+    4. Press Enter on a folder, then Alt+Left and Alt+Right.
+    5. Press F2 to rename a selected item and verify editable-text/caret feedback.
+    6. Open the context menu with Shift+F10 and navigate it with arrow keys.
+    7. Open Properties and move through tabs, labels, values, and buttons.
+    8. Test Ctrl+L location entry.
+    9. Test Delete/Trash confirmation dialogs.
+    10. Open a GTK Open/Save dialog from an application and test file list, location entry, filename field, filters, and action buttons.
+
+Expected compatibility:
+
+    selected file/folder name is announced
+    role/state changes are announced when useful
+    focus moves once per navigation command
+    Ctrl or another navigation key interrupts stale speech
+    braille follows the selected item or text caret
+    normal Thunar shortcuts remain unchanged
+    menus and dialogs announce the focused item
+    rename and location fields expose caret/text changes
+    no duplicate announcements from focus + selection events
+
+Problems found here should be fixed in reusable focus/list/tree/dialog handling whenever possible rather than with Thunar-only code.
 
 ## Installed command reference
 
@@ -445,7 +915,7 @@ Additional tools:
 
 - The public NVDA Remote relay may reject older Linux TLS stacks. Hosting the Remote Access session locally on the Windows NVDA machine avoids that dependency.
 - Orca versions differ in speech and braille APIs; compatibility shims may be required.
-- X11 keyboard injection currently relies on `xdotool`; Wayland requires a different injection backend.
+- X11 keyboard injection uses in-process XTest for supported keys and falls back to `xdotool` when required; Wayland requires a different injection backend.
 - Braille forwarding requires converting Orca's visible braille line into raw NVDA Remote cell values.
 
 ### xrdp path
@@ -462,3 +932,34 @@ Additional tools:
 ## Legacy speech-only xrdp bridge
 
     DISPLAY=:10 python3 atspi_nvda_bridge.py --debug
+
+
+### NVDA-style web navigation
+
+When Windows NVDA is controlling Linux through linux-rdaccess, the goal is to
+keep NVDA muscle memory while Orca remains the Linux accessibility engine.
+
+Implemented compatibility:
+
+- `NVDA+Space` -> Orca browse/focus-mode toggle.
+- `NVDA+F7` -> accessible **Elements List** category chooser, then Orca's
+  native structural-navigation list for the selected category.
+- Shared quick-navigation keys such as `H`, `K`, `F`, `B`, `E`,
+  `X`, `C`, `R`, `L`, `I`, `T`, `G`, and `P` remain native
+  so Orca can apply the active browser/application script.
+
+The Elements List currently offers headings, links, form fields, buttons,
+edit fields, checkboxes, combo boxes, radio buttons, lists, list items,
+tables, landmarks, images, and paragraphs.
+
+Do not globally remap ordinary letters where NVDA and Orca differ.
+`linux-rdaccess` currently translates remote `D` / `Shift+D` to Orca's
+landmark navigation only when Orca's active script reports structural/browse
+navigation is in use. In focus mode, editable controls, browser chrome, and
+local Linux input, `D` remains ordinary text. Ctrl/Alt/Orca-modified `D`
+is also left untouched. Future differing quick keys should use the same
+browse-state-aware approach rather than global printable-key remapping.
+
+`F6` / `Shift+F6` are currently forwarded unchanged. Native Firefox and
+Chromium behavior must be verified in a live Linux session before any
+translation is considered.

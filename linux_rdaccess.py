@@ -4,16 +4,34 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 
 from remote_access import (
+    CUSTOMIZATION_EVENT_API_MARKER,
+    CUSTOMIZATION_RECONNECT_MARKER,
+    CUSTOMIZATION_SPEECH_SEQUENCE_MARKER,
+    CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER,
+    LEGACY_COMPAT_MARKER,
+    LEGACY_COMPAT_MARKER_V1,
+    LEGACY_LOCAL_MACHINE_RELATIVE,
+    LEGACY_REMOTE_CONTROLLER_RELATIVE,
+    LOCAL_MACHINE_MARKER,
+    LOCAL_MACHINE_MARKER_V1,
     DEFAULT_CONFIG,
     disable_legacy_orca_connection,
     load_config,
+    legacy_controller_patch_current,
+    legacy_customization_event_api_patch_current,
+    legacy_customization_reconnect_patch_current,
+    legacy_customization_speech_sequence_patch_current,
+    legacy_customization_say_all_callback_patch_current,
+    legacy_local_machine_patch_current,
     print_status,
     update_legacy_orca_customizations,
 )
@@ -40,7 +58,15 @@ def graphical_session_env(
     uid: int | None = None,
 ) -> dict[str, str]:
     env = dict(os.environ if base_env is None else base_env)
-    if env.get("DISPLAY") or env.get("WAYLAND_DISPLAY"):
+
+    # A DISPLAY alone is not enough to identify the user's real desktop.
+    # SSH/X11 forwarding commonly sets DISPLAY while omitting the desktop
+    # session bus/runtime directory; restarting Orca in that environment can
+    # make accessibility disappear from the active Linux session.
+    has_display = bool(env.get("DISPLAY") or env.get("WAYLAND_DISPLAY"))
+    has_session_bus = bool(env.get("DBUS_SESSION_BUS_ADDRESS"))
+    has_runtime = bool(env.get("XDG_RUNTIME_DIR"))
+    if has_display and has_session_bus and has_runtime:
         return env
 
     target_uid = os.getuid() if uid is None else uid
@@ -53,6 +79,10 @@ def graphical_session_env(
         "XDG_SESSION_TYPE",
     }
 
+    # Several sessions of the same user can coexist (an xrdp desktop next to a
+    # console login). Directory order is arbitrary, so choose the newest one,
+    # as ``pgrep -n`` does in the helper scripts.
+    candidates: list[tuple[int, int, dict[str, str]]] = []
     for entry in proc_root.iterdir():
         if not entry.name.isdigit():
             continue
@@ -79,25 +109,41 @@ def graphical_session_env(
                 session_env[key] = value_b.decode(errors="ignore")
 
         if session_env.get("DISPLAY") or session_env.get("WAYLAND_DISPLAY"):
-            env.update(session_env)
-            return env
+            candidates.append((_process_start_time(entry), int(entry.name), session_env))
 
+    if candidates:
+        env.update(max(candidates, key=lambda item: item[:2])[2])
     return env
 
 
-def restart_orca() -> int:
+def _process_start_time(entry: Path) -> int:
+    """Start time in clock ticks from /proc/<pid>/stat, or 0 when unavailable."""
     try:
-        completed = subprocess.run(
+        stat = (entry / "stat").read_text(encoding="utf-8")
+        # The command name may contain spaces and parentheses; the fields that
+        # follow the last ")" are fixed. starttime is field 22 (index 19 here).
+        return int(stat.rsplit(")", 1)[1].split()[19])
+    except (OSError, IndexError, ValueError):
+        return 0
+
+
+def restart_orca() -> int:
+    """Replace Orca without waiting for the long-lived screen reader to exit."""
+    try:
+        subprocess.Popen(
             ["orca", "--replace"],
-            check=False,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             env=graphical_session_env(),
+            start_new_session=True,
         )
     except FileNotFoundError:
         print("Orca was not found in PATH.")
         return 1
-    return completed.returncode
+    except OSError:
+        print("Orca could not be started.")
+        return 1
+    return 0
 
 
 def install_user_files(
@@ -106,11 +152,17 @@ def install_user_files(
     share_dir: Path = DEFAULT_SHARE_DIR,
     bin_path: Path = DEFAULT_BIN,
 ) -> None:
+    names = ("linux_rdaccess.py", "remote_access.py", "nvda_remote_check.py", "orca_adapter.py")
+    # Check the whole runtime bundle before replacing any installed member.
+    for name in names:
+        if not (source_dir / name).is_file():
+            raise FileNotFoundError(source_dir / name)
     share_dir.mkdir(parents=True, exist_ok=True)
     bin_path.parent.mkdir(parents=True, exist_ok=True)
 
-    for name in ("linux_rdaccess.py", "remote_access.py", "nvda_remote_check.py"):
-        shutil.copy2(source_dir / name, share_dir / name)
+    for name in names:
+        if (source_dir / name).resolve() != (share_dir / name).resolve():
+            shutil.copy2(source_dir / name, share_dir / name)
 
     wrapper = (
         "#!/bin/sh\n"
@@ -184,6 +236,211 @@ def disconnect(*, orca_config: Path, restart: bool = True, quiet: bool = False) 
     return 0
 
 
+
+DEFAULT_VSCODE_SETTINGS = Path("~/.config/Code/User/settings.json").expanduser()
+
+
+def _strip_jsonc(text: str) -> str:
+    """Remove // and /* */ comments and trailing commas (VS Code uses JSONC)."""
+    out: list[str] = []
+    i, n, in_str = 0, len(text), False
+    while i < n:
+        ch = text[i]
+        if in_str:
+            out.append(ch)
+            if ch == "\\" and i + 1 < n:
+                out.append(text[i + 1])
+                i += 1
+            elif ch == '"':
+                in_str = False
+        elif ch == '"':
+            in_str = True
+            out.append(ch)
+        elif text.startswith("//", i):
+            while i < n and text[i] != "\n":
+                i += 1
+            continue
+        elif text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            i = n if end == -1 else end + 2
+            continue
+        else:
+            out.append(ch)
+        i += 1
+    return re.sub(r",(\s*[}\]])", r"\1", "".join(out))
+
+
+def configure_vscode_accessibility(path: Path = DEFAULT_VSCODE_SETTINGS) -> None:
+    """Enable VS Code screen-reader accessibility without replacing other settings.
+
+    settings.json is JSONC, so comments and formatting are preserved by editing
+    the text in place rather than re-serialising it. A one-time backup is kept.
+    """
+    path = path.expanduser()
+    text = path.read_text(encoding="utf-8") if path.exists() else "{\n}\n"
+    try:
+        data = json.loads(_strip_jsonc(text) or "{}")
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"VS Code settings are not valid JSON: {path}") from exc
+    if not isinstance(data, dict):
+        raise ValueError(f"VS Code settings must contain a JSON object: {path}")
+
+    wanted = {"editor.accessibilitySupport": "on"}
+    if "window.titleBarStyle" not in data:
+        wanted["window.titleBarStyle"] = "custom"
+    for key, value in wanted.items():
+        line = f'"{key}": {json.dumps(value)}'
+        existing = re.search(rf'"{re.escape(key)}"\s*:\s*"[^"]*"', text)
+        if existing:
+            text = text[:existing.start()] + line + text[existing.end():]
+            continue
+        brace = text.index("{")
+        rest = _strip_jsonc(text[brace + 1:]).strip()
+        sep = "" if rest.startswith("}") else ","
+        text = f"{text[:brace + 1]}\n    {line}{sep}{text[brace + 1:]}"
+    json.loads(_strip_jsonc(text))  # never write something we cannot parse
+    path.parent.mkdir(parents=True, exist_ok=True)
+    backup = path.with_name(path.name + ".linux-rdaccess-backup")
+    if path.exists() and not backup.exists():
+        backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    tmp = path.with_name(path.name + ".linux-rdaccess-tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def patch_status(orca_config: Path) -> list[tuple[str, str]]:
+    """Report whether each legacy Orca Remote patch is active.
+
+    Patches only take effect after ``connect`` re-applies them and Orca restarts.
+    """
+    base = orca_config.expanduser().parent
+    checks = (
+        ("input shim (remote_controller.py)", base / LEGACY_REMOTE_CONTROLLER_RELATIVE,
+         LEGACY_COMPAT_MARKER, LEGACY_COMPAT_MARKER_V1, legacy_controller_patch_current),
+        ("fast key injection (local_machine.py)", base / LEGACY_LOCAL_MACHINE_RELATIVE,
+         LOCAL_MACHINE_MARKER, LOCAL_MACHINE_MARKER_V1, legacy_local_machine_patch_current),
+    )
+    rows = []
+    customization_checks = (
+        ("native Orca keyboard events (orca-customizations.py)",
+         CUSTOMIZATION_EVENT_API_MARKER, legacy_customization_event_api_patch_current),
+        ("automatic relay reconnect (orca-customizations.py)",
+         CUSTOMIZATION_RECONNECT_MARKER, legacy_customization_reconnect_patch_current),
+        ("NVDA speech sequence (orca-customizations.py)",
+         CUSTOMIZATION_SPEECH_SEQUENCE_MARKER, legacy_customization_speech_sequence_patch_current),
+        ("native Say All callbacks (orca-customizations.py)",
+         CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER, legacy_customization_say_all_callback_patch_current),
+    )
+    try:
+        customization = orca_config.expanduser().read_text(encoding="utf-8")
+    except OSError:
+        rows.extend((label, "missing") for label, _, _ in customization_checks)
+    else:
+        for label, marker, valid in customization_checks:
+            if valid(customization):
+                rows.append((label, "current"))
+            elif marker in customization:
+                rows.append((label, "incomplete patch - repair required"))
+            else:
+                rows.append((label, "not patched - run: linux-rdaccess connect"))
+    for label, path, current, old, valid in checks:
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            rows.append((label, "missing"))
+            continue
+        if current in text:
+            rows.append((label, "current" if valid(text) else "incomplete patch - repair required"))
+        elif old in text:
+            rows.append((label, "outdated - run: linux-rdaccess connect"))
+        else:
+            rows.append((label, "not patched - run: linux-rdaccess connect"))
+    label = "Orca API adapter (linux_rdaccess_orca_adapter.py)"
+    try:
+        installed = (base / "orca-scripts/linux_rdaccess_orca_adapter.py").read_text(encoding="utf-8")
+    except OSError:
+        rows.append((label, "missing"))
+    else:
+        try:
+            expected = (Path(__file__).parent / "orca_adapter.py").read_text(encoding="utf-8")
+        except OSError:
+            rows.append((label, "unknown - CLI adapter source missing"))
+        else:
+            rows.append((label, "current" if installed == expected else "outdated - run: linux-rdaccess connect"))
+    return rows
+
+
+def _tool_version(command: list[str]) -> str:
+    if shutil.which(command[0]) is None:
+        return "not found"
+    try:
+        out = subprocess.run(command, capture_output=True, text=True, timeout=5)
+        return (out.stdout or out.stderr).strip().splitlines()[0][:80]
+    except (OSError, subprocess.SubprocessError, IndexError):
+        return "unknown"
+
+
+def print_doctor(orca_config: Path) -> None:
+    print("linux-rdaccess patch status:")
+    for label, status in patch_status(orca_config):
+        print(f"  {label}: {status}")
+    print("")
+    print("Versions:")
+    for name, command in (
+        ("Orca", ["orca", "--version"]),
+        ("Firefox", ["firefox", "--version"]),
+        ("speech-dispatcher", ["speech-dispatcher", "--version"]),
+        ("xdotool (fallback)", ["xdotool", "version"]),
+    ):
+        print(f"  {name}: {_tool_version(command)}")
+    print("")
+    slow = orca_config.expanduser().parent / "orca-remote-slow-events.log"
+    count = 0
+    try:
+        count = len(slow.read_text(encoding="utf-8").splitlines())
+    except OSError:
+        pass
+    print(f"Slow key events logged: {count} ({slow})")
+    print("To record stalls, launch Orca with LINUX_RDACCESS_DEBUG=1 (logs timing only,")
+    print("never which keys were pressed).")
+
+
+COMPATIBILITY_APPS = (
+    ("thunar", "Thunar File Manager"),
+    ("xfce4-terminal", "XFCE Terminal"),
+    ("xfce4-settings-manager", "XFCE Settings Manager"),
+    ("mousepad", "Mousepad"),
+    ("xed", "Xed"),
+    ("mintupdate", "Update Manager"),
+    ("mintinstall", "Software Manager"),
+    ("xfce4-panel", "XFCE panel"),
+    ("firefox", "Firefox"),
+    ("code", "VS Code"),
+)
+
+
+def compatibility_status() -> list[tuple[str, str, bool]]:
+    """Return command availability for the primary Linux Mint compatibility targets."""
+    return [
+        (command, label, shutil.which(command) is not None)
+        for command, label in COMPATIBILITY_APPS
+    ]
+
+
+def print_compatibility_status() -> None:
+    print("Linux Mint / XFCE compatibility targets:")
+    for command, label, available in compatibility_status():
+        print(f"  {label}: {'installed' if available else 'not found'} ({command})")
+    print("")
+    print("Also test reusable UI patterns:")
+    print("  GTK Open/Save dialogs")
+    print("  XFCE panel/application menu")
+    print("  notifications")
+    print("  authentication prompts")
+    print("  trees/lists/tables/menus/dialogs/tabs/toolbars")
+
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
@@ -209,6 +466,16 @@ def build_parser() -> argparse.ArgumentParser:
     autostart.add_argument("state", choices=("enable", "disable", "status"))
 
     sub.add_parser("shortcuts", help="show common NVDA/Orca shortcuts")
+    sub.add_parser("compatibility", help="show Linux Mint application compatibility targets")
+    sub.add_parser("doctor", help="check that the NVDA compatibility patches are active")
+
+    vscode = sub.add_parser("vscode-setup", help="enable VS Code Linux screen-reader accessibility")
+    vscode.add_argument(
+        "--settings",
+        type=Path,
+        default=DEFAULT_VSCODE_SETTINGS,
+        help="path to VS Code settings.json",
+    )
 
     sub.add_parser("configure", help="run the Remote Access configuration manager")
 
@@ -279,14 +546,36 @@ def main(argv: list[str] | None = None) -> int:
             print("enabled" if DEFAULT_AUTOSTART.exists() else "disabled")
         return 0
 
+    if args.command == "doctor":
+        print_doctor(args.orca_config)
+        return 0
+
+    if args.command == "compatibility":
+        print_compatibility_status()
+        return 0
+
     if args.command == "shortcuts":
         print("Windows NVDA:")
         print("  Insert+Alt+Tab    Toggle local/remote computer control")
+        print("")
+        print("NVDA commands translated on Linux (desktop layout):")
+        print("  NVDA+Up / NVDA+Down              Current caret line / say all")
+        print("  NVDA+Space                       Browse/focus mode")
+        print("  NVDA+Tab / NVDA+T / NVDA+End      Where am I / title / status bar")
+        print("  NVDA+F12                         Time; twice quickly for date")
+        print("  NVDA+F7                          Elements list")
+        print("  Ctrl+Alt+Arrows                   Table cells in web browse mode")
         print("")
         print("Legacy Orca Remote:")
         print("  Orca+Alt+PageUp / Orca+Alt+C      Connect")
         print("  Orca+Alt+PageDown / Orca+Alt+D    Disconnect")
         print("  Orca+Alt+M                         Mute/unmute remote output")
+        return 0
+
+    if args.command == "vscode-setup":
+        configure_vscode_accessibility(args.settings)
+        print(f"Enabled VS Code screen-reader accessibility in: {args.settings.expanduser()}")
+        print("If Orca is still silent, launch VS Code with: ACCESSIBILITY_ENABLED=1 code")
         return 0
 
     if args.command == "configure":
