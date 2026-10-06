@@ -192,6 +192,26 @@ class OrcaRuntimeAdapter:
         return None
 
     @classmethod
+    def toggle_input_help(cls) -> bool | None:
+        """Toggle Orca learn mode to match NVDA's NVDA+1 input-help gesture."""
+        script = cls.active_script()
+        if script is None:
+            return None
+        try:
+            from orca import orca_state
+        except Exception:
+            return None
+        enabled = getattr(orca_state, "learnModeEnabled", None)
+        if enabled is None:
+            enabled = getattr(orca_state, "learn_mode_enabled", False)
+        names = (
+            ("exitLearnMode", "exit_learn_mode")
+            if bool(enabled)
+            else ("enterLearnMode", "enter_learn_mode")
+        )
+        return cls.call_script(names, default_event=True)
+
+    @classmethod
     def bypass_next_command(cls) -> bool | None:
         return cls.call_script(
             ("bypassNextCommand", "bypass_next_command"),
