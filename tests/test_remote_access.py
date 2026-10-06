@@ -1118,6 +1118,7 @@ class RemoteController:
             (0x32, False), (0x33, False), (0x34, False),
             (0x35, False), (0x36, False),  # NVDA+2..6 vs Orca bookmarks
             (0x42, False), (0x42, True),   # NVDA+B / NVDA+Shift+B vs bookmarks
+            (0x46, False),                 # NVDA+F formatting vs Orca char attrs
             (0x53, False),                 # NVDA+S vs Orca speech silence
         ):
             with self.subTest(vk=vk, shift=shift):
