@@ -846,7 +846,8 @@ LEGACY_COMPAT_MARKER_V66 = "# linux-rdaccess NVDA/Orca input compatibility v66"
 LEGACY_COMPAT_MARKER_V67 = "# linux-rdaccess NVDA/Orca input compatibility v67"
 LEGACY_COMPAT_MARKER_V68 = "# linux-rdaccess NVDA/Orca input compatibility v68"
 LEGACY_COMPAT_MARKER_V69 = "# linux-rdaccess NVDA/Orca input compatibility v69"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v70"
+LEGACY_COMPAT_MARKER_V70 = "# linux-rdaccess NVDA/Orca input compatibility v70"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v71"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -2791,6 +2792,21 @@ def _lrd_maybe_nvda_browse(event, keybindings):
             event._lrd_layout_mode_action = (method, event)
             event._consumer = _lrd_consume_layout_mode
             return True
+    elif action in ("findNext", "findPrevious"):
+        names = (
+            ("findNext", "find_next")
+            if action == "findNext"
+            else ("findPrevious", "find_previous")
+        )
+        method = next(
+            (getattr(script, name, None) for name in names
+             if callable(getattr(script, name, None))),
+            None,
+        )
+        if callable(method):
+            event._lrd_layout_mode_action = (method, event)
+            event._consumer = _lrd_consume_layout_mode
+            return True
     # Orca 42 has no NVDA-equivalent native-selection-mode command. In browse
     # mode consume it rather than opening the application's Shift+F10 menu.
     event._consumer = _lrd_consume_unsupported_browse
@@ -3866,6 +3882,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V70,
                 LEGACY_COMPAT_MARKER_V69,
                 LEGACY_COMPAT_MARKER_V68,
                 LEGACY_COMPAT_MARKER_V67,
