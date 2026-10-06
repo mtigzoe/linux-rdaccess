@@ -855,7 +855,9 @@ LEGACY_COMPAT_MARKER_V75 = "# linux-rdaccess NVDA/Orca input compatibility v75"
 LEGACY_COMPAT_MARKER_V76 = "# linux-rdaccess NVDA/Orca input compatibility v76"
 LEGACY_COMPAT_MARKER_V77 = "# linux-rdaccess NVDA/Orca input compatibility v77"
 LEGACY_COMPAT_MARKER_V78 = "# linux-rdaccess NVDA/Orca input compatibility v78"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v79"
+LEGACY_COMPAT_MARKER_V79 = "# linux-rdaccess NVDA/Orca input compatibility v79"
+LEGACY_COMPAT_MARKER_V80 = "# linux-rdaccess NVDA/Orca input compatibility v80"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v81"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -893,6 +895,36 @@ _LEGACY_HELPERS = '''\
         "alt": ("Alt_L", 0xA4),
     }
     _LRD_TRACE_MAX_BYTES = 262144
+    # Metadata-only input trace (LINUX_RDACCESS_TRACE=1). Only keys in this
+    # fixed vocabulary are ever identified; a character key is recorded as
+    # "char" with no identity, so typed text and passwords cannot be rebuilt.
+    _LRD_TRACE_NAMES = {
+        0x10: "Shift", 0xA0: "LShift", 0xA1: "RShift",
+        0x11: "Ctrl", 0xA2: "LCtrl", 0xA3: "RCtrl",
+        0x12: "Alt", 0xA4: "LAlt", 0xA5: "RAlt",
+        0x5B: "LWin", 0x5C: "RWin", 0x14: "CapsLock", 0x90: "NumLock",
+        0x91: "ScrollLock", 0x2D: "Insert", 0x2E: "Delete", 0x24: "Home",
+        0x23: "End", 0x21: "PageUp", 0x22: "PageDown", 0x25: "Left",
+        0x26: "Up", 0x27: "Right", 0x28: "Down", 0x1B: "Escape",
+        0x09: "Tab", 0x0D: "Enter", 0x08: "Backspace", 0x5D: "Apps",
+        0x0C: "Clear",
+    }
+    # Navigation-cluster VKs are ambiguous between the keypad and the dedicated
+    # cluster, so the extended bit is reported verbatim and never interpreted.
+    _LRD_TRACE_AMBIGUOUS_VKS = (
+        0x2D, 0x2E, 0x24, 0x23, 0x21, 0x22, 0x25, 0x26, 0x27, 0x28, 0x0D, 0x0C,
+    )
+    _LRD_TRACE_HELD_VKS = (
+        0x10, 0xA0, 0xA1, 0x11, 0xA2, 0xA3, 0x12, 0xA4, 0xA5, 0x5B, 0x5C,
+        0x2D, 0x14, 0x90, 0x91,
+    )
+    _LRD_TRACE_CLAIMS = {
+        "_LRD_D": ("letter", False),
+        "_LRD_BROWSE_UNSUPPORTED": ("letter", False),
+        "_LRD_NVDA_BROWSE": ("nvda_browse", True),
+        "_LRD_T": ("table_arrow", True),
+        "_LRD_TABLE_EDGE": ("table_edge", True),
+    }
     _LRD_OTHER_MOD_VKS = (
         0x10, 0xA0, 0xA1, 0x11, 0xA2, 0xA3, 0x12, 0xA4, 0xA5, 0x5B, 0x5C,
     )
@@ -923,6 +955,52 @@ _LEGACY_HELPERS = '''\
     # binding has none (verified against Orca 42 key matching).
     _LRD_CHORDS = {
     }
+
+    @staticmethod
+    def _linux_rdaccess_trace_enabled():
+        return __import__("os").environ.get("LINUX_RDACCESS_TRACE") == "1"
+
+    def _linux_rdaccess_trace(self, kind, **fields):
+        """Record one metadata-only diagnostic event; never affects input."""
+        if not self._linux_rdaccess_trace_enabled():
+            return
+        writer = globals().get("_lrd_trace_write")
+        if writer is None:
+            return
+        try:
+            writer(kind, gen=getattr(self, "_lrd_generation", 0), **fields)
+        except Exception:
+            pass
+
+    @classmethod
+    def _linux_rdaccess_trace_label(cls, vk_code, extended):
+        """Fixed-vocabulary identity of a non-character key, else None."""
+        if isinstance(vk_code, bool) or not isinstance(vk_code, int):
+            return None
+        name = cls._LRD_TRACE_NAMES.get(vk_code)
+        if name is None and 0x70 <= vk_code <= 0x87:
+            name = "F%d" % (vk_code - 0x6F)
+        if name is None:
+            return None
+        if vk_code in cls._LRD_TRACE_AMBIGUOUS_VKS:
+            name += "/ext" if extended else "/nonext"
+        return name
+
+    def _linux_rdaccess_trace_ownership(self):
+        """Modifier ownership: keys received, keys injected, NVDA modifier."""
+        label = self._linux_rdaccess_trace_label
+        held_vks = self._LRD_TRACE_HELD_VKS
+        down = getattr(self, "_lrd_down", set())
+        forwarded = getattr(self, "_lrd_forwarded", {})
+        nvda = getattr(self, "_lrd_nvda_key", None)
+        return {
+            "down": sorted(label(k[0], k[1]) for k in down if k[0] in held_vks),
+            "fwd": sorted(label(k[0], k[1]) for k in forwarded if k[0] in held_vks),
+            "nvda": label(nvda[0], nvda[1]) if nvda else None,
+            "caps_pending": getattr(self, "_lrd_caps_pending", None) is not None,
+            "other_down": sum(1 for k in down if k[0] not in held_vks),
+            "other_fwd": sum(1 for k in forwarded if k[0] not in held_vks),
+        }
 
     def _linux_rdaccess_nvda_layout(self):
         """Return the configured Windows NVDA keyboard layout."""
@@ -990,6 +1068,16 @@ _LEGACY_HELPERS = '''\
             (0x21, True, True),    # NVDA+Shift+PageUp: previous review page
             (0x22, True, True),    # NVDA+Shift+PageDown: next review page
             (0x41, True, False),   # NVDA+Shift+A: review Say All
+            # NVDA 2026.2 binds these with plain "kb:" gestures, so they work in
+            # the laptop layout too. Identities are NVDA's own vkCodes entries
+            # (VK_CLEAR, VK_SUBTRACT, VK_MULTIPLY, VK_DIVIDE, extended Enter);
+            # navigation-cluster VKs are still never guessed to be the keypad.
+            (0x0C, False, False),  # NVDA+Numpad5: current navigator object
+            (0x6D, False, False),  # NVDA+NumpadMinus: navigator to focus
+            (0x6D, True, False),   # NVDA+Shift+NumpadMinus: focus to navigator
+            (0x6F, False, True),   # NVDA+NumpadDivide: mouse to navigator
+            (0x6A, False, False),  # NVDA+NumpadMultiply: navigator to mouse
+            (0x0D, False, True),   # NVDA+NumpadEnter: activate navigator object
         }
         # Ctrl review commands are distinct from the plain/Shift gestures above.
         if ctrl:
@@ -1069,8 +1157,8 @@ _LEGACY_HELPERS = '''\
                 (0x21, False, True,  False, True),
                 (0x22, False, True,  False, True),
                 (0x71, False, True,  False, False),  # NVDA+Ctrl+F2: display model
-                (0x63, False, False, False, False),  # NVDA+Numpad3: next in flow
-                (0x69, False, False, False, False),  # NVDA+Numpad9: previous in flow
+                (0x63, False, False, False, False),  # VK_NUMPAD3 (NVDA: numLockNumpad3, unbound); NVDA's next-in-flow is the non-extended PageDown identity, which is never guessed
+                (0x69, False, False, False, False),  # VK_NUMPAD9 (NVDA: numLockNumpad9, unbound); previous-in-flow is the non-extended PageUp identity
                 (0x26, True,  False, False, True),   # NVDA+Shift+Up: current selection
                 (0x21, False, False, False, True),  # NVDA+PageUp: previous review page
                 (0x22, False, False, False, True),  # NVDA+PageDown: next review page
@@ -1111,11 +1199,14 @@ _LEGACY_HELPERS = '''\
         looked like a freeze. Requests are coalesced: at most one is pending.
         """
         if getattr(self, "_lrd_local_stop_pending", False):
+            self._linux_rdaccess_trace("speech", what="local_stop_coalesced")
             return
         self._lrd_local_stop_pending = True
+        self._linux_rdaccess_trace("speech", what="local_stop_requested")
 
         def run():
             self._lrd_local_stop_pending = False
+            self._linux_rdaccess_trace("speech", what="local_stop_ran")
             try:
                 self.local_machine.cancel_speech()
             except Exception:
@@ -1123,6 +1214,7 @@ _LEGACY_HELPERS = '''\
 
         if self._linux_rdaccess_run_main(run) is False:
             self._lrd_local_stop_pending = False
+            self._linux_rdaccess_trace("speech", what="local_stop_unscheduled")
 
     def _linux_rdaccess_stop_nvda_speech(self):
         """Tell the controlling NVDA to stop speaking *now*.
@@ -1139,7 +1231,11 @@ _LEGACY_HELPERS = '''\
                 and getattr(transport, "connection_type", None) == "slave"
             ):
                 transport.send(type="cancel")
+                self._linux_rdaccess_trace("speech", what="nvda_cancel_sent")
+            else:
+                self._linux_rdaccess_trace("speech", what="nvda_cancel_not_applicable")
         except Exception:
+            self._linux_rdaccess_trace("speech", what="nvda_cancel_failed")
             log.error("linux-rdaccess: failed to send cancel to NVDA")
 
     @staticmethod
@@ -1157,6 +1253,10 @@ _LEGACY_HELPERS = '''\
         if not pressed and held not in forwarded:
             return False
         payload = dict(forwarded[held], pressed=pressed) if held in forwarded else kwargs
+        tracing = self._linux_rdaccess_trace_enabled()
+        lock_vk = payload.get("vk_code") if payload.get("vk_code") in self._LRD_LOCK_VKS else None
+        lock_before = (self._linux_rdaccess_read_lock_state(lock_vk)
+                       if tracing and lock_vk is not None else None)
         candidate = getattr(self, "_lrd_navigation_marker", None)
         self._lrd_navigation_marker = None
         marker = token = None
@@ -1181,11 +1281,32 @@ _LEGACY_HELPERS = '''\
                 _lrd_remove_navigation_marker(marker, token)
             if native_token is not None:
                 _lrd_remove_bypass_key(native_token)
+            if tracing:
+                self._linux_rdaccess_trace(
+                    "forward", id=self._linux_rdaccess_trace_label(
+                        payload.get("vk_code"), payload.get("extended")) or "char",
+                    down=pressed, result="raised")
             raise
         if result is False and token is not None:
             _lrd_remove_navigation_marker(marker, token)
         if result is False and native_token is not None:
             _lrd_remove_bypass_key(native_token)
+        if tracing:
+            self._linux_rdaccess_trace(
+                "forward", id=self._linux_rdaccess_trace_label(
+                    payload.get("vk_code"), payload.get("extended")) or "char",
+                down=pressed, result="rejected" if result is False else "ok",
+                owned=held in forwarded or (result is not False and pressed))
+            if lock_vk is not None:
+                # XKB lock transition around one injected lock key: exactly one
+                # change is expected per physical press, in each direction.
+                after = self._linux_rdaccess_read_lock_state(lock_vk)
+                self._linux_rdaccess_trace(
+                    "lock", id=self._linux_rdaccess_trace_label(lock_vk, False),
+                    down=pressed, before=lock_before, after=after,
+                    changed=(lock_before != after
+                             if type(lock_before) is bool and type(after) is bool
+                             else None))
         if result is not False:
             if pressed:
                 forwarded[held] = dict(payload)
@@ -1224,6 +1345,9 @@ _LEGACY_HELPERS = '''\
         owned so a later reset can retry them.
         """
         forwarded = getattr(self, "_lrd_forwarded", {})
+        trace_held = sorted(
+            self._linux_rdaccess_trace_label(k[0], k[1]) or "char"
+            for k in forwarded) if self._linux_rdaccess_trace_enabled() else None
         local_machine = getattr(self, "local_machine", None)
         invalidate = getattr(local_machine, "_linux_rdaccess_invalidate_pending", None)
         if callable(invalidate):
@@ -1241,6 +1365,13 @@ _LEGACY_HELPERS = '''\
                         forwarded.pop(held, None)
                 except Exception:
                     log.error("linux-rdaccess: failed to release held key on reset")
+        if trace_held is not None and (trace_held or forwarded):
+            self._linux_rdaccess_trace(
+                "reset", reason=getattr(self, "_lrd_reset_reason", None),
+                held=trace_held,
+                failed=sorted(self._linux_rdaccess_trace_label(k[0], k[1]) or "char"
+                              for k in forwarded))
+        self._lrd_reset_reason = None
         self._lrd_down = set()
         self._lrd_nvda_down = False
         self._lrd_swapped = set()
@@ -1306,11 +1437,91 @@ _LEGACY_HELPERS = '''\
             # keys that were actually forwarded before forgetting state; a
             # missing remote key-up must never leave Linux with a stuck arrow
             # or modifier after reconnect.
+            self._lrd_reset_reason = "state_change"
             self._linux_rdaccess_reset_keys()
             self._lrd_state = state
+            self._linux_rdaccess_trace(
+                "session", controlling=bool(state[0]), connected=state[1],
+                role=state[2] if state[2] in ("master", "slave") else None)
 
     def _linux_rdaccess_filter_key(self, pressed, vk_code, extended, modifiers,
                                    key_name=None, scan_code=None):
+        """Decide one remote key; trace the metadata of the decision if enabled."""
+        if not self._linux_rdaccess_trace_enabled():
+            return self._linux_rdaccess_filter_key_impl(
+                pressed, vk_code, extended, modifiers, key_name, scan_code)
+        self._linux_rdaccess_sync_state()
+        held = self._linux_rdaccess_key_identity(vk_code, extended, key_name)
+        pressed = bool(pressed)
+        before_swapped = held in getattr(self, "_lrd_swapped", set())
+        before_nvda = bool(getattr(self, "_lrd_nvda_down", False))
+        repeat = pressed and held in getattr(self, "_lrd_down", set())
+        scheduled = getattr(self, "_lrd_trace_scheduled", 0)
+        self._lrd_trace_why = None
+        outcome = "raised"
+        result = None
+        try:
+            result = self._linux_rdaccess_filter_key_impl(
+                pressed, vk_code, extended, modifiers, key_name, scan_code)
+            outcome = None
+            return result
+        finally:
+            try:
+                self._linux_rdaccess_trace_key(
+                    outcome, result, pressed, repeat, vk_code, extended,
+                    scan_code, held, before_swapped, before_nvda,
+                    getattr(self, "_lrd_trace_scheduled", 0) > scheduled)
+            except Exception:
+                pass
+
+    def _linux_rdaccess_trace_key(self, outcome, result, pressed, repeat, vk_code,
+                                  extended, scan_code, held, before_swapped,
+                                  before_nvda, scheduled):
+        why = getattr(self, "_lrd_trace_why", None)
+        if outcome is not None:
+            disposition = outcome
+        elif not result:
+            disposition = "forwarded"
+        elif vk_code == 0x14:
+            disposition = "caps_deferred"
+        elif before_swapped:
+            disposition = "owned_press" if pressed else "owned_release"
+        elif why == "pass_next":
+            disposition = "pass_next"
+        elif why and why.startswith("translate:"):
+            disposition = "translated"
+        elif why:
+            disposition = "suppressed"
+        elif scheduled:
+            disposition = "translated"
+        else:
+            disposition = "suppressed"
+        label = self._linux_rdaccess_trace_label(vk_code, extended)
+        record = {
+            "press": "repeat" if repeat else ("down" if pressed else "up"),
+            "disp": disposition,
+            "why": why,
+            "own": self._linux_rdaccess_trace_ownership(),
+        }
+        # A character key is a possible password byte: identify it only when
+        # it belongs to a fixed non-character vocabulary or an NVDA command.
+        if label is not None or before_nvda:
+            record["id"] = label
+            record["vk"] = vk_code if isinstance(vk_code, int) else None
+            record["ext"] = bool(extended)
+            record["scan"] = scan_code if isinstance(scan_code, int) else None
+        else:
+            record["id"] = "char"
+        claim = getattr(self, "_lrd_navigation_marker", None)
+        if claim is not None and claim[0] in self._LRD_TRACE_CLAIMS:
+            kind, named = self._LRD_TRACE_CLAIMS[claim[0]]
+            record["claim"] = kind
+            if named:
+                record["claim_cmd"] = claim[1]
+        self._linux_rdaccess_trace("key", **record)
+
+    def _linux_rdaccess_filter_key_impl(self, pressed, vk_code, extended, modifiers,
+                                        key_name=None, scan_code=None):
         """Return True when the event was fully handled here."""
         self._linux_rdaccess_sync_state()
         self._lrd_navigation_marker = None
@@ -1385,6 +1596,7 @@ _LEGACY_HELPERS = '''\
         # re-toggle Linux several times for one physical press. Preserve
         # ordinary repeat behavior and consume only verified lock-toggle repeats.
         if repeat and vk_code in self._LRD_REPEAT_TOGGLE_VKS:
+            self._lrd_trace_why = "lock_repeat"
             return True
 
         # Interrupt stale speech on a real action, as NVDA does. Plain
@@ -1410,6 +1622,8 @@ _LEGACY_HELPERS = '''\
                 # round-trip to every ordinary navigation key.
                 if vk_code in self._LRD_CTRL_VKS and not repeat:
                     self._linux_rdaccess_stop_nvda_speech()
+            else:
+                self._linux_rdaccess_trace("speech", what="cancel_throttled")
 
         # Consumed presses retain ownership of their repeat/release even if
         # pass-next has just been armed (notably the F2 which armed it).
@@ -1423,6 +1637,7 @@ _LEGACY_HELPERS = '''\
         bypass_keys = getattr(self, "_lrd_bypass_keys", {})
         request = bypass_keys.get(held)
         if request is not None:
+            self._lrd_trace_why = "pass_next"
             result = self._linux_rdaccess_forward_bypass_key(
                 request, held, pressed, key_name, modifiers, vk_code, scan_code, extended)
             if not pressed and result is not False:
@@ -1455,6 +1670,7 @@ _LEGACY_HELPERS = '''\
         if bypass:
             if pressed and vk_code not in self._LRD_MODIFIER_VKS:
                 request["used"] = True
+                self._lrd_trace_why = "pass_next"
                 self._lrd_bypass_next = False
                 self._linux_rdaccess_flush_pending_caps()
                 result = self._linux_rdaccess_forward_bypass_key(
@@ -1519,6 +1735,7 @@ _LEGACY_HELPERS = '''\
             and not repeat
             and self._linux_rdaccess_known_unimplemented(vk_code, extended)
         ):
+            self._lrd_trace_why = "unsupported_nvda_command"
             self._lrd_swapped.add(held)
             if getattr(self, "_lrd_caps_pending", None) is not None:
                 self._lrd_caps_used = True
@@ -1616,6 +1833,7 @@ _LEGACY_HELPERS = '''\
                     and ctrl and not shifts and not alt_win)
             )
             if collision:
+                self._lrd_trace_why = "nvda_orca_collision"
                 self._lrd_swapped.add(held)
                 if getattr(self, "_lrd_caps_pending", None) is not None:
                     self._lrd_caps_used = True
@@ -1628,6 +1846,7 @@ _LEGACY_HELPERS = '''\
             and nvda_layout == "desktop"
             and self._linux_rdaccess_desktop_unimplemented(vk_code, extended)
         ):
+            self._lrd_trace_why = "unsupported_object_review"
             self._lrd_swapped.add(held)
             if getattr(self, "_lrd_caps_pending", None) is not None:
                 self._lrd_caps_used = True
@@ -1640,6 +1859,7 @@ _LEGACY_HELPERS = '''\
             and nvda_layout == "laptop"
             and self._linux_rdaccess_laptop_unimplemented(vk_code, extended)
         ):
+            self._lrd_trace_why = "unsupported_object_review"
             self._lrd_swapped.add(held)
             if getattr(self, "_lrd_caps_pending", None) is not None:
                 self._lrd_caps_used = True
@@ -1673,6 +1893,9 @@ _LEGACY_HELPERS = '''\
                 action = "unsupported_review"
 
             if action is not None:
+                self._lrd_trace_why = (
+                    "unsupported_object_review" if action == "unsupported_review"
+                    else "translate:" + action)
                 self._lrd_swapped.add(held)
                 if getattr(self, "_lrd_caps_pending", None) is not None:
                     self._lrd_caps_used = True
@@ -1694,6 +1917,7 @@ _LEGACY_HELPERS = '''\
             and not any(k[0] in self._LRD_SHIFT_VKS for k in self._lrd_down)
             and not any(k[0] in self._LRD_OTHER_MOD_VKS for k in self._lrd_down)
         ):
+            self._lrd_trace_why = "translate:sayAll"
             self._lrd_swapped.add(held)
             if getattr(self, "_lrd_caps_pending", None) is not None:
                 self._lrd_caps_used = True
@@ -1717,6 +1941,7 @@ _LEGACY_HELPERS = '''\
                 for k in self._lrd_down
             )
         ):
+            self._lrd_trace_why = "unsupported_exit_embedded"
             self._lrd_swapped.add(held)
             if getattr(self, "_lrd_caps_pending", None) is not None:
                 self._lrd_caps_used = True
@@ -1731,6 +1956,9 @@ _LEGACY_HELPERS = '''\
                 k[0] in self._LRD_OTHER_MOD_VKS and k[0] not in self._LRD_SHIFT_VKS
                 for k in self._lrd_down
             ):
+                self._lrd_trace_why = (
+                    "translate:toggleStructuralNavigation" if shifts
+                    else "translate:togglePresentationMode")
                 self._lrd_swapped.add(held)
                 if getattr(self, "_lrd_caps_pending", None) is not None:
                     self._lrd_caps_used = True
@@ -1754,6 +1982,7 @@ _LEGACY_HELPERS = '''\
                 and not any(k[0] in self._LRD_OTHER_MOD_VKS for k in self._lrd_down)
                 and not (action in ("status_bar", "current_line") and not bool(extended))
             ):
+                self._lrd_trace_why = "translate:" + action
                 self._lrd_swapped.add(held)
                 if getattr(self, "_lrd_caps_pending", None) is not None:
                     self._lrd_caps_used = True
@@ -2089,16 +2318,23 @@ _LEGACY_HELPERS = '''\
     def _linux_rdaccess_run_main(self, func):
         self._linux_rdaccess_sync_state()
         generation = getattr(self, "_lrd_generation", 0)
+        self._lrd_trace_scheduled = ticket = getattr(self, "_lrd_trace_scheduled", 0) + 1
+        self._linux_rdaccess_trace("main", ticket=ticket, state="scheduled")
 
         def invoke():
             self._linux_rdaccess_sync_state()
             # A disconnected controller's queued command must not operate on
             # the new session/focus, or cancel speech started after handoff.
             if generation == getattr(self, "_lrd_generation", 0):
+                self._linux_rdaccess_trace(
+                    "main", ticket=ticket, state="ran", sched_gen=generation)
                 try:
                     func()
                 except Exception:
                     log.error("linux-rdaccess: queued Orca operation failed")
+            else:
+                self._linux_rdaccess_trace(
+                    "main", ticket=ticket, state="stale_skipped", sched_gen=generation)
             return False
 
         try:
@@ -2120,6 +2356,18 @@ _LEGACY_HELPERS = '''\
         action, record = self._linux_rdaccess_classify_braille(kwargs)
         if action is not None:
             self._lrd_last_clock_press = None
+        if self._linux_rdaccess_trace_enabled():
+            # Canonical command names only; dots, space and driver ids are
+            # never recorded, so braille keyboard input stays private.
+            canonical = record.get("action") or record.get("redacted")
+            emulated = None
+            if action == "key":
+                parsed = self._linux_rdaccess_parse_braille_key(
+                    kwargs["scriptPath"][2])
+                emulated = {"mods": list(parsed[0]), "key": parsed[1]} if parsed else None
+            self._linux_rdaccess_trace(
+                "braille", cls=action or "unclassified", record=canonical,
+                emulated=emulated)
         try:
             self._linux_rdaccess_trace_braille(record)
         except Exception:
@@ -2376,6 +2624,13 @@ _LEGACY_HELPERS = '''\
             log.error("linux-rdaccess: unavailable Orca operation: %s", method)
             return False
 
+        _trace = globals().get("_lrd_trace_write")
+        if _trace is not None:
+            try:
+                _trace("script", method=method)
+            except Exception:
+                pass
+
         try:
             from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _adapter
         except ImportError:
@@ -2590,6 +2845,114 @@ _LEGACY_ORCA_D_HOOK = '''
 # captures the key handler there, before consumesKeyboardEvent), then restores
 # hw_code so echo, double-click detection and release matching see the real key.
 # Opt out with LINUX_RDACCESS_NVDA_D_LANDMARK=0.
+_LRD_TRACE_PATH = "~/.local/share/orca/orca-remote-input-trace.log"
+_LRD_TRACE_LIMIT = 262144
+_LRD_TRACE_LOCK = __import__("threading").Lock()
+_LRD_TRACE_SEQ = [0]
+_LRD_TRACE_TOKEN = __import__("re").compile(r"^[A-Za-z0-9_./:+<>=-]{0,40}$")
+
+
+def _lrd_trace_clean(value, depth=0):
+    """Reduce a diagnostic value to numbers, booleans and fixed short tokens."""
+    if value is None or isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value if -2147483648 <= value < 2147483648 else None
+    if isinstance(value, float):
+        return round(value, 3)
+    if isinstance(value, str):
+        return value if _LRD_TRACE_TOKEN.match(value) else "?"
+    if depth < 3 and isinstance(value, (list, tuple)):
+        return [_lrd_trace_clean(item, depth + 1) for item in list(value)[:24]]
+    if depth < 3 and isinstance(value, dict):
+        return {(k if isinstance(k, str) and _LRD_TRACE_TOKEN.match(k) else "?"):
+                _lrd_trace_clean(v, depth + 1) for k, v in list(value.items())[:24]}
+    return "?"
+
+
+def _lrd_trace_write(kind, **fields):
+    """Append one metadata-only JSON line. Off unless LINUX_RDACCESS_TRACE=1.
+
+    Records hold command names, generations, booleans and fixed tokens, never
+    typed text, braille input, speech, clipboard data or connection keys.
+    """
+    _os = __import__("os")
+    if _os.environ.get("LINUX_RDACCESS_TRACE") != "1":
+        return
+    path = _os.path.expanduser(_LRD_TRACE_PATH)
+    with _LRD_TRACE_LOCK:
+        _LRD_TRACE_SEQ[0] += 1
+        record = {"seq": _LRD_TRACE_SEQ[0],
+                  "t": round(__import__("time").time(), 3), "kind": kind}
+        for key, value in fields.items():
+            record[key] = _lrd_trace_clean(value)
+        line = __import__("json").dumps(record, sort_keys=True) + chr(10)
+        try:
+            try:
+                _os.chmod(path, 0o600)
+                if _os.path.getsize(path) > _LRD_TRACE_LIMIT:
+                    _os.replace(path, path + ".1")
+            except OSError:
+                pass
+            fd = _os.open(path, _os.O_WRONLY | _os.O_APPEND | _os.O_CREAT, 0o600)
+            try:
+                handle = _os.fdopen(fd, "a", encoding="utf-8")
+            except BaseException:
+                _os.close(fd)
+                raise
+            with handle:
+                _os.fchmod(handle.fileno(), 0o600)
+                handle.write(line)
+        except OSError:
+            pass
+
+
+def _lrd_trace_context(script):
+    """Classify the focused context without reading any content."""
+    result = {"ctx": "unknown", "editable": None, "web_app": None, "stale": None}
+    try:
+        utilities = getattr(script, "utilities", None)
+        in_document = getattr(utilities, "inDocumentContent", None)
+        if not callable(in_document):
+            result["ctx"] = "not_web"
+        elif not in_document():
+            result["ctx"] = "chrome_or_non_document"
+        else:
+            focus = getattr(script, "inFocusMode", None)
+            focus = focus() if callable(focus) else getattr(script, "_inFocusMode", None)
+            result["ctx"] = ("document_focus" if focus else "document_browse") \
+                if focus is not None else "document"
+    except Exception:
+        return result
+    try:
+        from orca import orca_state
+        locus = getattr(orca_state, "locusOfFocus", None)
+        if locus is not None:
+            import pyatspi
+            result["editable"] = bool(
+                locus.getState().contains(pyatspi.STATE_EDITABLE))
+            web_app = getattr(utilities, "isWebAppDescendant", None)
+            if callable(web_app):
+                result["web_app"] = bool(web_app(locus))
+            zombie = getattr(utilities, "isZombie", None)
+            if callable(zombie):
+                result["stale"] = bool(zombie(locus))
+    except Exception:
+        pass
+    return result
+
+
+def _lrd_trace_hook(hook, decision, script=None, **fields):
+    """Record an Orca-side decision for a remote-claimed gesture."""
+    if __import__("os").environ.get("LINUX_RDACCESS_TRACE") != "1":
+        return
+    try:
+        context = _lrd_trace_context(script) if script is not None else {}
+        _lrd_trace_write("hook", hook=hook, decision=decision, **context, **fields)
+    except Exception:
+        pass
+
+
 _LRD_NAV_LOCK = __import__("threading").RLock()
 _LRD_NAV_WINDOW = 1.0
 _LRD_NAV_MAX_PENDING = 64
@@ -2796,6 +3159,8 @@ def _lrd_maybe_swap_d(event, keybindings):
     if nav is None or gate is None:
         return None
     if pressed and not gate():
+        # Typed text: no key identity is recorded for a refused letter.
+        _lrd_trace_hook("letter_nav", "refused_not_browse", script)
         return None
     code = keybindings.getKeycode("m")
     if not code:
@@ -2812,6 +3177,7 @@ def _lrd_maybe_swap_d(event, keybindings):
         event.hw_code, event.modifiers = original
         return None
     if pressed:
+        _lrd_trace_hook("letter_nav", "translated", script, cmd="landmark")
         _LRD_D["swapped"] = True
         _LRD_D["modifiers"] = event.modifiers
         _LRD_D["code"] = code
@@ -2899,11 +3265,13 @@ def _lrd_maybe_nvda_browse(event, keybindings):
     if action in ("collapseExpandUp", "collapseExpandDown"):
         gate = getattr(script, "useStructuralNavigationModel", None)
         if not callable(gate) or not gate():
+            _lrd_trace_hook("nvda_browse", "refused_not_browse", script, cmd=action)
             return False
 
     held[event.hw_code] = event.modifiers
     event._handler = None
     if not document_active:
+        _lrd_trace_hook("nvda_browse", "consumed_outside_document", script, cmd=action)
         # These are NVDA tree-interceptor commands. Outside document content
         # NVDA-modifier gestures must not fall through as unrelated Orca
         # commands (notably Orca+V toggles speech verbosity).
@@ -2914,6 +3282,7 @@ def _lrd_maybe_nvda_browse(event, keybindings):
         find_handler = handlers.get("findHandler") if isinstance(handlers, dict) else None
         method = getattr(find_handler, "function", None)
         if callable(method):
+            _lrd_trace_hook("nvda_browse", "native", script, cmd=action)
             event._lrd_find_action = (method, script)
             event._consumer = _lrd_consume_find
             return True
@@ -2922,6 +3291,7 @@ def _lrd_maybe_nvda_browse(event, keybindings):
         if not callable(method):
             method = getattr(script, "toggle_layout_mode", None)
         if callable(method):
+            _lrd_trace_hook("nvda_browse", "native", script, cmd=action)
             event._lrd_layout_mode_action = (method, event)
             event._consumer = _lrd_consume_layout_mode
             return True
@@ -2937,12 +3307,14 @@ def _lrd_maybe_nvda_browse(event, keybindings):
             None,
         )
         if callable(method):
+            _lrd_trace_hook("nvda_browse", "native", script, cmd=action)
             event._lrd_layout_mode_action = (method, event)
             event._consumer = _lrd_consume_layout_mode
             return True
     # Orca 42 has no NVDA-equivalent native-selection-mode or virtual-caret
     # collapse/expand command. In browse mode consume these rather than
     # executing unrelated application/desktop shortcuts.
+    _lrd_trace_hook("nvda_browse", "consumed_unsupported", script, cmd=action)
     event._consumer = _lrd_consume_unsupported_browse
     return True
 
@@ -3002,6 +3374,9 @@ def _lrd_maybe_suppress_browse(event, keybindings):
     script = getattr(event, "_script", None)
     gate = getattr(script, "useStructuralNavigationModel", None)
     if not callable(gate) or not gate():
+        # Focus mode, editable controls and the address bar land here: the
+        # letter is ordinary typing, so only the refusal and context are kept.
+        _lrd_trace_hook("letter_nav", "refused_not_browse", script)
         return False
 
     held[event.hw_code] = event.modifiers
@@ -3022,6 +3397,8 @@ def _lrd_maybe_suppress_browse(event, keybindings):
             None,
         )
         if callable(method):
+            _lrd_trace_hook("letter_nav", "native", script, cmd="form_field",
+                            reverse=reverse)
             event._lrd_form_field_action = (method, script)
             event._consumer = _lrd_consume_form_field
             return True
@@ -3047,9 +3424,12 @@ def _lrd_maybe_suppress_browse(event, keybindings):
         if callable(factory):
             method = factory(int(key))
             if callable(method):
+                _lrd_trace_hook("letter_nav", "native", script,
+                                cmd="heading_level", level=int(key), reverse=reverse)
                 event._lrd_heading_level_action = (method, script)
                 event._consumer = _lrd_consume_heading_level
                 return True
+    _lrd_trace_hook("letter_nav", "consumed_unsupported", script, cmd="browse_letter")
     event._consumer = _lrd_consume_unsupported_browse
     return True
 
@@ -3119,6 +3499,8 @@ def _lrd_consume_table_edge(event=None):
     script, action_name = action
     resolved = _lrd_resolve_table_edge(script, action_name)
     if resolved is None:
+        # The cell, table or focus changed between claim and consumer.
+        _lrd_trace_hook("table", "consumer_stale", script, cmd=action_name)
         return True
     nav, cell_obj, this_cell, current, desired = resolved
     nav.goCell(cell_obj, this_cell, current, desired)
@@ -3151,10 +3533,13 @@ def _lrd_maybe_table_edge(event, keybindings):
     script = getattr(event, "_script", None)
     gate = getattr(script, "useStructuralNavigationModel", None)
     if not callable(gate) or not gate():
+        _lrd_trace_hook("table", "refused_not_browse", script, cmd=action_name)
         return False
     if _lrd_resolve_table_edge(script, action_name) is None:
+        _lrd_trace_hook("table", "refused_no_cell", script, cmd=action_name)
         return False
 
+    _lrd_trace_hook("table", "translated_edge", script, cmd=action_name)
     held[event.hw_code] = event.modifiers
     event._handler = None
     # Orca runs consumers later on GLib. Store only stable command identity;
@@ -3216,10 +3601,12 @@ def _lrd_maybe_swap_table(event, keybindings):
     nav = getattr(script, "structuralNavigation", None)
     gate = getattr(script, "useStructuralNavigationModel", None)
     if nav is None or gate is None or not gate():
+        _lrd_trace_hook("table", "refused_not_browse", script, cmd=key)
         return None
     cell = (getattr(nav, "enabledObjects", None) or {}).get("tableCell")
     cell_functions = getattr(cell, "functions", None)
     if not cell_functions:
+        _lrd_trace_hook("table", "refused_no_cell_handler", script, cmd=key)
         return None
     original = (event.hw_code, event.modifiers)
     event.modifiers = (event.modifiers & ~ctrl) | keybindings.SHIFT_MODIFIER_MASK
@@ -3231,7 +3618,9 @@ def _lrd_maybe_swap_table(event, keybindings):
         raise
     if handler is None or handler.function not in cell_functions:
         event.hw_code, event.modifiers = original
+        _lrd_trace_hook("table", "refused_no_cell_handler", script, cmd=key)
         return None
+    _lrd_trace_hook("table", "translated_arrow", script, cmd=key)
     held[event.hw_code] = event.modifiers
     return original
 
@@ -3278,7 +3667,16 @@ def _lrd_install_orca_hook():
             except Exception:
                 log.error("linux-rdaccess: table navigation translation failed")
         try:
-            return original(self)
+            result = original(self)
+            if restore is not None:
+                # Only gestures this patch translated are reported; Orca's
+                # decision for ordinary keys is never recorded.
+                _lrd_trace_hook(
+                    "orca_native",
+                    "consumed" if (result[0] if isinstance(result, tuple) and result
+                                   else result) else "not_consumed",
+                    getattr(self, "_script", None))
+            return result
         finally:
             if restore is not None:
                 self.hw_code, self.modifiers = restore
@@ -3367,6 +3765,7 @@ _LEGACY_RESET_HOOKS = (
     "    def wrapper(self, *args, **kwargs):\n"
     "        with self._LRD_INPUT_LOCK:\n"
     "            try:\n"
+    "                self._lrd_reset_reason = name\n"
     "                self._linux_rdaccess_reset_keys()\n"
     "            finally:\n"
     "                self._lrd_state = None\n"
@@ -3387,6 +3786,7 @@ _LEGACY_RESET_HOOKS = (
     "                known = getattr(self, \"connected_clients\", {}).get(client.get(\"id\"), {})\n"
     "                role = client.get(\"connection_type\") or known.get(\"connection_type\")\n"
     "                if role == \"master\":\n"
+    "                    self._lrd_reset_reason = \"client_left\"\n"
     "                    self._linux_rdaccess_reset_keys()\n"
     "                    self._lrd_state = None\n"
     "            return _lrd_original_client_left(self, client=client, **kwargs)\n"
@@ -4029,6 +4429,8 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V80,
+                LEGACY_COMPAT_MARKER_V79,
                 LEGACY_COMPAT_MARKER_V78,
                 LEGACY_COMPAT_MARKER_V77,
                 LEGACY_COMPAT_MARKER_V76,

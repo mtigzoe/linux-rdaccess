@@ -266,6 +266,22 @@ driver metadata and unknown script paths are redacted. Braille-keyboard input
 recorded only as `redacted` even when tracing is enabled. The patch also removes
 upstream's debug line that logged the whole braille message.
 
+### Live-test input trace
+
+Set `LINUX_RDACCESS_TRACE=1` in Orca's environment to write a metadata-only trace
+to `~/.local/share/orca/orca-remote-input-trace.log` (mode 0600, rotated at
+256 KiB). It records, per remote key, whether the controller forwarded,
+translated or suppressed it, the modifier ownership (received versus injected,
+left/right distinguished, NVDA modifier, pending Caps Lock), the control
+generation, XKB Caps/Num Lock transitions, held-key release failures after a
+reconnect, speech-cancel and stale main-loop events, braille command classes, and
+the Orca-side browse/table decisions with a Firefox context class. A character
+key is never identified, braille keyboard input, speech, clipboard data,
+passwords and connection keys are never recorded, and every value is reduced to a
+number, a boolean or a short fixed token before it is written. Summarize a run
+with `python3 tools/summarize_input_trace.py --timeline`. See
+[live-trace-diagnostics.md](docs/live-trace-diagnostics.md).
+
 ### Responsiveness
 
 Upstream legacy Orca Remote started one `xdotool` process per key event, serially
@@ -301,7 +317,7 @@ individual on/off results. Num Lock auto-repeat produces one toggle and one
 announcement per press. CapsLock used for a translated NVDA command produces
 neither a lock toggle nor a lock announcement.
 
-The current patches are controller **v79** and local-machine **v11**. Update the
+The current patches are controller **v81** and local-machine **v11**. Update the
 installed command from the repository with `python3 linux_rdaccess.py install`,
 then run `linux-rdaccess connect` to update the Orca-side files and restart Orca.
 `doctor` verifies the connected patch hooks, valid Python, and the installed
