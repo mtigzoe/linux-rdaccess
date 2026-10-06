@@ -3291,6 +3291,44 @@ class LocalMachine:
                 consumer(ev)
                 self.assertEqual(calls, [(cell, [2, 3], expected)])
 
+    def test_table_edge_rechecks_caret_when_delayed_consumer_runs(self):
+        c, KE, script = self._hooked()
+        old_cell, new_cell, table = object(), object(), object()
+        old_caret, new_caret = object(), object()
+        state = {"caret": old_caret}
+        calls = []
+        nav = script.structuralNavigation
+
+        def cell_for(obj):
+            return old_cell if obj is old_caret else new_cell
+
+        def coords(cell, prefer):
+            return [1, 1] if cell is old_cell else [3, 4]
+
+        nav.getCellForObj = cell_for
+        nav.getCellCoordinates = coords
+        nav.getTableForCell = lambda cell: table
+        nav.goCell = lambda objtype, this, current, desired: calls.append(
+            (this, list(current), list(desired)))
+        script.utilities = SimpleNamespace(
+            getCaretContext=lambda: (state["caret"], 0),
+            rowAndColumnCount=lambda obj, prefer: (6, 7),
+            inDocumentContent=lambda obj=None: True,
+        )
+
+        self._key(c, 0xA2, True)
+        self._key(c, 0xA4, True)
+        self._key(c, 0x23, True, extended=True)  # Ctrl+Alt+End
+        ev = KE("End", 115, modifiers=self.CTRL | self.ALT)
+        consumer = getattr(ev, "_consumer", None)
+        self.assertIsNotNone(consumer)
+
+        # Orca schedules consumers after shouldConsume(). A focus/caret event
+        # may arrive in that interval; navigation must use the new context.
+        state["caret"] = new_caret
+        consumer(ev)
+        self.assertEqual(calls, [(new_cell, [3, 4], [3, 6])])
+
     def test_remote_table_edge_command_outside_table_is_not_consumed(self):
         c, KE, script = self._hooked()
         nav = script.structuralNavigation
