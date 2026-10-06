@@ -1270,13 +1270,40 @@ class RemoteController:
         self.assertEqual(names.count((0x28, False)), 1)
         self.assertNotIn((0x6B, True), names)
 
-    def test_plain_arrow_and_numpad_arrow_with_nvda_are_untouched(self):
+    def test_plain_arrow_is_untouched_but_nvda_numpad2_is_intercepted(self):
         c, _, _ = self._patched_controller()
         self._key(c, 0x28, True, extended=True)    # no NVDA key: plain Down
         self._key(c, 0x28, False, extended=True)
         self._key(c, 0x2D, True, extended=True)
-        self._key(c, 0x28, True, extended=False)   # numpad 2 with NVDA: not ours
-        self.assertEqual(self._names(c), [(0x28, True), (0x28, False), (0x2D, True), (0x28, True)])
+        self._key(c, 0x28, True, extended=False)   # NVDA+Numpad2: first child object
+        self._key(c, 0x28, False, extended=False)
+        self.assertEqual(self._names(c), [(0x28, True), (0x28, False), (0x2D, True)])
+
+    def test_desktop_unimplemented_nvda_object_commands_do_not_run_orca_keypad_commands(self):
+        cases = (
+            (0x26, False),  # NVDA+Numpad8: parent object
+            (0x27, False),  # NVDA+Numpad6: next object
+            (0x25, False),  # NVDA+Numpad4: previous object
+            (0x28, False),  # NVDA+Numpad2: first child
+            (0x0C, False),  # NVDA+Numpad5: report navigator object
+            (0x24, False),  # NVDA+Numpad7: next review mode
+            (0x23, False),  # NVDA+Numpad1: previous review mode
+            (0x2E, False),  # NVDA+NumpadDelete: caret/focus location
+        )
+        for vk, extended in cases:
+            with self.subTest(vk=vk):
+                c, _, _ = self._patched_controller()
+                self._key(c, 0x2D, True, extended=True)
+                self._key(c, vk, True, extended=extended)
+                self._key(c, vk, False, extended=extended)
+                self.assertNotIn((vk, True), self._names(c))
+
+    def test_desktop_nvda_numpad_enter_does_not_run_orca_title_command(self):
+        c, _, _ = self._patched_controller()
+        self._key(c, 0x2D, True, extended=True)
+        self._key(c, 0x0D, True, extended=True)
+        self._key(c, 0x0D, False, extended=True)
+        self.assertNotIn((0x0D, True), self._names(c))
 
     def test_chords_with_other_modifiers_pass_through(self):
         c, _, _ = self._patched_controller()
