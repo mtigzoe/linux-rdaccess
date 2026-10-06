@@ -2558,7 +2558,7 @@ class LocalMachine:
     # ---- NVDA D (landmark) -> Orca M, browse mode only -------------------
 
     SHIFT, CTRL, ALT, ORCA = 1, 4, 8, 256
-    M_CODE, D_CODE = 58, 40
+    A_CODE, M_CODE, N_CODE, O_CODE, W_CODE, D_CODE = 38, 58, 57, 32, 25, 40
     LEFT, RIGHT, UP, DOWN = 113, 114, 111, 116
     KP_DOWN = 88
 
@@ -2570,13 +2570,19 @@ class LocalMachine:
         kb.SHIFT_MODIFIER_MASK, kb.CTRL_MODIFIER_MASK = self.SHIFT, self.CTRL
         kb.ALT_MODIFIER_MASK, kb.ORCA_MODIFIER_MASK = self.ALT, self.ORCA
         kb.getKeycode = lambda key: {
-            "m": self.M_CODE, "d": self.D_CODE, "Left": self.LEFT,
-            "Right": self.RIGHT, "Up": self.UP, "Down": self.DOWN,
+            "a": self.A_CODE, "m": self.M_CODE, "n": self.N_CODE,
+            "o": self.O_CODE, "w": self.W_CODE, "d": self.D_CODE,
+            "Left": self.LEFT, "Right": self.RIGHT,
+            "Up": self.UP, "Down": self.DOWN,
         }.get(key)
 
         landmark_next = types.SimpleNamespace(function="landmark_next")
         landmark_prev = types.SimpleNamespace(function="landmark_prev")
         live_region = types.SimpleNamespace(function="live_region")
+        clickable_next = types.SimpleNamespace(function="clickable_next")
+        clickable_prev = types.SimpleNamespace(function="clickable_prev")
+        chunk_next = types.SimpleNamespace(function="chunk_next")
+        chunk_prev = types.SimpleNamespace(function="chunk_prev")
         cell_left = types.SimpleNamespace(function="cell_left")
         cell_right = types.SimpleNamespace(function="cell_right")
         cell_up = types.SimpleNamespace(function="cell_up")
@@ -2589,6 +2595,12 @@ class LocalMachine:
                 (test.M_CODE, test.SHIFT): landmark_prev,
                 (test.D_CODE, 0): live_region,
                 (test.D_CODE, test.SHIFT): live_region,
+                # These are intentionally different from NVDA browse-mode
+                # semantics: A=annotation there, O=embedded object there.
+                (test.A_CODE, 0): clickable_next,
+                (test.A_CODE, test.SHIFT): clickable_prev,
+                (test.O_CODE, 0): chunk_next,
+                (test.O_CODE, test.SHIFT): chunk_prev,
                 # Orca 42 binds table cell navigation to Shift+Alt+Arrow.
                 (test.LEFT, test.SHIFT | test.ALT): cell_left,
                 (test.RIGHT, test.SHIFT | test.ALT): cell_right,
@@ -2621,6 +2633,7 @@ class LocalMachine:
                 self.event_string, self.hw_code = string, hw_code
                 self.modifiers, self._pressed, self._script = modifiers, pressed, script
                 self._handler = None
+                self._consumer = None
                 self.consume = self.shouldConsume()
 
             def isPressedKey(self):
@@ -2656,6 +2669,75 @@ class LocalMachine:
     def _expire_navigation_markers(marker):
         marker["pending"][:] = [(timestamp - 5.0, key, identity)
                                 for timestamp, key, identity in marker["pending"]]
+
+    def _remote_browse_letter(self, c, vk, shift=False):
+        if shift:
+            self._key(c, 0xA0, True)
+        self._key(c, vk, True)
+
+    def test_remote_mismatched_browse_letters_are_consumed_not_misrouted(self):
+        cases = (
+            ("a", self.A_CODE, 0x41),
+            ("m", self.M_CODE, 0x4D),
+            ("n", self.N_CODE, 0x4E),
+            ("o", self.O_CODE, 0x4F),
+            ("w", self.W_CODE, 0x57),
+        )
+        for letter, code, vk in cases:
+            for shift in (False, True):
+                with self.subTest(letter=letter, shift=shift):
+                    c, KE, _ = self._hooked()
+                    self._remote_browse_letter(c, vk, shift=shift)
+                    ev = KE(letter.upper() if shift else letter, code,
+                            modifiers=self.SHIFT if shift else 0)
+                    self.assertIsNotNone(
+                        getattr(ev, "_consumer", None),
+                        "remote mismatched NVDA browse command must be consumed",
+                    )
+                    self.assertIsNone(ev._handler)
+
+    def test_local_mismatched_browse_letters_are_never_suppressed(self):
+        cases = (
+            ("a", self.A_CODE),
+            ("m", self.M_CODE),
+            ("n", self.N_CODE),
+            ("o", self.O_CODE),
+            ("w", self.W_CODE),
+        )
+        for letter, code in cases:
+            with self.subTest(letter=letter):
+                _c, KE, _ = self._hooked()
+                ev = KE(letter, code)
+                self.assertIsNone(getattr(ev, "_consumer", None))
+
+    def test_remote_mismatched_browse_letter_types_normally_in_focus_mode(self):
+        c, KE, _ = self._hooked(browse=False)
+        self._remote_browse_letter(c, 0x4E)  # N has no conflicting Orca handler.
+        ev = KE("n", self.N_CODE)
+        self.assertIsNone(getattr(ev, "_consumer", None))
+        self.assertFalse(ev.consume)
+        # The refused marker is consumed and cannot suppress a later local N.
+        self.assertEqual(c._module._LRD_BROWSE_UNSUPPORTED["pending"], [])
+
+    def test_suppressed_browse_letter_release_follows_press_decision(self):
+        c, KE, script = self._hooked()
+        self._remote_browse_letter(c, 0x4D)
+        down = KE("m", self.M_CODE)
+        self.assertIsNotNone(getattr(down, "_consumer", None))
+        script.state["browse"] = False
+        up = KE("m", self.M_CODE, pressed=False)
+        self.assertIsNotNone(getattr(up, "_consumer", None))
+        self.assertEqual(c._module._LRD_BROWSE_UNSUPPORTED["held"], {})
+
+    def test_browse_suppression_state_is_cleared_on_control_reset(self):
+        c, KE, _ = self._hooked()
+        self._remote_browse_letter(c, 0x4D)
+        self.assertTrue(c._module._LRD_BROWSE_UNSUPPORTED["pending"])
+        c.toggle_control()
+        self.assertEqual(c._module._LRD_BROWSE_UNSUPPORTED["pending"], [])
+        self.assertEqual(c._module._LRD_BROWSE_UNSUPPORTED["held"], {})
+        local = KE("m", self.M_CODE)
+        self.assertIsNone(getattr(local, "_consumer", None))
 
     def test_queued_remote_d_presses_each_keep_their_landmark_marker(self):
         c, KE, _ = self._hooked()
