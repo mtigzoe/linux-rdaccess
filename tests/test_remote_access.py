@@ -445,6 +445,13 @@ class RemoteController:
             self.assertIn(remote_access.LEGACY_COMPAT_MARKER, result)
             self.assertEqual(result.count("_linux_rdaccess_filter_key(\n"), 1)
 
+    def test_control_reset_invalidates_queued_local_machine_main_loop_work(self):
+        c, _, _ = self._patched_controller()
+        calls = []
+        c.local_machine._linux_rdaccess_invalidate_pending = lambda: calls.append("invalidate")
+        c._linux_rdaccess_reset_keys()
+        self.assertEqual(calls, ["invalidate"])
+
     def test_ctrl_interrupts_local_and_remote_speech_once(self):
         c, _, _ = self._patched_controller()
         self._key(c, 0x11, True)
@@ -2517,6 +2524,21 @@ class LocalMachine:
             self.assertEqual(len(queue), 1)
             queue.pop()()                                            # main loop runs it
         self.assertEqual(module.LocalMachine.clip_threads[0][1], "x")
+
+    def test_queued_clipboard_write_is_discarded_after_generation_invalidation(self):
+        import threading
+        module, _, _ = self._patched_local()
+        queue, patches = self._fake_glib()
+        machine = module.LocalMachine()
+        with patches:
+            worker = threading.Thread(
+                target=lambda: machine.set_clipboard_text(text="stale"), name="net")
+            worker.start()
+            worker.join()
+            self.assertEqual(len(queue), 1)
+            machine._linux_rdaccess_invalidate_pending()
+            queue.pop()()
+        self.assertEqual(module.LocalMachine.clip_threads, [])
 
     def test_clipboard_write_on_main_thread_runs_directly(self):
         module, _, _ = self._patched_local()
