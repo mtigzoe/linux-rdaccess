@@ -824,7 +824,8 @@ LEGACY_COMPAT_MARKER_V44 = "# linux-rdaccess NVDA/Orca input compatibility v44"
 LEGACY_COMPAT_MARKER_V45 = "# linux-rdaccess NVDA/Orca input compatibility v45"
 LEGACY_COMPAT_MARKER_V46 = "# linux-rdaccess NVDA/Orca input compatibility v46"
 LEGACY_COMPAT_MARKER_V47 = "# linux-rdaccess NVDA/Orca input compatibility v47"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v48"
+LEGACY_COMPAT_MARKER_V48 = "# linux-rdaccess NVDA/Orca input compatibility v48"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v49"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -1293,6 +1294,7 @@ _LEGACY_HELPERS = '''\
             collision = (
                 (vk_code in (0x32, 0x33, 0x34, 0x35, 0x36) and not shifts and not other)
                 or (vk_code == 0x42 and len(shifts) <= 1 and not other)
+                or (vk_code == 0x46 and not shifts and not other)
                 or (vk_code == 0x53 and not shifts and not other)
             )
             if collision:
@@ -3252,6 +3254,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V48,
                 LEGACY_COMPAT_MARKER_V47,
                 LEGACY_COMPAT_MARKER_V46,
                 LEGACY_COMPAT_MARKER_V45,
