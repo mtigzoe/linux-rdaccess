@@ -1148,6 +1148,17 @@ class RemoteController:
                 self._key(c, vk, False)
                 self.assertNotIn((vk, True), self._names(c))
 
+    def test_desktop_nvda_review_page_commands_do_not_reach_linux(self):
+        import os
+        for vk in (0x21, 0x22):
+            with self.subTest(vk=vk):
+                c, _, _ = self._patched_controller()
+                with mock.patch.dict(os.environ, {"LINUX_RDACCESS_NVDA_LAYOUT": "desktop"}):
+                    self._key(c, 0x2D, True, extended=True)
+                    self._key(c, vk, True, extended=True)
+                    self._key(c, vk, False, extended=True)
+                self.assertNotIn((vk, True), self._names(c))
+
     def test_nvda_selection_and_location_commands_do_not_fall_through(self):
         cases = (
             # vk, shift, ctrl, alt, extended, layout
