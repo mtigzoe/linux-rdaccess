@@ -1212,6 +1212,8 @@ class RemoteController:
             (0x4F, True, False),   # NVDA+Shift+O: report navigator object
             (0x4D, True, False),   # NVDA+Shift+M: move mouse to navigator object
             (0x4E, True, False),   # NVDA+Shift+N: navigator object to mouse
+            (0xDB, False, False),  # NVDA+[: left click, Orca find
+            (0xDD, False, False),  # NVDA+]: right click, Orca find next
         )
         for vk, shift, extended in cases:
             with self.subTest(vk=vk, shift=shift):
@@ -1226,6 +1228,30 @@ class RemoteController:
                     self._key(c, vk, True, extended=extended)
                     self._key(c, vk, False, extended=extended)
                 self.assertEqual(calls, [])
+                self.assertNotIn((vk, True), self._names(c))
+
+    def test_laptop_ctrl_brackets_do_not_run_orca_find_commands(self):
+        import os
+        for vk in (0xDB, 0xDD):
+            with self.subTest(vk=vk):
+                c, _, _ = self._patched_controller()
+                with mock.patch.dict(os.environ, {"LINUX_RDACCESS_NVDA_LAYOUT": "laptop"}):
+                    self._key(c, 0x2D, True, extended=True)
+                    self._key(c, 0xA2, True)
+                    self._key(c, vk, True)
+                    self._key(c, vk, False)
+                self.assertNotIn((vk, True), self._names(c))
+
+    def test_laptop_shift_page_review_commands_are_consumed(self):
+        import os
+        for vk in (0x21, 0x22):
+            with self.subTest(vk=vk):
+                c, _, _ = self._patched_controller()
+                with mock.patch.dict(os.environ, {"LINUX_RDACCESS_NVDA_LAYOUT": "laptop"}):
+                    self._key(c, 0x2D, True, extended=True)
+                    self._key(c, 0xA0, True)
+                    self._key(c, vk, True, extended=True)
+                    self._key(c, vk, False, extended=True)
                 self.assertNotIn((vk, True), self._names(c))
 
     def test_direct_say_all_does_not_swallow_nonextended_key_with_same_vk(self):
