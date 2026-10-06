@@ -370,6 +370,20 @@ class RemoteController:
             self.assertIn(remote_access.LEGACY_COMPAT_MARKER, result)
             self.assertNotIn(remote_access.LEGACY_COMPAT_MARKER_V35 + "\n", result)
 
+    def test_v36_patch_is_replaced_from_backup(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "remote_controller.py"
+            old = self.UPSTREAM_CONTROLLER + "\n" + remote_access.LEGACY_COMPAT_MARKER_V36 + "\n"
+            path.write_text(old, encoding="utf-8")
+            path.with_name(path.name + ".linux-rdaccess-backup").write_text(
+                self.UPSTREAM_CONTROLLER, encoding="utf-8"
+            )
+            self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
+            result = path.read_text(encoding="utf-8")
+            self.assertIn(remote_access.LEGACY_COMPAT_MARKER, result)
+            self.assertNotIn(remote_access.LEGACY_COMPAT_MARKER_V36 + "\n", result)
+            self.assertTrue(remote_access.legacy_controller_patch_current(result))
+
     def test_v33_patch_is_replaced_from_backup(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "remote_controller.py"
@@ -2084,6 +2098,8 @@ class LocalMachine:
 
     SHIFT, CTRL, ALT, ORCA = 1, 4, 8, 256
     M_CODE, D_CODE = 58, 40
+    LEFT, RIGHT, UP, DOWN = 113, 114, 111, 116
+    KP_DOWN = 88
 
     def _orca_env(self, browse=True):
         """Fake Orca 42 pieces with the same shouldConsume order as the real one."""
@@ -2092,11 +2108,19 @@ class LocalMachine:
         kb = types.ModuleType("orca.keybindings")
         kb.SHIFT_MODIFIER_MASK, kb.CTRL_MODIFIER_MASK = self.SHIFT, self.CTRL
         kb.ALT_MODIFIER_MASK, kb.ORCA_MODIFIER_MASK = self.ALT, self.ORCA
-        kb.getKeycode = lambda key: {"m": self.M_CODE, "d": self.D_CODE}.get(key)
+        kb.getKeycode = lambda key: {
+            "m": self.M_CODE, "d": self.D_CODE, "Left": self.LEFT,
+            "Right": self.RIGHT, "Up": self.UP, "Down": self.DOWN,
+        }.get(key)
 
         landmark_next = types.SimpleNamespace(function="landmark_next")
         landmark_prev = types.SimpleNamespace(function="landmark_prev")
         live_region = types.SimpleNamespace(function="live_region")
+        cell_left = types.SimpleNamespace(function="cell_left")
+        cell_right = types.SimpleNamespace(function="cell_right")
+        cell_up = types.SimpleNamespace(function="cell_up")
+        cell_down = types.SimpleNamespace(function="cell_down")
+        other_nav = types.SimpleNamespace(function="other_nav")
 
         class Bindings:
             table = {
@@ -2104,6 +2128,13 @@ class LocalMachine:
                 (test.M_CODE, test.SHIFT): landmark_prev,
                 (test.D_CODE, 0): live_region,
                 (test.D_CODE, test.SHIFT): live_region,
+                # Orca 42 binds table cell navigation to Shift+Alt+Arrow.
+                (test.LEFT, test.SHIFT | test.ALT): cell_left,
+                (test.RIGHT, test.SHIFT | test.ALT): cell_right,
+                (test.UP, test.SHIFT | test.ALT): cell_up,
+                (test.DOWN, test.SHIFT | test.ALT): cell_down,
+                # An unrelated structural command on the same chord shape.
+                (test.KP_DOWN, test.SHIFT | test.ALT): other_nav,
             }
 
             def getInputHandler(self, event):
@@ -2113,7 +2144,10 @@ class LocalMachine:
         class Script:
             keyBindings = Bindings()
             structuralNavigation = types.SimpleNamespace(
-                functions=["landmark_next", "landmark_prev"])
+                functions=["landmark_next", "landmark_prev", "cell_left",
+                           "cell_right", "cell_up", "cell_down", "other_nav"],
+                enabledObjects={"tableCell": types.SimpleNamespace(
+                    functions=["cell_left", "cell_right", "cell_up", "cell_down"])})
             state = {"browse": browse}
 
             def useStructuralNavigationModel(self):
@@ -2299,6 +2333,167 @@ class LocalMachine:
         ev = KE("m", self.M_CODE)
         self.assertEqual(ev._handler.function, "landmark_next")
         self.assertEqual(ev.hw_code, self.M_CODE)
+
+    # ---- NVDA table commands: Ctrl+Alt+Arrow -> Orca Shift+Alt+Arrow ------
+
+    CTRL_ALT = CTRL | ALT
+    LCTRL, LALT, LSHIFT, LWIN, INSERT = 0xA2, 0xA4, 0xA0, 0x5B, 0x2D
+    ARROWS = ((0x25, "Left", LEFT, "cell_left"), (0x27, "Right", RIGHT, "cell_right"),
+              (0x26, "Up", UP, "cell_up"), (0x28, "Down", DOWN, "cell_down"))
+
+    def _remote_table_key(self, c, vk=0x28, extended=True, held=(0xA2, 0xA4)):
+        for mod in held:
+            self._key(c, mod, True)
+        self._key(c, vk, True, extended=extended)
+
+    def test_remote_ctrl_alt_arrows_become_orca_table_cell_navigation(self):
+        for vk, name, code, handler in self.ARROWS:
+            with self.subTest(arrow=name):
+                c, KE, _ = self._hooked()
+                self._remote_table_key(c, vk)
+                ev = KE(name, code, modifiers=self.CTRL_ALT)
+                self.assertTrue(ev.consume)
+                self.assertEqual(ev._handler.function, handler)
+                self.assertEqual(ev.modifiers, self.CTRL_ALT)   # real chord restored
+                self.assertEqual(ev.hw_code, code)
+
+    def test_lock_state_bits_do_not_block_translation(self):
+        c, KE, _ = self._hooked()
+        self._remote_table_key(c)
+        ev = KE("Down", self.DOWN, modifiers=self.CTRL_ALT | 16)   # Num Lock bit
+        self.assertEqual(ev.modifiers, self.CTRL_ALT | 16)
+
+    def test_arrow_without_the_remote_marker_is_never_translated(self):
+        c, KE, _ = self._hooked()
+        ev = KE("Down", self.DOWN, modifiers=self.CTRL_ALT)       # local keyboard
+        self.assertIsNone(ev._handler)
+
+    def test_focus_mode_or_non_document_keeps_ctrl_alt_arrow(self):
+        c, KE, script = self._hooked(browse=False)
+        self._remote_table_key(c)
+        ev = KE("Down", self.DOWN, modifiers=self.CTRL_ALT)
+        self.assertIsNone(ev._handler)
+        self.assertEqual(ev.modifiers, self.CTRL_ALT)
+        # The refused marker must not tag a later local chord.
+        script.state["browse"] = True
+        self.assertIsNone(KE("Down", self.DOWN, modifiers=self.CTRL_ALT)._handler)
+
+    def test_only_exact_ctrl_alt_is_translated(self):
+        for mods in (self.CTRL, self.ALT, self.CTRL_ALT | self.SHIFT,
+                     self.CTRL_ALT | self.ORCA, 0):
+            with self.subTest(mods=mods):
+                c, KE, _ = self._hooked()
+                c._module._LRD_T["ts"] = __import__("time").monotonic()
+                ev = KE("Down", self.DOWN, modifiers=mods)
+                self.assertNotEqual(getattr(ev._handler, "function", None), "cell_down")
+                self.assertEqual(ev.modifiers, mods)
+
+    def test_remote_marker_requires_extended_arrow_with_only_ctrl_and_alt(self):
+        cases = {
+            "keypad arrow": dict(extended=False),
+            "ctrl only": dict(held=(0xA2,)),
+            "alt only": dict(held=(0xA4,)),
+            "shift": dict(held=(0xA2, 0xA4, 0xA0)),
+            "win": dict(held=(0xA2, 0xA4, 0x5B)),
+            "insert nvda key": dict(held=(0x2D, 0xA2, 0xA4)),
+            "capslock nvda key": dict(held=(0x14, 0xA2, 0xA4)),
+            "non arrow": dict(vk=0x41),
+        }
+        for label, kwargs in cases.items():
+            with self.subTest(case=label):
+                c, KE, _ = self._hooked()
+                self._remote_table_key(c, **kwargs)
+                self.assertEqual(c._module._LRD_T["ts"], 0.0)
+
+    def test_release_follows_the_translated_press_even_if_modifiers_or_mode_change(self):
+        c, KE, script = self._hooked()
+        self._remote_table_key(c)
+        press = KE("Down", self.DOWN, modifiers=self.CTRL_ALT)
+        self.assertEqual(press._handler.function, "cell_down")
+        script.state["browse"] = False                    # mode changed while held
+        release = KE("Down", self.DOWN, modifiers=self.ALT, pressed=False)   # Ctrl up first
+        self.assertEqual(release._handler.function, "cell_down")
+        self.assertEqual(release.modifiers, self.ALT)     # restored afterwards
+        again = KE("Down", self.DOWN, modifiers=self.ALT, pressed=False)
+        self.assertIsNone(again._handler)                 # state cleared
+        self.assertFalse(c._module._LRD_T["swapped"])
+
+    def test_other_key_releases_never_inherit_the_table_translation(self):
+        c, KE, _ = self._hooked()
+        self._remote_table_key(c)
+        KE("Down", self.DOWN, modifiers=self.CTRL_ALT)
+        other = KE("Left", self.LEFT, modifiers=self.ALT, pressed=False)
+        self.assertIsNone(other._handler)
+        self.assertTrue(c._module._LRD_T["swapped"])      # Down's release still pending
+
+    def test_stray_release_does_not_translate(self):
+        c, KE, _ = self._hooked()
+        self.assertIsNone(KE("Down", self.DOWN, modifiers=self.ALT, pressed=False)._handler)
+
+    def test_native_shift_alt_arrow_is_left_to_orca_untranslated(self):
+        c, KE, _ = self._hooked()
+        c._module._LRD_T["ts"] = __import__("time").monotonic()
+        ev = KE("Down", self.DOWN, modifiers=self.SHIFT | self.ALT)
+        self.assertEqual(ev._handler.function, "cell_down")     # Orca's own binding
+        self.assertEqual(ev.modifiers, self.SHIFT | self.ALT)
+        self.assertFalse(c._module._LRD_T["swapped"])
+
+    def test_one_remote_arrow_marks_exactly_one_orca_arrow(self):
+        c, KE, _ = self._hooked()
+        self._remote_table_key(c)
+        self.assertEqual(KE("Down", self.DOWN, modifiers=self.CTRL_ALT)._handler.function, "cell_down")
+        self.assertIsNone(KE("Down", self.DOWN, modifiers=self.CTRL_ALT)._handler)
+
+    def test_stale_table_marker_expires_and_control_reset_clears_it(self):
+        c, KE, _ = self._hooked()
+        self._remote_table_key(c)
+        c._module._LRD_T["ts"] -= 5.0
+        self.assertIsNone(KE("Down", self.DOWN, modifiers=self.CTRL_ALT)._handler)
+        c2, KE2, _ = self._hooked()
+        self._remote_table_key(c2)
+        self.assertGreater(c2._module._LRD_T["ts"], 0.0)
+        c2.toggle_control()
+        self.assertEqual(c2._module._LRD_T["ts"], 0.0)
+        self.assertFalse(c2._module._LRD_T["swapped"])
+        self.assertIsNone(KE2("Down", self.DOWN, modifiers=self.CTRL_ALT)._handler)
+
+    def test_only_orca_table_cell_handlers_are_accepted(self):
+        c, KE, script = self._hooked()
+        script.structuralNavigation.enabledObjects["tableCell"].functions = ["cell_up"]
+        self._remote_table_key(c)
+        ev = KE("Down", self.DOWN, modifiers=self.CTRL_ALT)   # Shift+Alt+Down is cell_down
+        self.assertEqual(ev.modifiers, self.CTRL_ALT)
+        self.assertIsNone(ev._handler)
+        c3, KE3, script3 = self._hooked()
+        del script3.structuralNavigation.enabledObjects["tableCell"]   # no table support
+        self._remote_table_key(c3)
+        self.assertIsNone(KE3("Down", self.DOWN, modifiers=self.CTRL_ALT)._handler)
+
+    def test_keypad_arrow_is_never_translated(self):
+        c, KE, _ = self._hooked()
+        self._remote_table_key(c)
+        ev = KE("KP_Down", self.KP_DOWN, modifiers=self.CTRL_ALT)
+        self.assertIsNone(ev._handler)
+
+    def test_table_translation_can_be_disabled_and_errors_do_not_break_keys(self):
+        c, KE, script = self._hooked()
+        self._remote_table_key(c)
+        with mock.patch.dict(os.environ, {"LINUX_RDACCESS_NVDA_TABLE_KEYS": "0"}):
+            self.assertIsNone(KE("Down", self.DOWN, modifiers=self.CTRL_ALT)._handler)
+        c2, KE2, script2 = self._hooked()
+        script2.useStructuralNavigationModel = mock.Mock(side_effect=RuntimeError("secret"))
+        self._remote_table_key(c2)
+        ev = KE2("Down", self.DOWN, modifiers=self.CTRL_ALT)       # must not raise
+        self.assertEqual(ev.modifiers, self.CTRL_ALT)
+
+    def test_remote_ctrl_alt_arrow_does_not_disturb_the_d_translation(self):
+        c, KE, _ = self._hooked()
+        self._remote_table_key(c)
+        for vk, ext in ((0x28, True), (0xA2, False), (0xA4, False)):
+            self._key(c, vk, False, extended=ext)
+        c._module._LRD_T["ts"] = 0.0
+        self._remote_d(c)
+        self.assertEqual(KE("d", self.D_CODE)._handler.function, "landmark_next")
 
     def test_opt_out_environment_variable_disables_translation(self):
         import os

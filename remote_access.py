@@ -520,7 +520,8 @@ LEGACY_COMPAT_MARKER_V32 = "# linux-rdaccess NVDA/Orca input compatibility v32"
 LEGACY_COMPAT_MARKER_V33 = "# linux-rdaccess NVDA/Orca input compatibility v33"
 LEGACY_COMPAT_MARKER_V34 = "# linux-rdaccess NVDA/Orca input compatibility v34"
 LEGACY_COMPAT_MARKER_V35 = "# linux-rdaccess NVDA/Orca input compatibility v35"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v36"
+LEGACY_COMPAT_MARKER_V36 = "# linux-rdaccess NVDA/Orca input compatibility v36"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v37"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -703,6 +704,12 @@ _LEGACY_HELPERS = '''\
             marker["swapped"] = False
             marker["modifiers"] = 0
             marker["code"] = None
+        table = globals().get("_LRD_T")
+        if isinstance(table, dict):
+            table["ts"] = 0.0
+            table["swapped"] = False
+            table["modifiers"] = 0
+            table["code"] = None
 
     def _linux_rdaccess_flush_pending_caps(self):
         """Forward the original deferred CapsLock press when it was not an NVDA command."""
@@ -854,6 +861,22 @@ _LEGACY_HELPERS = '''\
                 k[0] in self._LRD_OTHER_MOD_VKS and k[0] not in (0x10, 0xA0, 0xA1)
                 for k in self._lrd_down):
             _LRD_D["ts"] = __import__("time").monotonic()
+
+        # NVDA's table commands are Ctrl+Alt+Arrow. Mark only an extended arrow
+        # with Ctrl and Alt held and no Shift/Win/NVDA key; the Orca-side hook
+        # below decides, per key and only in browse mode, whether to translate.
+        # The key itself is forwarded unchanged.
+        if (
+            pressed
+            and bool(extended)
+            and vk_code in (0x25, 0x26, 0x27, 0x28)
+            and not self._lrd_nvda_down
+            and any(k[0] in self._LRD_CTRL_VKS for k in self._lrd_down)
+            and any(k[0] in (0x12, 0xA4, 0xA5) for k in self._lrd_down)
+            and not any(k[0] in self._LRD_SHIFT_VKS + (0x5B, 0x5C)
+                        for k in self._lrd_down)
+        ):
+            _LRD_T["ts"] = __import__("time").monotonic()
 
         # NVDA+Down has an exact Orca Say All method. Only the extended
         # navigation Down key is NVDA's gesture; the non-extended VK form is
@@ -1483,6 +1506,76 @@ def _lrd_maybe_swap_d(event, keybindings):
     return original
 
 
+# NVDA's table commands are Ctrl+Alt+Arrow; Orca 42 binds the same actions to
+# Shift+Alt+Arrow (structural navigation, tableCell). Translate only an arrow
+# that arrived from the remote session with exactly Ctrl+Alt held, and only
+# where Orca itself would use structural navigation (web document, browse
+# mode), so editable grids, focus mode and non-document windows keep Ctrl+Alt+
+# Arrow. Only Orca's own tableCell handlers are accepted. A release follows
+# the identity chosen for its press. Opt out with
+# LINUX_RDACCESS_NVDA_TABLE_KEYS=0.
+_LRD_T = {"ts": 0.0, "swapped": False, "modifiers": 0, "code": None}
+_LRD_T_WINDOW = 1.0
+_LRD_TABLE_ARROWS = ("Left", "Right", "Up", "Down")
+
+
+def _lrd_maybe_swap_table(event, keybindings):
+    """Return (hw_code, modifiers) to restore if translated, else None."""
+    if __import__("os").environ.get("LINUX_RDACCESS_NVDA_TABLE_KEYS") == "0":
+        return None
+    pressed = event.isPressedKey()
+    if not pressed:
+        if not _LRD_T["swapped"]:
+            return None
+        # Only the translated key's own release; Ctrl/Alt releases and other
+        # keys must never inherit the translation.
+        if event.hw_code != _LRD_T.get("code"):
+            return None
+        translated = _LRD_T.get("modifiers", 0)
+        _LRD_T["swapped"] = False
+        _LRD_T["modifiers"] = 0
+        _LRD_T["code"] = None
+        original = (event.hw_code, event.modifiers)
+        event.modifiers = translated
+        return original
+
+    codes = {keybindings.getKeycode(name) for name in _LRD_TABLE_ARROWS}
+    codes.discard(None)
+    if event.hw_code not in codes:
+        return None
+    # The marker belongs to exactly one arrow that Orca evaluates, whether or
+    # not it ends up translated.
+    fresh = __import__("time").monotonic() - _LRD_T["ts"] <= _LRD_T_WINDOW
+    _LRD_T["ts"] = 0.0
+    _LRD_T["swapped"] = False
+    if not fresh:
+        return None
+    ctrl, alt = keybindings.CTRL_MODIFIER_MASK, keybindings.ALT_MODIFIER_MASK
+    tracked = (keybindings.SHIFT_MODIFIER_MASK | ctrl | alt
+               | keybindings.ORCA_MODIFIER_MASK)
+    if event.modifiers & tracked != ctrl | alt:
+        return None
+    script = getattr(event, "_script", None)
+    nav = getattr(script, "structuralNavigation", None)
+    gate = getattr(script, "useStructuralNavigationModel", None)
+    if nav is None or gate is None or not gate():
+        return None
+    cell = (getattr(nav, "enabledObjects", None) or {}).get("tableCell")
+    cell_functions = getattr(cell, "functions", None)
+    if not cell_functions:
+        return None
+    original = (event.hw_code, event.modifiers)
+    event.modifiers = (event.modifiers & ~ctrl) | keybindings.SHIFT_MODIFIER_MASK
+    handler = script.keyBindings.getInputHandler(event)
+    if handler is None or handler.function not in cell_functions:
+        event.hw_code, event.modifiers = original
+        return None
+    _LRD_T["swapped"] = True
+    _LRD_T["modifiers"] = event.modifiers
+    _LRD_T["code"] = event.hw_code
+    return original
+
+
 def _lrd_install_orca_hook():
     try:
         from orca import input_event, keybindings
@@ -1499,6 +1592,11 @@ def _lrd_install_orca_hook():
             restore = _lrd_maybe_swap_d(self, keybindings)
         except Exception:
             log.error("linux-rdaccess: D landmark translation failed")
+        if restore is None:
+            try:
+                restore = _lrd_maybe_swap_table(self, keybindings)
+            except Exception:
+                log.error("linux-rdaccess: table navigation translation failed")
         try:
             return original(self)
         finally:
@@ -2226,6 +2324,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V36,
                 LEGACY_COMPAT_MARKER_V35,
                 LEGACY_COMPAT_MARKER_V34,
                 LEGACY_COMPAT_MARKER_V33,

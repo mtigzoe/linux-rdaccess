@@ -289,3 +289,28 @@ Windows Firefox navigation and speech remain **unverified** at this follow-up.
 The first acceptance check is the user's plain Up/Down case through the repaired
 native path, followed by the desktop fixture cases above. Source alignment and
 Linux-side tests do not replace these end-to-end observations.
+
+### Table cell navigation, controller v37
+
+Orca 42's `structural_navigation.py` binds table-cell navigation to
+Shift+Alt+Left/Right/Up/Down (handlers `tableCellGoLeft`, `tableCellGoRight`,
+`tableCellGoUp`, `tableCellGoDown`). Shift+Alt+Home/End go to the first/last
+cell of the table, not to a row or column edge, so NVDA's row/column-edge table
+commands have no Orca 42 equivalent and are not translated.
+
+Controller v37 reuses the existing Orca-side `KeyboardEvent.shouldConsume`
+hook that translates NVDA D to Orca M. A remote extended arrow with exactly
+Ctrl and Alt held (no Shift, Win, Orca or NVDA modifier) marks one key; the hook
+rewrites the event's modifiers to Shift+Alt only when
+`useStructuralNavigationModel()` is true and the matching Orca handler belongs
+to the `tableCell` structural-navigation object. Orca's own gating therefore
+decides browse mode, focus mode and document context. The key release follows
+the identity chosen for its press. Opt out with
+`LINUX_RDACCESS_NVDA_TABLE_KEYS=0`.
+
+Not established: Windows NVDA speech or braille for these keys, behavior in a
+real Firefox table, and whether the window manager delivers Ctrl+Alt+Arrow to
+Orca at all. XFCE's default workspace shortcuts use Ctrl+Alt+Arrow; check them
+with `xfconf-query -c xfce4-keyboard-shortcuts -lv | grep -i "Primary>.*Alt"`
+before concluding the translation is broken. Line reading (NVDA+Up) is a
+separate round.

@@ -102,9 +102,20 @@ the upstream Remote wrapper reaches Orca's native event processor. `doctor`
 checks this patch separately from input injection. Browser chrome, editable
 fields, and focus mode retain the application's normal arrow handling.
 
+NVDA's table commands Ctrl+Alt+Left/Right/Up/Down are translated to Orca 42's
+Shift+Alt+Arrow table-cell navigation, but only for an arrow that arrived from
+the remote session and only where Orca itself would use structural navigation
+(web document, browse mode). Editable grids, focus mode and non-document windows
+keep Ctrl+Alt+Arrow. Orca 42 has no first/last row or column commands, so NVDA's
+row/column-edge table commands are not translated. Set
+`LINUX_RDACCESS_NVDA_TABLE_KEYS=0` to disable the translation. Desktop window
+managers may grab Ctrl+Alt+Arrow (XFCE uses it for workspaces) before Orca sees
+it; see the [shortcut audit](docs/nvda-orca-shortcut-audit-2026-10-05.md).
+
 Compatibility currently covers a subset of NVDA's desktop commands. Laptop
-layout, object/review navigation, table shortcuts, and some unmapped NVDA chords
-need additional work; see the [shortcut audit](docs/nvda-orca-shortcut-audit-2026-10-05.md).
+layout, object/review navigation, line reading, table row/column edges, and some
+unmapped NVDA chords need additional work; see the
+[shortcut audit](docs/nvda-orca-shortcut-audit-2026-10-05.md).
 
 linux-rdaccess additionally translates:
 
@@ -227,7 +238,7 @@ individual on/off results. Num Lock auto-repeat produces one toggle and one
 announcement per press. CapsLock used for a translated NVDA command produces
 neither a lock toggle nor a lock announcement.
 
-The current patches are controller **v36** and local-machine **v10**. Update the
+The current patches are controller **v37** and local-machine **v10**. Update the
 installed command from the repository with `python3 linux_rdaccess.py install`,
 then run `linux-rdaccess connect` to update the Orca-side files and restart Orca.
 `doctor` verifies the connected patch hooks, valid Python, and the installed
