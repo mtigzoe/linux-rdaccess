@@ -2667,6 +2667,9 @@ class LocalMachine:
         script.structuralNavigation.enabledObjects["heading"] = heading
         script.form_calls = form_calls
         script.heading_calls = heading_calls
+        script.find_calls = []
+        script.findNext = lambda event=None: script.find_calls.append("next")
+        script.findPrevious = lambda event=None: script.find_calls.append("previous")
         script.layout_calls = []
         script.toggleLayoutMode = lambda event: script.layout_calls.append("toggle")
 
@@ -2806,19 +2809,23 @@ class LocalMachine:
                     self.assertIsNone(getattr(ev, "_consumer", None))
 
     def test_remote_nvda_f3_find_commands_are_consumed_only_in_browse_mode(self):
-        for shift in (False, True):
+        for shift, expected in ((False, "next"), (True, "previous")):
             for browse in (True, False):
                 with self.subTest(shift=shift, browse=browse):
-                    c, KE, _ = self._hooked(browse=browse)
+                    c, KE, script = self._hooked(browse=browse)
                     self._key(c, 0x2D, True, extended=True)
                     if shift:
                         self._key(c, 0xA0, True)
                     self._key(c, 0x72, True)
                     ev = KE("F3", 69, modifiers=self.SHIFT if shift else 0)
+                    consumer = getattr(ev, "_consumer", None)
                     if browse:
-                        self.assertIsNotNone(getattr(ev, "_consumer", None))
+                        self.assertIsNotNone(consumer)
+                        consumer(ev)
+                        self.assertEqual(script.find_calls, [expected])
                     else:
-                        self.assertIsNone(getattr(ev, "_consumer", None))
+                        self.assertIsNone(consumer)
+                        self.assertEqual(script.find_calls, [])
 
     def test_caps_nvda_f3_never_toggles_caps_during_browse_context_decision(self):
         c, KE, _ = self._hooked(browse=True)
