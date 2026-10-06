@@ -2580,6 +2580,7 @@ class LocalMachine:
         kb.getKeycode = lambda key: {
             "a": a_code, "f": f_code, "m": self.M_CODE, "n": n_code,
             "o": o_code, "w": w_code, "d": self.D_CODE,
+            "7": 17, "8": 18, "9": 19,
             "Left": self.LEFT, "Right": self.RIGHT,
             "Up": self.UP, "Down": self.DOWN,
         }.get(key)
@@ -2600,6 +2601,14 @@ class LocalMachine:
         form_field = types.SimpleNamespace(
             goNext=lambda script, event: form_calls.append("next"),
             goPrevious=lambda script, event: form_calls.append("previous"),
+            functions=[],
+        )
+        heading_calls = []
+        heading = types.SimpleNamespace(
+            goNextAtLevelFactory=lambda level: (
+                lambda script, event: heading_calls.append(("next", level))),
+            goPreviousAtLevelFactory=lambda level: (
+                lambda script, event: heading_calls.append(("previous", level))),
             functions=[],
         )
 
@@ -2642,7 +2651,9 @@ class LocalMachine:
 
         script = Script()
         script.structuralNavigation.enabledObjects["formField"] = form_field
+        script.structuralNavigation.enabledObjects["heading"] = heading
         script.form_calls = form_calls
+        script.heading_calls = heading_calls
 
         class KeyboardEvent:
             def __init__(self, string, hw_code, modifiers=0, pressed=True):
@@ -2724,6 +2735,20 @@ class LocalMachine:
                 self.assertIsNotNone(consumer)
                 consumer(ev)
                 self.assertEqual(script.form_calls, [expected])
+
+    def test_remote_heading_levels_7_to_9_use_native_orca_heading_factories(self):
+        for level, vk, code in ((7, 0x37, 17), (8, 0x38, 18), (9, 0x39, 19)):
+            for shift, direction in ((False, "next"), (True, "previous")):
+                with self.subTest(level=level, shift=shift):
+                    c, KE, script = self._hooked()
+                    if shift:
+                        self._key(c, 0xA0, True)
+                    self._key(c, vk, True)
+                    ev = KE(str(level), code, modifiers=self.SHIFT if shift else 0)
+                    consumer = getattr(ev, "_consumer", None)
+                    self.assertIsNotNone(consumer)
+                    consumer(ev)
+                    self.assertEqual(script.heading_calls, [(direction, level)])
 
     def test_local_mismatched_browse_letters_are_never_suppressed(self):
         cases = (
