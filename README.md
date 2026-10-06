@@ -116,15 +116,14 @@ so fast presses retain their translations. Failed injection removes its claim.
 XTest does not identify individual input sources: a simultaneous local press
 of the same key can still be confused with a pending remote press.
 
-Compatibility currently covers a subset of NVDA commands. Desktop layout is
-the default. Set `LINUX_RDACCESS_NVDA_LAYOUT=laptop` in Orca's environment to
-select NVDA's laptop keyboard layout. The laptop aliases currently implemented
-are NVDA+A (caret Say All), NVDA+L (current line), and NVDA+Shift+End (status).
-Laptop NVDA+Up/Down/End are review commands in NVDA; linux-rdaccess consumes
-those gestures rather than running the conflicting desktop actions until an
-NVDA-equivalent review model is proven. Object/review navigation, table
-row/column edges, and some unmapped NVDA chords still need additional work; see
-the [shortcut audit](docs/nvda-orca-shortcut-audit-2026-10-05.md).
+Compatibility covers the NVDA global and browse-mode gestures for which Orca
+42 has a proven equivalent, and explicitly consumes known NVDA commands that
+would otherwise execute unrelated Orca or Linux application shortcuts. Desktop
+layout is the default. Set `LINUX_RDACCESS_NVDA_LAYOUT=laptop` in Orca's
+environment to select NVDA's laptop keyboard layout. Laptop NVDA+A (caret Say
+All), NVDA+L (current line), and NVDA+Shift+End (status) are translated
+directly. Laptop review/object gestures whose semantics differ from Orca flat
+review are consumed rather than misrouted.
 
 linux-rdaccess additionally translates:
 
@@ -137,6 +136,9 @@ Other NVDA chords translated to native Orca commands (desktop NVDA layout;
 only with the NVDA key held and no Shift/Ctrl/Alt/Win unless noted):
 
     NVDA+1     Toggle input help using Orca learn mode
+    NVDA+M     Toggle Orca mouse review
+    NVDA+P     Cycle punctuation / speech-symbol level
+    NVDA+U     Cycle progress-bar output: off, speech, beep, both
     NVDA+Up    Current caret line (without entering flat review)
     NVDA+Down  Say all
     NVDA+Tab   Where am I
@@ -148,21 +150,21 @@ The clock uses Orca's configured format and Linux time zone. NVDA+F12 is consume
 instead of reaching Orca's caret-navigation toggle. NVDA+1 toggles Orca learn
 mode on and off rather than falling through to Orca's bookmark-1 command.
 
-Known NVDA commands which have no proven Orca 42 equivalent are consumed when
-their physical gesture would otherwise run an unrelated Orca command:
-NVDA+2 through NVDA+7, NVDA+B / NVDA+Shift+B, NVDA+F, NVDA+K, NVDA+M, NVDA+P,
-NVDA+S, NVDA+U, and NVDA+Ctrl+Space. Depending on Orca's own keyboard layout,
-the conflicting Orca actions include bookmark navigation, character-attribute
-reporting, flat/review navigation, speech silence, and application preferences. These suppress incorrect side effects; they do not
-yet implement the corresponding NVDA setting, foreground-window, battery,
-speech-mode, or embedded-object behavior. Current-line reporting uses
+Known NVDA commands which still have no proven Orca 42 equivalent are consumed
+when their physical gesture would otherwise run an unrelated Orca or Linux
+application command. Examples include NVDA+2 through NVDA+7, NVDA+B /
+NVDA+Shift+B, NVDA+F, NVDA+K, NVDA+S, NVDA+Ctrl+Space, and the unsupported
+navigator/review hierarchy commands. These suppress incorrect side effects; they
+do not claim equivalent functionality. Current-line reporting uses
 Orca's native caret context and does not move the caret or review cursor; it
 does not implement NVDA's double/triple-press spelling and character details.
 
 NVDA's D (landmark) is Orca's M (Orca's own D is "live region"). A D typed in the
 remote session is turned into the landmark key (Shift+D into previous landmark)
 only where Orca itself would use structural navigation, i.e. browse mode on web
-content. The decision is made on Orca's main thread inside `KeyboardEvent.shouldConsume`,
+content. NVDA F/Shift+F use Orca's native form-field navigation, and heading
+levels 7 through 9 use Orca's native heading-level factories even though Orca
+42 only binds levels 1 through 6 by default. The decision is made on Orca's main thread inside `KeyboardEvent.shouldConsume`,
 using Orca's own `useStructuralNavigationModel()`, and is re-read for every key,
 so NVDA+Space toggling is followed immediately. Focus mode, edit fields, the
 address bar, Ctrl/Alt+D, NVDA+D and any D from the Linux keyboard are never
@@ -181,7 +183,11 @@ Orca+Z is Orca's toggle for structural-navigation keys. While it is off, the D
 landmark translation above is off too, so single-letter keys never get in the
 way of typing. Plain Shift+Space and plain F2 (Thunar rename) are untouched.
 
-Object/review commands still need additional work. Numpad review keys match Orca's desktop
+NVDA Ctrl+Alt+PageUp/PageDown/Home/End table-edge commands are implemented with
+Orca's native table coordinates so they preserve the current column or row.
+NVDA's row/column reading commands remain unsupported because Orca 42 has no
+non-moving full-row/full-column presentation primitive.
+
 Desktop keypad object-navigation interception is deliberately limited to
 unambiguous keypad VKs (for example Numpad5, Minus, Divide, Multiply, and
 extended NumpadEnter). Legacy payloads containing only non-extended
@@ -206,7 +212,14 @@ Normal application navigation remains unchanged and is forwarded directly:
 
 This is intentional: file managers and desktop applications expose their focused controls through Orca/AT-SPI, so their native keyboard navigation should not be replaced by a screen-reader-specific layer.
 
-The compatibility layer is being extended for NVDA review commands, braille panning/routing, braille keyboard input, speech interruption, and other screen-reader-specific gestures.
+NVDA+F7 opens an NVDA-style category chooser using the NVDA 2026.2 default
+categories and order: Links, Headings, Form fields, Buttons, and Landmarks.
+The last selected category is remembered for the next invocation; Orca owns the
+actual structural-navigation result list.
+
+The compatibility layer is being extended for NVDA review commands, braille
+panning/routing, braille keyboard input, speech interruption, and other
+screen-reader-specific gestures.
 
 ### Current compatibility work
 
@@ -277,7 +290,7 @@ individual on/off results. Num Lock auto-repeat produces one toggle and one
 announcement per press. CapsLock used for a translated NVDA command produces
 neither a lock toggle nor a lock announcement.
 
-The current patches are controller **v57** and local-machine **v10**. Update the
+The current patches are controller **v76** and local-machine **v11**. Update the
 installed command from the repository with `python3 linux_rdaccess.py install`,
 then run `linux-rdaccess connect` to update the Orca-side files and restart Orca.
 `doctor` verifies the connected patch hooks, valid Python, and the installed
