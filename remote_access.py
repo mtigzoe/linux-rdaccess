@@ -119,6 +119,72 @@ _CUSTOMIZATION_EVENT_FUNCTIONS = (
     "_patched_process_key", "_should_run_shortcut_directly", "_run_direct_shortcut",
 )
 
+CUSTOMIZATION_RECONNECT_MARKER = "# linux-rdaccess automatic relay reconnect v1"
+_CUSTOMIZATION_RECONNECT_HOOK = CUSTOMIZATION_RECONNECT_MARKER + '''
+if _has_config:
+    # Use the transport's existing retry worker. close() stops this worker,
+    # and manual reconnect() creates its replacement; do not add a second loop.
+    t = transport.reconnector_thread
+    if not t.is_alive():
+        t.start()
+'''
+_CUSTOMIZATION_ONESHOT_START = '''
+if _has_config:
+    def try_run_thread():
+        try:
+            transport.run()
+        except Exception:
+            print("Error in thread")
+            print("Orca Remote: diagnostic details redacted")
+    t = threading.Thread(target=try_run_thread)
+    t.daemon = True
+    t.start()
+'''
+
+
+def _customization_startup_blocks(tree):
+    return [node for node in tree.body if isinstance(node, ast.If)
+            and isinstance(node.test, ast.Name) and node.test.id == "_has_config"]
+
+
+def legacy_customization_reconnect_patch_current(text: str) -> bool:
+    """Verify that automatic startup uses the native cancellable retry worker."""
+    if text.count(CUSTOMIZATION_RECONNECT_MARKER) != 1:
+        return False
+    try:
+        blocks = _customization_startup_blocks(ast.parse(text, feature_version=(3, 10)))
+    except SyntaxError:
+        return False
+    expected = ast.parse(_CUSTOMIZATION_RECONNECT_HOOK).body[0]
+    return len(blocks) == 1 and _ast_equal(blocks[0], expected)
+
+
+def _patch_legacy_customization_reconnect(text: str) -> str:
+    if CUSTOMIZATION_RECONNECT_MARKER in text:
+        if not legacy_customization_reconnect_patch_current(text):
+            raise ValueError("incomplete automatic relay reconnect patch")
+        return text
+    tree = ast.parse(text, feature_version=(3, 10))
+    blocks = _customization_startup_blocks(tree)
+    if not blocks:
+        # Minimal configuration templates have no automatic startup to repair.
+        return text
+    expected = ast.parse(_CUSTOMIZATION_ONESHOT_START).body[0]
+    if len(blocks) != 1 or not _ast_equal(blocks[0], expected):
+        raise ValueError("unsupported legacy automatic relay startup")
+    block = blocks[0]
+    data = text.encode("utf-8")
+    starts = [0]
+    for line in data.splitlines(keepends=True):
+        starts.append(starts[-1] + len(line))
+    start = starts[block.lineno - 1] + block.col_offset
+    end = starts[block.end_lineno - 1] + block.end_col_offset
+    result = (data[:start] + _CUSTOMIZATION_RECONNECT_HOOK.rstrip("\n").encode("utf-8")
+              + data[end:]).decode("utf-8")
+    if not legacy_customization_reconnect_patch_current(result):
+        raise ValueError("updated automatic relay reconnect patch is incomplete")
+    return result
+
 
 
 @dataclass(frozen=True)
@@ -420,6 +486,7 @@ def update_legacy_orca_customizations(
         text = text.rstrip("\n") + "\n\n" + _LOCAL_SPEECH_PREF_HOOK
 
     text = _patch_legacy_customization_event_api(text)
+    text = _patch_legacy_customization_reconnect(text)
 
     try:
         compile(text, str(path), "exec")
@@ -522,7 +589,9 @@ LEGACY_COMPAT_MARKER_V34 = "# linux-rdaccess NVDA/Orca input compatibility v34"
 LEGACY_COMPAT_MARKER_V35 = "# linux-rdaccess NVDA/Orca input compatibility v35"
 LEGACY_COMPAT_MARKER_V36 = "# linux-rdaccess NVDA/Orca input compatibility v36"
 LEGACY_COMPAT_MARKER_V37 = "# linux-rdaccess NVDA/Orca input compatibility v37"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v38"
+LEGACY_COMPAT_MARKER_V38 = "# linux-rdaccess NVDA/Orca input compatibility v38"
+LEGACY_COMPAT_MARKER_V39 = "# linux-rdaccess NVDA/Orca input compatibility v39"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v40"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -564,18 +633,20 @@ _LEGACY_HELPERS = '''\
         0x10, 0xA0, 0xA1, 0x11, 0xA2, 0xA3, 0x12, 0xA4, 0xA5, 0x5B, 0x5C,
     )
     # NVDA chord -> Orca command, checked against the Orca 42 desktop keymap.
-    # NVDA+Up/review keys are deliberately NOT mapped: Orca's KP_Up enters flat
-    # review, which would leave braille following the review cursor.
+    # Report the caret line through Orca's script rather than entering flat
+    # review with KP_Up. Other review commands still retain their native keys.
     #   vk: (extended-required, Orca key name, target vk, drop NVDA modifier,
     #        press count)
     # "drop" is needed where Orca binds the key with NO Orca modifier.
     _LRD_ACTION_CHORDS = {
         0x09: "where_am_i",                          # NVDA+Tab
         0x23: "status_bar",                          # NVDA+End
+        0x26: "current_line",                        # desktop NVDA+Up
         0x4E: "preferences",                         # NVDA+N
         0x54: "title",                               # NVDA+T
         0x71: "pass_next",                           # NVDA+F2
         0x76: "elements_list",                       # NVDA+F7
+        0x7B: "date_time",                           # NVDA+F12
     }
     _LRD_SHIFT_VKS = (0x10, 0xA0, 0xA1)
     _LRD_NVDA_VKS = (0x2D, 0x14)
@@ -585,6 +656,16 @@ _LEGACY_HELPERS = '''\
     # binding has none (verified against Orca 42 key matching).
     _LRD_CHORDS = {
     }
+
+    def _linux_rdaccess_clock_command(self):
+        """Select time/date for consecutive complete NVDA+F12 gestures."""
+        now = __import__("time").monotonic()
+        generation = getattr(self, "_lrd_generation", 0)
+        previous = getattr(self, "_lrd_last_clock_press", None)
+        repeated = (previous is not None and previous[0] == generation
+                    and 0 <= now - previous[1] <= 0.5)
+        self._lrd_last_clock_press = (generation, now)
+        return "presentDate" if repeated else "presentTime"
 
     def _linux_rdaccess_stop_local_speech(self):
         """Stop Linux-side speech on Orca's main loop, never on the network thread.
@@ -641,7 +722,23 @@ _LEGACY_HELPERS = '''\
         if not pressed and held not in forwarded:
             return False
         payload = dict(forwarded[held], pressed=pressed) if held in forwarded else kwargs
-        result = self.local_machine.send_key(**payload)
+        candidate = getattr(self, "_lrd_navigation_marker", None)
+        self._lrd_navigation_marker = None
+        marker = token = None
+        if pressed and candidate is not None and candidate[2] == held:
+            marker = globals().get(candidate[0])
+            if isinstance(marker, dict):
+                # Publish before dispatch: XTest can reach Orca's thread before
+                # send_key returns. A rejected injection owns no marker.
+                token = _lrd_publish_navigation_marker(marker, candidate[1])
+        try:
+            result = self.local_machine.send_key(**payload)
+        except BaseException:
+            if token is not None:
+                _lrd_remove_navigation_marker(marker, token)
+            raise
+        if result is False and token is not None:
+            _lrd_remove_navigation_marker(marker, token)
         if result is not False:
             if pressed:
                 forwarded[held] = dict(payload)
@@ -697,17 +794,18 @@ _LEGACY_HELPERS = '''\
         self._lrd_caps_pending = None
         self._lrd_caps_used = False
         self._lrd_bypass_next = False
+        self._lrd_navigation_marker = None
         self._lrd_generation = getattr(self, "_lrd_generation", 0) + 1
         self._lrd_local_stop_pending = False
         marker = globals().get("_LRD_D")
         if isinstance(marker, dict):
-            marker["ts"] = 0.0
+            _lrd_clear_navigation_markers(marker)
             marker["swapped"] = False
             marker["modifiers"] = 0
             marker["code"] = None
         table = globals().get("_LRD_T")
         if isinstance(table, dict):
-            table["ts"] = 0.0
+            _lrd_clear_navigation_markers(table)
             table["held"] = {}
 
     def _linux_rdaccess_flush_pending_caps(self):
@@ -743,6 +841,7 @@ _LEGACY_HELPERS = '''\
                                    key_name=None, scan_code=None):
         """Return True when the event was fully handled here."""
         self._linux_rdaccess_sync_state()
+        self._lrd_navigation_marker = None
         pressed = bool(pressed)
         held = self._linux_rdaccess_key_identity(vk_code, extended, key_name)
         repeat = pressed and held in self._lrd_down
@@ -768,6 +867,14 @@ _LEGACY_HELPERS = '''\
                 and getattr(self, "_lrd_caps_pending", None) is not None
             ):
                 self._lrd_caps_used = True
+
+        # Only consecutive clock gestures count as a double press. Modifier
+        # releases between taps are normal; another action starts a new count.
+        if pressed and not repeat and vk_code not in self._LRD_MODIFIER_VKS:
+            clock = (vk_code == 0x7B and self._lrd_nvda_down
+                     and not any(k[0] in self._LRD_OTHER_MOD_VKS for k in self._lrd_down))
+            if not clock:
+                self._lrd_last_clock_press = None
 
         # CapsLock can be configured as the NVDA modifier. Forwarding its press
         # immediately toggles Linux Caps Lock before we know whether this is a
@@ -859,7 +966,7 @@ _LEGACY_HELPERS = '''\
         if pressed and vk_code == 0x44 and not self._lrd_nvda_down and not any(
                 k[0] in self._LRD_OTHER_MOD_VKS and k[0] not in (0x10, 0xA0, 0xA1)
                 for k in self._lrd_down):
-            _LRD_D["ts"] = __import__("time").monotonic()
+            self._lrd_navigation_marker = ("_LRD_D", "d", held)
 
         # NVDA's table commands are Ctrl+Alt+Arrow. Mark only an extended arrow
         # with Ctrl and Alt held and no Shift/Win/NVDA key; the Orca-side hook
@@ -875,7 +982,8 @@ _LEGACY_HELPERS = '''\
             and not any(k[0] in self._LRD_SHIFT_VKS + (0x5B, 0x5C)
                         for k in self._lrd_down)
         ):
-            _LRD_T["ts"] = __import__("time").monotonic()
+            self._lrd_navigation_marker = (
+                "_LRD_T", {0x25: "Left", 0x26: "Up", 0x27: "Right", 0x28: "Down"}[vk_code], held)
 
         # NVDA+Down has an exact Orca Say All method. Only the extended
         # navigation Down key is NVDA's gesture; the non-extended VK form is
@@ -924,7 +1032,7 @@ _LEGACY_HELPERS = '''\
             if (
                 action is not None
                 and not any(k[0] in self._LRD_OTHER_MOD_VKS for k in self._lrd_down)
-                and not (action == "status_bar" and not bool(extended))
+                and not (action in ("status_bar", "current_line") and not bool(extended))
             ):
                 self._lrd_swapped.add(held)
                 if getattr(self, "_lrd_caps_pending", None) is not None:
@@ -949,6 +1057,15 @@ _LEGACY_HELPERS = '''\
                 elif action == "status_bar":
                     self._linux_rdaccess_run_main(
                         lambda: self._linux_rdaccess_script_call("presentStatusBar"))
+                elif action == "current_line":
+                    self._linux_rdaccess_run_main(
+                        lambda: self._linux_rdaccess_script_call("presentCurrentLine"))
+                elif action == "date_time":
+                    # Resolve the tap count on receipt; queued callbacks must
+                    # retain each gesture's time/date choice independently.
+                    method = self._linux_rdaccess_clock_command()
+                    self._linux_rdaccess_run_main(
+                        lambda method=method: self._linux_rdaccess_script_call(method))
                 return True
 
         # NVDA chords -> Orca commands (see _LRD_CHORDS). Only the first press
@@ -1183,6 +1300,8 @@ _LEGACY_HELPERS = '''\
     def _linux_rdaccess_handle_braille_input(self, kwargs):
         self._linux_rdaccess_sync_state()
         action, record = self._linux_rdaccess_classify_braille(kwargs)
+        if action is not None:
+            self._lrd_last_clock_press = None
         try:
             self._linux_rdaccess_trace_braille(record)
         except Exception:
@@ -1280,12 +1399,20 @@ _LEGACY_HELPERS = '''\
         """Prefer Orca's native structural-list API; retain key fallback."""
         try:
             from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _adapter
-            if _adapter.show_structural_list(key):
-                return
         except ImportError:
-            pass
+            _adapter = None
         except Exception:
             log.error("linux-rdaccess: native structural list failed")
+            return
+
+        try:
+            handler = getattr(_adapter, "show_structural_list", None)
+            if callable(handler) and handler(key) is not None:
+                return
+        except Exception:
+            # The native handler may have already opened or presented a list.
+            log.error("linux-rdaccess: native structural list failed")
+            return
 
         # Adapter unavailable or this Orca version does not expose the object.
         # Fall back to the verified Orca 42 Alt+Shift+letter binding.
@@ -1304,13 +1431,21 @@ _LEGACY_HELPERS = '''\
 
         try:
             from linux_rdaccess_orca_adapter import show_elements_list as _show
-            result = _show(open_list)
+        except ImportError:
+            _show = None
+        except Exception:
+            log.error("linux-rdaccess: elements list failed")
+            return
+
+        try:
+            result = _show(open_list) if _show is not None else None
             if result is not None:
                 # True: category selected and delegated to Orca.
                 # False: the dialog was intentionally cancelled/Escaped.
                 return
         except Exception:
             log.error("linux-rdaccess: elements list failed")
+            return
 
         # Safe fallback only when the chooser could not be presented.
         open_list("h")
@@ -1330,6 +1465,13 @@ _LEGACY_HELPERS = '''\
 
         try:
             from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _adapter
+        except ImportError:
+            _adapter = None
+        except Exception:
+            log.error("linux-rdaccess: Orca adapter import failed: %s", method)
+            return False
+
+        try:
             handlers = {
                 "panBrailleLeft": "pan_braille_left",
                 "panBrailleRight": "pan_braille_right",
@@ -1339,6 +1481,9 @@ _LEGACY_HELPERS = '''\
                 "whereAmI": "where_am_i",
                 "presentTitle": "present_title",
                 "presentStatusBar": "present_status_bar",
+                "presentCurrentLine": "present_current_line",
+                "presentTime": "present_time",
+                "presentDate": "present_date",
                 "togglePresentationMode": "toggle_presentation_mode",
                 "toggleStructuralNavigation": "toggle_structural_navigation",
                 "sayAll": "say_all",
@@ -1351,14 +1496,16 @@ _LEGACY_HELPERS = '''\
                 adapter_args = (args[0].event["argument"],)
             if adapter_method:
                 handler = getattr(_adapter, adapter_method, None)
-                if callable(handler) and handler(*adapter_args):
-                    return True
-            elif _adapter.call_script(method, *args, default_event=not args):
-                return True
-            # False denotes no supported adapter operation, not an invocation.
-            # Try the verified legacy API instead of stopping at module import.
-        except ImportError:
-            pass
+                result = handler(*adapter_args) if callable(handler) else None
+            elif _adapter is not None:
+                result = _adapter.call_script(method, *args, default_event=not args)
+            else:
+                result = None
+            if result is not None:
+                # Supported handlers can explicitly decline a command. Never
+                # run them again through fallback after they performed work.
+                return result is not False
+            # None denotes an unsupported API; try the verified legacy API.
         except Exception:
             # An exception can contain application text. Do not persist it or
             # retry a handler which may already have performed part of its work.
@@ -1407,13 +1554,32 @@ _LEGACY_HELPERS = '''\
                 if handler is not None:
                     return handler(None) is not False
                 return unavailable()
+            if method == "presentCurrentLine":
+                handler = getattr(script, "sayLine", None)
+                if not callable(handler):
+                    return unavailable()
+                target = getattr(_state, "locusOfFocus", None)
+                if target is None:
+                    target = getattr(_state, "locus_of_focus", None)
+                utilities = getattr(script, "utilities", None)
+                get_context = getattr(utilities, "getCaretContext", None)
+                in_document = getattr(utilities, "inDocumentContent", None)
+                outside_document = (target is not None and callable(in_document)
+                                    and not in_document(target))
+                if callable(get_context) and not outside_document:
+                    context = get_context()
+                    if isinstance(context, (tuple, list)) and len(context) == 2:
+                        target = context[0] if context[0] is not None else target
+                return handler(target) is not False if target is not None else False
             handler = getattr(script, method, None)
             if handler is None:
                 return unavailable()
             if not args:
-                # Orca 42 requires inputEvent for sayAll, presentTitle,
-                # presentStatusBar and togglePresentationMode. The adapter
-                # supplies None; the fallback must use the same signature.
+                if method == "togglePresentationMode":
+                    from types import SimpleNamespace
+                    return handler(SimpleNamespace(type="keyboard", event_string="space")) is not False
+                # Orca 42 requires inputEvent for these native commands.
+                # Use None unless the command needs manual-event semantics.
                 return handler(None) is not False
             else:
                 return handler(*args) is not False
@@ -1433,8 +1599,47 @@ _LEGACY_ORCA_D_HOOK = '''
 # captures the key handler there, before consumesKeyboardEvent), then restores
 # hw_code so echo, double-click detection and release matching see the real key.
 # Opt out with LINUX_RDACCESS_NVDA_D_LANDMARK=0.
-_LRD_D = {"ts": 0.0, "swapped": False, "modifiers": 0, "code": None}
-_LRD_D_WINDOW = 1.0
+_LRD_NAV_LOCK = __import__("threading").RLock()
+_LRD_NAV_WINDOW = 1.0
+_LRD_NAV_MAX_PENDING = 64
+_LRD_D = {"pending": [], "swapped": False, "modifiers": 0, "code": None}
+
+
+def _lrd_prune_navigation_markers(marker, now):
+    marker["pending"][:] = [token for token in marker["pending"]
+                            if now - token[0] <= _LRD_NAV_WINDOW]
+
+
+def _lrd_publish_navigation_marker(marker, key):
+    """Publish one bounded, expiring, key-specific injection claim."""
+    now = __import__("time").monotonic()
+    token = (now, key, object())
+    with _LRD_NAV_LOCK:
+        _lrd_prune_navigation_markers(marker, now)
+        marker["pending"].append(token)
+        del marker["pending"][:-_LRD_NAV_MAX_PENDING]
+    return token
+
+
+def _lrd_remove_navigation_marker(marker, token):
+    with _LRD_NAV_LOCK:
+        marker["pending"][:] = [item for item in marker["pending"]
+                                if item is not token]
+
+
+def _lrd_take_navigation_marker(marker, key):
+    with _LRD_NAV_LOCK:
+        _lrd_prune_navigation_markers(marker, __import__("time").monotonic())
+        for index, token in enumerate(marker["pending"]):
+            if token[1] == key:
+                marker["pending"].pop(index)
+                return True
+    return False
+
+
+def _lrd_clear_navigation_markers(marker):
+    with _LRD_NAV_LOCK:
+        marker["pending"].clear()
 
 
 def _lrd_maybe_swap_d(event, keybindings):
@@ -1468,14 +1673,15 @@ def _lrd_maybe_swap_d(event, keybindings):
     # The marker belongs to exactly one D that Orca evaluates, whether or
     # not it ends up translated; otherwise a refused remote D (focus mode)
     # would leak into a later local D.
-    fresh = __import__("time").monotonic() - _LRD_D["ts"] <= _LRD_D_WINDOW
-    _LRD_D["ts"] = 0.0
     _LRD_D["swapped"] = False
-    if not fresh:
-        return None
     blocked = (keybindings.CTRL_MODIFIER_MASK | keybindings.ALT_MODIFIER_MASK
                | keybindings.ORCA_MODIFIER_MASK)
     if event.modifiers & blocked:
+        return None
+    # An earlier, ineligible same-key event can still be queued when a later
+    # remote landmark press publishes its claim. It must not steal that claim.
+    fresh = _lrd_take_navigation_marker(_LRD_D, "d")
+    if not fresh:
         return None
     script = getattr(event, "_script", None)
     nav = getattr(script, "structuralNavigation", None)
@@ -1499,7 +1705,6 @@ def _lrd_maybe_swap_d(event, keybindings):
         event.hw_code, event.modifiers = original
         return None
     if pressed:
-        _LRD_D["ts"] = 0.0
         _LRD_D["swapped"] = True
         _LRD_D["modifiers"] = event.modifiers
         _LRD_D["code"] = code
@@ -1518,8 +1723,7 @@ def _lrd_maybe_swap_d(event, keybindings):
 # Arrow. Only Orca's own tableCell handlers are accepted. A release follows
 # the identity chosen for its press. Opt out with
 # LINUX_RDACCESS_NVDA_TABLE_KEYS=0.
-_LRD_T = {"ts": 0.0, "held": {}}
-_LRD_T_WINDOW = 1.0
+_LRD_T = {"pending": [], "held": {}}
 _LRD_TABLE_ARROWS = ("Left", "Right", "Up", "Down")
 
 
@@ -1540,22 +1744,23 @@ def _lrd_maybe_swap_table(event, keybindings):
         event.modifiers = modifiers
         return original
 
-    codes = {keybindings.getKeycode(name) for name in _LRD_TABLE_ARROWS}
-    codes.discard(None)
-    if event.hw_code not in codes:
+    key = next((name for name in _LRD_TABLE_ARROWS
+                if keybindings.getKeycode(name) == event.hw_code), None)
+    if key is None:
         return None
     # A new press (including auto-repeat) supersedes any earlier decision.
     held.pop(event.hw_code, None)
     # The marker belongs to exactly one arrow that Orca evaluates, whether or
     # not it ends up translated.
-    fresh = __import__("time").monotonic() - _LRD_T["ts"] <= _LRD_T_WINDOW
-    _LRD_T["ts"] = 0.0
-    if not fresh:
-        return None
     ctrl, alt = keybindings.CTRL_MODIFIER_MASK, keybindings.ALT_MODIFIER_MASK
     tracked = (keybindings.SHIFT_MODIFIER_MASK | ctrl | alt
                | keybindings.ORCA_MODIFIER_MASK)
     if event.modifiers & tracked != ctrl | alt:
+        return None
+    # Plain arrows and other chords queued before a remote table press do not
+    # own its claim. Browse/focus refusal below still consumes an eligible one.
+    fresh = _lrd_take_navigation_marker(_LRD_T, key)
+    if not fresh:
         return None
     script = getattr(event, "_script", None)
     nav = getattr(script, "structuralNavigation", None)
@@ -2329,6 +2534,8 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V39,
+                LEGACY_COMPAT_MARKER_V38,
                 LEGACY_COMPAT_MARKER_V37,
                 LEGACY_COMPAT_MARKER_V36,
                 LEGACY_COMPAT_MARKER_V35,

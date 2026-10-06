@@ -322,6 +322,20 @@ class DoctorTests(unittest.TestCase):
         cfg.unlink()
         self.assertEqual(dict(linux_rdaccess.patch_status(cfg))[label], "missing")
 
+    def test_reconnect_status_checks_actual_worker_startup(self):
+        import remote_access
+        cfg = self._orca()
+        label = "automatic relay reconnect (orca-customizations.py)"
+        self.assertIn("not patched", dict(linux_rdaccess.patch_status(cfg))[label])
+        patched = remote_access._patch_legacy_customization_reconnect(
+            remote_access._CUSTOMIZATION_ONESHOT_START)
+        cfg.write_text(patched, encoding="utf-8")
+        self.assertEqual(dict(linux_rdaccess.patch_status(cfg))[label], "current")
+        cfg.write_text(patched.replace("t.start()", "transport.run()"), encoding="utf-8")
+        self.assertIn("incomplete", dict(linux_rdaccess.patch_status(cfg))[label])
+        cfg.unlink()
+        self.assertEqual(dict(linux_rdaccess.patch_status(cfg))[label], "missing")
+
     def test_reports_current_outdated_unpatched_and_missing(self):
         from remote_access import (LEGACY_COMPAT_MARKER, LOCAL_MACHINE_MARKER_V1)
         cfg = self._orca(controller="x\n" + LEGACY_COMPAT_MARKER, local="x\n" + LOCAL_MACHINE_MARKER_V1 + " v1")

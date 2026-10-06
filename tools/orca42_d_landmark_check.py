@@ -24,7 +24,7 @@ _tmp = pathlib.Path(tempfile.mkdtemp()) / "remote_controller.py"
 sys.path.insert(0, os.path.dirname(os.path.abspath(os.environ["UPSTREAM_REMOTE_CONTROLLER"])))  # upstream siblings
 shutil.copy(os.environ["UPSTREAM_REMOTE_CONTROLLER"], _tmp)
 remote_access.patch_legacy_orca_remote_controller(_tmp)
-import types, time, importlib.util
+import types, importlib.util
 import gi
 gi.require_version("Gtk","3.0"); gi.require_version("Gdk","3.0"); gi.require_version("Atspi","2.0")
 from orca import keybindings, input_event, orca_state, settings
@@ -74,24 +74,41 @@ ie.KeyboardEvent._getUserHandler = lambda self: None
 ie.KeyboardEvent.isModifierKey = lambda self: False
 ie.KeyboardEvent.isOrcaModifier = lambda self: False
 
-print("hook installed:", rc._lrd_install_orca_hook())
+assert rc._lrd_install_orca_hook(), "Orca keyboard hook did not install"
+print("hook installed:", True)
 
-def run(label, string, hw, mods=0, pressed=True, remote=True, browse=True):
+def run(label, string, hw, mods=0, pressed=True, remote=True, browse=True,
+        expected_handler=None, expected_consume=False):
     script.browse = browse
-    if remote and pressed: rc._LRD_D["ts"] = time.monotonic()
+    blocked = (keybindings.CTRL_MODIFIER_MASK | keybindings.ALT_MODIFIER_MASK
+               | keybindings.ORCA_MODIFIER_MASK)
+    if remote and pressed and string in ("d", "D") and not mods & blocked:
+        rc._lrd_publish_navigation_marker(rc._LRD_D, "d")
     ev = make_event(string, hw, mods, pressed)
     consume, reason = ev.shouldConsume()
     name = getattr(ev._handler, "description", None)
+    assert name == expected_handler, (label, name, expected_handler)
+    assert consume == expected_consume, (label, consume, reason)
+    assert (ev.hw_code, ev.modifiers) == (hw, mods), label
     print("%-44s consume=%-5s handler=%-14s hw_code restored=%s" % (label, consume, name, ev.hw_code == hw))
     return ev
 
-run("remote D, browse mode", "d", 40)
-run("  its release", "d", 40, pressed=False)
-run("remote Shift+D, browse mode", "D", 40, mods=keybindings.SHIFT_MODIFIER_MASK)
-run("  its release", "D", 40, mods=keybindings.SHIFT_MODIFIER_MASK, pressed=False)
-run("remote D, focus mode / not document", "d", 40, browse=False)
-run("local D (no remote marker)", "d", 40, remote=False)
-run("remote Ctrl+D", "d", 40, mods=keybindings.CTRL_MODIFIER_MASK)
+d_code = keybindings.getKeycode("d")
+assert d_code, "D has no keycode in the isolated keyboard map"
+run("remote D, browse mode", "d", d_code,
+    expected_handler="next landmark", expected_consume=True)
+run("  its release", "d", d_code, pressed=False,
+    expected_handler="next landmark", expected_consume=True)
+run("remote Shift+D, browse mode", "D", d_code, mods=keybindings.SHIFT_MODIFIER_MASK,
+    expected_handler="prev landmark", expected_consume=True)
+run("  its release", "D", d_code, mods=keybindings.SHIFT_MODIFIER_MASK, pressed=False,
+    expected_handler="prev landmark", expected_consume=True)
+run("remote D, focus mode / not document", "d", d_code, browse=False,
+    expected_handler="live region", expected_consume=True)
+run("local D (no remote marker)", "d", d_code, remote=False,
+    expected_handler="live region", expected_consume=True)
+run("remote Ctrl+D", "d", d_code, mods=keybindings.CTRL_MODIFIER_MASK)
+assert not rc._LRD_D["pending"], "Unexpected pending landmark claims"
 
 
 # --- Orca+Z (single-letter nav toggle) and Orca+BackSpace (pass next key) -----

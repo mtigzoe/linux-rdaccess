@@ -5,6 +5,7 @@ import os
 from contextlib import contextmanager
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 
@@ -507,8 +508,9 @@ class RemoteController:
                          'togglePresentationMode'):
                 c._linux_rdaccess_script_call(name)
         self.assertEqual(calls, [(name, None) for name in
-                                ('sayAll', 'presentTitle', 'presentStatusBar',
-                                 'togglePresentationMode')])
+                                ('sayAll', 'presentTitle', 'presentStatusBar')]
+                         + [('togglePresentationMode',
+                             SimpleNamespace(type='keyboard', event_string='space'))])
 
     def test_pass_next_bypasses_translation_before_main_loop_runs(self):
         c, _, _ = self._patched_controller()
@@ -663,7 +665,7 @@ class RemoteController:
             self._key(c, 0x20, True)
             self._key(c, 0x20, True)      # auto-repeat must not toggle again
             self._key(c, 0x20, False)
-        self.assertEqual(calls, [("presentation", None)])
+        self.assertEqual(calls, [("presentation", SimpleNamespace(type='keyboard', event_string='space'))])
         self.assertEqual([k for k in self._names(c) if k[0] == 0x20], [])
         self.assertEqual([k for k in self._names(c) if k[0] == 0x41], [])
 
@@ -1123,7 +1125,7 @@ class RemoteController:
             self._key(c, 0x14, True)                     # CapsLock
             self._key(c, 0x14, False)                    # release only CapsLock
             self._key(c, 0x20, True)                     # NVDA+Space still translates
-        self.assertEqual(calls, [("presentation", None)])
+        self.assertEqual(calls, [("presentation", SimpleNamespace(type='keyboard', event_string='space'))])
         self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [])
 
     def test_say_all_with_both_nvda_modifiers_never_releases_either(self):
@@ -1295,7 +1297,8 @@ class RemoteController:
             self._key(c, 0x28, False, extended=True)
             self._key(c, 0x20, True)                   # direct presentation toggle
         self._key(c, 0x14, False)
-        self.assertEqual(calls, [("sayAll", None), ("presentation", None)])
+        self.assertEqual(calls, [("sayAll", None),
+                                 ("presentation", SimpleNamespace(type='keyboard', event_string='space'))])
         self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [])
         self.assertEqual([k for k in self._names(c) if k[0] == 0x28], [])
 
@@ -2205,6 +2208,41 @@ class LocalMachine:
             self._key(c, 0xA0, True)
         self._key(c, 0x44, True)
 
+    @staticmethod
+    def _expire_navigation_markers(marker):
+        marker["pending"][:] = [(timestamp - 5.0, key, identity)
+                                for timestamp, key, identity in marker["pending"]]
+
+    def test_queued_remote_d_presses_each_keep_their_landmark_marker(self):
+        c, KE, _ = self._hooked()
+        self._remote_d(c)
+        self._remote_d(c)
+        for _ in range(2):
+            self.assertEqual(KE("d", self.D_CODE)._handler.function, "landmark_next")
+        self.assertEqual(KE("d", self.D_CODE)._handler.function, "live_region")
+
+    def test_queued_ctrl_d_cannot_steal_a_later_plain_d_landmark_marker(self):
+        c, KE, _ = self._hooked()
+        self._key(c, 0xA2, True)
+        self._key(c, 0x44, True)
+        self._key(c, 0x44, False)
+        self._key(c, 0xA2, False)
+        self._remote_d(c)
+        self.assertIsNone(KE("d", self.D_CODE, modifiers=self.CTRL)._handler)
+        self.assertEqual(KE("d", self.D_CODE)._handler.function, "landmark_next")
+        self.assertEqual(c._module._LRD_D["pending"], [])
+
+    def test_failed_d_injection_cannot_translate_a_later_local_d(self):
+        for failure in (False, RuntimeError("synthetic backend failure")):
+            with self.subTest(failure=type(failure).__name__):
+                c, KE, _ = self._hooked()
+                c.local_machine.send_key = mock.Mock(return_value=failure)
+                if isinstance(failure, Exception):
+                    c.local_machine.send_key.side_effect = failure
+                self._remote_d(c)
+                self.assertEqual(c._module._LRD_D["pending"], [])
+                self.assertEqual(KE("d", self.D_CODE)._handler.function, "live_region")
+
     def test_remote_d_in_browse_mode_becomes_landmark_and_hw_code_is_restored(self):
         c, KE, _ = self._hooked()
         self._remote_d(c)
@@ -2228,16 +2266,16 @@ class LocalMachine:
     def test_remote_d_marker_is_cleared_on_control_reset(self):
         c, KE, _ = self._hooked()
         self._remote_d(c)
-        self.assertGreater(c._module._LRD_D["ts"], 0.0)
+        self.assertTrue(c._module._LRD_D["pending"])
         c.toggle_control()
-        self.assertEqual(c._module._LRD_D["ts"], 0.0)
+        self.assertEqual(c._module._LRD_D["pending"], [])
         self.assertFalse(c._module._LRD_D["swapped"])
         self.assertEqual(KE("d", self.D_CODE)._handler.function, "live_region")
 
     def test_stale_remote_marker_expires(self):
         c, KE, _ = self._hooked()
         self._remote_d(c)
-        c._module._LRD_D["ts"] -= 5.0
+        self._expire_navigation_markers(c._module._LRD_D)
         self.assertEqual(KE("d", self.D_CODE)._handler.function, "live_region")
 
     def test_focus_mode_or_non_document_is_left_alone_so_typing_works(self):
@@ -2282,23 +2320,23 @@ class LocalMachine:
     def test_ctrl_alt_orca_d_and_nvda_d_are_untouched(self):
         c, KE, _ = self._hooked()
         for mod in (self.CTRL, self.ALT, self.ORCA):
-            c._module._LRD_D["ts"] = __import__("time").monotonic()   # even with a fresh marker
+            c._module._lrd_publish_navigation_marker(c._module._LRD_D, "d")
             ev = KE("d", self.D_CODE, modifiers=mod)
             self.assertNotEqual(getattr(ev._handler, "function", None), "landmark_next", mod)
             self.assertEqual(ev.hw_code, self.D_CODE)
-            c._module._LRD_D["ts"] = 0.0
+            c._module._lrd_clear_navigation_markers(c._module._LRD_D)
         # NVDA key held: remote side never marks the D
         c3, KE3, _ = self._hooked()
         self._key(c3, 0x2D, True)
         self._key(c3, 0x44, True)
-        self.assertEqual(c3._module._LRD_D["ts"], 0.0)
+        self.assertEqual(c3._module._LRD_D["pending"], [])
         self.assertEqual(KE3("d", self.D_CODE)._handler.function, "live_region")
 
     def test_remote_ctrl_d_does_not_mark_the_key(self):
         c, KE, _ = self._hooked()
         self._key(c, 0xA2, True)
         self._key(c, 0x44, True)
-        self.assertEqual(c._module._LRD_D["ts"], 0.0)
+        self.assertEqual(c._module._LRD_D["pending"], [])
 
     def test_release_follows_its_press_and_stray_release_does_not_swap(self):
         c, KE, _ = self._hooked()
@@ -2360,6 +2398,111 @@ class LocalMachine:
             self._key(c, mod, True)
         self._key(c, vk, True, extended=extended)
 
+    def test_queued_different_table_arrows_each_keep_their_remote_marker(self):
+        c, KE, _ = self._hooked()
+        self._remote_table_key(c, 0x28)
+        self._key(c, 0x27, True, extended=True)
+        self.assertEqual(KE("Down", self.DOWN, modifiers=self.CTRL_ALT)._handler.function,
+                         "cell_down")
+        self.assertEqual(KE("Right", self.RIGHT, modifiers=self.CTRL_ALT)._handler.function,
+                         "cell_right")
+        self.assertEqual(c._module._LRD_T["pending"], [])
+
+    def test_queued_plain_arrow_cannot_steal_a_later_table_arrow_marker(self):
+        c, KE, _ = self._hooked()
+        self._key(c, 0x28, True, extended=True)
+        self._key(c, 0x28, False, extended=True)
+        self._remote_table_key(c)
+        self.assertIsNone(KE("Down", self.DOWN)._handler)
+        self.assertEqual(KE("Down", self.DOWN, modifiers=self.CTRL_ALT)._handler.function,
+                         "cell_down")
+        self.assertEqual(c._module._LRD_T["pending"], [])
+
+    def test_queued_table_arrow_repeats_each_keep_their_remote_marker(self):
+        c, KE, _ = self._hooked()
+        self._remote_table_key(c)
+        self._key(c, 0x28, True, extended=True)
+        for _ in range(2):
+            self.assertEqual(KE("Down", self.DOWN, modifiers=self.CTRL_ALT)._handler.function,
+                             "cell_down")
+        self.assertIsNone(KE("Down", self.DOWN, modifiers=self.CTRL_ALT)._handler)
+
+    def test_unrelated_local_arrow_cannot_take_remote_arrow_provenance(self):
+        c, KE, _ = self._hooked()
+        self._remote_table_key(c)
+        self.assertIsNone(KE("Right", self.RIGHT, modifiers=self.CTRL_ALT)._handler)
+        self.assertEqual(KE("Down", self.DOWN, modifiers=self.CTRL_ALT)._handler.function,
+                         "cell_down")
+
+    def test_failed_table_send_removes_only_its_own_token(self):
+        for failure in (False, RuntimeError("synthetic backend failure")):
+            with self.subTest(failure=type(failure).__name__):
+                c, KE, _ = self._hooked()
+                self._remote_table_key(c, 0x27)
+                c.local_machine.send_key = mock.Mock(return_value=failure)
+                if isinstance(failure, Exception):
+                    c.local_machine.send_key.side_effect = failure
+                self._key(c, 0x28, True, extended=True)
+                self.assertEqual([token[1] for token in c._module._LRD_T["pending"]], ["Right"])
+                self.assertIsNone(KE("Down", self.DOWN, modifiers=self.CTRL_ALT)._handler)
+                self.assertEqual(KE("Right", self.RIGHT, modifiers=self.CTRL_ALT)._handler.function,
+                                 "cell_right")
+
+    def test_failed_repeat_preserves_an_earlier_successful_same_key_token(self):
+        c, KE, _ = self._hooked()
+        self._remote_table_key(c)
+        c.local_machine.send_key = mock.Mock(return_value=False)
+        self._key(c, 0x28, True, extended=True)
+        self.assertEqual(len(c._module._LRD_T["pending"]), 1)
+        self.assertEqual(KE("Down", self.DOWN, modifiers=self.CTRL_ALT)._handler.function,
+                         "cell_down")
+        self.assertIsNone(KE("Down", self.DOWN, modifiers=self.CTRL_ALT)._handler)
+
+    def test_marker_exists_when_injection_dispatches_before_backend_returns(self):
+        for kind in ("landmark", "table"):
+            with self.subTest(kind=kind):
+                c, KE, _ = self._hooked()
+                handlers = []
+
+                def dispatch(**payload):
+                    if payload["vk_code"] == 0x44:
+                        handlers.append(KE("d", self.D_CODE)._handler.function)
+                    elif payload["vk_code"] == 0x28:
+                        handlers.append(KE("Down", self.DOWN, modifiers=self.CTRL_ALT)._handler.function)
+                    return True
+
+                c.local_machine.send_key = dispatch
+                if kind == "landmark":
+                    self._remote_d(c)
+                    self.assertEqual(handlers, ["landmark_next"])
+                else:
+                    self._remote_table_key(c)
+                    self.assertEqual(handlers, ["cell_down"])
+
+    def test_pending_navigation_tokens_are_bounded_and_expire_as_a_group(self):
+        c, KE, _ = self._hooked()
+        self._remote_table_key(c)
+        for _ in range(c._module._LRD_NAV_MAX_PENDING + 4):
+            self._key(c, 0x28, True, extended=True)
+        self.assertEqual(len(c._module._LRD_T["pending"]), c._module._LRD_NAV_MAX_PENDING)
+        self._expire_navigation_markers(c._module._LRD_T)
+        self._key(c, 0x27, True, extended=True)
+        self.assertEqual([token[1] for token in c._module._LRD_T["pending"]], ["Right"])
+        self.assertIsNone(KE("Down", self.DOWN, modifiers=self.CTRL_ALT)._handler)
+        self.assertEqual(KE("Right", self.RIGHT, modifiers=self.CTRL_ALT)._handler.function,
+                         "cell_right")
+
+    def test_transport_reconnect_discards_all_pending_navigation_tokens(self):
+        c, KE, _ = self._hooked()
+        self._remote_d(c)
+        self._remote_table_key(c)
+        c.transport = self.FakeTransport()
+        c._linux_rdaccess_sync_state()
+        self.assertEqual(c._module._LRD_D["pending"], [])
+        self.assertEqual(c._module._LRD_T["pending"], [])
+        self.assertEqual(KE("d", self.D_CODE)._handler.function, "live_region")
+        self.assertIsNone(KE("Down", self.DOWN, modifiers=self.CTRL_ALT)._handler)
+
     def test_remote_ctrl_alt_arrows_become_orca_table_cell_navigation(self):
         for vk, name, code, handler in self.ARROWS:
             with self.subTest(arrow=name):
@@ -2397,7 +2540,7 @@ class LocalMachine:
                      self.CTRL_ALT | self.ORCA, 0):
             with self.subTest(mods=mods):
                 c, KE, _ = self._hooked()
-                c._module._LRD_T["ts"] = __import__("time").monotonic()
+                c._module._lrd_publish_navigation_marker(c._module._LRD_T, "Down")
                 ev = KE("Down", self.DOWN, modifiers=mods)
                 self.assertNotEqual(getattr(ev._handler, "function", None), "cell_down")
                 self.assertEqual(ev.modifiers, mods)
@@ -2417,7 +2560,7 @@ class LocalMachine:
             with self.subTest(case=label):
                 c, KE, _ = self._hooked()
                 self._remote_table_key(c, **kwargs)
-                self.assertEqual(c._module._LRD_T["ts"], 0.0)
+                self.assertEqual(c._module._LRD_T["pending"], [])
 
     def test_release_follows_the_translated_press_even_if_modifiers_or_mode_change(self):
         c, KE, script = self._hooked()
@@ -2446,7 +2589,7 @@ class LocalMachine:
 
     def test_native_shift_alt_arrow_is_left_to_orca_untranslated(self):
         c, KE, _ = self._hooked()
-        c._module._LRD_T["ts"] = __import__("time").monotonic()
+        c._module._lrd_publish_navigation_marker(c._module._LRD_T, "Down")
         ev = KE("Down", self.DOWN, modifiers=self.SHIFT | self.ALT)
         self.assertEqual(ev._handler.function, "cell_down")     # Orca's own binding
         self.assertEqual(ev.modifiers, self.SHIFT | self.ALT)
@@ -2461,13 +2604,13 @@ class LocalMachine:
     def test_stale_table_marker_expires_and_control_reset_clears_it(self):
         c, KE, _ = self._hooked()
         self._remote_table_key(c)
-        c._module._LRD_T["ts"] -= 5.0
+        self._expire_navigation_markers(c._module._LRD_T)
         self.assertIsNone(KE("Down", self.DOWN, modifiers=self.CTRL_ALT)._handler)
         c2, KE2, _ = self._hooked()
         self._remote_table_key(c2)
-        self.assertGreater(c2._module._LRD_T["ts"], 0.0)
+        self.assertTrue(c2._module._LRD_T["pending"])
         c2.toggle_control()
-        self.assertEqual(c2._module._LRD_T["ts"], 0.0)
+        self.assertEqual(c2._module._LRD_T["pending"], [])
         self.assertEqual(c2._module._LRD_T["held"], {})
         self.assertIsNone(KE2("Down", self.DOWN, modifiers=self.CTRL_ALT)._handler)
 
@@ -2549,7 +2692,7 @@ class LocalMachine:
         self._remote_table_key(c)
         for vk, ext in ((0x28, True), (0xA2, False), (0xA4, False)):
             self._key(c, vk, False, extended=ext)
-        c._module._LRD_T["ts"] = 0.0
+        c._module._lrd_clear_navigation_markers(c._module._LRD_T)
         self._remote_d(c)
         self.assertEqual(KE("d", self.D_CODE)._handler.function, "landmark_next")
 
@@ -2639,7 +2782,7 @@ class LocalMachine:
         with patches, mock.patch.dict(os.environ, {"HOME": home}):
             self._key(c, 0x2D, True, extended=True)
             self._key(c, 0x20, True)
-        self.assertEqual(calls, [("presentation", None)])
+        self.assertEqual(calls, [("presentation", SimpleNamespace(type='keyboard', event_string='space'))])
         self.assertEqual(self._names(c), [(0x2D, True)])
 
     def test_shift_released_before_space_does_not_confuse_the_release(self):

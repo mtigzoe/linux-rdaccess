@@ -240,11 +240,11 @@ class InputOwnershipTests(Harness, unittest.TestCase):
             c._linux_rdaccess_show_elements_list(None)
         self.assertEqual(calls, [])
 
-    def test_declined_adapter_call_uses_verified_legacy_handler(self):
+    def test_unsupported_adapter_call_uses_verified_legacy_handler(self):
         c, _, _ = self._patched_controller()
         calls = []
         adapter = types.ModuleType('linux_rdaccess_orca_adapter')
-        adapter.OrcaRuntimeAdapter = types.SimpleNamespace(say_all=lambda: False)
+        adapter.OrcaRuntimeAdapter = types.SimpleNamespace(say_all=lambda: None)
         orca = types.ModuleType('orca')
         orca.orca_state = types.SimpleNamespace(activeScript=types.SimpleNamespace(
             sayAll=lambda event: calls.append(event)))
@@ -255,7 +255,7 @@ class InputOwnershipTests(Harness, unittest.TestCase):
     def test_unavailable_script_api_reports_failure_without_resynthesizing_input(self):
         c, _, _ = self._patched_controller()
         adapter = types.ModuleType('linux_rdaccess_orca_adapter')
-        adapter.OrcaRuntimeAdapter = types.SimpleNamespace(say_all=lambda: False)
+        adapter.OrcaRuntimeAdapter = types.SimpleNamespace(say_all=lambda: None)
         orca = types.ModuleType('orca')
         orca.orca_state = types.SimpleNamespace(activeScript=types.SimpleNamespace())
         with mock.patch.dict(sys.modules, {'linux_rdaccess_orca_adapter': adapter, 'orca': orca}), \

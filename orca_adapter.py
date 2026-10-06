@@ -116,11 +116,16 @@ class OrcaRuntimeAdapter:
         names: str | Iterable[str],
         *args: Any,
         default_event: bool = False,
-    ) -> bool:
-        """Invoke the first supported handler on the active application script."""
+    ) -> bool | None:
+        """Invoke one supported handler, or return None when none is available.
+
+        Orca commands may return False after handling a gesture or reporting
+        that it cannot act here. Preserve that result so callers do not retry
+        the same command through a legacy fallback. A void handler is handled.
+        """
         script = cls.active_script()
         if script is None:
-            return False
+            return None
         if isinstance(names, str):
             names = (names,)
         for name in names:
@@ -128,28 +133,28 @@ class OrcaRuntimeAdapter:
             if not callable(handler):
                 continue
             if default_event and not args:
-                handler(None)
+                result = handler(None)
             else:
-                handler(*args)
-            return True
-        return False
+                result = handler(*args)
+            return result is not False
+        return None
 
     @classmethod
-    def pan_braille_left(cls) -> bool:
+    def pan_braille_left(cls) -> bool | None:
         return cls.call_script(
             ("panBrailleLeft", "pan_braille_left"),
             default_event=True,
         )
 
     @classmethod
-    def pan_braille_right(cls) -> bool:
+    def pan_braille_right(cls) -> bool | None:
         return cls.call_script(
             ("panBrailleRight", "pan_braille_right"),
             default_event=True,
         )
 
     @classmethod
-    def route_braille(cls, index: int) -> bool:
+    def route_braille(cls, index: int) -> bool | None:
         if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < 1024:
             return False
         event = SimpleNamespace(event={"argument": index})
@@ -159,11 +164,11 @@ class OrcaRuntimeAdapter:
         )
 
     @classmethod
-    def show_structural_list(cls, key: str) -> bool:
+    def show_structural_list(cls, key: str) -> bool | None:
         """Open Orca's native structural-navigation list for one shortcut key."""
         script = cls.active_script()
         if script is None:
-            return False
+            return None
         nav = getattr(script, "structuralNavigation", None)
         if nav is None:
             nav = getattr(script, "structural_navigation", None)
@@ -182,84 +187,129 @@ class OrcaRuntimeAdapter:
                 handler = getattr(obj, "show_list", None)
             if not callable(handler):
                 continue
-            handler(script, None)
-            return True
-        return False
+            return handler(script, None) is not False
+        return None
 
     @classmethod
-    def bypass_next_command(cls) -> bool:
+    def bypass_next_command(cls) -> bool | None:
         return cls.call_script(
             ("bypassNextCommand", "bypass_next_command"),
             default_event=True,
         )
 
     @classmethod
-    def to_braille_focus(cls) -> bool:
+    def to_braille_focus(cls) -> bool | None:
         return cls.call_script(
             ("goBrailleHome", "go_braille_home"),
             default_event=True,
         )
 
     @classmethod
-    def toggle_presentation_mode(cls) -> bool:
+    def toggle_presentation_mode(cls) -> bool | None:
+        # Orca's web script distinguishes an explicit command from an automatic
+        # switch by inputEvent truthiness. None can announce focus mode without
+        # focusing the caret object, so subsequent arrows/typing reach the old
+        # application focus instead of the entry selected in browse mode.
+        event = SimpleNamespace(type="keyboard", event_string="space")
         return cls.call_script(
             ("togglePresentationMode", "toggle_presentation_mode"),
-            default_event=True,
+            event,
         )
 
     @classmethod
-    def toggle_structural_navigation(cls) -> bool:
+    def toggle_structural_navigation(cls) -> bool | None:
         script = cls.active_script()
         if script is None:
-            return False
+            return None
         nav = getattr(script, "structuralNavigation", None)
         if nav is None:
             nav = getattr(script, "structural_navigation", None)
         if nav is None:
-            return False
+            return None
         handler = getattr(nav, "toggleStructuralNavigation", None)
         if not callable(handler):
             handler = getattr(nav, "toggle_structural_navigation", None)
         if not callable(handler):
-            return False
-        handler(script, None)
-        return True
+            return None
+        return handler(script, None) is not False
 
     @classmethod
-    def show_preferences(cls) -> bool:
+    def show_preferences(cls) -> bool | None:
         """Open Orca's global preferences dialog using Orca's own command."""
         try:
             from orca import orca as orca_module
         except Exception:
-            return False
+            return None
         handler = getattr(orca_module, "showPreferencesGUI", None)
         if not callable(handler):
             handler = getattr(orca_module, "show_preferences_gui", None)
         if not callable(handler):
-            return False
+            return None
         result = handler(cls.active_script(), None)
         return result is not False
 
     @classmethod
-    def say_all(cls) -> bool:
+    def say_all(cls) -> bool | None:
         return cls.call_script(
             ("sayAll", "say_all"),
             default_event=True,
         )
 
     @classmethod
-    def present_title(cls) -> bool:
+    def present_title(cls) -> bool | None:
         return cls.call_script(
             ("presentTitle", "present_title"),
             default_event=True,
         )
 
     @classmethod
-    def present_status_bar(cls) -> bool:
+    def present_status_bar(cls) -> bool | None:
         return cls.call_script(
             ("presentStatusBar", "present_status_bar"),
             default_event=True,
         )
+
+    @classmethod
+    def present_time(cls) -> bool | None:
+        """Present the time using Orca's configured format and output."""
+        return cls.call_script("presentTime", default_event=True)
+
+    @classmethod
+    def present_date(cls) -> bool | None:
+        """Present the date using Orca's configured format and output."""
+        return cls.call_script("presentDate", default_event=True)
+
+    @classmethod
+    def present_current_line(cls) -> bool | None:
+        """Speak the native caret line without entering or moving flat review."""
+        script = cls.active_script()
+        if script is None:
+            return None
+        handler = getattr(script, "sayLine", None)
+        if not callable(handler):
+            return None
+
+        from orca import orca_state
+        focus = getattr(orca_state, "locusOfFocus", None)
+        if focus is None:
+            focus = getattr(orca_state, "locus_of_focus", None)
+
+        # Web scripts can keep a browse caret separate from locusOfFocus, even
+        # while Firefox's address bar is focused. Consult it only when focus
+        # belongs to document content; otherwise report the focused control.
+        obj = focus
+        utilities = getattr(script, "utilities", None)
+        get_context = getattr(utilities, "getCaretContext", None)
+        in_document = getattr(utilities, "inDocumentContent", None)
+        if callable(get_context) and (
+            not callable(in_document) or in_document(focus)
+        ):
+            caret_obj, _offset = get_context()
+            if caret_obj is not None:
+                obj = caret_obj
+        if obj is None:
+            return False
+        return handler(obj) is not False
 
     @staticmethod
     def _xkb_named_lock_state(name: str) -> bool | None:
@@ -303,7 +353,7 @@ class OrcaRuntimeAdapter:
         return cls._xkb_named_lock_state(name) if name is not None else None
 
     @classmethod
-    def present_lock_state(cls, vk_code: int, enabled: bool | None = None) -> bool:
+    def present_lock_state(cls, vk_code: int, enabled: bool | None = None) -> bool | None:
         """Present a completed gesture's snapshot through Orca speech/braille."""
         name = {0x14: "Caps Lock", 0x90: "Num Lock"}.get(vk_code)
         if name is None:
@@ -318,7 +368,7 @@ class OrcaRuntimeAdapter:
         )
 
     @classmethod
-    def where_am_i(cls) -> bool:
+    def where_am_i(cls) -> bool | None:
         # Orca 42's default script exposes whereAmIBasic(inputEvent), not
         # whereAmI. Keep older/newer aliases as fallbacks.
         return cls.call_script(

@@ -14,6 +14,7 @@ import sys
 
 from remote_access import (
     CUSTOMIZATION_EVENT_API_MARKER,
+    CUSTOMIZATION_RECONNECT_MARKER,
     LEGACY_COMPAT_MARKER,
     LEGACY_COMPAT_MARKER_V1,
     LEGACY_LOCAL_MACHINE_RELATIVE,
@@ -25,6 +26,7 @@ from remote_access import (
     load_config,
     legacy_controller_patch_current,
     legacy_customization_event_api_patch_current,
+    legacy_customization_reconnect_patch_current,
     legacy_local_machine_patch_current,
     print_status,
     update_legacy_orca_customizations,
@@ -320,10 +322,18 @@ def patch_status(orca_config: Path) -> list[tuple[str, str]]:
         customization = orca_config.expanduser().read_text(encoding="utf-8")
     except OSError:
         rows.append((label, "missing"))
+        rows.append(("automatic relay reconnect (orca-customizations.py)", "missing"))
     else:
         if legacy_customization_event_api_patch_current(customization):
             rows.append((label, "current"))
         elif CUSTOMIZATION_EVENT_API_MARKER in customization:
+            rows.append((label, "incomplete patch - repair required"))
+        else:
+            rows.append((label, "not patched - run: linux-rdaccess connect"))
+        label = "automatic relay reconnect (orca-customizations.py)"
+        if legacy_customization_reconnect_patch_current(customization):
+            rows.append((label, "current"))
+        elif CUSTOMIZATION_RECONNECT_MARKER in customization:
             rows.append((label, "incomplete patch - repair required"))
         else:
             rows.append((label, "not patched - run: linux-rdaccess connect"))
@@ -541,6 +551,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "shortcuts":
         print("Windows NVDA:")
         print("  Insert+Alt+Tab    Toggle local/remote computer control")
+        print("")
+        print("NVDA commands translated on Linux (desktop layout):")
+        print("  NVDA+Up / NVDA+Down              Current caret line / say all")
+        print("  NVDA+Space                       Browse/focus mode")
+        print("  NVDA+Tab / NVDA+T / NVDA+End      Where am I / title / status bar")
+        print("  NVDA+F12                         Time; twice quickly for date")
+        print("  NVDA+F7                          Elements list")
+        print("  Ctrl+Alt+Arrows                   Table cells in web browse mode")
         print("")
         print("Legacy Orca Remote:")
         print("  Orca+Alt+PageUp / Orca+Alt+C      Connect")

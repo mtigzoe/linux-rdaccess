@@ -107,13 +107,14 @@ class ElementsListTests(unittest.TestCase):
 
 
 class OrcaRuntimeAdapterTests(unittest.TestCase):
-    def _fake_orca(self, script, *, snake_state=False):
+    def _fake_orca(self, script, *, snake_state=False, focus=None):
         orca = types.ModuleType("orca")
         state = types.ModuleType("orca.orca_state")
         if snake_state:
             state.active_script = script
         else:
             state.activeScript = script
+        state.locusOfFocus = focus
         orca.orca_state = state
         return mock.patch.dict(
             sys.modules,
@@ -174,8 +175,28 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
 
     def test_missing_active_script_is_safe(self):
         with self._fake_orca(None):
-            self.assertFalse(OrcaRuntimeAdapter.pan_braille_left())
-            self.assertFalse(OrcaRuntimeAdapter.route_braille(1))
+            self.assertIsNone(OrcaRuntimeAdapter.pan_braille_left())
+            self.assertIsNone(OrcaRuntimeAdapter.route_braille(1))
+
+    def test_dispatch_preserves_explicit_false_without_trying_an_alias(self):
+        handler = mock.Mock(return_value=False)
+        alias = mock.Mock()
+        script = types.SimpleNamespace(handler=handler, alias=alias)
+        with self._fake_orca(script):
+            self.assertIs(
+                OrcaRuntimeAdapter.call_script(("handler", "alias"), default_event=True),
+                False,
+            )
+        handler.assert_called_once_with(None)
+        alias.assert_not_called()
+
+    def test_dispatch_distinguishes_unavailable_handler_from_void_handler(self):
+        handler = mock.Mock(return_value=None)
+        script = types.SimpleNamespace(handler=handler)
+        with self._fake_orca(script):
+            self.assertIsNone(OrcaRuntimeAdapter.call_script("missing"))
+            self.assertIs(OrcaRuntimeAdapter.call_script("handler", "message"), True)
+        handler.assert_called_once_with("message")
 
     def test_structural_list_uses_orca42_enabled_object_show_list(self):
         calls = []
@@ -197,8 +218,24 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
         )
         with self._fake_orca(script):
             self.assertTrue(OrcaRuntimeAdapter.show_structural_list("h"))
-            self.assertFalse(OrcaRuntimeAdapter.show_structural_list("m"))
+            self.assertIsNone(OrcaRuntimeAdapter.show_structural_list("m"))
         self.assertEqual(calls, [("headings", True, None)])
+
+    def test_structural_list_preserves_false_without_calling_another_match(self):
+        handler = mock.Mock(return_value=False)
+        duplicate_handler = mock.Mock()
+        script = types.SimpleNamespace(structuralNavigation=types.SimpleNamespace(
+            enabledObjects={
+                "heading": types.SimpleNamespace(
+                    bindings={"list": ["h", 0, "Headings"]}, showList=handler),
+                "duplicate": types.SimpleNamespace(
+                    bindings={"list": ["h", 0, "Headings"]}, showList=duplicate_handler),
+            }
+        ))
+        with self._fake_orca(script):
+            self.assertIs(OrcaRuntimeAdapter.show_structural_list("h"), False)
+        handler.assert_called_once_with(script, None)
+        duplicate_handler.assert_not_called()
 
     def test_bypass_next_command_supports_legacy_and_snake_case_handlers(self):
         legacy_calls = []
@@ -246,10 +283,10 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
         with self._fake_orca(script):
             self.assertTrue(OrcaRuntimeAdapter.toggle_presentation_mode())
             self.assertTrue(OrcaRuntimeAdapter.toggle_structural_navigation())
-        self.assertEqual(
-            calls,
-            [("presentation", None), ("structural", True, None)],
-        )
+        self.assertEqual(calls[0][0], "presentation")
+        self.assertTrue(calls[0][1])
+        self.assertEqual(calls[0][1].event_string, "space")
+        self.assertEqual(calls[1], ("structural", True, None))
 
     def test_structural_navigation_supports_snake_case_aliases(self):
         calls = []
@@ -263,10 +300,48 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
         with self._fake_orca(script, snake_state=True):
             self.assertTrue(OrcaRuntimeAdapter.toggle_presentation_mode())
             self.assertTrue(OrcaRuntimeAdapter.toggle_structural_navigation())
-        self.assertEqual(
-            calls,
-            [("presentation", None), ("structural", True, None)],
+        self.assertEqual(calls[0][0], "presentation")
+        self.assertTrue(calls[0][1])
+        self.assertEqual(calls[0][1].event_string, "space")
+        self.assertEqual(calls[1], ("structural", True, None))
+
+    def test_structural_navigation_distinguishes_unsupported_and_rejected_command(self):
+        script = types.SimpleNamespace()
+        with self._fake_orca(script):
+            self.assertIsNone(OrcaRuntimeAdapter.toggle_structural_navigation())
+        script.structuralNavigation = types.SimpleNamespace(
+            toggleStructuralNavigation=mock.Mock(return_value=False))
+        with self._fake_orca(script):
+            self.assertIs(OrcaRuntimeAdapter.toggle_structural_navigation(), False)
+        script.structuralNavigation.toggleStructuralNavigation.assert_called_once_with(
+            script, None)
+
+    def test_explicit_focus_mode_command_focuses_entry_without_recent_navigation(self):
+        entry = object()
+        utilities = types.SimpleNamespace(
+            grabFocusWhenSettingCaret=lambda obj: False,
+            grabFocus=mock.Mock(),
         )
+        script = types.SimpleNamespace(
+            utilities=utilities,
+            _lastCommandWasCaretNav=False,
+            _lastCommandWasStructNav=False,
+        )
+
+        def toggle_mode(event):
+            # Orca 42's web togglePresentationMode uses inputEvent truthiness
+            # to distinguish explicit commands from automatic mode switches.
+            if not script.utilities.grabFocusWhenSettingCaret(entry) and (
+                script._lastCommandWasCaretNav
+                or script._lastCommandWasStructNav
+                or event
+            ):
+                script.utilities.grabFocus(entry)
+
+        script.togglePresentationMode = toggle_mode
+        with self._fake_orca(script):
+            self.assertTrue(OrcaRuntimeAdapter.toggle_presentation_mode())
+        utilities.grabFocus.assert_called_once_with(entry)
 
     def test_show_preferences_uses_orca_global_preferences_command(self):
         calls = []
@@ -306,7 +381,18 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
                 "orca.orca_state": state,
             },
         ):
-            self.assertFalse(OrcaRuntimeAdapter.show_preferences())
+            self.assertIsNone(OrcaRuntimeAdapter.show_preferences())
+
+    def test_show_preferences_preserves_false_result(self):
+        script = types.SimpleNamespace()
+        orca_module = types.ModuleType("orca.orca")
+        orca_module.showPreferencesGUI = mock.Mock(return_value=False)
+        with self._fake_orca(script), mock.patch.dict(
+            sys.modules, {"orca.orca": orca_module}
+        ):
+            sys.modules["orca"].orca = orca_module
+            self.assertIs(OrcaRuntimeAdapter.show_preferences(), False)
+        orca_module.showPreferencesGUI.assert_called_once_with(script, None)
 
     def test_say_all_supports_legacy_and_snake_case_handlers(self):
         legacy_calls = []
@@ -345,6 +431,99 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
             self.assertTrue(OrcaRuntimeAdapter.present_title())
             self.assertTrue(OrcaRuntimeAdapter.present_status_bar())
         self.assertEqual(snake_calls, [("title", None), ("status", None)])
+
+    def test_time_and_date_delegate_to_orca_formatting_commands(self):
+        script = types.SimpleNamespace(
+            presentTime=mock.Mock(return_value=True),
+            presentDate=mock.Mock(return_value=True),
+        )
+        with self._fake_orca(script):
+            self.assertIs(OrcaRuntimeAdapter.present_time(), True)
+            self.assertIs(OrcaRuntimeAdapter.present_date(), True)
+        script.presentTime.assert_called_once_with(None)
+        script.presentDate.assert_called_once_with(None)
+
+    def test_time_and_date_distinguish_missing_and_rejected_handlers(self):
+        script = types.SimpleNamespace()
+        with self._fake_orca(script):
+            self.assertIsNone(OrcaRuntimeAdapter.present_time())
+            self.assertIsNone(OrcaRuntimeAdapter.present_date())
+        script.presentTime = mock.Mock(return_value=False)
+        script.presentDate = mock.Mock(return_value=False)
+        with self._fake_orca(script):
+            self.assertIs(OrcaRuntimeAdapter.present_time(), False)
+            self.assertIs(OrcaRuntimeAdapter.present_date(), False)
+
+    def test_current_line_uses_browse_caret_without_changing_navigation_state(self):
+        browse_obj, focus_obj, flat_review = object(), object(), object()
+        script = types.SimpleNamespace(
+            sayLine=mock.Mock(return_value=None),
+            utilities=types.SimpleNamespace(
+                getCaretContext=mock.Mock(return_value=(browse_obj, 17)),
+                inDocumentContent=mock.Mock(return_value=True)),
+            flatReviewContext=flat_review,
+            _lastCommandWasCaretNav=False,
+            _lastCommandWasStructNav=True,
+        )
+        with self._fake_orca(script, focus=focus_obj):
+            self.assertIs(OrcaRuntimeAdapter.present_current_line(), True)
+        script.sayLine.assert_called_once_with(browse_obj)
+        script.utilities.getCaretContext.assert_called_once_with()
+        script.utilities.inDocumentContent.assert_called_once_with(focus_obj)
+        self.assertIs(script.flatReviewContext, flat_review)
+        self.assertIs(script._lastCommandWasCaretNav, False)
+        self.assertIs(script._lastCommandWasStructNav, True)
+
+    def test_current_line_reports_address_bar_without_consulting_cached_page_caret(self):
+        address_bar, stale_page_caret = object(), object()
+        script = types.SimpleNamespace(
+            sayLine=mock.Mock(return_value=None),
+            utilities=types.SimpleNamespace(
+                # Orca web documentFrame() prefers the active document even
+                # when locusOfFocus is a browser toolbar control.
+                getCaretContext=mock.Mock(return_value=(stale_page_caret, 19)),
+                inDocumentContent=mock.Mock(return_value=False)),
+        )
+        with self._fake_orca(script, focus=address_bar):
+            self.assertIs(OrcaRuntimeAdapter.present_current_line(), True)
+        script.sayLine.assert_called_once_with(address_bar)
+        script.utilities.inDocumentContent.assert_called_once_with(address_bar)
+        script.utilities.getCaretContext.assert_not_called()
+
+    def test_current_line_supports_snake_case_locus_when_camelcase_is_none(self):
+        focus_obj = object()
+        script = types.SimpleNamespace(sayLine=mock.Mock())
+        with self._fake_orca(script):
+            sys.modules["orca.orca_state"].locus_of_focus = focus_obj
+            self.assertIs(OrcaRuntimeAdapter.present_current_line(), True)
+        script.sayLine.assert_called_once_with(focus_obj)
+
+    def test_current_line_falls_back_to_focus_when_caret_is_unavailable(self):
+        focus_obj = object()
+        for utilities in (None, types.SimpleNamespace(
+            getCaretContext=lambda: (None, -1))):
+            with self.subTest(utilities=utilities):
+                script = types.SimpleNamespace(sayLine=mock.Mock(), utilities=utilities)
+                with self._fake_orca(script, focus=focus_obj):
+                    self.assertIs(OrcaRuntimeAdapter.present_current_line(), True)
+                script.sayLine.assert_called_once_with(focus_obj)
+
+    def test_current_line_distinguishes_unsupported_from_missing_target(self):
+        with self._fake_orca(None):
+            self.assertIsNone(OrcaRuntimeAdapter.present_current_line())
+        with self._fake_orca(types.SimpleNamespace()):
+            self.assertIsNone(OrcaRuntimeAdapter.present_current_line())
+        script = types.SimpleNamespace(sayLine=mock.Mock())
+        with self._fake_orca(script):
+            self.assertIs(OrcaRuntimeAdapter.present_current_line(), False)
+        script.sayLine.assert_not_called()
+
+    def test_current_line_preserves_rejected_handler_result(self):
+        focus_obj = object()
+        script = types.SimpleNamespace(sayLine=mock.Mock(return_value=False))
+        with self._fake_orca(script, focus=focus_obj):
+            self.assertIs(OrcaRuntimeAdapter.present_current_line(), False)
+        script.sayLine.assert_called_once_with(focus_obj)
 
     def test_present_lock_state_uses_authoritative_xkb_state(self):
         calls = []

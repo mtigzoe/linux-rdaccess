@@ -111,26 +111,37 @@ row/column-edge table commands are not translated. Set
 `LINUX_RDACCESS_NVDA_TABLE_KEYS=0` to disable the translation. Desktop window
 managers may grab Ctrl+Alt+Arrow (XFCE uses it for workspaces) before Orca sees
 it; see the [shortcut audit](docs/nvda-orca-shortcut-audit-2026-10-05.md).
+Queued table arrows and landmark keys have separate, bounded pending claims,
+so fast presses retain their translations. Failed injection removes its claim.
+XTest does not identify individual input sources: a simultaneous local press
+of the same key can still be confused with a pending remote press.
 
 Compatibility currently covers a subset of NVDA's desktop commands. Laptop
-layout, object/review navigation, line reading, table row/column edges, and some
+layout, object/review navigation, table row/column edges, and some
 unmapped NVDA chords need additional work; see the
 [shortcut audit](docs/nvda-orca-shortcut-audit-2026-10-05.md).
 
 linux-rdaccess additionally translates:
 
     NVDA+Space
-        Toggle Orca browse/focus mode (Orca+A)
+        Toggle Orca browse/focus mode as a manual command, including editor focus
 
 This lets Windows NVDA users use the familiar NVDA browse/focus gesture while controlling Firefox on Linux.
 
-Other NVDA chords translated (bindings read from the Orca 42 desktop keymap;
+Other NVDA chords translated to native Orca commands (desktop NVDA layout;
 only with the NVDA key held and no Shift/Ctrl/Alt/Win):
 
-    NVDA+Down   Say all           (Orca KP_Add; NVDA key released around it)
-    NVDA+Tab    Where am I        (Orca KP_Enter; NVDA key released around it)
-    NVDA+T      Window title      (Orca+KP_Enter)
-    NVDA+End    Status bar        (Orca+KP_Enter twice)
+    NVDA+Up    Current caret line (without entering flat review)
+    NVDA+Down  Say all
+    NVDA+Tab   Where am I
+    NVDA+T     Window title
+    NVDA+End   Status bar
+    NVDA+F12   Time; press twice quickly for date
+
+The clock uses Orca's configured format and Linux time zone. NVDA+F12 is consumed
+instead of reaching Orca's caret-navigation toggle. Current-line reporting uses
+Orca's native caret context and does not move the caret or review cursor; it
+does not implement NVDA's double/triple-press spelling and character details.
 
 NVDA's D (landmark) is Orca's M (Orca's own D is "live region"). A D typed in the
 remote session is turned into the landmark key (Shift+D into previous landmark)
@@ -154,8 +165,7 @@ Orca+Z is Orca's toggle for structural-navigation keys. While it is off, the D
 landmark translation above is off too, so single-letter keys never get in the
 way of typing. Plain Shift+Space and plain F2 (Thunar rename) are untouched.
 
-Not translated: NVDA+Up and review keys (Orca's flat review would leave braille
-following the review cursor). Numpad review keys already match Orca's desktop
+Object/review commands still need additional work. Numpad review keys match Orca's desktop
 layout and pass through unchanged. CapsLock presses are deferred so translated
 NVDA commands can call Orca directly without toggling Caps Lock. A standalone
 CapsLock press is forwarded as one complete press/release.
@@ -238,15 +248,20 @@ individual on/off results. Num Lock auto-repeat produces one toggle and one
 announcement per press. CapsLock used for a translated NVDA command produces
 neither a lock toggle nor a lock announcement.
 
-The current patches are controller **v38** and local-machine **v10**. Update the
+The current patches are controller **v40** and local-machine **v10**. Update the
 installed command from the repository with `python3 linux_rdaccess.py install`,
 then run `linux-rdaccess connect` to update the Orca-side files and restart Orca.
 `doctor` verifies the connected patch hooks, valid Python, and the installed
 Orca adapter against the adapter shipped beside the running CLI. Local Orca
 speech resumes when the relay disconnects. Prototype RDP debug logs and dry-run
 output also redact speech, protocol payloads, and backend exception messages.
+Automatic startup uses the transport's retry worker so an unavailable relay
+does not permanently stop connection attempts. `doctor` checks this patch too.
 See the [hardening audit](docs/compatibility-audit-2026-10-04-hardening.md) for the
 source evidence, regressions and remaining desktop checks.
+The [October 6 audit](docs/compatibility-audit-2026-10-06.md) covers table/landmark
+burst handling, manual focus switching, command retries, current-line reporting
+and the clock shortcut conflict, plus automatic relay retries.
 
 ## Live X11 + AT-SPI diagnostics
 

@@ -11,3 +11,11 @@ shape. These fixtures contain no real connection secrets or application data.
 Tests upgrade the historical output directly; they do not rename current markers.
 
 Controller v31 was generated from `9e34a06` (the branch head before the display-key forwarding change).
+
+Controller v38 was generated from `92df2d8`, with Claude's table-navigation and
+bug-fix patches applied. Its complete output checks upgrades to the v40 fixes.
+
+Controller v39 preserves the complete output from the intermediate generator
+installed during the October 6 audit, before the mixed-modifier queue fix.
+The generator SHA-256 was
+`7870375f2c7628bcdee9b30439c8bc1b9bbb88ae523ab1d26d15d5507f0db035`.
