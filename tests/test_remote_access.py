@@ -2633,18 +2633,16 @@ class LocalMachine:
             structuralNavigation = types.SimpleNamespace(
                 functions=["landmark_next", "landmark_prev", "cell_left",
                            "cell_right", "cell_up", "cell_down", "other_nav"],
-                enabledObjects={
-                    "tableCell": types.SimpleNamespace(
-                        functions=["cell_left", "cell_right", "cell_up", "cell_down"]),
-                    "formField": form_field,
-                })
-            form_calls = form_calls
+                enabledObjects={"tableCell": types.SimpleNamespace(
+                    functions=["cell_left", "cell_right", "cell_up", "cell_down"])})
             state = {"browse": browse}
 
             def useStructuralNavigationModel(self):
                 return self.state["browse"]
 
         script = Script()
+        script.structuralNavigation.enabledObjects["formField"] = form_field
+        script.form_calls = form_calls
 
         class KeyboardEvent:
             def __init__(self, string, hw_code, modifiers=0, pressed=True):
