@@ -827,7 +827,8 @@ LEGACY_COMPAT_MARKER_V47 = "# linux-rdaccess NVDA/Orca input compatibility v47"
 LEGACY_COMPAT_MARKER_V48 = "# linux-rdaccess NVDA/Orca input compatibility v48"
 LEGACY_COMPAT_MARKER_V49 = "# linux-rdaccess NVDA/Orca input compatibility v49"
 LEGACY_COMPAT_MARKER_V50 = "# linux-rdaccess NVDA/Orca input compatibility v50"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v51"
+LEGACY_COMPAT_MARKER_V51 = "# linux-rdaccess NVDA/Orca input compatibility v51"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v52"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -899,6 +900,32 @@ _LEGACY_HELPERS = '''\
         value = __import__("os").environ.get(
             "LINUX_RDACCESS_NVDA_LAYOUT", "desktop").strip().lower()
         return value if value in ("desktop", "laptop") else "desktop"
+
+    def _linux_rdaccess_desktop_unimplemented(self, vk_code, extended):
+        """Whether an exact NVDA desktop keypad object/review gesture is unsupported."""
+        down = getattr(self, "_lrd_down", set())
+        shift = any(k[0] in self._LRD_SHIFT_VKS for k in down)
+        ctrl = any(k[0] in self._LRD_CTRL_VKS for k in down)
+        alt_win = any(k[0] in (0x12, 0xA4, 0xA5, 0x5B, 0x5C) for k in down)
+        if ctrl or alt_win:
+            return False
+        gesture = (vk_code, shift, bool(extended))
+        return gesture in {
+            (0x26, False, False),  # NVDA+Numpad8: parent object
+            (0x27, False, False),  # NVDA+Numpad6: next object
+            (0x25, False, False),  # NVDA+Numpad4: previous object
+            (0x28, False, False),  # NVDA+Numpad2: first child
+            (0x0C, False, False),  # NVDA+Numpad5: current navigator object
+            (0x24, False, False),  # NVDA+Numpad7: next review mode
+            (0x23, False, False),  # NVDA+Numpad1: previous review mode
+            (0x2E, False, False),  # NVDA+NumpadDelete: caret/focus location
+            (0x2E, True, False),   # NVDA+Shift+NumpadDelete: navigator location
+            (0x6D, False, False),  # NVDA+NumpadMinus: navigator to focus
+            (0x6D, True, False),   # NVDA+Shift+NumpadMinus: focus/caret to navigator
+            (0x6F, False, True),   # NVDA+NumpadDivide: mouse to navigator
+            (0x6A, False, False),  # NVDA+NumpadMultiply: navigator to mouse
+            (0x0D, False, True),   # NVDA+NumpadEnter: activate navigator object
+        }
 
     def _linux_rdaccess_laptop_unimplemented(self, vk_code, extended):
         """Whether an exact NVDA laptop object/review gesture is known but unsupported."""
@@ -1353,6 +1380,18 @@ _LEGACY_HELPERS = '''\
                 if getattr(self, "_lrd_caps_pending", None) is not None:
                     self._lrd_caps_used = True
                 return True
+
+        if (
+            pressed
+            and self._lrd_nvda_down
+            and not repeat
+            and nvda_layout == "desktop"
+            and self._linux_rdaccess_desktop_unimplemented(vk_code, extended)
+        ):
+            self._lrd_swapped.add(held)
+            if getattr(self, "_lrd_caps_pending", None) is not None:
+                self._lrd_caps_used = True
+            return True
 
         if (
             pressed
@@ -3317,6 +3356,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V51,
                 LEGACY_COMPAT_MARKER_V50,
                 LEGACY_COMPAT_MARKER_V49,
                 LEGACY_COMPAT_MARKER_V48,
