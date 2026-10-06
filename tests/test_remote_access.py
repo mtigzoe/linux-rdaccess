@@ -1135,6 +1135,19 @@ class RemoteController:
                 self._key(c, vk, False)
                 self.assertNotIn((vk, True), self._names(c))
 
+    def test_unimplemented_nvda_ctrl_settings_and_tools_do_not_reach_linux_apps(self):
+        # NVDA 2026.2 global settings/tools commands. Until a proven Orca-42
+        # equivalent exists, these must not become application Ctrl shortcuts.
+        for vk in (0x47, 0x53, 0x56, 0x41, 0x55, 0x4B, 0x4D, 0x4F,
+                   0x42, 0x44, 0x57, 0x43, 0x52, 0x5A, 0x54, 0x50):
+            with self.subTest(vk=vk):
+                c, _, _ = self._patched_controller()
+                self._key(c, 0x2D, True, extended=True)
+                self._key(c, 0xA2, True)
+                self._key(c, vk, True)
+                self._key(c, vk, False)
+                self.assertNotIn((vk, True), self._names(c))
+
     def test_nvda_ctrl_settings_chords_do_not_run_orca_laptop_review_commands(self):
         for vk in (0x55, 0x4B, 0x4D, 0x4F):  # U/K/M/O
             with self.subTest(vk=vk):
