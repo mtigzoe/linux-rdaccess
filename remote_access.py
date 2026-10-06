@@ -844,7 +844,8 @@ LEGACY_COMPAT_MARKER_V64 = "# linux-rdaccess NVDA/Orca input compatibility v64"
 LEGACY_COMPAT_MARKER_V65 = "# linux-rdaccess NVDA/Orca input compatibility v65"
 LEGACY_COMPAT_MARKER_V66 = "# linux-rdaccess NVDA/Orca input compatibility v66"
 LEGACY_COMPAT_MARKER_V67 = "# linux-rdaccess NVDA/Orca input compatibility v67"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v68"
+LEGACY_COMPAT_MARKER_V68 = "# linux-rdaccess NVDA/Orca input compatibility v68"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v69"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -1262,6 +1263,10 @@ _LEGACY_HELPERS = '''\
         if isinstance(table_edge, dict):
             _lrd_clear_navigation_markers(table_edge)
             table_edge["held"] = {}
+        nvda_browse = globals().get("_LRD_NVDA_BROWSE")
+        if isinstance(nvda_browse, dict):
+            _lrd_clear_navigation_markers(nvda_browse)
+            nvda_browse["held"] = {}
 
     def _linux_rdaccess_flush_pending_caps(self):
         """Forward the original deferred CapsLock press when it was not an NVDA command."""
@@ -1526,6 +1531,27 @@ _LEGACY_HELPERS = '''\
                  0x24: "firstColumn", 0x23: "lastColumn"}[vk_code],
                 held,
             )
+
+        # These are NVDA browse-mode commands, not global commands. Defer
+        # their context decision to Orca's main-thread keyboard hook. Mark
+        # CapsLock-as-NVDA as used so an eventual focus-mode pass-through never
+        # toggles the Linux lock merely because the NVDA modifier was CapsLock.
+        if pressed and self._lrd_nvda_down and not repeat:
+            shifts = [k for k in self._lrd_down if k[0] in self._LRD_SHIFT_VKS]
+            ctrl_alt_win = any(
+                k[0] in self._LRD_CTRL_VKS or k[0] in (0x12, 0xA4, 0xA5, 0x5B, 0x5C)
+                for k in self._lrd_down
+            )
+            browse_action = None
+            if vk_code == 0x56 and not shifts and not ctrl_alt_win:       # NVDA+V
+                browse_action = "layout"
+            elif vk_code == 0x79 and shifts and not ctrl_alt_win:         # NVDA+Shift+F10
+                browse_action = "nativeSelection"
+            if browse_action is not None:
+                self._lrd_navigation_marker = ("_LRD_NVDA_BROWSE", browse_action, held)
+                if getattr(self, "_lrd_caps_pending", None) is not None:
+                    self._lrd_caps_used = True
+                return False
 
         # Some NVDA commands have no proven Orca-42 equivalent but collide
         # with unrelated Orca modifier bindings. Consume those exact remote
@@ -2710,6 +2736,60 @@ def _lrd_maybe_swap_d(event, keybindings):
 # W spelling error have no Orca 42 equivalents.
 # Consume only a freshly proven remote key while Orca's structural model is
 # active. Local Linux input and focus-mode/editable typing are untouched.
+_LRD_NVDA_BROWSE = {"pending": [], "held": {}}
+
+
+def _lrd_consume_layout_mode(event=None):
+    action = getattr(event, "_lrd_layout_mode_action", None) if event is not None else None
+    if not action:
+        return True
+    method, event_arg = action
+    method(event_arg)
+    return True
+
+
+def _lrd_maybe_nvda_browse(event, keybindings):
+    pressed = event.isPressedKey()
+    held = _LRD_NVDA_BROWSE["held"]
+    if not pressed:
+        if event.hw_code not in held:
+            return False
+        held.pop(event.hw_code, None)
+        event._handler = None
+        event._consumer = _lrd_consume_unsupported_browse
+        return True
+
+    key = str(getattr(event, "event_string", "") or "")
+    if key.lower() == "v":
+        action = "layout"
+    elif key == "F10":
+        action = "nativeSelection"
+    else:
+        return False
+    if not _lrd_take_navigation_marker(_LRD_NVDA_BROWSE, action):
+        return False
+
+    script = getattr(event, "_script", None)
+    gate = getattr(script, "useStructuralNavigationModel", None)
+    if not callable(gate) or not gate():
+        return False
+
+    held[event.hw_code] = event.modifiers
+    event._handler = None
+    if action == "layout":
+        method = getattr(script, "toggleLayoutMode", None)
+        if not callable(method):
+            method = getattr(script, "toggle_layout_mode", None)
+        if callable(method):
+            event._lrd_layout_mode_action = (method, event)
+            event._consumer = _lrd_consume_layout_mode
+            return True
+    # Orca 42 has no NVDA-equivalent native-selection-mode command. In browse
+    # mode consume it rather than opening the application's Shift+F10 menu.
+    event._consumer = _lrd_consume_unsupported_browse
+    return True
+
+
 _LRD_BROWSE_UNSUPPORTED = {"pending": [], "held": {}}
 _LRD_BROWSE_UNSUPPORTED_KEYS = ("a", "f", "m", "n", "o", "w", "7", "8", "9")
 
@@ -3002,6 +3082,11 @@ def _lrd_install_orca_hook():
                 return False, "linux-rdaccess passed remote gesture to application"
         except Exception:
             log.error("linux-rdaccess: native bypass dispatch failed")
+        try:
+            if _lrd_maybe_nvda_browse(self, keybindings):
+                return True, "linux-rdaccess handled NVDA browse-mode command"
+        except Exception:
+            log.error("linux-rdaccess: NVDA browse-mode command failed")
         try:
             if _lrd_maybe_suppress_browse(self, keybindings):
                 return True, "linux-rdaccess suppressed mismatched NVDA browse command"
@@ -3774,6 +3859,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V68,
                 LEGACY_COMPAT_MARKER_V67,
                 LEGACY_COMPAT_MARKER_V66,
                 LEGACY_COMPAT_MARKER_V65,
