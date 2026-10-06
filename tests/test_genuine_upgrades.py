@@ -17,6 +17,7 @@ class GenuineUpgradeTests(unittest.TestCase):
             ('controller', 'v31', remote_access.patch_legacy_orca_remote_controller, remote_access.legacy_controller_patch_current),
             ('controller', 'v38', remote_access.patch_legacy_orca_remote_controller, remote_access.legacy_controller_patch_current),
             ('controller', 'v39', remote_access.patch_legacy_orca_remote_controller, remote_access.legacy_controller_patch_current),
+            ('controller', 'v40', remote_access.patch_legacy_orca_remote_controller, remote_access.legacy_controller_patch_current),
             ('local', 'v6', remote_access.patch_legacy_orca_local_machine, remote_access.legacy_local_machine_patch_current),
             ('local', 'v7', remote_access.patch_legacy_orca_local_machine, remote_access.legacy_local_machine_patch_current),
         )

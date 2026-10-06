@@ -185,6 +185,17 @@ class AdapterResultTests(Harness, unittest.TestCase):
         self.assertTrue(event)
         self.assertEqual((event.type, event.event_string), ('keyboard', 'space'))
 
+    def test_legacy_mode_toggle_does_not_grab_stale_page_from_browser_chrome(self):
+        controller, _, _ = self._patched_controller()
+        handler = mock.Mock()
+        focus = object()
+        script = types.SimpleNamespace(togglePresentationMode=handler,
+            utilities=types.SimpleNamespace(inDocumentContent=lambda obj: False))
+        with self.modules(types.SimpleNamespace(), script):
+            sys.modules['orca'].orca_state.locusOfFocus = focus
+            self.assertFalse(controller._linux_rdaccess_script_call('togglePresentationMode'))
+        handler.assert_not_called()
+
     def test_legacy_current_line_uses_caret_object_without_review_or_movement(self):
         controller, _, _ = self._patched_controller()
         target = object()
@@ -208,6 +219,36 @@ class AdapterResultTests(Harness, unittest.TestCase):
         predicate.assert_called_once_with(focus)
         getter.assert_not_called()
         handler.assert_called_once_with(focus)
+
+    def test_legacy_current_line_scopes_and_restores_native_web_flags(self):
+        for document, focus_mode, initial_flags in (
+            (True, False, (False, False)),
+            (False, False, (True, True)),
+            (True, True, (True, True)),
+        ):
+            with self.subTest(document=document, focus_mode=focus_mode):
+                controller, _, _ = self._patched_controller()
+                focus, page = object(), object()
+                calls = []
+                script = types.SimpleNamespace(
+                    _inFocusMode=focus_mode,
+                    _lastCommandWasCaretNav=initial_flags[0],
+                    _lastCommandWasStructNav=initial_flags[1],
+                    utilities=types.SimpleNamespace(
+                        getCaretContext=lambda: (page, 17),
+                        inDocumentContent=lambda obj: document))
+                def handler(obj):
+                    calls.append((obj, script._lastCommandWasCaretNav,
+                                  script._lastCommandWasStructNav))
+                    raise RuntimeError('presentation failed')
+                script.sayLine = handler
+                with self.modules(types.SimpleNamespace(), script):
+                    sys.modules['orca'].orca_state.locusOfFocus = focus
+                    self.assertFalse(controller._linux_rdaccess_script_call('presentCurrentLine'))
+                browse = document and not focus_mode
+                self.assertEqual(calls, [(page if browse else focus, False, browse)])
+                self.assertEqual((script._lastCommandWasCaretNav,
+                                  script._lastCommandWasStructNav), initial_flags)
 
     def test_declined_structural_list_never_resynthesizes_shortcut(self):
         controller, _, _ = self._patched_controller()

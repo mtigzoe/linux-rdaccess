@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ast
+from pathlib import Path
 import sys
 import types
 import unittest
@@ -237,6 +239,17 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
         handler.assert_called_once_with(script, None)
         duplicate_handler.assert_not_called()
 
+    def test_structural_list_can_use_explicit_originating_script(self):
+        handler = mock.Mock()
+        script = types.SimpleNamespace(structuralNavigation=types.SimpleNamespace(
+            enabledObjects={"heading": types.SimpleNamespace(
+                bindings={"list": ["h", 0, "Headings"]}, showList=handler)}))
+        with mock.patch.object(
+            OrcaRuntimeAdapter, "active_script", side_effect=AssertionError("wrong focus")
+        ):
+            self.assertIs(OrcaRuntimeAdapter.show_structural_list("h", script=script), True)
+        handler.assert_called_once_with(script, None)
+
     def test_bypass_next_command_supports_legacy_and_snake_case_handlers(self):
         legacy_calls = []
         legacy = types.SimpleNamespace(
@@ -342,6 +355,28 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
         with self._fake_orca(script):
             self.assertTrue(OrcaRuntimeAdapter.toggle_presentation_mode())
         utilities.grabFocus.assert_called_once_with(entry)
+
+    def test_mode_toggle_guard_uses_snake_case_focus_when_camelcase_is_none(self):
+        address_bar = object()
+        script = types.SimpleNamespace(
+            togglePresentationMode=mock.Mock(),
+            utilities=types.SimpleNamespace(inDocumentContent=mock.Mock(return_value=False)),
+        )
+        with self._fake_orca(script):
+            sys.modules["orca.orca_state"].locus_of_focus = address_bar
+            self.assertIs(OrcaRuntimeAdapter.toggle_presentation_mode(), False)
+        script.utilities.inDocumentContent.assert_called_once_with(address_bar)
+        script.togglePresentationMode.assert_not_called()
+
+    def test_mode_toggle_preserves_unavailable_and_rejected_handler_results(self):
+        with self._fake_orca(None):
+            self.assertIsNone(OrcaRuntimeAdapter.toggle_presentation_mode())
+        with self._fake_orca(types.SimpleNamespace()):
+            self.assertIsNone(OrcaRuntimeAdapter.toggle_presentation_mode())
+        script = types.SimpleNamespace(togglePresentationMode=mock.Mock(return_value=False))
+        with self._fake_orca(script):
+            self.assertIs(OrcaRuntimeAdapter.toggle_presentation_mode(), False)
+        script.togglePresentationMode.assert_called_once()
 
     def test_show_preferences_uses_orca_global_preferences_command(self):
         calls = []
@@ -525,6 +560,55 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
             self.assertIs(OrcaRuntimeAdapter.present_current_line(), False)
         script.sayLine.assert_called_once_with(focus_obj)
 
+    def test_current_line_focus_mode_uses_focus_without_consulting_browse_caret(self):
+        entry, stale_page_caret = object(), object()
+        script = types.SimpleNamespace(
+            sayLine=mock.Mock(),
+            utilities=types.SimpleNamespace(
+                inDocumentContent=lambda obj: True,
+                getCaretContext=mock.Mock(return_value=(stale_page_caret, 19))),
+            _inFocusMode=True,
+            _lastCommandWasCaretNav=True,
+            _lastCommandWasStructNav=False,
+        )
+        with self._fake_orca(script, focus=entry):
+            self.assertIs(OrcaRuntimeAdapter.present_current_line(), True)
+        script.sayLine.assert_called_once_with(entry)
+        script.utilities.getCaretContext.assert_not_called()
+        self.assertIs(script._lastCommandWasCaretNav, True)
+        self.assertIs(script._lastCommandWasStructNav, False)
+
+    def test_current_line_restores_navigation_flags_when_handler_raises(self):
+        entry = object()
+        script = types.SimpleNamespace(
+            utilities=types.SimpleNamespace(inDocumentContent=lambda obj: False),
+            _lastCommandWasCaretNav=True,
+            _lastCommandWasStructNav=False,
+        )
+
+        def failing_handler(obj):
+            self.assertIs(obj, entry)
+            self.assertIs(script._lastCommandWasCaretNav, False)
+            self.assertIs(script._lastCommandWasStructNav, False)
+            raise RuntimeError("presentation failure")
+
+        script.sayLine = failing_handler
+        with self._fake_orca(script, focus=entry), self.assertRaises(RuntimeError):
+            OrcaRuntimeAdapter.present_current_line()
+        self.assertIs(script._lastCommandWasCaretNav, True)
+        self.assertIs(script._lastCommandWasStructNav, False)
+
+    def test_current_line_does_not_add_web_navigation_flags_to_other_scripts(self):
+        entry = object()
+        script = types.SimpleNamespace(
+            utilities=types.SimpleNamespace(inDocumentContent=lambda obj: False),
+            sayLine=mock.Mock(),
+        )
+        with self._fake_orca(script, focus=entry):
+            self.assertIs(OrcaRuntimeAdapter.present_current_line(), True)
+        self.assertFalse(hasattr(script, "_lastCommandWasCaretNav"))
+        self.assertFalse(hasattr(script, "_lastCommandWasStructNav"))
+
     def test_present_lock_state_uses_authoritative_xkb_state(self):
         calls = []
         script = types.SimpleNamespace(
@@ -588,6 +672,150 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
         with self._fake_orca(script):
             self.assertTrue(OrcaRuntimeAdapter.where_am_i())
         self.assertEqual(calls, [None])
+
+
+class InstalledOrcaLineHandlerTests(unittest.TestCase):
+    """Exercise installed web handlers without initializing Orca or a GUI."""
+
+    @classmethod
+    def setUpClass(cls):
+        path = Path("/usr/lib/python3/dist-packages/orca/scripts/web/script.py")
+        if not path.is_file():
+            raise unittest.SkipTest("Installed Orca web script is unavailable")
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        script = next(node for node in tree.body
+                      if isinstance(node, ast.ClassDef) and node.name == "Script")
+        methods = [node for node in script.body if isinstance(node, ast.FunctionDef)
+                   and node.name in ("sayLine", "togglePresentationMode")]
+
+        class Base:
+            def sayLine(self, obj):
+                self.physical_lines.append(obj)
+
+        # Retain the exact installed method, including its super() dispatch.
+        module = ast.Module(body=[ast.ClassDef(
+            name="Script", bases=[ast.Name(id="Base", ctx=ast.Load())],
+            keywords=[], body=methods, decorator_list=[])], type_ignores=[])
+        ast.fix_missing_locations(module)
+        namespace = {
+            "Base": Base,
+            "pyatspi": types.SimpleNamespace(ROLE_LIST_BOX="list_box", ROLE_MENU="menu"),
+            "messages": types.SimpleNamespace(MODE_FOCUS="focus", MODE_BROWSE="browse"),
+        }
+        exec(compile(module, str(path), "exec"), namespace)
+        cls.script_class = namespace["Script"]
+
+    def _script(self, *, document=True, focus_mode=False, editable=False,
+                caret_flag=False, struct_flag=False):
+        script = self.script_class()
+        focus, browse_caret, document_obj = object(), object(), object()
+        script._lastCommandWasCaretNav = caret_flag
+        script._lastCommandWasStructNav = struct_flag
+        script._inFocusMode = focus_mode
+        script._loadingDocumentContent = False
+        script._focusModeIsSticky = False
+        script._browseModeIsSticky = False
+        script.presentMessage = mock.Mock()
+        script.refreshKeyGrabs = mock.Mock()
+        script.pointOfReference = {}
+        script.physical_lines = []
+        script.speakContents = mock.Mock()
+        script.utilities = types.SimpleNamespace(
+            inDocumentContent=lambda obj: document,
+            isContentEditableWithEmbeddedObjects=lambda obj: editable,
+            getTopLevelDocumentForObject=lambda obj: document_obj,
+            getCaretContext=mock.Mock(return_value=(browse_caret, 19)),
+            getPriorContext=lambda **kwargs: (None, -1),
+            getLineContentsAtOffset=mock.Mock(return_value=[(browse_caret, 19)]),
+            grabFocusWhenSettingCaret=lambda obj: False,
+            grabFocus=mock.Mock(),
+        )
+        return script, focus, browse_caret
+
+    def _toggle_mode(self, script, focus, result=True):
+        orca = types.ModuleType("orca")
+        orca.orca_state = types.SimpleNamespace(locusOfFocus=focus)
+        with mock.patch.object(
+            OrcaRuntimeAdapter, "active_script", return_value=script
+        ), mock.patch.dict(sys.modules, {"orca": orca}):
+            self.assertIs(OrcaRuntimeAdapter.toggle_presentation_mode(), result)
+
+    def _present(self, script, focus):
+        orca = types.ModuleType("orca")
+        orca.orca_state = types.SimpleNamespace(locusOfFocus=focus)
+        with mock.patch.object(
+            OrcaRuntimeAdapter, "active_script", return_value=script
+        ), mock.patch.dict(sys.modules, {"orca": orca}):
+            self.assertIs(OrcaRuntimeAdapter.present_current_line(), True)
+
+    def test_browse_line_uses_virtual_offset_after_non_navigation_command(self):
+        script, focus, browse_caret = self._script()
+        self._present(script, focus)
+        self.assertEqual(script.physical_lines, [])
+        script.utilities.getLineContentsAtOffset.assert_called_once_with(
+            browse_caret, 19, useCache=True)
+        script.speakContents.assert_called_once_with([(browse_caret, 19)], priorObj=None)
+        self.assertIs(script._lastCommandWasCaretNav, False)
+        self.assertIs(script._lastCommandWasStructNav, False)
+
+    def test_toolbar_line_uses_physical_focus_despite_stale_navigation_flags(self):
+        script, focus, _ = self._script(document=False, struct_flag=True)
+        self._present(script, focus)
+        self.assertEqual(script.physical_lines, [focus])
+        script.utilities.getCaretContext.assert_not_called()
+        script.speakContents.assert_not_called()
+        self.assertIs(script._lastCommandWasCaretNav, False)
+        self.assertIs(script._lastCommandWasStructNav, True)
+
+    def test_focus_mode_entry_uses_native_physical_line_despite_stale_flags(self):
+        script, focus, _ = self._script(focus_mode=True, caret_flag=True)
+        self._present(script, focus)
+        self.assertEqual(script.physical_lines, [focus])
+        script.utilities.getCaretContext.assert_not_called()
+        script.speakContents.assert_not_called()
+        self.assertIs(script._lastCommandWasCaretNav, True)
+
+    def test_rich_editable_retains_native_embedded_object_line_behavior(self):
+        script, focus, browse_caret = self._script(focus_mode=True, editable=True)
+        self._present(script, focus)
+        self.assertEqual(script.physical_lines, [])
+        script.utilities.getLineContentsAtOffset.assert_called_once_with(
+            browse_caret, 19, useCache=True)
+        script.speakContents.assert_called_once()
+
+    def test_mode_toggle_outside_document_preserves_address_bar_focus_and_mode(self):
+        script, focus, cached_page_caret = self._script(document=False)
+        # The native handler reproduces the bug: its cached page caret is
+        # focused even though the application locus is a toolbar control.
+        script.togglePresentationMode(types.SimpleNamespace(type="keyboard"))
+        script.utilities.grabFocus.assert_called_once_with(cached_page_caret)
+        self.assertIs(script._inFocusMode, True)
+
+        script._inFocusMode = False
+        script.utilities.getCaretContext.reset_mock()
+        script.utilities.grabFocus.reset_mock()
+        script.presentMessage.reset_mock()
+        script.refreshKeyGrabs.reset_mock()
+        self._toggle_mode(script, focus, result=False)
+        script.utilities.getCaretContext.assert_not_called()
+        script.utilities.grabFocus.assert_not_called()
+        script.presentMessage.assert_not_called()
+        script.refreshKeyGrabs.assert_not_called()
+        self.assertIs(script._inFocusMode, False)
+
+    def test_mode_toggle_in_document_keeps_explicit_entry_focus_behavior(self):
+        script, focus, cached_page_caret = self._script()
+        self._toggle_mode(script, focus)
+        script.utilities.grabFocus.assert_called_once_with(cached_page_caret)
+        script.presentMessage.assert_called_once_with("focus")
+        self.assertIs(script._inFocusMode, True)
+
+    def test_mode_toggle_in_document_can_return_to_browse_mode(self):
+        script, focus, _ = self._script(focus_mode=True)
+        self._toggle_mode(script, focus)
+        script.utilities.grabFocus.assert_not_called()
+        script.presentMessage.assert_called_once_with("browse")
+        self.assertIs(script._inFocusMode, False)
 
 
 if __name__ == "__main__":

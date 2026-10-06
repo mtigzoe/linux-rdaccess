@@ -72,7 +72,7 @@ if "old_speakCharacter" in globals():
     old_speakCharacter = _linux_rdaccess_muted_old_speak_character
 """
 
-_LOCAL_SPEECH_PREF_HOOK = """# linux-rdaccess local Orca speech preference
+_LOCAL_SPEECH_PREF_HOOK_V3 = """# linux-rdaccess local Orca speech preference
 # Keep forwarding wrappers installed; mute only while the remote transport is
 # actually connected in slave mode, and restore local output on disconnect.
 def _linux_rdaccess_local_speech_muted():
@@ -103,6 +103,16 @@ if "old_speakCharacter" in globals() and not hasattr(old_speakCharacter, "_linux
     old_speakCharacter = _linux_rdaccess_muted_old_speak_character
 """
 
+_LOCAL_SPEECH_PREF_HOOK = _LOCAL_SPEECH_PREF_HOOK_V3.replace(
+    "        if _linux_rdaccess_local_speech_muted():\n            return None\n",
+    "        if _linux_rdaccess_local_speech_muted():\n"
+    "            if callable(kwargs.get(\"callback\")):\n"
+    "                helper = globals().get(\"_linux_rdaccess_silent_callback_speech\")\n"
+    "                if callable(helper):\n"
+    "                    return helper(original, *args, **kwargs)\n"
+    "            return None\n",
+)
+
 CUSTOMIZATION_EVENT_API_MARKER = "# linux-rdaccess Orca keyboard-event API compatibility v1"
 _CUSTOMIZATION_EVENT_API_HOOK = CUSTOMIZATION_EVENT_API_MARKER + '''
 # Orca 42 exposes isPressedKey; newer Orca Remote uses is_pressed_key.
@@ -118,6 +128,218 @@ def _linux_rdaccess_event_is_pressed(event):
 _CUSTOMIZATION_EVENT_FUNCTIONS = (
     "_patched_process_key", "_should_run_shortcut_directly", "_run_direct_shortcut",
 )
+
+CUSTOMIZATION_SPEECH_SEQUENCE_MARKER = "# linux-rdaccess NVDA speech sequence compatibility v1"
+_CUSTOMIZATION_SPEECH_SEQUENCE_HOOK = CUSTOMIZATION_SPEECH_SEQUENCE_MARKER + '''
+def _linux_rdaccess_speech_sequence(text):
+    # NVDA's decoder iterates sequence; a scalar string becomes characters.
+    # Preserve a sequence already supplied by a compatible upstream caller.
+    return [text] if isinstance(text, str) else text
+'''
+_CUSTOMIZATION_SPEECH_FORWARD_SOURCE = '''
+def my_speak(self, text, acss, **kw):
+    global _want_cancel
+    if text and transport.connected and transport.connection_type == "slave":
+        if _want_cancel:
+            transport.send(type="cancel")
+            _want_cancel = False
+        transport.send(type="speak", sequence=text)
+        return None
+    return old_speak(self, text, acss, **kw)
+'''
+_CUSTOMIZATION_SPEECH_CALLBACK_SOURCE = _CUSTOMIZATION_SPEECH_FORWARD_SOURCE.replace(
+    "        return None\n", "        if not callable(kw.get(\"callback\")):\n            return None\n")
+
+CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER = "# linux-rdaccess native Say All callbacks v1"
+_CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK = CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER + '''
+def _linux_rdaccess_silent_callback_speech(original, *args, **kwargs):
+    # Obtain genuine native synthesis events while Windows speaks the text.
+    # Timing follows the local synthesizer; it is not a Windows completion ACK.
+    import threading as _threading
+    if (not callable(kwargs.get("callback")) or not args
+            or _threading.current_thread() is not _threading.main_thread()
+            or not isinstance(args[0], SpeechServer)
+            or getattr(original, "__module__", None) != "orca.speechdispatcherfactory"
+            or getattr(original, "__name__", None) != "_speak"):
+        return None
+    server = args[0]
+    send = getattr(server, "_send_command", None)
+    properties = getattr(server, "_current_voice_properties", None)
+    if not callable(send) or not isinstance(properties, dict) or not hasattr(server, "__dict__"):
+        return None
+    owned_send = "_send_command" in server.__dict__
+    previous_send = server.__dict__.get("_send_command")
+    clients = {}
+    intercepted = False
+
+    def client():
+        current = getattr(server, "_client", None)
+        if not all(callable(getattr(current, name, None))
+                   for name in ("get_volume", "set_volume", "speak")):
+            raise RuntimeError("native callback backend unavailable")
+        if id(current) not in clients:
+            volume = current.get_volume()
+            if isinstance(volume, bool) or not isinstance(volume, (str, int)):
+                raise ValueError("native volume unavailable")
+            volume = int(volume)
+            if not -100 <= volume <= 100:
+                raise ValueError("native volume out of range")
+            clients[id(current)] = (current, volume)
+            # Orca gain=0 maps to -35, so force the native backend's mute value.
+            current.set_volume(-100)
+        return current
+
+    def muted_send(command, *command_args, **command_kwargs):
+        current = client()
+        for known, _volume in clients.values():
+            if command == known.set_volume:
+                return known.set_volume(-100)
+            if command == known.speak:
+                # Also cover cached ACSS gain, which may skip a volume command.
+                known.set_volume(-100)
+                break
+        return send(command, *command_args, **command_kwargs)
+
+    try:
+        client()
+        server._send_command = muted_send
+        intercepted = True
+        return original(*args, **kwargs)
+    except Exception:
+        # Never fall back to audible local speech or invent synthesis events.
+        return None
+    finally:
+        if intercepted:
+            if owned_send:
+                server._send_command = previous_send
+            else:
+                server.__dict__.pop("_send_command", None)
+        for known, volume in clients.values():
+            try:
+                known.set_volume(volume)
+            except Exception:
+                pass
+        # Restoration may differ from the native gain cache after an ACSS
+        # change or a reconnect. Force the next real utterance to set its gain.
+        current_properties = getattr(server, "_current_voice_properties", None)
+        if isinstance(current_properties, dict) and clients:
+            current_properties.pop("gain", None)
+'''
+
+
+def _customization_speech_functions(tree):
+    return [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
+            and node.name == "my_speak"]
+
+
+def legacy_customization_speech_sequence_patch_current(text: str) -> bool:
+    """Verify the wire-shape helper and the actual outbound speech wrapper."""
+    if text.count(CUSTOMIZATION_SPEECH_SEQUENCE_MARKER) != 1:
+        return False
+    try:
+        tree = ast.parse(text, feature_version=(3, 10))
+    except SyntaxError:
+        return False
+    expected_helper = ast.parse(_CUSTOMIZATION_SPEECH_SEQUENCE_HOOK).body[0]
+    helpers = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+               and node.name == expected_helper.name]
+    expected = [ast.parse(source.replace(
+        "sequence=text", "sequence=_linux_rdaccess_speech_sequence(text)")).body[0]
+        for source in (_CUSTOMIZATION_SPEECH_FORWARD_SOURCE, _CUSTOMIZATION_SPEECH_CALLBACK_SOURCE)]
+    wrappers = _customization_speech_functions(tree)
+    return (len(helpers) == 1 and _binding_count(tree.body, expected_helper.name) == 1
+            and _ast_equal(helpers[0], expected_helper)
+            and len(wrappers) == 1 and wrappers[0] in tree.body
+            and _binding_count(tree.body, "my_speak") == 1
+            and any(_ast_equal(wrappers[0], shape) for shape in expected))
+
+
+def _patch_legacy_customization_speech_sequence(text: str) -> str:
+    if CUSTOMIZATION_SPEECH_SEQUENCE_MARKER in text:
+        if not legacy_customization_speech_sequence_patch_current(text):
+            raise ValueError("incomplete NVDA speech sequence patch")
+        return text
+    tree = ast.parse(text, feature_version=(3, 10))
+    wrappers = _customization_speech_functions(tree)
+    if not wrappers:
+        return text
+    expected = ast.parse(_CUSTOMIZATION_SPEECH_FORWARD_SOURCE).body[0]
+    already_wrapped = ast.parse(_CUSTOMIZATION_SPEECH_FORWARD_SOURCE.replace(
+        "sequence=text", "sequence=[text]")).body[0]
+    if (len(wrappers) != 1 or wrappers[0] not in tree.body
+            or _binding_count(tree.body, "my_speak") != 1
+            or not any(_ast_equal(wrappers[0], shape) for shape in (expected, already_wrapped))):
+        raise ValueError("unsupported legacy outbound speech wrapper")
+    if _binding_count(tree.body, "_linux_rdaccess_speech_sequence"):
+        raise ValueError("conflicting NVDA speech sequence helper")
+    keyword = next(keyword for node in ast.walk(wrappers[0]) if isinstance(node, ast.Call)
+                   for keyword in node.keywords if keyword.arg == "sequence")
+    data = text.encode("utf-8")
+    starts = [0]
+    for line in data.splitlines(keepends=True):
+        starts.append(starts[-1] + len(line))
+    value = keyword.value
+    start = starts[value.lineno - 1] + value.col_offset
+    end = starts[value.end_lineno - 1] + value.end_col_offset
+    result = (data[:start] + b"_linux_rdaccess_speech_sequence(text)" + data[end:]).decode("utf-8")
+    result = result.rstrip("\n") + "\n\n" + _CUSTOMIZATION_SPEECH_SEQUENCE_HOOK
+    if not legacy_customization_speech_sequence_patch_current(result):
+        raise ValueError("updated NVDA speech sequence patch is incomplete")
+    return result
+
+
+def legacy_customization_say_all_callback_patch_current(text: str) -> bool:
+    if text.count(CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER) != 1 or _LOCAL_SPEECH_PREF_HOOK not in text:
+        return False
+    try:
+        tree = ast.parse(text, feature_version=(3, 10))
+    except SyntaxError:
+        return False
+    expected_helper = ast.parse(_CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK).body[0]
+    helpers = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+               and node.name == expected_helper.name]
+    wrappers = _customization_speech_functions(tree)
+    expected_wrapper = ast.parse(_CUSTOMIZATION_SPEECH_CALLBACK_SOURCE.replace(
+        "sequence=text", "sequence=_linux_rdaccess_speech_sequence(text)")).body[0]
+    return (len(helpers) == 1 and _binding_count(tree.body, expected_helper.name) == 1
+            and _ast_equal(helpers[0], expected_helper)
+            and _binding_count(tree.body, "_linux_rdaccess_wrap_local_speech") == 1
+            and _binding_count(tree.body, "my_speak") == 1
+            and len(wrappers) == 1 and wrappers[0] in tree.body
+            and _ast_equal(wrappers[0], expected_wrapper)
+            and legacy_customization_speech_sequence_patch_current(text))
+
+
+def _patch_legacy_customization_say_all_callbacks(text: str) -> str:
+    if CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER in text:
+        if not legacy_customization_say_all_callback_patch_current(text):
+            raise ValueError("incomplete native Say All callback patch")
+        return text
+    tree = ast.parse(text, feature_version=(3, 10))
+    wrappers = _customization_speech_functions(tree)
+    if not wrappers:
+        return text
+    expected = ast.parse(_CUSTOMIZATION_SPEECH_FORWARD_SOURCE.replace(
+        "sequence=text", "sequence=_linux_rdaccess_speech_sequence(text)")).body[0]
+    if len(wrappers) != 1 or not _ast_equal(wrappers[0], expected):
+        raise ValueError("unsupported legacy Say All speech wrapper")
+    helper_name = "_linux_rdaccess_silent_callback_speech"
+    if _binding_count(tree.body, helper_name):
+        raise ValueError("conflicting native Say All callback helper")
+    returned = next(node for node in ast.walk(wrappers[0]) if isinstance(node, ast.Return)
+                    and isinstance(node.value, ast.Constant) and node.value.value is None)
+    data = text.encode("utf-8")
+    starts = [0]
+    for line in data.splitlines(keepends=True):
+        starts.append(starts[-1] + len(line))
+    start = starts[returned.lineno - 1] + returned.col_offset
+    end = starts[returned.end_lineno - 1] + returned.end_col_offset
+    replacement = b'if not callable(kw.get("callback")):\n            return None'
+    result = (data[:start] + replacement + data[end:]).decode("utf-8")
+    result = result.rstrip("\n") + "\n\n" + _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK
+    if not legacy_customization_say_all_callback_patch_current(result):
+        raise ValueError("updated native Say All callback patch is incomplete")
+    return result
 
 CUSTOMIZATION_RECONNECT_MARKER = "# linux-rdaccess automatic relay reconnect v1"
 _CUSTOMIZATION_RECONNECT_HOOK = CUSTOMIZATION_RECONNECT_MARKER + '''
@@ -476,7 +698,8 @@ def update_legacy_orca_customizations(
 
     if text.count(LOCAL_SPEECH_PREF_MARKER) > 1:
         raise ValueError("multiple local speech preference patches")
-    previous_hook = next((hook for hook in (_LOCAL_SPEECH_PREF_HOOK_V1, _LOCAL_SPEECH_PREF_HOOK_V2)
+    previous_hook = next((hook for hook in (_LOCAL_SPEECH_PREF_HOOK_V1, _LOCAL_SPEECH_PREF_HOOK_V2,
+                                          _LOCAL_SPEECH_PREF_HOOK_V3)
                           if hook in text), None)
     if previous_hook is not None:
         text = text.replace(previous_hook, _LOCAL_SPEECH_PREF_HOOK, 1)
@@ -486,6 +709,8 @@ def update_legacy_orca_customizations(
         text = text.rstrip("\n") + "\n\n" + _LOCAL_SPEECH_PREF_HOOK
 
     text = _patch_legacy_customization_event_api(text)
+    text = _patch_legacy_customization_speech_sequence(text)
+    text = _patch_legacy_customization_say_all_callbacks(text)
     text = _patch_legacy_customization_reconnect(text)
 
     try:
@@ -591,7 +816,8 @@ LEGACY_COMPAT_MARKER_V36 = "# linux-rdaccess NVDA/Orca input compatibility v36"
 LEGACY_COMPAT_MARKER_V37 = "# linux-rdaccess NVDA/Orca input compatibility v37"
 LEGACY_COMPAT_MARKER_V38 = "# linux-rdaccess NVDA/Orca input compatibility v38"
 LEGACY_COMPAT_MARKER_V39 = "# linux-rdaccess NVDA/Orca input compatibility v39"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v40"
+LEGACY_COMPAT_MARKER_V40 = "# linux-rdaccess NVDA/Orca input compatibility v40"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v41"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -731,14 +957,26 @@ _LEGACY_HELPERS = '''\
                 # Publish before dispatch: XTest can reach Orca's thread before
                 # send_key returns. A rejected injection owns no marker.
                 token = _lrd_publish_navigation_marker(marker, candidate[1])
+        native_request = getattr(self, "_lrd_bypass_dispatch", None)
+        try:
+            native_name = (getattr(self, "_lrd_bypass_name", None) if native_request is not None
+                           else self._linux_rdaccess_bypass_key_name(payload))
+        except Exception:
+            native_name = None
+        native_token = (_lrd_publish_bypass_key(native_name, pressed, native_request)
+                        if native_name else None)
         try:
             result = self.local_machine.send_key(**payload)
         except BaseException:
             if token is not None:
                 _lrd_remove_navigation_marker(marker, token)
+            if native_token is not None:
+                _lrd_remove_bypass_key(native_token)
             raise
         if result is False and token is not None:
             _lrd_remove_navigation_marker(marker, token)
+        if result is False and native_token is not None:
+            _lrd_remove_bypass_key(native_token)
         if result is not False:
             if pressed:
                 forwarded[held] = dict(payload)
@@ -794,6 +1032,12 @@ _LEGACY_HELPERS = '''\
         self._lrd_caps_pending = None
         self._lrd_caps_used = False
         self._lrd_bypass_next = False
+        bypass_request = getattr(self, "_lrd_bypass_request", None)
+        self._lrd_bypass_request = None
+        self._lrd_bypass_keys = {}
+        _lrd_clear_bypass_keys()
+        if bypass_request is not None:
+            _lrd_schedule_bypass_cleanup(bypass_request)
         self._lrd_navigation_marker = None
         self._lrd_generation = getattr(self, "_lrd_generation", 0) + 1
         self._lrd_local_stop_pending = False
@@ -945,19 +1189,55 @@ _LEGACY_HELPERS = '''\
                 self._lrd_swapped.discard(held)
             return True
 
-        # Orca's bypass flag is cleared by its keyboard-event processing. Arm
-        # a local latch when scheduling NVDA+F2 as well: the receive thread can
-        # see the next key before the GLib callback has set Orca's flag.
-        bypass = getattr(self, "_lrd_bypass_next", False)
+        # One delivered gesture owns its repeats and release. Receive-side
+        # ownership is independent of when Orca processes its native flag.
+        bypass_keys = getattr(self, "_lrd_bypass_keys", {})
+        request = bypass_keys.get(held)
+        if request is not None:
+            result = self._linux_rdaccess_forward_bypass_key(
+                request, held, pressed, key_name, modifiers, vk_code, scan_code, extended)
+            if not pressed and result is not False:
+                bypass_keys.pop(held, None)
+            return True
+        request = getattr(self, "_lrd_bypass_request", None)
+        native_bypass = False
         try:
             from orca import orca_state as _state
-            bypass = bypass or bool(getattr(_state, "bypassNextCommand", False))
+            native_bypass = bool(getattr(_state, "bypassNextCommand", False))
         except ImportError:
             pass
+        if request is not None and request["used"] and (
+                not native_bypass or request.get("complete", False)):
+            self._lrd_bypass_request = request = None
+        elif (request is not None and request["used"] and not request["external"]
+              and _LRD_BYPASS["owner"] is not request):
+            # The owned flag has completed; a newly armed local Orca bypass
+            # must not be mistaken for the old remote request.
+            self._lrd_bypass_request = request = None
+        # A flag which our used request has yet to clear does not grant a
+        # second remote gesture. A local/native request retains its own path.
+        if native_bypass and request is None:
+            request = self._lrd_bypass_request = {
+                "generation": self._lrd_generation, "used": False,
+                "external": True, "codes": {},
+            }
+        bypass = (request is not None and not request["used"]
+                  and (getattr(self, "_lrd_bypass_next", False) or native_bypass))
         if bypass:
             if pressed and vk_code not in self._LRD_MODIFIER_VKS:
+                request["used"] = True
                 self._lrd_bypass_next = False
                 self._linux_rdaccess_flush_pending_caps()
+                result = self._linux_rdaccess_forward_bypass_key(
+                    request, held, pressed, key_name, modifiers, vk_code, scan_code, extended)
+                if result is False:
+                    request["used"] = False
+                    self._lrd_bypass_next = True
+                else:
+                    if not hasattr(self, "_lrd_bypass_keys"):
+                        self._lrd_bypass_keys = {}
+                    self._lrd_bypass_keys[held] = request
+                return True
             return False
 
         # Remember that a plain (or Shift) D came from the remote session, so the
@@ -1041,10 +1321,7 @@ _LEGACY_HELPERS = '''\
                     self._linux_rdaccess_run_main(
                         lambda: self._linux_rdaccess_show_elements_list(modifiers))
                 elif action == "pass_next":
-                    self._lrd_bypass_next = True
-                    if self._linux_rdaccess_run_main(
-                            self._linux_rdaccess_activate_bypass) is False:
-                        self._lrd_bypass_next = False
+                    self._linux_rdaccess_arm_bypass()
                 elif action == "where_am_i":
                     self._linux_rdaccess_run_main(
                         lambda: self._linux_rdaccess_script_call("whereAmI"))
@@ -1125,9 +1402,92 @@ _LEGACY_HELPERS = '''\
             return True
         return False
 
-    def _linux_rdaccess_activate_bypass(self):
+    def _linux_rdaccess_arm_bypass(self):
+        old = getattr(self, "_lrd_bypass_request", None)
+        if old is not None:
+            _lrd_schedule_bypass_cleanup(old)
+        request = self._lrd_bypass_request = {
+            "generation": self._lrd_generation, "used": False,
+            "external": False, "codes": {},
+        }
+        self._lrd_bypass_next = True
+        if self._linux_rdaccess_run_main(
+                lambda: self._linux_rdaccess_activate_bypass(request)) is False:
+            if self._lrd_bypass_request is request:
+                self._lrd_bypass_request = None
+                self._lrd_bypass_next = False
+
+    def _linux_rdaccess_activate_bypass(self, request=None):
+        request = request or getattr(self, "_lrd_bypass_request", None)
+        if (request is None or self._lrd_bypass_request is not request
+                or request["used"] or request["generation"] != self._lrd_generation):
+            return False
+        owner = _LRD_BYPASS["owner"]
+        if owner is not None and owner is not request:
+            _lrd_cleanup_owned_bypass(owner)
+        try:
+            from orca import orca_state as _state
+            if getattr(_state, "bypassNextCommand", False):
+                request["external"] = True
+                return True
+        except ImportError:
+            pass
+        _LRD_BYPASS["owner"] = request
         if self._linux_rdaccess_script_call("bypassNextCommand") is False:
             self._lrd_bypass_next = False
+            if self._lrd_bypass_request is request:
+                self._lrd_bypass_request = None
+            _lrd_cleanup_owned_bypass(request)
+            return False
+        # Injection can race this callback while Orca presents its message.
+        # It must not leave a native flag armed after the gesture was delivered.
+        if request["used"] or self._lrd_bypass_request is not request:
+            _lrd_cleanup_owned_bypass(request)
+        return True
+
+    def _linux_rdaccess_forward_bypass_key(self, request, held, pressed,
+                                          key_name, modifiers, vk_code,
+                                          scan_code, extended):
+        payload = dict(getattr(self, "_lrd_forwarded", {}).get(held, {
+            "key_name": key_name, "modifiers": modifiers, "vk_code": vk_code,
+            "scan_code": scan_code, "extended": extended,
+        }), pressed=pressed)
+        try:
+            name = self._linux_rdaccess_bypass_key_name(payload)
+        except Exception:
+            log.error("linux-rdaccess: bypass key resolution failed")
+            return False
+        previous = getattr(self, "_lrd_bypass_dispatch", None)
+        previous_name = getattr(self, "_lrd_bypass_name", None)
+        self._lrd_bypass_dispatch = request
+        self._lrd_bypass_name = name
+        try:
+            return self._linux_rdaccess_forward_key(**payload)
+        except Exception:
+            return False
+        finally:
+            self._lrd_bypass_dispatch = previous
+            self._lrd_bypass_name = previous_name
+
+    def _linux_rdaccess_bypass_key_name(self, payload):
+        resolver = getattr(self.local_machine, "_resolve_key", None)
+        if callable(resolver):
+            return resolver(payload.get("key_name"), payload.get("vk_code"),
+                            payload.get("extended"))
+        name = payload.get("key_name")
+        vk_code = payload.get("vk_code")
+        # Lightweight test/legacy machines need not expose the resolver.
+        if not name and isinstance(vk_code, int):
+            if 0x41 <= vk_code <= 0x5A:
+                name = chr(vk_code).lower()
+            elif 0x30 <= vk_code <= 0x39:
+                name = chr(vk_code)
+            elif 0x70 <= vk_code <= 0x87:
+                name = "F%d" % (vk_code - 0x6F)
+            else:
+                name = {0x20: "space", 0x09: "Tab", 0x0D: "Return",
+                        0x25: "Left", 0x26: "Up", 0x27: "Right", 0x28: "Down"}.get(vk_code)
+        return name
 
     @classmethod
     def _linux_rdaccess_parse_braille_key(cls, name):
@@ -1418,16 +1778,101 @@ _LEGACY_HELPERS = '''\
         # Fall back to the verified Orca 42 Alt+Shift+letter binding.
         self._linux_rdaccess_send_structural_list(key, modifiers)
 
+    def _linux_rdaccess_defer_structural_list(self, key, modifiers, generation,
+                                             origin, window, document, request):
+        """Wait for the chooser's origin to regain focus before native lookup.
+
+        Orca's list GUI separately captures activeScript and activeWindow.
+        Supplying the prior script while the chooser is active is insufficient.
+        """
+        attempts = 0
+        deadline = __import__("time").monotonic() + 2.0
+
+        def open_when_ready():
+            nonlocal attempts
+            self._linux_rdaccess_sync_state()
+            if (generation != getattr(self, "_lrd_generation", 0)
+                    or request is not getattr(self, "_lrd_elements_request", None)):
+                return False
+            if __import__("time").monotonic() >= deadline:
+                log.error("linux-rdaccess: elements list focus wait expired")
+                return False
+            try:
+                from orca import orca_state as state
+                active = getattr(state, "activeScript", None)
+                if active is None:
+                    active = getattr(state, "active_script", None)
+                active_window = getattr(state, "activeWindow", None)
+                if active_window is None:
+                    active_window = getattr(state, "active_window", None)
+                if active is origin and active_window == window:
+                    if document is not None:
+                        getter = getattr(getattr(origin, "utilities", None), "documentFrame", None)
+                        if not callable(getter) or getter() != document:
+                            log.error("linux-rdaccess: elements list document changed")
+                            return False
+                    self._lrd_elements_request = None
+                    self._linux_rdaccess_open_structural_list(key, modifiers)
+                    return False
+            except Exception:
+                log.error("linux-rdaccess: elements list focus check failed")
+                return False
+            attempts += 1
+            if attempts >= 80:
+                log.error("linux-rdaccess: elements list focus was not restored")
+                return False
+            return True
+
+        try:
+            from gi.repository import GLib
+        except ImportError:
+            # An API-only install has no GTK nested loop to wait for.
+            open_when_ready()
+            return
+        try:
+            if not GLib.timeout_add(25, open_when_ready):
+                log.error("linux-rdaccess: elements list scheduling failed")
+        except Exception:
+            log.error("linux-rdaccess: elements list scheduling failed")
+
     def _linux_rdaccess_show_elements_list(self, modifiers):
+        # A second F7 inside Gtk.Dialog.run() must not capture the chooser as
+        # its origin and later send a structural shortcut back into that dialog.
+        if getattr(self, "_lrd_elements_dialog_active", False):
+            return
         self._linux_rdaccess_sync_state()
         generation = getattr(self, "_lrd_generation", 0)
+        request = object()
+        self._lrd_elements_request = request
+        origin = window = document = None
+        try:
+            from orca import orca_state as state
+            origin = getattr(state, "activeScript", None)
+            if origin is None:
+                origin = getattr(state, "active_script", None)
+            window = getattr(state, "activeWindow", None)
+            if window is None:
+                window = getattr(state, "active_window", None)
+            getter = getattr(getattr(origin, "utilities", None), "documentFrame", None)
+            if callable(getter):
+                document = getter()
+        except ImportError:
+            pass
+        except Exception:
+            log.error("linux-rdaccess: elements list origin check failed")
+            return
 
         def open_list(key):
             # Gtk.Dialog.run() processes a nested main loop. Recheck ownership
             # after it returns, just as for a queued top-level command.
             self._linux_rdaccess_sync_state()
-            if generation == getattr(self, "_lrd_generation", 0):
-                self._linux_rdaccess_open_structural_list(key, modifiers)
+            if (generation == getattr(self, "_lrd_generation", 0)
+                    and request is getattr(self, "_lrd_elements_request", None)):
+                if origin is not None:
+                    self._linux_rdaccess_defer_structural_list(
+                        key, modifiers, generation, origin, window, document, request)
+                else:
+                    self._linux_rdaccess_open_structural_list(key, modifiers)
 
         try:
             from linux_rdaccess_orca_adapter import show_elements_list as _show
@@ -1438,7 +1883,11 @@ _LEGACY_HELPERS = '''\
             return
 
         try:
-            result = _show(open_list) if _show is not None else None
+            self._lrd_elements_dialog_active = True
+            try:
+                result = _show(open_list) if _show is not None else None
+            finally:
+                self._lrd_elements_dialog_active = False
             if result is not None:
                 # True: category selected and delegated to Orca.
                 # False: the dialog was intentionally cancelled/Escaped.
@@ -1564,18 +2013,39 @@ _LEGACY_HELPERS = '''\
                 utilities = getattr(script, "utilities", None)
                 get_context = getattr(utilities, "getCaretContext", None)
                 in_document = getattr(utilities, "inDocumentContent", None)
-                outside_document = (target is not None and callable(in_document)
-                                    and not in_document(target))
-                if callable(get_context) and not outside_document:
+                document_focus = bool(in_document(target)) if callable(in_document) else None
+                browse_focus = document_focus is True and not bool(
+                    getattr(script, "_inFocusMode", False))
+                if callable(get_context) and (document_focus is None or browse_focus):
                     context = get_context()
                     if isinstance(context, (tuple, list)) and len(context) == 2:
                         target = context[0] if context[0] is not None else target
-                return handler(target) is not False if target is not None else False
+                if target is None:
+                    return False
+                flag_names = ("_lastCommandWasCaretNav", "_lastCommandWasStructNav")
+                saved_flags = {name: getattr(script, name) for name in flag_names
+                               if hasattr(script, name)}
+                adjust_flags = document_focus is not None and len(saved_flags) == len(flag_names)
+                try:
+                    if adjust_flags:
+                        script._lastCommandWasCaretNav = False
+                        script._lastCommandWasStructNav = browse_focus
+                    return handler(target) is not False
+                finally:
+                    if adjust_flags:
+                        for name, value in saved_flags.items():
+                            setattr(script, name, value)
             handler = getattr(script, method, None)
             if handler is None:
                 return unavailable()
             if not args:
                 if method == "togglePresentationMode":
+                    focus = getattr(_state, "locusOfFocus", None)
+                    if focus is None:
+                        focus = getattr(_state, "locus_of_focus", None)
+                    in_document = getattr(getattr(script, "utilities", None), "inDocumentContent", None)
+                    if callable(in_document) and not in_document(focus):
+                        return False
                     from types import SimpleNamespace
                     return handler(SimpleNamespace(type="keyboard", event_string="space")) is not False
                 # Orca 42 requires inputEvent for these native commands.
@@ -1640,6 +2110,122 @@ def _lrd_take_navigation_marker(marker, key):
 def _lrd_clear_navigation_markers(marker):
     with _LRD_NAV_LOCK:
         marker["pending"].clear()
+
+
+_LRD_BYPASS = {"pending": [], "owner": None, "codes": {}}
+_LRD_BYPASS_MAX_PENDING = 256
+
+
+def _lrd_publish_bypass_key(name, pressed, request):
+    now = __import__("time").monotonic()
+    token = (now, name, bool(pressed), request, object())
+    with _LRD_NAV_LOCK:
+        _LRD_BYPASS["pending"][:] = [item for item in _LRD_BYPASS["pending"]
+                                     if now - item[0] <= _LRD_NAV_WINDOW]
+        _LRD_BYPASS["pending"].append(token)
+        del _LRD_BYPASS["pending"][:-_LRD_BYPASS_MAX_PENDING]
+    return token
+
+
+def _lrd_remove_bypass_key(token):
+    with _LRD_NAV_LOCK:
+        _LRD_BYPASS["pending"][:] = [item for item in _LRD_BYPASS["pending"]
+                                     if item is not token]
+
+
+def _lrd_clear_bypass_keys():
+    with _LRD_NAV_LOCK:
+        _LRD_BYPASS["pending"].clear()
+        _LRD_BYPASS["codes"].clear()
+
+
+def _lrd_cleanup_owned_bypass(request):
+    """Clear only the native flag installed by this remote request."""
+    if _LRD_BYPASS["owner"] is not request:
+        return
+    _LRD_BYPASS["owner"] = None
+    request["complete"] = True
+    try:
+        from orca import orca_state
+        if not getattr(orca_state, "bypassNextCommand", False):
+            return
+        orca_state.bypassNextCommand = False
+        script = getattr(orca_state, "activeScript", None)
+        restore = getattr(script, "addKeyGrabs", None)
+        if callable(restore):
+            restore()
+    except Exception:
+        log.error("linux-rdaccess: native bypass cleanup failed")
+
+
+def _lrd_schedule_bypass_cleanup(request):
+    # Identity checks, rather than generation checks, let cleanup survive
+    # consecutive handoffs while protecting a newer request's native flag.
+    if __import__("threading").current_thread() is __import__("threading").main_thread():
+        _lrd_cleanup_owned_bypass(request)
+        return
+    try:
+        from gi.repository import GLib
+        GLib.idle_add(lambda: (_lrd_cleanup_owned_bypass(request), False)[1])
+    except Exception:
+        log.error("linux-rdaccess: native bypass cleanup unavailable")
+
+
+def _lrd_native_bypass_claim(event, keybindings):
+    pressed = event.isPressedKey()
+    now = __import__("time").monotonic()
+    found = None
+    matched = False
+    with _LRD_NAV_LOCK:
+        _LRD_BYPASS["pending"][:] = [token for token in _LRD_BYPASS["pending"]
+                                     if now - token[0] <= _LRD_NAV_WINDOW]
+        for index, token in enumerate(_LRD_BYPASS["pending"]):
+            _time, name, down, request, _identity = token
+            code = _LRD_BYPASS["codes"].get(name) or keybindings.getKeycode(name)
+            if down == pressed and code and code == event.hw_code:
+                _LRD_BYPASS["pending"].pop(index)
+                if pressed:
+                    _LRD_BYPASS["codes"][name] = code
+                else:
+                    _LRD_BYPASS["codes"].pop(name, None)
+                found = request
+                matched = True
+                break
+    if not matched:
+        return False
+    if found is None:
+        # An older normal event can arrive after the activation callback has
+        # armed Orca's native flag. Only the claimed gesture owns that flag;
+        # the bridge still retains the request after restoring native grabs.
+        owner = _LRD_BYPASS["owner"]
+        if owner is not None:
+            _lrd_cleanup_owned_bypass(owner)
+        return False
+    if pressed:
+        # Passing a repeat changes this held key's role. Its later release
+        # must not inherit a structural command from an earlier normal press.
+        if getattr(event, "event_string", None) in ("d", "D"):
+            _LRD_D["swapped"] = False
+            _LRD_D["modifiers"] = 0
+            _LRD_D["code"] = None
+        _LRD_T["held"].pop(event.hw_code, None)
+    _lrd_cleanup_owned_bypass(found)
+    if found["external"] and pressed:
+        # Match Orca's native bypass cleanup when this claimed gesture reaches
+        # its event processor; do it here even if another wrapper short-circuits.
+        try:
+            from orca import orca_state
+            if getattr(orca_state, "bypassNextCommand", False):
+                orca_state.bypassNextCommand = False
+                restore = getattr(getattr(event, "_script", None), "addKeyGrabs", None)
+                if callable(restore):
+                    restore()
+        except Exception:
+            log.error("linux-rdaccess: native bypass cleanup failed")
+    found["complete"] = True
+    event._handler = None
+    event._consumer = None
+    return True
 
 
 def _lrd_maybe_swap_d(event, keybindings):
@@ -1797,6 +2383,11 @@ def _lrd_install_orca_hook():
     original = cls.shouldConsume
 
     def shouldConsume(self):
+        try:
+            if _lrd_native_bypass_claim(self, keybindings):
+                return False, "linux-rdaccess passed remote gesture to application"
+        except Exception:
+            log.error("linux-rdaccess: native bypass dispatch failed")
         restore = None
         try:
             restore = _lrd_maybe_swap_d(self, keybindings)
@@ -2534,6 +3125,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V40,
                 LEGACY_COMPAT_MARKER_V39,
                 LEGACY_COMPAT_MARKER_V38,
                 LEGACY_COMPAT_MARKER_V37,

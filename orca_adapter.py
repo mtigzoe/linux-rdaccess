@@ -164,9 +164,10 @@ class OrcaRuntimeAdapter:
         )
 
     @classmethod
-    def show_structural_list(cls, key: str) -> bool | None:
+    def show_structural_list(cls, key: str, *, script: Any | None = None) -> bool | None:
         """Open Orca's native structural-navigation list for one shortcut key."""
-        script = cls.active_script()
+        if script is None:
+            script = cls.active_script()
         if script is None:
             return None
         nav = getattr(script, "structuralNavigation", None)
@@ -206,15 +207,33 @@ class OrcaRuntimeAdapter:
 
     @classmethod
     def toggle_presentation_mode(cls) -> bool | None:
+        script = cls.active_script()
+        if script is None:
+            return None
+        handler = getattr(script, "togglePresentationMode", None)
+        if not callable(handler):
+            handler = getattr(script, "toggle_presentation_mode", None)
+        if not callable(handler):
+            return None
+
+        in_document = getattr(getattr(script, "utilities", None), "inDocumentContent", None)
+        if callable(in_document):
+            from orca import orca_state
+            focus = getattr(orca_state, "locusOfFocus", None)
+            if focus is None:
+                focus = getattr(orca_state, "locus_of_focus", None)
+            if not in_document(focus):
+                # Browser scripts retain their document caret while toolbar
+                # controls have focus. A mode command here must not grab that
+                # cached page object and move focus out of the address bar.
+                return False
+
         # Orca's web script distinguishes an explicit command from an automatic
         # switch by inputEvent truthiness. None can announce focus mode without
         # focusing the caret object, so subsequent arrows/typing reach the old
         # application focus instead of the entry selected in browse mode.
         event = SimpleNamespace(type="keyboard", event_string="space")
-        return cls.call_script(
-            ("togglePresentationMode", "toggle_presentation_mode"),
-            event,
-        )
+        return handler(event) is not False
 
     @classmethod
     def toggle_structural_navigation(cls) -> bool | None:
@@ -301,15 +320,37 @@ class OrcaRuntimeAdapter:
         utilities = getattr(script, "utilities", None)
         get_context = getattr(utilities, "getCaretContext", None)
         in_document = getattr(utilities, "inDocumentContent", None)
+        document_focus = bool(in_document(focus)) if callable(in_document) else None
+        browse_focus = document_focus is True and not bool(
+            getattr(script, "_inFocusMode", False))
         if callable(get_context) and (
-            not callable(in_document) or in_document(focus)
+            document_focus is None or browse_focus
         ):
             caret_obj, _offset = get_context()
             if caret_obj is not None:
                 obj = caret_obj
         if obj is None:
             return False
-        return handler(obj) is not False
+
+        # Orca 42's web sayLine chooses its virtual or physical caret branch
+        # using the previous command's navigation flags. This explicit report
+        # must reflect current browse/focus context, including after a toolbar
+        # focus change which leaves those flags stale. Preserve native handler
+        # overrides and restore the original flags even if presentation fails.
+        flag_names = ("_lastCommandWasCaretNav", "_lastCommandWasStructNav")
+        saved_flags = {
+            name: getattr(script, name) for name in flag_names if hasattr(script, name)
+        }
+        adjust_flags = document_focus is not None and len(saved_flags) == len(flag_names)
+        try:
+            if adjust_flags:
+                script._lastCommandWasCaretNav = False
+                script._lastCommandWasStructNav = browse_focus
+            return handler(obj) is not False
+        finally:
+            if adjust_flags:
+                for name, value in saved_flags.items():
+                    setattr(script, name, value)
 
     @staticmethod
     def _xkb_named_lock_state(name: str) -> bool | None:

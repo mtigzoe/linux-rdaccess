@@ -1,0 +1,1381 @@
+import logging
+import os
+import time
+log = logging.getLogger("fake")
+_DBG_LOG = os.path.expanduser("~/.local/share/orca/orca-remote-debug.log")
+
+def _dbg(msg):
+    return  # linux-rdaccess: raw input logging disabled
+    with open(_DBG_LOG, "a") as f:
+        f.write("RC: %s\n" % msg)
+
+class RemoteController:
+    control_state = 1
+
+    # linux-rdaccess NVDA/Orca input compatibility v40
+    # Helpers injected by linux-rdaccess. They never log key names, braille
+    # dots, speech text or connection keys.
+    _LRD_INPUT_LOCK = __import__("threading").RLock()
+    _LRD_CTRL_VKS = (0x11, 0xA2, 0xA3)
+    _LRD_LOCK_VKS = (0x14, 0x90)  # Caps Lock, Num Lock
+    _LRD_REPEAT_TOGGLE_VKS = (0x90,)  # repeated key-down would re-toggle
+    _LRD_MODIFIER_VKS = (
+        0x10, 0xA0, 0xA1, 0x11, 0xA2, 0xA3, 0x12, 0xA4, 0xA5,
+        0x5B, 0x5C, 0x2D, 0x14,
+    )  # Shift, Ctrl, Alt, Win, Insert, CapsLock (NVDA modifier keys)
+    _LRD_BRAILLE_ACTIONS = {
+        "braille_scrollBack": "pan_back",
+        "braille_scrollForward": "pan_forward",
+        "braille_routeTo": "route",
+        "braille_toFocus": "to_focus",
+    }
+    # Display keys NVDA binds to "kb:<key>" emulation scripts. Only keys that
+    # cannot type a character are forwarded; "kb:a", "kb:space" and any unknown
+    # name stay redacted braille-keyboard input. name: (X key, vk, extended).
+    _LRD_BRAILLE_KEYS = {
+        "upArrow": ("Up", 0x26, True), "downArrow": ("Down", 0x28, True),
+        "leftArrow": ("Left", 0x25, True), "rightArrow": ("Right", 0x27, True),
+        "home": ("Home", 0x24, True), "end": ("End", 0x23, True),
+        "pageUp": ("Prior", 0x21, True), "pageDown": ("Next", 0x22, True),
+        "enter": ("Return", 0x0D, False), "tab": ("Tab", 0x09, False),
+        "escape": ("Escape", 0x1B, False), "backspace": ("BackSpace", 0x08, False),
+        "delete": ("Delete", 0x2E, True),
+    }
+    _LRD_BRAILLE_MODIFIERS = {
+        "shift": ("Shift_L", 0xA0), "control": ("Control_L", 0xA2),
+        "alt": ("Alt_L", 0xA4),
+    }
+    _LRD_TRACE_MAX_BYTES = 262144
+    _LRD_OTHER_MOD_VKS = (
+        0x10, 0xA0, 0xA1, 0x11, 0xA2, 0xA3, 0x12, 0xA4, 0xA5, 0x5B, 0x5C,
+    )
+    # NVDA chord -> Orca command, checked against the Orca 42 desktop keymap.
+    # Report the caret line through Orca's script rather than entering flat
+    # review with KP_Up. Other review commands still retain their native keys.
+    #   vk: (extended-required, Orca key name, target vk, drop NVDA modifier,
+    #        press count)
+    # "drop" is needed where Orca binds the key with NO Orca modifier.
+    _LRD_ACTION_CHORDS = {
+        0x09: "where_am_i",                          # NVDA+Tab
+        0x23: "status_bar",                          # NVDA+End
+        0x26: "current_line",                        # desktop NVDA+Up
+        0x4E: "preferences",                         # NVDA+N
+        0x54: "title",                               # NVDA+T
+        0x71: "pass_next",                           # NVDA+F2
+        0x76: "elements_list",                       # NVDA+F7
+        0x7B: "date_time",                           # NVDA+F12
+    }
+    _LRD_SHIFT_VKS = (0x10, 0xA0, 0xA1)
+    _LRD_NVDA_VKS = (0x2D, 0x14)
+    # Key: (vk, Shift held). Value: (extended-required, Orca key name, target
+    # vk, drop NVDA modifier, press count, drop Shift). Orca matches the
+    # modifier state exactly, so Shift is released around the key when Orca's
+    # binding has none (verified against Orca 42 key matching).
+    _LRD_CHORDS = {
+    }
+
+    def _linux_rdaccess_clock_command(self):
+        """Select time/date for consecutive complete NVDA+F12 gestures."""
+        now = __import__("time").monotonic()
+        generation = getattr(self, "_lrd_generation", 0)
+        previous = getattr(self, "_lrd_last_clock_press", None)
+        repeated = (previous is not None and previous[0] == generation
+                    and 0 <= now - previous[1] <= 0.5)
+        self._lrd_last_clock_press = (generation, now)
+        return "presentDate" if repeated else "presentTime"
+
+    def _linux_rdaccess_stop_local_speech(self):
+        """Stop Linux-side speech on Orca's main loop, never on the network thread.
+
+        Orca's speech-dispatcher client is not thread-safe and a stop blocks
+        until speech-dispatcher answers. Doing that on the thread that receives
+        keys stalled all key forwarding whenever Orca was busy (Firefox), which
+        looked like a freeze. Requests are coalesced: at most one is pending.
+        """
+        if getattr(self, "_lrd_local_stop_pending", False):
+            return
+        self._lrd_local_stop_pending = True
+
+        def run():
+            self._lrd_local_stop_pending = False
+            try:
+                self.local_machine.cancel_speech()
+            except Exception:
+                log.error("linux-rdaccess: failed to cancel speech")
+
+        if self._linux_rdaccess_run_main(run) is False:
+            self._lrd_local_stop_pending = False
+
+    def _linux_rdaccess_stop_nvda_speech(self):
+        """Tell the controlling NVDA to stop speaking *now*.
+
+        Orca's own stop only silences Linux; upstream defers the NVDA cancel
+        until the next utterance, so Ctrl with no speech after it never
+        reached Windows. Send the protocol "cancel" message immediately.
+        """
+        try:
+            transport = getattr(self, "transport", None)
+            if (
+                transport is not None
+                and getattr(transport, "connected", False)
+                and getattr(transport, "connection_type", None) == "slave"
+            ):
+                transport.send(type="cancel")
+        except Exception:
+            log.error("linux-rdaccess: failed to send cancel to NVDA")
+
+    @staticmethod
+    def _linux_rdaccess_key_identity(vk_code, extended, key_name=None):
+        return (vk_code if vk_code is not None else key_name, bool(extended))
+
+    def _linux_rdaccess_forward_key(self, **kwargs):
+        """Own successful forwards, retaining the original release payload."""
+        held = self._linux_rdaccess_key_identity(
+            kwargs.get("vk_code"), kwargs.get("extended"), kwargs.get("key_name"))
+        forwarded = getattr(self, "_lrd_forwarded", None)
+        if forwarded is None:
+            forwarded = self._lrd_forwarded = {}
+        pressed = bool(kwargs.get("pressed"))
+        if not pressed and held not in forwarded:
+            return False
+        payload = dict(forwarded[held], pressed=pressed) if held in forwarded else kwargs
+        candidate = getattr(self, "_lrd_navigation_marker", None)
+        self._lrd_navigation_marker = None
+        marker = token = None
+        if pressed and candidate is not None and candidate[2] == held:
+            marker = globals().get(candidate[0])
+            if isinstance(marker, dict):
+                # Publish before dispatch: XTest can reach Orca's thread before
+                # send_key returns. A rejected injection owns no marker.
+                token = _lrd_publish_navigation_marker(marker, candidate[1])
+        try:
+            result = self.local_machine.send_key(**payload)
+        except BaseException:
+            if token is not None:
+                _lrd_remove_navigation_marker(marker, token)
+            raise
+        if result is False and token is not None:
+            _lrd_remove_navigation_marker(marker, token)
+        if result is not False:
+            if pressed:
+                forwarded[held] = dict(payload)
+            else:
+                forwarded.pop(held, None)
+                vk_code = payload.get("vk_code")
+                if vk_code in self._LRD_LOCK_VKS:
+                    # XKB can clear an already-on lock only on key-up. Read
+                    # after the successful owned release, before another key
+                    # can toggle it again, and carry that state to Orca's loop.
+                    enabled = self._linux_rdaccess_read_lock_state(vk_code)
+                    if type(enabled) is bool:
+                        self._linux_rdaccess_run_main(
+                            lambda vk=vk_code, state=enabled:
+                                self._linux_rdaccess_script_call(
+                                    "presentLockState", vk, state))
+        return result
+
+    @staticmethod
+    def _linux_rdaccess_read_lock_state(vk_code):
+        """Snapshot XKB without touching Orca state on the receive thread."""
+        try:
+            from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _adapter
+            return _adapter.read_lock_state(vk_code)
+        except ImportError:
+            return None
+        except Exception:
+            log.error("linux-rdaccess: lock-state snapshot unavailable")
+            return None
+
+    def _linux_rdaccess_reset_keys(self):
+        """Release forwarded held keys and clear compatibility state.
+
+        Remote disconnects/control hand-offs can lose key-up events. Only
+        successful forwards acquire release ownership; failed releases remain
+        owned so a later reset can retry them.
+        """
+        forwarded = getattr(self, "_lrd_forwarded", {})
+        send = getattr(getattr(self, "local_machine", None), "send_key", None)
+        if callable(send):
+            order = lambda item: (isinstance(item[0], str), str(item[0]) if isinstance(item[0], str) else item[0] or 0, item[1])
+            for held in sorted(list(forwarded), key=order):
+                try:
+                    release = dict(forwarded[held], pressed=False)
+                    if send(**release) is not False:
+                        forwarded.pop(held, None)
+                except Exception:
+                    log.error("linux-rdaccess: failed to release held key on reset")
+        self._lrd_down = set()
+        self._lrd_nvda_down = False
+        self._lrd_swapped = set()
+        self._lrd_nvda_key = None
+        self._lrd_caps_pending = None
+        self._lrd_caps_used = False
+        self._lrd_bypass_next = False
+        self._lrd_navigation_marker = None
+        self._lrd_generation = getattr(self, "_lrd_generation", 0) + 1
+        self._lrd_local_stop_pending = False
+        marker = globals().get("_LRD_D")
+        if isinstance(marker, dict):
+            _lrd_clear_navigation_markers(marker)
+            marker["swapped"] = False
+            marker["modifiers"] = 0
+            marker["code"] = None
+        table = globals().get("_LRD_T")
+        if isinstance(table, dict):
+            _lrd_clear_navigation_markers(table)
+            table["held"] = {}
+
+    def _linux_rdaccess_flush_pending_caps(self):
+        """Forward the original deferred CapsLock press when it was not an NVDA command."""
+        pending = getattr(self, "_lrd_caps_pending", None)
+        if pending is None:
+            return
+        _held, payload = pending
+        self._lrd_caps_pending = None
+        self._lrd_caps_used = False
+        try:
+            self._linux_rdaccess_forward_key(**payload)
+        except Exception:
+            log.error("linux-rdaccess: failed to forward deferred CapsLock")
+
+    def _linux_rdaccess_sync_state(self):
+        """Initialize/change the input generation for either input channel."""
+        state = (
+            getattr(self, "control_state", None),
+            bool(getattr(getattr(self, "transport", None), "connected", True)),
+            getattr(getattr(self, "transport", None), "connection_type", None),
+            id(getattr(self, "transport", None)),
+        )
+        if getattr(self, "_lrd_state", None) != state:
+            # Control moved local/remote or the transport reconnected. Release
+            # keys that were actually forwarded before forgetting state; a
+            # missing remote key-up must never leave Linux with a stuck arrow
+            # or modifier after reconnect.
+            self._linux_rdaccess_reset_keys()
+            self._lrd_state = state
+
+    def _linux_rdaccess_filter_key(self, pressed, vk_code, extended, modifiers,
+                                   key_name=None, scan_code=None):
+        """Return True when the event was fully handled here."""
+        self._linux_rdaccess_sync_state()
+        self._lrd_navigation_marker = None
+        pressed = bool(pressed)
+        held = self._linux_rdaccess_key_identity(vk_code, extended, key_name)
+        repeat = pressed and held in self._lrd_down
+        if pressed:
+            self._lrd_down.add(held)
+        else:
+            self._lrd_down.discard(held)
+        if vk_code in self._LRD_NVDA_VKS:
+            nvda_keys = sorted(
+                (k for k in self._lrd_down if k[0] in self._LRD_NVDA_VKS),
+                key=lambda k: (k[0] == 0x14, k[0], k[1]),
+            )
+            self._lrd_nvda_down = bool(nvda_keys)
+            # Prefer Insert when both configured NVDA modifiers are held. It
+            # can be temporarily released for Orca commands that require no
+            # modifier; CapsLock cannot be safely released/re-pressed because
+            # doing so would toggle the lock state.
+            self._lrd_nvda_key = nvda_keys[0] if nvda_keys else None
+            if (
+                pressed
+                and vk_code != 0x14
+                and vk_code in self._LRD_NVDA_VKS
+                and getattr(self, "_lrd_caps_pending", None) is not None
+            ):
+                self._lrd_caps_used = True
+
+        # Only consecutive clock gestures count as a double press. Modifier
+        # releases between taps are normal; another action starts a new count.
+        if pressed and not repeat and vk_code not in self._LRD_MODIFIER_VKS:
+            clock = (vk_code == 0x7B and self._lrd_nvda_down
+                     and not any(k[0] in self._LRD_OTHER_MOD_VKS for k in self._lrd_down))
+            if not clock:
+                self._lrd_last_clock_press = None
+
+        # CapsLock can be configured as the NVDA modifier. Forwarding its press
+        # immediately toggles Linux Caps Lock before we know whether this is a
+        # translated NVDA command, so defer it until the gesture is known.
+        if vk_code == 0x14:
+            pending = getattr(self, "_lrd_caps_pending", None)
+            if pressed:
+                if not repeat:
+                    self._lrd_caps_pending = (
+                        held,
+                        {
+                            "key_name": key_name,
+                            "pressed": True,
+                            "modifiers": modifiers,
+                            "vk_code": vk_code,
+                            "scan_code": scan_code,
+                            "extended": extended,
+                        },
+                    )
+                    self._lrd_caps_used = any(
+                        k != held and k[0] in self._LRD_NVDA_VKS
+                        for k in self._lrd_down
+                    )
+                return True
+            if pending is not None and pending[0] == held:
+                used = bool(getattr(self, "_lrd_caps_used", False))
+                if used:
+                    self._lrd_caps_pending = None
+                    self._lrd_caps_used = False
+                    return True
+                self._linux_rdaccess_flush_pending_caps()
+                return False
+
+        # Lock keys toggle state on key-down. Remote auto-repeat must not
+        # re-toggle Linux several times for one physical press. Preserve
+        # ordinary repeat behavior and consume only verified lock-toggle repeats.
+        if repeat and vk_code in self._LRD_REPEAT_TOGGLE_VKS:
+            return True
+
+        # Interrupt stale speech on a real action, as NVDA does. Plain
+        # modifier keys (and their auto-repeat) must not cut off speech that
+        # a chord such as NVDA+Down started; Ctrl itself does interrupt.
+        if pressed and (
+            vk_code not in self._LRD_MODIFIER_VKS
+            or (vk_code in self._LRD_CTRL_VKS and not repeat)
+        ):
+            # Auto-repeat re-cancels at most every 150 ms: Orca's own new
+            # speech interrupts per item anyway, and a cancel per repeat event
+            # floods the speech server during held arrow keys.
+            _now = __import__("time").monotonic()
+            if not repeat or _now - getattr(self, "_lrd_last_cancel", 0.0) >= 0.15:
+                self._lrd_last_cancel = _now
+                # Local Orca speech is stopped on Orca's main loop, never on this
+                # network thread (see _linux_rdaccess_stop_local_speech).
+                self._linux_rdaccess_stop_local_speech()
+                # Ctrl is the explicit NVDA "stop speech" gesture. Local Orca
+                # cancellation alone cannot remove speech already queued on the
+                # Windows NVDA side, so send the NVDA Remote cancel message too.
+                # Restrict the protocol cancel to Ctrl to avoid adding a network
+                # round-trip to every ordinary navigation key.
+                if vk_code in self._LRD_CTRL_VKS and not repeat:
+                    self._linux_rdaccess_stop_nvda_speech()
+
+        # Consumed presses retain ownership of their repeat/release even if
+        # pass-next has just been armed (notably the F2 which armed it).
+        if held in self._lrd_swapped:
+            if not pressed:
+                self._lrd_swapped.discard(held)
+            return True
+
+        # Orca's bypass flag is cleared by its keyboard-event processing. Arm
+        # a local latch when scheduling NVDA+F2 as well: the receive thread can
+        # see the next key before the GLib callback has set Orca's flag.
+        bypass = getattr(self, "_lrd_bypass_next", False)
+        try:
+            from orca import orca_state as _state
+            bypass = bypass or bool(getattr(_state, "bypassNextCommand", False))
+        except ImportError:
+            pass
+        if bypass:
+            if pressed and vk_code not in self._LRD_MODIFIER_VKS:
+                self._lrd_bypass_next = False
+                self._linux_rdaccess_flush_pending_caps()
+            return False
+
+        # Remember that a plain (or Shift) D came from the remote session, so the
+        # Orca-side hook below can turn it into the landmark key in browse mode
+        # only. Nothing is translated here; the key is forwarded unchanged.
+        if pressed and vk_code == 0x44 and not self._lrd_nvda_down and not any(
+                k[0] in self._LRD_OTHER_MOD_VKS and k[0] not in (0x10, 0xA0, 0xA1)
+                for k in self._lrd_down):
+            self._lrd_navigation_marker = ("_LRD_D", "d", held)
+
+        # NVDA's table commands are Ctrl+Alt+Arrow. Mark only an extended arrow
+        # with Ctrl and Alt held and no Shift/Win/NVDA key; the Orca-side hook
+        # below decides, per key and only in browse mode, whether to translate.
+        # The key itself is forwarded unchanged.
+        if (
+            pressed
+            and bool(extended)
+            and vk_code in (0x25, 0x26, 0x27, 0x28)
+            and not self._lrd_nvda_down
+            and any(k[0] in self._LRD_CTRL_VKS for k in self._lrd_down)
+            and any(k[0] in (0x12, 0xA4, 0xA5) for k in self._lrd_down)
+            and not any(k[0] in self._LRD_SHIFT_VKS + (0x5B, 0x5C)
+                        for k in self._lrd_down)
+        ):
+            self._lrd_navigation_marker = (
+                "_LRD_T", {0x25: "Left", 0x26: "Up", 0x27: "Right", 0x28: "Down"}[vk_code], held)
+
+        # NVDA+Down has an exact Orca Say All method. Only the extended
+        # navigation Down key is NVDA's gesture; the non-extended VK form is
+        # the numeric keypad key and must continue to pass through unchanged.
+        if (
+            pressed
+            and self._lrd_nvda_down
+            and not repeat
+            and vk_code == 0x28
+            and bool(extended)
+            and not any(k[0] in self._LRD_SHIFT_VKS for k in self._lrd_down)
+            and not any(k[0] in self._LRD_OTHER_MOD_VKS for k in self._lrd_down)
+        ):
+            self._lrd_swapped.add(held)
+            if getattr(self, "_lrd_caps_pending", None) is not None:
+                self._lrd_caps_used = True
+            self._linux_rdaccess_run_main(
+                lambda: self._linux_rdaccess_script_call("sayAll"))
+            return True
+
+        # NVDA+Space and NVDA+Shift+Space have exact Orca APIs. Calling
+        # them directly avoids assuming the Windows NVDA modifier (Insert or
+        # CapsLock) is also configured as Orca's physical modifier.
+        if pressed and self._lrd_nvda_down and not repeat and vk_code == 0x20:
+            shifts = [k for k in self._lrd_down if k[0] in self._LRD_SHIFT_VKS]
+            if not any(
+                k[0] in self._LRD_OTHER_MOD_VKS and k[0] not in self._LRD_SHIFT_VKS
+                for k in self._lrd_down
+            ):
+                self._lrd_swapped.add(held)
+                if getattr(self, "_lrd_caps_pending", None) is not None:
+                    self._lrd_caps_used = True
+                if shifts:
+                    self._linux_rdaccess_run_main(
+                        lambda: self._linux_rdaccess_script_call(
+                            "toggleStructuralNavigation"))
+                else:
+                    self._linux_rdaccess_run_main(
+                        lambda: self._linux_rdaccess_script_call(
+                            "togglePresentationMode"))
+                return True
+
+        # NVDA-only actions that do not map cleanly to one Orca key.
+        if pressed and self._lrd_nvda_down and not repeat:
+            action = self._LRD_ACTION_CHORDS.get(vk_code)
+            if (
+                action is not None
+                and not any(k[0] in self._LRD_OTHER_MOD_VKS for k in self._lrd_down)
+                and not (action in ("status_bar", "current_line") and not bool(extended))
+            ):
+                self._lrd_swapped.add(held)
+                if getattr(self, "_lrd_caps_pending", None) is not None:
+                    self._lrd_caps_used = True
+                if action == "elements_list":
+                    self._linux_rdaccess_run_main(
+                        lambda: self._linux_rdaccess_show_elements_list(modifiers))
+                elif action == "pass_next":
+                    self._lrd_bypass_next = True
+                    if self._linux_rdaccess_run_main(
+                            self._linux_rdaccess_activate_bypass) is False:
+                        self._lrd_bypass_next = False
+                elif action == "where_am_i":
+                    self._linux_rdaccess_run_main(
+                        lambda: self._linux_rdaccess_script_call("whereAmI"))
+                elif action == "title":
+                    self._linux_rdaccess_run_main(
+                        lambda: self._linux_rdaccess_script_call("presentTitle"))
+                elif action == "preferences":
+                    self._linux_rdaccess_run_main(
+                        lambda: self._linux_rdaccess_script_call("showPreferences"))
+                elif action == "status_bar":
+                    self._linux_rdaccess_run_main(
+                        lambda: self._linux_rdaccess_script_call("presentStatusBar"))
+                elif action == "current_line":
+                    self._linux_rdaccess_run_main(
+                        lambda: self._linux_rdaccess_script_call("presentCurrentLine"))
+                elif action == "date_time":
+                    # Resolve the tap count on receipt; queued callbacks must
+                    # retain each gesture's time/date choice independently.
+                    method = self._linux_rdaccess_clock_command()
+                    self._linux_rdaccess_run_main(
+                        lambda method=method: self._linux_rdaccess_script_call(method))
+                return True
+
+        # NVDA chords -> Orca commands (see _LRD_CHORDS). Only the first press
+        # with the NVDA modifier held and no Shift/Ctrl/Alt/Win is translated;
+        # auto-repeat is consumed, and a release is consumed only for a
+        # translated press, so a normally forwarded key is never left stuck.
+        if pressed:
+            if held in self._lrd_swapped:
+                return True  # auto-repeat of this translated physical key
+            shifts = [k for k in self._lrd_down if k[0] in self._LRD_SHIFT_VKS]
+            chord = self._LRD_CHORDS.get((vk_code, bool(shifts)))
+            if (
+                chord is None
+                or repeat
+                or not self._lrd_nvda_down
+                or any(k[0] in self._LRD_OTHER_MOD_VKS and k[0] not in self._LRD_SHIFT_VKS
+                       for k in self._lrd_down)
+                or bool(extended) != chord[0]
+            ):
+                if (
+                    not repeat
+                    and vk_code not in self._LRD_MODIFIER_VKS
+                    and getattr(self, "_lrd_caps_pending", None) is not None
+                ):
+                    self._linux_rdaccess_flush_pending_caps()
+                return False
+            need_ext, name, target_vk, drop, count, drop_shift = chord
+            nvda = self._lrd_nvda_key
+            if drop and (nvda is None or nvda[0] == 0x14):
+                # Re-pressing CapsLock would toggle the lock state.
+                return False
+            self._lrd_swapped.add(held)
+            if getattr(self, "_lrd_caps_pending", None) is not None:
+                self._lrd_caps_used = True
+            send = self.local_machine.send_key
+            if drop:
+                send(key_name=None, pressed=False, modifiers=modifiers,
+                     vk_code=nvda[0], scan_code=0, extended=nvda[1])
+            if drop_shift:
+                for held_vk, held_ext in shifts:
+                    send(key_name=None, pressed=False, modifiers=modifiers,
+                         vk_code=held_vk, scan_code=0, extended=held_ext)
+            for _ in range(count):
+                for down in (True, False):
+                    send(key_name=name, pressed=down, modifiers=modifiers,
+                         vk_code=target_vk, scan_code=0, extended=False)
+            if drop_shift:
+                for held_vk, held_ext in shifts:
+                    send(key_name=None, pressed=True, modifiers=modifiers,
+                         vk_code=held_vk, scan_code=0, extended=held_ext)
+            if drop:
+                send(key_name=None, pressed=True, modifiers=modifiers,
+                     vk_code=nvda[0], scan_code=0, extended=nvda[1])
+            return True
+        if held in self._lrd_swapped:
+            self._lrd_swapped.discard(held)
+            return True
+        return False
+
+    def _linux_rdaccess_activate_bypass(self):
+        if self._linux_rdaccess_script_call("bypassNextCommand") is False:
+            self._lrd_bypass_next = False
+
+    @classmethod
+    def _linux_rdaccess_parse_braille_key(cls, name):
+        """Return (modifier names, key name) for an allowlisted kb: gesture."""
+        if not isinstance(name, str) or not name.startswith("kb:"):
+            return None
+        parts = name[3:].split("+")
+        key, mods = parts[-1], parts[:-1]
+        if key not in cls._LRD_BRAILLE_KEYS or len(set(mods)) != len(mods):
+            return None
+        if any(mod not in cls._LRD_BRAILLE_MODIFIERS for mod in mods):
+            return None
+        return tuple(mods), key
+
+    def _linux_rdaccess_send_braille_key(self, name):
+        """Inject one display navigation key, borrowing held modifiers."""
+        parsed = self._linux_rdaccess_parse_braille_key(name)
+        if parsed is None:
+            return
+        mods, key = parsed
+        x_name, vk, extended = self._LRD_BRAILLE_KEYS[key]
+        forwarded = getattr(self, "_lrd_forwarded", {})
+        # A synthetic release must not release a key the controller holds.
+        if (vk, extended) in forwarded:
+            return
+        send = self._linux_rdaccess_forward_key
+        pressed_modifiers = []
+        try:
+            for mod in mods:
+                mod_name, mod_vk = self._LRD_BRAILLE_MODIFIERS[mod]
+                generic_vk = {0xA0: 0x10, 0xA2: 0x11, 0xA4: 0x12}[mod_vk]
+                if any(held_vk in (mod_vk, generic_vk) and not held_ext
+                       for held_vk, held_ext in getattr(self, "_lrd_forwarded", {})):
+                    continue
+                if send(key_name=mod_name, pressed=True, modifiers=None,
+                        vk_code=mod_vk, scan_code=0, extended=False) is False:
+                    return
+                pressed_modifiers.append((mod_name, mod_vk))
+            for down in (True, False):
+                if send(key_name=x_name, pressed=down, modifiers=None,
+                        vk_code=vk, scan_code=0, extended=extended) is False:
+                    return
+        finally:
+            if (vk, extended) in getattr(self, "_lrd_forwarded", {}):
+                try:
+                    send(key_name=x_name, pressed=False, modifiers=None,
+                         vk_code=vk, scan_code=0, extended=extended)
+                except Exception:
+                    log.error("linux-rdaccess: failed to release braille key")
+            for mod_name, mod_vk in reversed(pressed_modifiers):
+                try:
+                    send(key_name=mod_name, pressed=False, modifiers=None,
+                         vk_code=mod_vk, scan_code=0, extended=False)
+                except Exception:
+                    log.error("linux-rdaccess: failed to release braille modifier")
+
+    def _linux_rdaccess_classify_braille(self, kwargs):
+        """Validate protocol shapes; persist only canonical command metadata."""
+        invalid = (None, {"redacted": "invalid-braille-input"})
+        identifiers = kwargs.get("identifiers", [])
+        gesture_id = kwargs.get("id")
+        if not isinstance(identifiers, (list, tuple)) or not all(
+                isinstance(item, str) for item in identifiers):
+            return invalid
+        if gesture_id is not None and not isinstance(gesture_id, str):
+            return invalid
+        script = kwargs.get("scriptPath")
+        if "scriptPath" in kwargs and (
+                not isinstance(script, (list, tuple)) or len(script) != 3
+                or not all(isinstance(part, str) and part for part in script)):
+            return invalid
+        name = script[-1] if script else ""
+        if name.startswith("script_"):
+            name = name[len("script_"):]
+        dots, space = kwargs.get("dots", 0), kwargs.get("space", False)
+        if (not isinstance(dots, int) or not 0 <= dots <= 255
+                or not isinstance(space, (bool, int)) or space < 0):
+            return invalid
+        ids = ([gesture_id] if gesture_id else []) + list(identifiers)
+        # A display key bound to a non-character emulated key is a command, even
+        # when it is a space+dots chord, so it is decided before the typed-input
+        # test below. Nothing about the id/identifiers is recorded for it.
+        if (script and tuple(script[:2]) == ("globalCommands", "GlobalCommands")
+                and self._linux_rdaccess_parse_braille_key(name) is not None):
+            return "key", {"action": "key", "scriptPath": ["globalCommands", "GlobalCommands", name]}
+
+        def is_input(value):
+            import re as _re
+            tokens = _re.split(r"[^a-z0-9]+", value.lower())
+            return (value.lower().startswith("bk:") or "space" in tokens
+                    or any(token in ("dot1", "dot2", "dot3", "dot4",
+                                     "dot5", "dot6", "dot7", "dot8")
+                           for token in tokens))
+
+        if dots or space or any(is_input(value) for value in ids) or name.startswith("kb:") or name == "braille_dots":
+            return "keyboard", {"redacted": "braille-keyboard-input"}
+        action = (self._LRD_BRAILLE_ACTIONS.get(name)
+                  if script and tuple(script[:2]) == ("globalCommands", "GlobalCommands")
+                  else None)
+        if action is None and "scriptPath" not in kwargs and (
+                "routingIndex" in kwargs or "cellIndexes" in kwargs):
+            action = "route"
+        if action is None:
+            return None, {"redacted": "unknown-braille-input"}
+        # Driver ids, identifiers, model/source and unknown script paths can
+        # encode characters. They are never persisted, even with trace enabled.
+        record = {"action": action}
+        if script:
+            record["scriptPath"] = ["globalCommands", "GlobalCommands", name]
+        return action, record
+
+    def _linux_rdaccess_trace_braille(self, record):
+        import json as _json
+        import os as _os
+        if _os.environ.get("LINUX_RDACCESS_BRAILLE_TRACE") != "1":
+            return
+        path = _os.path.expanduser(
+            "~/.local/share/orca/orca-remote-braille-input.log")
+        try:
+            # An existing trace may predate private creation permissions.
+            # Protect it before rotation, including the resulting .1 file.
+            _os.chmod(path, 0o600)
+            if _os.path.getsize(path) > self._LRD_TRACE_MAX_BYTES:
+                _os.replace(path, path + ".1")
+        except OSError:
+            pass
+        fd = _os.open(path, _os.O_WRONLY | _os.O_APPEND | _os.O_CREAT, 0o600)
+        try:
+            handle = _os.fdopen(fd, "a", encoding="utf-8")
+        except BaseException:
+            _os.close(fd)
+            raise
+        with handle:
+            _os.fchmod(handle.fileno(), 0o600)
+            handle.write(_json.dumps(record, sort_keys=True) + "\n")
+        try:
+            _os.chmod(path, 0o600)
+        except OSError:
+            pass
+
+    def _linux_rdaccess_run_main(self, func):
+        self._linux_rdaccess_sync_state()
+        generation = getattr(self, "_lrd_generation", 0)
+
+        def invoke():
+            self._linux_rdaccess_sync_state()
+            # A disconnected controller's queued command must not operate on
+            # the new session/focus, or cancel speech started after handoff.
+            if generation == getattr(self, "_lrd_generation", 0):
+                try:
+                    func()
+                except Exception:
+                    log.error("linux-rdaccess: queued Orca operation failed")
+            return False
+
+        try:
+            from gi.repository import GLib
+        except Exception:
+            invoke()
+            return True
+        try:
+            source = GLib.idle_add(invoke)
+            if source == 0:
+                raise RuntimeError("idle source was not registered")
+        except Exception:
+            log.error("linux-rdaccess: failed to schedule Orca operation")
+            return False
+        return True
+
+    def _linux_rdaccess_handle_braille_input(self, kwargs):
+        self._linux_rdaccess_sync_state()
+        action, record = self._linux_rdaccess_classify_braille(kwargs)
+        if action is not None:
+            self._lrd_last_clock_press = None
+        try:
+            self._linux_rdaccess_trace_braille(record)
+        except Exception:
+            log.error("linux-rdaccess: failed to trace braille input")
+        if action in ("pan_back", "pan_forward"):
+            self._linux_rdaccess_run_main(
+                lambda: self._linux_rdaccess_script_call(
+                    "panBrailleLeft" if action == "pan_back" else "panBrailleRight"))
+        elif action == "to_focus":
+            self._linux_rdaccess_run_main(
+                lambda: self._linux_rdaccess_script_call("goBrailleHome"))
+        elif action == "key":
+            self._linux_rdaccess_send_braille_key(kwargs["scriptPath"][2])
+        elif action == "route":
+            index = kwargs.get("routingIndex")
+            if "cellIndexes" in kwargs:
+                cell_indexes = kwargs["cellIndexes"]
+                if not isinstance(cell_indexes, (list, tuple)) or len(cell_indexes) != 1:
+                    return
+                cell = cell_indexes[0]
+                if isinstance(cell, bool) or not isinstance(cell, int):
+                    return
+                # Modern metadata must be unambiguous even when a legacy
+                # field is also supplied. Never turn a multi-cell selection
+                # or conflicting positions into a single routing action.
+                if index is not None and (isinstance(index, bool) or not isinstance(index, int) or index != cell):
+                    return
+                index = cell
+            if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < 1024:
+                return
+            import types as _types
+            event = _types.SimpleNamespace(event={"argument": index})
+            self._linux_rdaccess_run_main(
+                lambda: self._linux_rdaccess_script_call("processRoutingKey", event))
+
+    def _linux_rdaccess_send_structural_list(self, key, modifiers):
+        """Ask Orca to show one of its native structural-navigation lists.
+
+        Legacy LocalMachine.send_key accepts a modifiers argument but does not
+        apply it during injection. Press Alt and Shift as real key events so
+        Orca receives the actual Alt+Shift+letter binding.
+        """
+        vk = ord(str(key)[0].upper())
+        # A synthetic release must not release a remotely held letter.
+        if (vk, False) in getattr(self, "_lrd_forwarded", {}):
+            return
+        send = self._linux_rdaccess_forward_key
+        held_modifiers = (
+            ("Shift_L", 0xA0, False),
+            ("Alt_L", 0xA4, False),
+        )
+        pressed_modifiers = []
+        try:
+            for name, mod_vk, mod_ext in held_modifiers:
+                # Upstream maps generic Shift/Alt and their left VKs to the
+                # same Linux keys. Borrow either alias instead of releasing
+                # a modifier held by the Windows controller.
+                generic_vk = 0x10 if mod_vk == 0xA0 else 0x12
+                if any(held_vk == mod_vk or (held_vk == generic_vk and not held_ext)
+                       for held_vk, held_ext in getattr(self, "_lrd_forwarded", {})):
+                    continue
+                if send(
+                    key_name=name, pressed=True, modifiers=None,
+                    vk_code=mod_vk, scan_code=0, extended=mod_ext) is False:
+                    return
+                pressed_modifiers.append((name, mod_vk, mod_ext))
+            for down in (True, False):
+                if send(
+                    key_name=str(key).lower(),
+                    pressed=down,
+                    modifiers=None,
+                    vk_code=vk,
+                    scan_code=0,
+                    extended=False,
+                ) is False:
+                    return
+        finally:
+            # A failed letter release must be retried before modifier cleanup.
+            if (vk, False) in getattr(self, "_lrd_forwarded", {}):
+                try:
+                    send(key_name=str(key).lower(), pressed=False, modifiers=None,
+                         vk_code=vk, scan_code=0, extended=False)
+                except Exception:
+                    log.error("linux-rdaccess: failed to release structural-list key")
+            for name, mod_vk, mod_ext in reversed(pressed_modifiers):
+                try:
+                    send(
+                        key_name=name, pressed=False, modifiers=None,
+                        vk_code=mod_vk, scan_code=0, extended=mod_ext)
+                except Exception:
+                    log.error(
+                        "linux-rdaccess: failed to release structural-list modifier")
+
+    def _linux_rdaccess_open_structural_list(self, key, modifiers):
+        """Prefer Orca's native structural-list API; retain key fallback."""
+        try:
+            from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _adapter
+        except ImportError:
+            _adapter = None
+        except Exception:
+            log.error("linux-rdaccess: native structural list failed")
+            return
+
+        try:
+            handler = getattr(_adapter, "show_structural_list", None)
+            if callable(handler) and handler(key) is not None:
+                return
+        except Exception:
+            # The native handler may have already opened or presented a list.
+            log.error("linux-rdaccess: native structural list failed")
+            return
+
+        # Adapter unavailable or this Orca version does not expose the object.
+        # Fall back to the verified Orca 42 Alt+Shift+letter binding.
+        self._linux_rdaccess_send_structural_list(key, modifiers)
+
+    def _linux_rdaccess_show_elements_list(self, modifiers):
+        self._linux_rdaccess_sync_state()
+        generation = getattr(self, "_lrd_generation", 0)
+
+        def open_list(key):
+            # Gtk.Dialog.run() processes a nested main loop. Recheck ownership
+            # after it returns, just as for a queued top-level command.
+            self._linux_rdaccess_sync_state()
+            if generation == getattr(self, "_lrd_generation", 0):
+                self._linux_rdaccess_open_structural_list(key, modifiers)
+
+        try:
+            from linux_rdaccess_orca_adapter import show_elements_list as _show
+        except ImportError:
+            _show = None
+        except Exception:
+            log.error("linux-rdaccess: elements list failed")
+            return
+
+        try:
+            result = _show(open_list) if _show is not None else None
+            if result is not None:
+                # True: category selected and delegated to Orca.
+                # False: the dialog was intentionally cancelled/Escaped.
+                return
+        except Exception:
+            log.error("linux-rdaccess: elements list failed")
+            return
+
+        # Safe fallback only when the chooser could not be presented.
+        open_list("h")
+
+    @staticmethod
+    def _linux_rdaccess_script_call(method, *args):
+        """Run an Orca operation through the linux-rdaccess Orca API adapter.
+
+        The adapter keeps Orca-version compatibility in one place and delegates
+        to the active application script, preserving Orca's GTK/web/terminal
+        semantics. A direct fallback keeps older installs functional if the
+        adapter file cannot be imported.
+        """
+        def unavailable():
+            log.error("linux-rdaccess: unavailable Orca operation: %s", method)
+            return False
+
+        try:
+            from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _adapter
+        except ImportError:
+            _adapter = None
+        except Exception:
+            log.error("linux-rdaccess: Orca adapter import failed: %s", method)
+            return False
+
+        try:
+            handlers = {
+                "panBrailleLeft": "pan_braille_left",
+                "panBrailleRight": "pan_braille_right",
+                "processRoutingKey": "route_braille",
+                "goBrailleHome": "to_braille_focus",
+                "bypassNextCommand": "bypass_next_command",
+                "whereAmI": "where_am_i",
+                "presentTitle": "present_title",
+                "presentStatusBar": "present_status_bar",
+                "presentCurrentLine": "present_current_line",
+                "presentTime": "present_time",
+                "presentDate": "present_date",
+                "togglePresentationMode": "toggle_presentation_mode",
+                "toggleStructuralNavigation": "toggle_structural_navigation",
+                "sayAll": "say_all",
+                "showPreferences": "show_preferences",
+                "presentLockState": "present_lock_state",
+            }
+            adapter_method = handlers.get(method)
+            adapter_args = args
+            if method == "processRoutingKey" and args:
+                adapter_args = (args[0].event["argument"],)
+            if adapter_method:
+                handler = getattr(_adapter, adapter_method, None)
+                result = handler(*adapter_args) if callable(handler) else None
+            elif _adapter is not None:
+                result = _adapter.call_script(method, *args, default_event=not args)
+            else:
+                result = None
+            if result is not None:
+                # Supported handlers can explicitly decline a command. Never
+                # run them again through fallback after they performed work.
+                return result is not False
+            # None denotes an unsupported API; try the verified legacy API.
+        except Exception:
+            # An exception can contain application text. Do not persist it or
+            # retry a handler which may already have performed part of its work.
+            log.error("linux-rdaccess: Orca adapter operation failed: %s", method)
+            return False
+
+        try:
+            from orca import orca_state as _state
+            script = getattr(_state, "activeScript", None)
+            if script is None:
+                script = getattr(_state, "active_script", None)
+            if script is None:
+                return unavailable()
+            if method == "toggleStructuralNavigation":
+                nav = getattr(script, "structuralNavigation", None)
+                if nav is None:
+                    nav = getattr(script, "structural_navigation", None)
+                handler = getattr(nav, "toggleStructuralNavigation", None) if nav is not None else None
+                if not callable(handler) and nav is not None:
+                    handler = getattr(nav, "toggle_structural_navigation", None)
+                if callable(handler):
+                    return handler(script, None) is not False
+                return unavailable()
+            if method == "showPreferences":
+                try:
+                    from orca import orca as _orca
+                    handler = getattr(_orca, "showPreferencesGUI", None)
+                    if not callable(handler):
+                        handler = getattr(_orca, "show_preferences_gui", None)
+                    if callable(handler):
+                        return handler(script, None) is not False
+                except Exception:
+                    pass
+                return unavailable()
+            if method == "whereAmI":
+                handler = None
+                for name in (
+                    "whereAmIBasic", "where_am_i_basic",
+                    "whereAmI", "where_am_i",
+                    "presentCurrentObject", "present_current_object",
+                ):
+                    candidate = getattr(script, name, None)
+                    if callable(candidate):
+                        handler = candidate
+                        break
+                if handler is not None:
+                    return handler(None) is not False
+                return unavailable()
+            if method == "presentCurrentLine":
+                handler = getattr(script, "sayLine", None)
+                if not callable(handler):
+                    return unavailable()
+                target = getattr(_state, "locusOfFocus", None)
+                if target is None:
+                    target = getattr(_state, "locus_of_focus", None)
+                utilities = getattr(script, "utilities", None)
+                get_context = getattr(utilities, "getCaretContext", None)
+                in_document = getattr(utilities, "inDocumentContent", None)
+                outside_document = (target is not None and callable(in_document)
+                                    and not in_document(target))
+                if callable(get_context) and not outside_document:
+                    context = get_context()
+                    if isinstance(context, (tuple, list)) and len(context) == 2:
+                        target = context[0] if context[0] is not None else target
+                return handler(target) is not False if target is not None else False
+            handler = getattr(script, method, None)
+            if handler is None:
+                return unavailable()
+            if not args:
+                if method == "togglePresentationMode":
+                    from types import SimpleNamespace
+                    return handler(SimpleNamespace(type="keyboard", event_string="space")) is not False
+                # Orca 42 requires inputEvent for these native commands.
+                # Use None unless the command needs manual-event semantics.
+                return handler(None) is not False
+            else:
+                return handler(*args) is not False
+        except Exception:
+            log.error("linux-rdaccess: Orca operation failed: %s", method)
+            return False
+
+    def _on_remote_key(self, key_name=None, pressed=None, modifiers=None,
+                       vk_code=None, scan_code=None, extended=None, **kwargs):
+        if pressed is None:
+            return
+        # linux-rdaccess NVDA/Orca input compatibility v40
+        if self._linux_rdaccess_filter_key(
+                pressed, vk_code, extended, modifiers, key_name, scan_code):
+            return
+        self._linux_rdaccess_forward_key(
+            key_name=key_name, pressed=pressed, modifiers=modifiers,
+            vk_code=vk_code, scan_code=scan_code, extended=extended,
+        )
+
+    transport = None
+
+    def toggle_control(self):
+        self.control_state = 0 if self.control_state else 1
+
+    def _on_client_left(self, client=None, **kwargs):
+        if client:
+            self.connected_clients.pop(client.get('id'), None)
+
+    def _on_channel_joined(self, channel=None, **kwargs):
+        log.info("Joined remote channel")
+
+    def _on_remote_sas(self, **kwargs):
+        pass
+
+    def _on_remote_braille_input(self, **kwargs):
+        # linux-rdaccess NVDA/Orca input compatibility v40
+        try:
+            self._linux_rdaccess_handle_braille_input(kwargs)
+        except Exception:
+            log.error("linux-rdaccess: braille input handling failed")
+
+    def _on_remote_braille_info(self, name=None, numCells=None, **kwargs):
+        pass
+
+
+# linux-rdaccess NVDA/Orca input compatibility v40
+# Control hand-over and reconnects forget held-key state, even when no key
+# event arrives in between.
+def _linux_rdaccess_wrap_input(name):
+    original = getattr(RemoteController, name)
+    def wrapper(self, *args, **kwargs):
+        with self._LRD_INPUT_LOCK:
+            try:
+                return original(self, *args, **kwargs)
+            except Exception:
+                if name != "_on_remote_key":
+                    raise
+                # The upstream callback manager logs uncaught tracebacks.
+                log.error("linux-rdaccess: remote key injection failed")
+    wrapper.__name__ = original.__name__
+    setattr(RemoteController, name, wrapper)
+
+for _lrd_name in ("_on_remote_key", "_linux_rdaccess_reset_keys",
+                  "_linux_rdaccess_send_structural_list"):
+    _linux_rdaccess_wrap_input(_lrd_name)
+
+def _linux_rdaccess_wrap_reset(name):
+    original = getattr(RemoteController, name, None)
+    if original is None:
+        return
+    def wrapper(self, *args, **kwargs):
+        with self._LRD_INPUT_LOCK:
+            try:
+                self._linux_rdaccess_reset_keys()
+            finally:
+                self._lrd_state = None
+            return original(self, *args, **kwargs)
+    wrapper.__name__ = original.__name__
+    setattr(RemoteController, name, wrapper)
+
+
+for _lrd_name in ("toggle_control", "disconnect",
+                  "_on_transport_connected", "_on_transport_disconnected"):
+    _linux_rdaccess_wrap_reset(_lrd_name)
+
+_lrd_original_client_left = getattr(RemoteController, "_on_client_left", None)
+if _lrd_original_client_left is not None:
+    def _lrd_on_client_left(self, client=None, **kwargs):
+        # A reconnect can start a new receiver before the old one exits.
+        with self._LRD_INPUT_LOCK:
+            if isinstance(client, dict):
+                known = getattr(self, "connected_clients", {}).get(client.get("id"), {})
+                role = client.get("connection_type") or known.get("connection_type")
+                if role == "master":
+                    self._linux_rdaccess_reset_keys()
+                    self._lrd_state = None
+            return _lrd_original_client_left(self, client=client, **kwargs)
+    RemoteController._on_client_left = _lrd_on_client_left
+
+_lrd_original_clipboard = getattr(RemoteController, "_on_remote_clipboard", None)
+if _lrd_original_clipboard is not None:
+    def _lrd_on_remote_clipboard(self, *args, **kwargs):
+        self._linux_rdaccess_run_main(
+            lambda: _lrd_original_clipboard(self, *args, **kwargs))
+    RemoteController._on_remote_clipboard = _lrd_on_remote_clipboard
+
+
+# linux-rdaccess NVDA/Orca input compatibility v40
+# With LINUX_RDACCESS_DEBUG=1, log when handling one inbound key stalls the
+# receive thread. Only the duration and press/release are recorded, never
+# which key, so typed passwords cannot leak.
+_lrd_original_on_key = RemoteController._on_remote_key
+
+def _lrd_timed_on_key(self, *args, **kwargs):
+    if not __import__("os").environ.get("LINUX_RDACCESS_DEBUG"):
+        return _lrd_original_on_key(self, *args, **kwargs)
+    _t = __import__("time").monotonic()
+    try:
+        return _lrd_original_on_key(self, *args, **kwargs)
+    finally:
+        _ms = (__import__("time").monotonic() - _t) * 1000
+        if _ms > 20:
+            try:
+                _p = __import__("os").path.expanduser(
+                    "~/.local/share/orca/orca-remote-slow-events.log")
+                _os = __import__("os")
+                _fd = _os.open(_p, _os.O_WRONLY | _os.O_APPEND | _os.O_CREAT, 0o600)
+                try:
+                    _f = _os.fdopen(_fd, "a", encoding="utf-8")
+                except BaseException:
+                    _os.close(_fd)
+                    raise
+                with _f:
+                    _os.fchmod(_f.fileno(), 0o600)
+                    _f.write("%.3f key-event handling took %.0f ms (%s)\n" % (
+                        __import__("time").time(), _ms,
+                        "press" if kwargs.get("pressed") else "release"))
+            except Exception:
+                pass
+
+_lrd_timed_on_key.__name__ = _lrd_original_on_key.__name__
+RemoteController._on_remote_key = _lrd_timed_on_key
+
+
+# linux-rdaccess NVDA/Orca input compatibility v40
+# NVDA's D (landmark) is Orca's M; Orca's own D is "live region". Translate only
+# for a D that arrived from the remote session AND only where Orca itself would
+# use structural navigation (web document, browse mode). Everywhere else D is
+# left alone, so typing "d" in a field, the address bar or focus mode is never
+# remapped. Runs on Orca's main thread inside KeyboardEvent.shouldConsume (Orca
+# captures the key handler there, before consumesKeyboardEvent), then restores
+# hw_code so echo, double-click detection and release matching see the real key.
+# Opt out with LINUX_RDACCESS_NVDA_D_LANDMARK=0.
+_LRD_NAV_LOCK = __import__("threading").RLock()
+_LRD_NAV_WINDOW = 1.0
+_LRD_NAV_MAX_PENDING = 64
+_LRD_D = {"pending": [], "swapped": False, "modifiers": 0, "code": None}
+
+
+def _lrd_prune_navigation_markers(marker, now):
+    marker["pending"][:] = [token for token in marker["pending"]
+                            if now - token[0] <= _LRD_NAV_WINDOW]
+
+
+def _lrd_publish_navigation_marker(marker, key):
+    """Publish one bounded, expiring, key-specific injection claim."""
+    now = __import__("time").monotonic()
+    token = (now, key, object())
+    with _LRD_NAV_LOCK:
+        _lrd_prune_navigation_markers(marker, now)
+        marker["pending"].append(token)
+        del marker["pending"][:-_LRD_NAV_MAX_PENDING]
+    return token
+
+
+def _lrd_remove_navigation_marker(marker, token):
+    with _LRD_NAV_LOCK:
+        marker["pending"][:] = [item for item in marker["pending"]
+                                if item is not token]
+
+
+def _lrd_take_navigation_marker(marker, key):
+    with _LRD_NAV_LOCK:
+        _lrd_prune_navigation_markers(marker, __import__("time").monotonic())
+        for index, token in enumerate(marker["pending"]):
+            if token[1] == key:
+                marker["pending"].pop(index)
+                return True
+    return False
+
+
+def _lrd_clear_navigation_markers(marker):
+    with _LRD_NAV_LOCK:
+        marker["pending"].clear()
+
+
+def _lrd_maybe_swap_d(event, keybindings):
+    """Return the original hw_code if the event was swapped to M, else None."""
+    if __import__("os").environ.get("LINUX_RDACCESS_NVDA_D_LANDMARK") == "0":
+        return None
+    if getattr(event, "event_string", None) not in ("d", "D"):
+        return None
+    pressed = event.isPressedKey()
+    if not pressed:
+        if not _LRD_D["swapped"]:
+            return None
+        # A translated key-up must follow the identity chosen for its key-down.
+        # Do not re-evaluate Ctrl/Alt/Orca modifiers or browse/focus mode here:
+        # those can legitimately change while D is held, and sending D-up after
+        # an M-down creates an unmatched structural-navigation key sequence.
+        code = _LRD_D.get("code")
+        if not code:
+            _LRD_D["swapped"] = False
+            _LRD_D["modifiers"] = 0
+            _LRD_D["code"] = None
+            return None
+        original = (event.hw_code, event.modifiers)
+        event.hw_code = code
+        event.modifiers = _LRD_D.get("modifiers", 0)
+        _LRD_D["swapped"] = False
+        _LRD_D["modifiers"] = 0
+        _LRD_D["code"] = None
+        return original
+
+    # The marker belongs to exactly one D that Orca evaluates, whether or
+    # not it ends up translated; otherwise a refused remote D (focus mode)
+    # would leak into a later local D.
+    _LRD_D["swapped"] = False
+    blocked = (keybindings.CTRL_MODIFIER_MASK | keybindings.ALT_MODIFIER_MASK
+               | keybindings.ORCA_MODIFIER_MASK)
+    if event.modifiers & blocked:
+        return None
+    # An earlier, ineligible same-key event can still be queued when a later
+    # remote landmark press publishes its claim. It must not steal that claim.
+    fresh = _lrd_take_navigation_marker(_LRD_D, "d")
+    if not fresh:
+        return None
+    script = getattr(event, "_script", None)
+    nav = getattr(script, "structuralNavigation", None)
+    gate = getattr(script, "useStructuralNavigationModel", None)
+    if nav is None or gate is None:
+        return None
+    if pressed and not gate():
+        return None
+    code = keybindings.getKeycode("m")
+    if not code:
+        return None
+    original = (event.hw_code, event.modifiers)
+    event.hw_code = code
+    try:
+        handler = script.keyBindings.getInputHandler(event)
+    except BaseException:
+        # Never leave the event rewritten if Orca's lookup fails.
+        event.hw_code, event.modifiers = original
+        raise
+    if handler is None or handler.function not in nav.functions:
+        event.hw_code, event.modifiers = original
+        return None
+    if pressed:
+        _LRD_D["swapped"] = True
+        _LRD_D["modifiers"] = event.modifiers
+        _LRD_D["code"] = code
+    else:
+        _LRD_D["swapped"] = False
+        _LRD_D["modifiers"] = 0
+        _LRD_D["code"] = None
+    return original
+
+
+# NVDA's table commands are Ctrl+Alt+Arrow; Orca 42 binds the same actions to
+# Shift+Alt+Arrow (structural navigation, tableCell). Translate only an arrow
+# that arrived from the remote session with exactly Ctrl+Alt held, and only
+# where Orca itself would use structural navigation (web document, browse
+# mode), so editable grids, focus mode and non-document windows keep Ctrl+Alt+
+# Arrow. Only Orca's own tableCell handlers are accepted. A release follows
+# the identity chosen for its press. Opt out with
+# LINUX_RDACCESS_NVDA_TABLE_KEYS=0.
+_LRD_T = {"pending": [], "held": {}}
+_LRD_TABLE_ARROWS = ("Left", "Right", "Up", "Down")
+
+
+def _lrd_maybe_swap_table(event, keybindings):
+    """Return (hw_code, modifiers) to restore if translated, else None."""
+    if __import__("os").environ.get("LINUX_RDACCESS_NVDA_TABLE_KEYS") == "0":
+        return None
+    pressed = event.isPressedKey()
+    held = _LRD_T["held"]
+    if not pressed:
+        # Each translated arrow keeps its own identity, so rolling from one
+        # table key to another while the first is still down does not strand
+        # the first key's release. Other keys never inherit a translation.
+        modifiers = held.pop(event.hw_code, None)
+        if modifiers is None:
+            return None
+        original = (event.hw_code, event.modifiers)
+        event.modifiers = modifiers
+        return original
+
+    key = next((name for name in _LRD_TABLE_ARROWS
+                if keybindings.getKeycode(name) == event.hw_code), None)
+    if key is None:
+        return None
+    # A new press (including auto-repeat) supersedes any earlier decision.
+    held.pop(event.hw_code, None)
+    # The marker belongs to exactly one arrow that Orca evaluates, whether or
+    # not it ends up translated.
+    ctrl, alt = keybindings.CTRL_MODIFIER_MASK, keybindings.ALT_MODIFIER_MASK
+    tracked = (keybindings.SHIFT_MODIFIER_MASK | ctrl | alt
+               | keybindings.ORCA_MODIFIER_MASK)
+    if event.modifiers & tracked != ctrl | alt:
+        return None
+    # Plain arrows and other chords queued before a remote table press do not
+    # own its claim. Browse/focus refusal below still consumes an eligible one.
+    fresh = _lrd_take_navigation_marker(_LRD_T, key)
+    if not fresh:
+        return None
+    script = getattr(event, "_script", None)
+    nav = getattr(script, "structuralNavigation", None)
+    gate = getattr(script, "useStructuralNavigationModel", None)
+    if nav is None or gate is None or not gate():
+        return None
+    cell = (getattr(nav, "enabledObjects", None) or {}).get("tableCell")
+    cell_functions = getattr(cell, "functions", None)
+    if not cell_functions:
+        return None
+    original = (event.hw_code, event.modifiers)
+    event.modifiers = (event.modifiers & ~ctrl) | keybindings.SHIFT_MODIFIER_MASK
+    try:
+        handler = script.keyBindings.getInputHandler(event)
+    except BaseException:
+        # Never leave the event rewritten if Orca's lookup fails.
+        event.hw_code, event.modifiers = original
+        raise
+    if handler is None or handler.function not in cell_functions:
+        event.hw_code, event.modifiers = original
+        return None
+    held[event.hw_code] = event.modifiers
+    return original
+
+
+def _lrd_install_orca_hook():
+    try:
+        from orca import input_event, keybindings
+    except Exception:
+        return False
+    cls = input_event.KeyboardEvent
+    if getattr(cls, "_lrd_d_hooked", False):
+        return True
+    original = cls.shouldConsume
+
+    def shouldConsume(self):
+        restore = None
+        try:
+            restore = _lrd_maybe_swap_d(self, keybindings)
+        except Exception:
+            log.error("linux-rdaccess: D landmark translation failed")
+        if restore is None:
+            try:
+                restore = _lrd_maybe_swap_table(self, keybindings)
+            except Exception:
+                log.error("linux-rdaccess: table navigation translation failed")
+        try:
+            return original(self)
+        finally:
+            if restore is not None:
+                self.hw_code, self.modifiers = restore
+
+    cls.shouldConsume = shouldConsume
+    cls._lrd_d_hooked = True
+    return True
+
+
+def _lrd_schedule_orca_hook():
+    try:
+        from gi.repository import GLib
+        GLib.idle_add(lambda: (_lrd_install_orca_hook(), False)[1])
+    except Exception:
+        pass
+
+
+_lrd_schedule_orca_hook()

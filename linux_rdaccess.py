@@ -15,6 +15,8 @@ import sys
 from remote_access import (
     CUSTOMIZATION_EVENT_API_MARKER,
     CUSTOMIZATION_RECONNECT_MARKER,
+    CUSTOMIZATION_SPEECH_SEQUENCE_MARKER,
+    CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER,
     LEGACY_COMPAT_MARKER,
     LEGACY_COMPAT_MARKER_V1,
     LEGACY_LOCAL_MACHINE_RELATIVE,
@@ -27,6 +29,8 @@ from remote_access import (
     legacy_controller_patch_current,
     legacy_customization_event_api_patch_current,
     legacy_customization_reconnect_patch_current,
+    legacy_customization_speech_sequence_patch_current,
+    legacy_customization_say_all_callback_patch_current,
     legacy_local_machine_patch_current,
     print_status,
     update_legacy_orca_customizations,
@@ -317,26 +321,28 @@ def patch_status(orca_config: Path) -> list[tuple[str, str]]:
          LOCAL_MACHINE_MARKER, LOCAL_MACHINE_MARKER_V1, legacy_local_machine_patch_current),
     )
     rows = []
-    label = "native Orca keyboard events (orca-customizations.py)"
+    customization_checks = (
+        ("native Orca keyboard events (orca-customizations.py)",
+         CUSTOMIZATION_EVENT_API_MARKER, legacy_customization_event_api_patch_current),
+        ("automatic relay reconnect (orca-customizations.py)",
+         CUSTOMIZATION_RECONNECT_MARKER, legacy_customization_reconnect_patch_current),
+        ("NVDA speech sequence (orca-customizations.py)",
+         CUSTOMIZATION_SPEECH_SEQUENCE_MARKER, legacy_customization_speech_sequence_patch_current),
+        ("native Say All callbacks (orca-customizations.py)",
+         CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER, legacy_customization_say_all_callback_patch_current),
+    )
     try:
         customization = orca_config.expanduser().read_text(encoding="utf-8")
     except OSError:
-        rows.append((label, "missing"))
-        rows.append(("automatic relay reconnect (orca-customizations.py)", "missing"))
+        rows.extend((label, "missing") for label, _, _ in customization_checks)
     else:
-        if legacy_customization_event_api_patch_current(customization):
-            rows.append((label, "current"))
-        elif CUSTOMIZATION_EVENT_API_MARKER in customization:
-            rows.append((label, "incomplete patch - repair required"))
-        else:
-            rows.append((label, "not patched - run: linux-rdaccess connect"))
-        label = "automatic relay reconnect (orca-customizations.py)"
-        if legacy_customization_reconnect_patch_current(customization):
-            rows.append((label, "current"))
-        elif CUSTOMIZATION_RECONNECT_MARKER in customization:
-            rows.append((label, "incomplete patch - repair required"))
-        else:
-            rows.append((label, "not patched - run: linux-rdaccess connect"))
+        for label, marker, valid in customization_checks:
+            if valid(customization):
+                rows.append((label, "current"))
+            elif marker in customization:
+                rows.append((label, "incomplete patch - repair required"))
+            else:
+                rows.append((label, "not patched - run: linux-rdaccess connect"))
     for label, path, current, old, valid in checks:
         try:
             text = path.read_text(encoding="utf-8")

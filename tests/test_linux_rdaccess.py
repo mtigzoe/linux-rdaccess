@@ -336,6 +336,30 @@ class DoctorTests(unittest.TestCase):
         cfg.unlink()
         self.assertEqual(dict(linux_rdaccess.patch_status(cfg))[label], "missing")
 
+    def test_speech_status_checks_wire_shape_and_native_callback_helper(self):
+        import remote_access
+        from tests.test_customization_reconnect import CustomizationReconnectTests
+        cfg = self._orca()
+        labels = ("NVDA speech sequence (orca-customizations.py)",
+                  "native Say All callbacks (orca-customizations.py)")
+        source = (CustomizationReconnectTests.CONFIG
+                  + remote_access._CUSTOMIZATION_SPEECH_FORWARD_SOURCE)
+        cfg.write_text(source, encoding="utf-8")
+        remote_access.update_legacy_orca_customizations(
+            remote_access.RemoteAccessConfig(key='synthetic'), cfg)
+        patched = cfg.read_text()
+        self.assertTrue(all(dict(linux_rdaccess.patch_status(cfg))[label] == "current"
+                            for label in labels))
+        cfg.write_text(patched.replace("return [text] if isinstance(text, str) else text",
+                                       "return text"), encoding="utf-8")
+        self.assertIn("incomplete", dict(linux_rdaccess.patch_status(cfg))[labels[0]])
+        cfg.write_text(patched.replace("server._send_command = muted_send",
+                                       "server._send_command = send"), encoding="utf-8")
+        self.assertIn("incomplete", dict(linux_rdaccess.patch_status(cfg))[labels[1]])
+        cfg.unlink()
+        self.assertTrue(all(dict(linux_rdaccess.patch_status(cfg))[label] == "missing"
+                            for label in labels))
+
     def test_reports_current_outdated_unpatched_and_missing(self):
         from remote_access import (LEGACY_COMPAT_MARKER, LOCAL_MACHINE_MARKER_V1)
         cfg = self._orca(controller="x\n" + LEGACY_COMPAT_MARKER, local="x\n" + LOCAL_MACHINE_MARKER_V1 + " v1")
