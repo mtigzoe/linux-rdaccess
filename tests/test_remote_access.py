@@ -2633,8 +2633,12 @@ class LocalMachine:
             structuralNavigation = types.SimpleNamespace(
                 functions=["landmark_next", "landmark_prev", "cell_left",
                            "cell_right", "cell_up", "cell_down", "other_nav"],
-                enabledObjects={"tableCell": types.SimpleNamespace(
-                    functions=["cell_left", "cell_right", "cell_up", "cell_down"])})
+                enabledObjects={
+                    "tableCell": types.SimpleNamespace(
+                        functions=["cell_left", "cell_right", "cell_up", "cell_down"]),
+                    "formField": form_field,
+                })
+            form_calls = form_calls
             state = {"browse": browse}
 
             def useStructuralNavigationModel(self):
