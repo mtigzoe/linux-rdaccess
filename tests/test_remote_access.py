@@ -1116,10 +1116,14 @@ class RemoteController:
     def test_unmapped_nvda_commands_do_not_fall_through_to_orca_bookmarks_or_silence(self):
         for vk, shift in (
             (0x32, False), (0x33, False), (0x34, False),
-            (0x35, False), (0x36, False),  # NVDA+2..6 vs Orca bookmarks
+            (0x35, False), (0x36, False), (0x37, False),  # NVDA+2..7 settings
             (0x42, False), (0x42, True),   # NVDA+B / NVDA+Shift+B vs bookmarks
             (0x46, False),                 # NVDA+F formatting vs Orca char attrs
+            (0x4B, False),                 # NVDA+K link URL vs Orca laptop review item
+            (0x4D, False),                 # NVDA+M mouse tracking vs Orca laptop review char
+            (0x50, False),                 # NVDA+P symbol level vs Orca laptop flat review
             (0x53, False),                 # NVDA+S vs Orca speech silence
+            (0x55, False),                 # NVDA+U progress reporting vs Orca laptop review line
         ):
             with self.subTest(vk=vk, shift=shift):
                 c, _, _ = self._patched_controller()
