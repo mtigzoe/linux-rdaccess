@@ -192,6 +192,49 @@ class OrcaRuntimeAdapter:
         return None
 
     @classmethod
+    def cycle_progress_bar_output(cls) -> bool | None:
+        """Cycle NVDA-style progress output without changing braille updates."""
+        script = cls.active_script()
+        if script is None:
+            return None
+        try:
+            from orca import settings_manager
+            manager = settings_manager.getManager()
+        except Exception:
+            return None
+        get_setting = getattr(manager, "getSetting", None)
+        set_setting = getattr(manager, "setSetting", None)
+        if not callable(get_setting) or not callable(set_setting):
+            return None
+        current = (
+            bool(get_setting("speakProgressBarUpdates")),
+            bool(get_setting("beepProgressBarUpdates")),
+        )
+        states = (
+            (False, False, "No progress bar updates"),
+            (True, False, "Speak progress bar updates"),
+            (False, True, "Beep for progress bar updates"),
+            (True, True, "Beep and speak progress bar updates"),
+        )
+        index = next(
+            (i for i, (speak, beep, _label) in enumerate(states)
+             if (speak, beep) == current),
+            len(states) - 1,
+        )
+        speak, beep, label = states[(index + 1) % len(states)]
+        try:
+            set_setting("speakProgressBarUpdates", speak)
+            set_setting("beepProgressBarUpdates", beep)
+            presenter = getattr(script, "presentMessage", None)
+            if not callable(presenter):
+                presenter = getattr(script, "present_message", None)
+            if callable(presenter):
+                presenter(label)
+            return True
+        except Exception:
+            return False
+
+    @classmethod
     def toggle_mouse_review(cls) -> bool | None:
         """Toggle Orca mouse review, the native counterpart of NVDA+M."""
         script = cls.active_script()
