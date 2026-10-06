@@ -192,6 +192,28 @@ class OrcaRuntimeAdapter:
         return None
 
     @classmethod
+    def toggle_mouse_review(cls) -> bool | None:
+        """Toggle Orca mouse review, the native counterpart of NVDA+M."""
+        script = cls.active_script()
+        if script is None:
+            return None
+        handlers = getattr(script, "inputEventHandlers", None)
+        if handlers is None:
+            handlers = getattr(script, "input_event_handlers", None)
+        if not isinstance(handlers, dict):
+            return None
+        handler = handlers.get("toggleMouseReviewHandler")
+        if handler is None:
+            handler = handlers.get("toggle_mouse_review_handler")
+        function = getattr(handler, "function", None)
+        if not callable(function):
+            return None
+        try:
+            return function(script, None) is not False
+        except Exception:
+            return False
+
+    @classmethod
     def toggle_input_help(cls) -> bool | None:
         """Toggle Orca learn mode to match NVDA's NVDA+1 input-help gesture."""
         script = cls.active_script()
