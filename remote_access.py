@@ -828,7 +828,8 @@ LEGACY_COMPAT_MARKER_V48 = "# linux-rdaccess NVDA/Orca input compatibility v48"
 LEGACY_COMPAT_MARKER_V49 = "# linux-rdaccess NVDA/Orca input compatibility v49"
 LEGACY_COMPAT_MARKER_V50 = "# linux-rdaccess NVDA/Orca input compatibility v50"
 LEGACY_COMPAT_MARKER_V51 = "# linux-rdaccess NVDA/Orca input compatibility v51"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v52"
+LEGACY_COMPAT_MARKER_V52 = "# linux-rdaccess NVDA/Orca input compatibility v52"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v53"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -910,16 +911,14 @@ _LEGACY_HELPERS = '''\
         if ctrl or alt_win:
             return False
         gesture = (vk_code, shift, bool(extended))
+        # Navigation-cluster VKs (Home/End/Arrows/Delete) are ambiguous when
+        # key_name and scan_code are absent: legacy payloads only leave the
+        # extended bit, and existing callers can emit non-extended navigation
+        # keys which are not proven keypad gestures. Preserve those rather than
+        # swallowing normal Linux input. Intercept only keypad commands whose
+        # VK/extended identity is unambiguous.
         return gesture in {
-            (0x26, False, False),  # NVDA+Numpad8: parent object
-            (0x27, False, False),  # NVDA+Numpad6: next object
-            (0x25, False, False),  # NVDA+Numpad4: previous object
-            (0x28, False, False),  # NVDA+Numpad2: first child
-            (0x0C, False, False),  # NVDA+Numpad5: current navigator object
-            (0x24, False, False),  # NVDA+Numpad7: next review mode
-            (0x23, False, False),  # NVDA+Numpad1: previous review mode
-            (0x2E, False, False),  # NVDA+NumpadDelete: caret/focus location
-            (0x2E, True, False),   # NVDA+Shift+NumpadDelete: navigator location
+            (0x0C, False, False),  # NVDA+Numpad5 (VK_CLEAR): current navigator object
             (0x6D, False, False),  # NVDA+NumpadMinus: navigator to focus
             (0x6D, True, False),   # NVDA+Shift+NumpadMinus: focus/caret to navigator
             (0x6F, False, True),   # NVDA+NumpadDivide: mouse to navigator
@@ -3356,6 +3355,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V52,
                 LEGACY_COMPAT_MARKER_V51,
                 LEGACY_COMPAT_MARKER_V50,
                 LEGACY_COMPAT_MARKER_V49,
