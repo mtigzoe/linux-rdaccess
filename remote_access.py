@@ -819,7 +819,8 @@ LEGACY_COMPAT_MARKER_V39 = "# linux-rdaccess NVDA/Orca input compatibility v39"
 LEGACY_COMPAT_MARKER_V40 = "# linux-rdaccess NVDA/Orca input compatibility v40"
 LEGACY_COMPAT_MARKER_V41 = "# linux-rdaccess NVDA/Orca input compatibility v41"
 LEGACY_COMPAT_MARKER_V42 = "# linux-rdaccess NVDA/Orca input compatibility v42"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v43"
+LEGACY_COMPAT_MARKER_V43 = "# linux-rdaccess NVDA/Orca input compatibility v43"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v44"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -1274,6 +1275,27 @@ _LEGACY_HELPERS = '''\
         ):
             self._lrd_navigation_marker = (
                 "_LRD_T", {0x25: "Left", 0x26: "Up", 0x27: "Right", 0x28: "Down"}[vk_code], held)
+
+        # Some NVDA commands have no proven Orca-42 equivalent but collide
+        # with unrelated Orca modifier bindings. Consume those exact remote
+        # gestures rather than navigating bookmarks or changing Orca speech
+        # state behind the user's back.
+        if pressed and self._lrd_nvda_down and not repeat:
+            shifts = [k for k in self._lrd_down if k[0] in self._LRD_SHIFT_VKS]
+            other = [
+                k for k in self._lrd_down
+                if k[0] in self._LRD_OTHER_MOD_VKS and k[0] not in self._LRD_SHIFT_VKS
+            ]
+            collision = (
+                (vk_code in (0x32, 0x33, 0x34, 0x35, 0x36) and not shifts and not other)
+                or (vk_code == 0x42 and len(shifts) <= 1 and not other)
+                or (vk_code == 0x53 and not shifts and not other)
+            )
+            if collision:
+                self._lrd_swapped.add(held)
+                if getattr(self, "_lrd_caps_pending", None) is not None:
+                    self._lrd_caps_used = True
+                return True
 
         # NVDA's desktop and laptop layouts reuse several physical gestures
         # for different commands. Select the Windows layout explicitly rather
@@ -3192,6 +3214,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V43,
                 LEGACY_COMPAT_MARKER_V42,
                 LEGACY_COMPAT_MARKER_V41,
                 LEGACY_COMPAT_MARKER_V40,
