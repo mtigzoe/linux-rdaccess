@@ -2715,6 +2715,18 @@ class LocalMachine:
         script.heading_calls = heading_calls
         script.layout_calls = []
         script.toggleLayoutMode = lambda event=None: script.layout_calls.append("toggle")
+        script.table_edge_calls = []
+        script.utilities = types.SimpleNamespace(
+            getCaretContext=lambda: ("caret", 0),
+            rowAndColumnCount=lambda table, include_layout: (5, 6),
+        )
+        script.structuralNavigation.getCellForObj = lambda obj: "cell"
+        script.structuralNavigation.getCellCoordinates = (
+            lambda cell, prefer_attribute=False: [2, 3])
+        script.structuralNavigation.getTableForCell = lambda cell: "table"
+        script.structuralNavigation.goCell = (
+            lambda cell_object, cell, current, desired:
+                script.table_edge_calls.append(tuple(desired)))
         script.find_calls = []
         script.findNext = lambda event=None: script.find_calls.append("next")
         script.findPrevious = lambda event=None: script.find_calls.append("previous")
@@ -3320,6 +3332,32 @@ class LocalMachine:
         self.assertEqual(c._module._LRD_T["pending"], [])
         self.assertEqual(KE("d", self.D_CODE)._handler.function, "live_region")
         self.assertIsNone(KE("Down", self.DOWN, modifiers=self.CTRL_ALT)._handler)
+
+    def test_remote_ctrl_alt_table_edges_preserve_other_coordinate(self):
+        cases = (
+            (0x21, "Page_Up", 112, (0, 3)),   # first row, same column
+            (0x22, "Page_Down", 117, (4, 3)), # last row, same column
+            (0x24, "Home", 110, (2, 0)),      # first column, same row
+            (0x23, "End", 115, (2, 5)),       # last column, same row
+        )
+        for vk, name, code, expected in cases:
+            with self.subTest(name=name):
+                c, KE, script = self._hooked()
+                self._key(c, 0xA2, True)
+                self._key(c, 0xA4, True)
+                self._key(c, vk, True, extended=True)
+                ev = KE(name, code, modifiers=self.CTRL | self.ALT)
+                consumer = getattr(ev, "_consumer", None)
+                self.assertIsNotNone(consumer)
+                consumer(ev)
+                self.assertEqual(script.table_edge_calls, [expected])
+
+    def test_local_or_focus_mode_ctrl_alt_table_edges_are_not_intercepted(self):
+        for browse in (True, False):
+            with self.subTest(browse=browse):
+                _c, KE, _script = self._hooked(browse=browse)
+                ev = KE("Home", 110, modifiers=self.CTRL | self.ALT)
+                self.assertIsNone(getattr(ev, "_consumer", None))
 
     def test_remote_ctrl_alt_arrows_become_orca_table_cell_navigation(self):
         for vk, name, code, handler in self.ARROWS:
