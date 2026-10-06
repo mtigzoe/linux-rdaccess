@@ -250,6 +250,29 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
             self.assertIs(OrcaRuntimeAdapter.show_structural_list("h", script=script), True)
         handler.assert_called_once_with(script, None)
 
+    def test_input_help_toggles_orca42_learn_mode(self):
+        calls = []
+        script = types.SimpleNamespace(
+            enterLearnMode=lambda event=None: calls.append(("enter", event)) or True,
+            exitLearnMode=lambda event=None: calls.append(("exit", event)) or True,
+        )
+        with self._fake_orca(script):
+            state = sys.modules["orca.orca_state"]
+            state.learnModeEnabled = False
+            self.assertIs(OrcaRuntimeAdapter.toggle_input_help(), True)
+            state.learnModeEnabled = True
+            self.assertIs(OrcaRuntimeAdapter.toggle_input_help(), True)
+        self.assertEqual(calls, [("enter", None), ("exit", None)])
+
+    def test_input_help_distinguishes_unavailable_and_rejected_handlers(self):
+        with self._fake_orca(None):
+            self.assertIsNone(OrcaRuntimeAdapter.toggle_input_help())
+        script = types.SimpleNamespace(enterLearnMode=mock.Mock(return_value=False))
+        with self._fake_orca(script):
+            sys.modules["orca.orca_state"].learnModeEnabled = False
+            self.assertIs(OrcaRuntimeAdapter.toggle_input_help(), False)
+        script.enterLearnMode.assert_called_once_with(None)
+
     def test_bypass_next_command_supports_legacy_and_snake_case_handlers(self):
         legacy_calls = []
         legacy = types.SimpleNamespace(
