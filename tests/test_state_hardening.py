@@ -16,6 +16,15 @@ from tests import test_remote_access as fixtures
 
 
 class RuntimeStateTests(Harness, unittest.TestCase):
+    @staticmethod
+    def _slow_monotonic():
+        value = [100.0]
+        def tick():
+            current = value[0]
+            value[0] += 0.03
+            return current
+        return tick
+
     def test_generated_log_descriptors_close_if_stream_creation_fails(self):
         c, _, _ = self._patched_controller()
         for trace in (True, False):
@@ -31,7 +40,7 @@ class RuntimeStateTests(Harness, unittest.TestCase):
                     with mock.patch.dict(os.environ, {'HOME': temp, 'LINUX_RDACCESS_BRAILLE_TRACE': '1', 'LINUX_RDACCESS_DEBUG': '1'}), \
                             mock.patch('os.open', side_effect=record), \
                             mock.patch('os.fdopen', side_effect=OSError('stream unavailable')), \
-                            mock.patch('time.monotonic', side_effect=[100.0, 100.03, 100.05]):
+                            mock.patch('time.monotonic', side_effect=self._slow_monotonic()):
                         if trace:
                             with self.assertRaises(OSError):
                                 c._linux_rdaccess_trace_braille({'action': 'pan_back'})
@@ -137,7 +146,7 @@ class RuntimeStateTests(Harness, unittest.TestCase):
             path.write_text('old timing\n')
             path.chmod(0o644)
             with mock.patch.dict(os.environ, {'HOME': temp, 'LINUX_RDACCESS_DEBUG': '1'}), \
-                    mock.patch('time.monotonic', side_effect=[100.0, 100.03, 100.05]):
+                    mock.patch('time.monotonic', side_effect=self._slow_monotonic()):
                 c._on_remote_key(key_name='private-key-name', vk_code=0x41, pressed=True, extended=False)
             record = path.read_text()
             self.assertIn('key-event handling took', record)
