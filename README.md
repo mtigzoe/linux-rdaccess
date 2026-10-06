@@ -318,6 +318,8 @@ and the clock shortcut conflict, plus automatic relay retries.
 The [follow-up audit](docs/compatibility-audit-2026-10-06-followup.md) records
 current-line context, modal focus, pass-next ordering and speech/Say All repairs,
 with the remaining eighteen acceptance areas.
+The [live acceptance record](docs/live-acceptance-2026-10-06.md) supplies a
+controlled Firefox page and the first Windows input, speech and braille checks.
 
 ## Live X11 + AT-SPI diagnostics
 
