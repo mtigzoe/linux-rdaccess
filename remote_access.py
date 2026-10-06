@@ -2893,8 +2893,10 @@ def _lrd_maybe_nvda_browse(event, keybindings):
         gate = getattr(script, "useStructuralNavigationModel", None)
         document_active = bool(callable(gate) and gate())
 
-    if not document_active and action in ("collapseExpandUp", "collapseExpandDown"):
-        return False
+    if action in ("collapseExpandUp", "collapseExpandDown"):
+        gate = getattr(script, "useStructuralNavigationModel", None)
+        if not callable(gate) or not gate():
+            return False
 
     held[event.hw_code] = event.modifiers
     event._handler = None
