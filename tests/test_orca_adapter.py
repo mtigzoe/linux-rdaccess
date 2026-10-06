@@ -96,16 +96,19 @@ class ElementsListTests(unittest.TestCase):
         self.assertTrue(FakeCombo.last.focused)
         self.assertTrue(FakeLabel.last.underline)
         self.assertIs(FakeLabel.last.mnemonic, FakeCombo.last)
-        self.assertEqual(calls, ["h"])
+        self.assertEqual(calls, ["k"])
 
-    def test_nvda_elements_categories_cover_primary_orca_structural_lists(self):
-        categories = dict(ELEMENT_LIST_TYPES)
-        self.assertEqual(categories["Headings"], "h")
-        self.assertEqual(categories["Links"], "k")
-        self.assertEqual(categories["Form fields"], "f")
-        self.assertEqual(categories["Buttons"], "b")
-        self.assertEqual(categories["Tables"], "t")
-        self.assertEqual(categories["Landmarks"], "m")
+    def test_nvda_elements_categories_match_nvda_2026_2_default_order(self):
+        self.assertEqual(
+            ELEMENT_LIST_TYPES,
+            (
+                ("Links", "k"),
+                ("Headings", "h"),
+                ("Form fields", "f"),
+                ("Buttons", "b"),
+                ("Landmarks", "m"),
+            ),
+        )
 
 
 class OrcaRuntimeAdapterTests(unittest.TestCase):
