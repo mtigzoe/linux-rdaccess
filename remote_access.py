@@ -820,7 +820,8 @@ LEGACY_COMPAT_MARKER_V40 = "# linux-rdaccess NVDA/Orca input compatibility v40"
 LEGACY_COMPAT_MARKER_V41 = "# linux-rdaccess NVDA/Orca input compatibility v41"
 LEGACY_COMPAT_MARKER_V42 = "# linux-rdaccess NVDA/Orca input compatibility v42"
 LEGACY_COMPAT_MARKER_V43 = "# linux-rdaccess NVDA/Orca input compatibility v43"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v44"
+LEGACY_COMPAT_MARKER_V44 = "# linux-rdaccess NVDA/Orca input compatibility v44"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v45"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -1351,6 +1352,27 @@ _LEGACY_HELPERS = '''\
                 self._lrd_caps_used = True
             self._linux_rdaccess_run_main(
                 lambda: self._linux_rdaccess_script_call("sayAll"))
+            return True
+
+        # NVDA+Ctrl+Space moves out of an embedded document in NVDA.
+        # Orca 42 instead binds Orca+Ctrl+Space to application preferences.
+        # No equivalent Orca-42 API has been proven, so consume the exact NVDA
+        # gesture rather than opening a preferences dialog or flushing a
+        # deferred CapsLock modifier into the X server.
+        if (
+            pressed
+            and self._lrd_nvda_down
+            and not repeat
+            and vk_code == 0x20
+            and any(k[0] in self._LRD_CTRL_VKS for k in self._lrd_down)
+            and not any(
+                k[0] in self._LRD_SHIFT_VKS or k[0] in (0x12, 0xA4, 0xA5, 0x5B, 0x5C)
+                for k in self._lrd_down
+            )
+        ):
+            self._lrd_swapped.add(held)
+            if getattr(self, "_lrd_caps_pending", None) is not None:
+                self._lrd_caps_used = True
             return True
 
         # NVDA+Space and NVDA+Shift+Space have exact Orca APIs. Calling
@@ -3214,6 +3236,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V44,
                 LEGACY_COMPAT_MARKER_V43,
                 LEGACY_COMPAT_MARKER_V42,
                 LEGACY_COMPAT_MARKER_V41,
