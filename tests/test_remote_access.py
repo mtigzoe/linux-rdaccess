@@ -1289,11 +1289,24 @@ class RemoteController:
             (0x24, False),  # NVDA+Numpad7: next review mode
             (0x23, False),  # NVDA+Numpad1: previous review mode
             (0x2E, False),  # NVDA+NumpadDelete: caret/focus location
+            (0x6D, False),  # NVDA+NumpadMinus: navigator to focus
+            (0x6F, True),   # NVDA+NumpadDivide: mouse to navigator
+            (0x6A, False),  # NVDA+NumpadMultiply: navigator to mouse
         )
         for vk, extended in cases:
             with self.subTest(vk=vk):
                 c, _, _ = self._patched_controller()
                 self._key(c, 0x2D, True, extended=True)
+                self._key(c, vk, True, extended=extended)
+                self._key(c, vk, False, extended=extended)
+                self.assertNotIn((vk, True), self._names(c))
+
+    def test_desktop_shift_numpad_object_commands_are_intercepted(self):
+        for vk, extended in ((0x6D, False), (0x2E, False)):
+            with self.subTest(vk=vk):
+                c, _, _ = self._patched_controller()
+                self._key(c, 0x2D, True, extended=True)
+                self._key(c, 0xA0, True)
                 self._key(c, vk, True, extended=extended)
                 self._key(c, vk, False, extended=extended)
                 self.assertNotIn((vk, True), self._names(c))
