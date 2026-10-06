@@ -116,10 +116,15 @@ so fast presses retain their translations. Failed injection removes its claim.
 XTest does not identify individual input sources: a simultaneous local press
 of the same key can still be confused with a pending remote press.
 
-Compatibility currently covers a subset of NVDA's desktop commands. Laptop
-layout, object/review navigation, table row/column edges, and some
-unmapped NVDA chords need additional work; see the
-[shortcut audit](docs/nvda-orca-shortcut-audit-2026-10-05.md).
+Compatibility currently covers a subset of NVDA commands. Desktop layout is
+the default. Set `LINUX_RDACCESS_NVDA_LAYOUT=laptop` in Orca's environment to
+select NVDA's laptop keyboard layout. The laptop aliases currently implemented
+are NVDA+A (caret Say All), NVDA+L (current line), and NVDA+Shift+End (status).
+Laptop NVDA+Up/Down/End are review commands in NVDA; linux-rdaccess consumes
+those gestures rather than running the conflicting desktop actions until an
+NVDA-equivalent review model is proven. Object/review navigation, table
+row/column edges, and some unmapped NVDA chords still need additional work; see
+the [shortcut audit](docs/nvda-orca-shortcut-audit-2026-10-05.md).
 
 linux-rdaccess additionally translates:
 
@@ -248,7 +253,7 @@ individual on/off results. Num Lock auto-repeat produces one toggle and one
 announcement per press. CapsLock used for a translated NVDA command produces
 neither a lock toggle nor a lock announcement.
 
-The current patches are controller **v40** and local-machine **v10**. Update the
+The current patches are controller **v42** and local-machine **v10**. Update the
 installed command from the repository with `python3 linux_rdaccess.py install`,
 then run `linux-rdaccess connect` to update the Orca-side files and restart Orca.
 `doctor` verifies the connected patch hooks, valid Python, and the installed
