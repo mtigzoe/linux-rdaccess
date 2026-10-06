@@ -1071,6 +1071,23 @@ class RemoteController:
         self.assertEqual(calls, ["toggleInputHelp"])
         self.assertNotIn((0x31, True), self._names(c))
 
+    def test_unmapped_nvda_commands_do_not_fall_through_to_orca_bookmarks_or_silence(self):
+        for vk, shift in (
+            (0x32, False), (0x33, False), (0x34, False),
+            (0x35, False), (0x36, False),  # NVDA+2..6 vs Orca bookmarks
+            (0x42, False), (0x42, True),   # NVDA+B / NVDA+Shift+B vs bookmarks
+            (0x53, False),                 # NVDA+S vs Orca speech silence
+        ):
+            with self.subTest(vk=vk, shift=shift):
+                c, _, _ = self._patched_controller()
+                self._key(c, 0x2D, True, extended=True)
+                if shift:
+                    self._key(c, 0xA0, True)
+                self._key(c, vk, True)
+                self._key(c, vk, True)
+                self._key(c, vk, False)
+                self.assertNotIn((vk, True), self._names(c))
+
     def test_nvda_say_all_calls_orca_directly_and_consumes_repeat(self):
         import os
         c, _, home = self._patched_controller()
