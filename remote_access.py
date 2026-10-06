@@ -850,7 +850,8 @@ LEGACY_COMPAT_MARKER_V70 = "# linux-rdaccess NVDA/Orca input compatibility v70"
 LEGACY_COMPAT_MARKER_V71 = "# linux-rdaccess NVDA/Orca input compatibility v71"
 LEGACY_COMPAT_MARKER_V72 = "# linux-rdaccess NVDA/Orca input compatibility v72"
 LEGACY_COMPAT_MARKER_V73 = "# linux-rdaccess NVDA/Orca input compatibility v73"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v74"
+LEGACY_COMPAT_MARKER_V74 = "# linux-rdaccess NVDA/Orca input compatibility v74"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v75"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -899,6 +900,7 @@ _LEGACY_HELPERS = '''\
     # "drop" is needed where Orca binds the key with NO Orca modifier.
     _LRD_ACTION_CHORDS = {
         0x31: "input_help",                          # NVDA+1
+        0x50: "punctuation",                         # NVDA+P
         0x09: "where_am_i",                          # NVDA+Tab
         0x23: "status_bar",                          # NVDA+End
         0x26: "current_line",                        # desktop NVDA+Up
@@ -958,7 +960,6 @@ _LEGACY_HELPERS = '''\
         # operations, not ordinary application input. Keep these intercepted
         # until an Orca-42 API is proven equivalent.
         gestures = {
-            (0x50, False, False),  # NVDA+P: speech symbol level
             (0x0D, False, False),  # NVDA+Enter: activate navigator object
             (0x08, False, False),  # NVDA+Backspace: navigator to focus
             (0x08, True, False),   # NVDA+Shift+Backspace: focus to navigator
@@ -1580,7 +1581,7 @@ _LEGACY_HELPERS = '''\
                 (vk_code in (0x32, 0x33, 0x34, 0x35, 0x36, 0x37)
                  and not shifts and not other)
                 or (vk_code == 0x42 and not other)
-                or (vk_code in (0x46, 0x4B, 0x4D, 0x50, 0x53, 0x55)
+                or (vk_code in (0x46, 0x4B, 0x4D, 0x53, 0x55)
                     and not shifts and not other)
                 or (vk_code in (
                         0x47, 0x53, 0x56, 0x41, 0x55, 0x4B, 0x4D, 0x4F,
@@ -1732,6 +1733,10 @@ _LEGACY_HELPERS = '''\
                 if action == "input_help":
                     self._linux_rdaccess_run_main(
                         lambda: self._linux_rdaccess_script_call("toggleInputHelp"))
+                elif action == "punctuation":
+                    self._linux_rdaccess_run_main(
+                        lambda: self._linux_rdaccess_script_call(
+                            "cycleSpeakingPunctuationLevel"))
                 elif action == "elements_list":
                     self._linux_rdaccess_run_main(
                         lambda: self._linux_rdaccess_show_elements_list(modifiers))
@@ -3939,6 +3944,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V74,
                 LEGACY_COMPAT_MARKER_V73,
                 LEGACY_COMPAT_MARKER_V72,
                 LEGACY_COMPAT_MARKER_V71,
