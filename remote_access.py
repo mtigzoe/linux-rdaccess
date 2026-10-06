@@ -834,7 +834,8 @@ LEGACY_COMPAT_MARKER_V54 = "# linux-rdaccess NVDA/Orca input compatibility v54"
 LEGACY_COMPAT_MARKER_V55 = "# linux-rdaccess NVDA/Orca input compatibility v55"
 LEGACY_COMPAT_MARKER_V56 = "# linux-rdaccess NVDA/Orca input compatibility v56"
 LEGACY_COMPAT_MARKER_V57 = "# linux-rdaccess NVDA/Orca input compatibility v57"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v58"
+LEGACY_COMPAT_MARKER_V58 = "# linux-rdaccess NVDA/Orca input compatibility v58"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v59"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -982,6 +983,7 @@ _LEGACY_HELPERS = '''\
     def _linux_rdaccess_known_unimplemented(self, vk_code, extended):
         """Whether this exact documented NVDA command is not yet emulated."""
         down = getattr(self, "_lrd_down", set())
+        layout = self._linux_rdaccess_nvda_layout()
         shift = any(k[0] in self._LRD_SHIFT_VKS for k in down)
         ctrl = any(k[0] in self._LRD_CTRL_VKS for k in down)
         alt = any(k[0] in (0x12, 0xA4, 0xA5) for k in down)
@@ -1020,7 +1022,42 @@ _LEGACY_HELPERS = '''\
             (0x70, False, False, False, False),  # NVDA+F1
             (0x70, False, True,  False, False),  # NVDA+Ctrl+F1
             (0x70, True,  True,  False, False),  # NVDA+Ctrl+Shift+F1
-        }
+            (0x44, True,  False, False, False),  # NVDA+Shift+D: audio ducking
+            (0x4B, False, False, True,  False),  # NVDA+Alt+K: braille autoscroll
+            (0x4C, False, False, True,  False),  # NVDA+Alt+L: braille scroll faster
+            (0x4A, False, False, True,  False),  # NVDA+Alt+J: braille scroll slower
+            (0x46, True,  False, False, False),  # NVDA+Shift+F: review formatting
+            (0x44, False, False, False, False),  # NVDA+D: annotation details
+            (0x54, False, False, True,  False),  # NVDA+Alt+T: braille mode
+            (0x4D, False, False, True,  False),  # NVDA+Alt+M: math interaction
+        } or (
+            layout == "desktop"
+            and gesture in {
+                (0x53, True,  False, False, False),  # NVDA+Shift+S: app sleep
+                (0x26, False, True,  False, True),   # synth ring
+                (0x28, False, True,  False, True),
+                (0x25, False, True,  False, True),
+                (0x27, False, True,  False, True),
+                (0x21, False, True,  False, True),
+                (0x22, False, True,  False, True),
+                (0x71, False, True,  False, False),  # NVDA+Ctrl+F2: display model
+                (0x63, False, False, False, False),  # NVDA+Numpad3: next in flow
+                (0x69, False, False, False, False),  # NVDA+Numpad9: previous in flow
+            }
+        ) or (
+            layout == "laptop"
+            and gesture in {
+                (0x5A, True,  False, False, False),  # NVDA+Shift+Z: app sleep
+                (0x26, True,  True,  False, True),   # synth ring
+                (0x28, True,  True,  False, True),
+                (0x25, True,  True,  False, True),
+                (0x27, True,  True,  False, True),
+                (0x21, True,  True,  False, True),
+                (0x22, True,  True,  False, True),
+                (0xDB, True,  False, False, False),  # Shift+NVDA+[: previous in flow
+                (0xDD, True,  False, False, False),  # Shift+NVDA+]: next in flow
+            }
+        )
 
     def _linux_rdaccess_clock_command(self):
         """Select time/date for consecutive complete NVDA+F12 gestures."""
@@ -3418,6 +3455,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V58,
                 LEGACY_COMPAT_MARKER_V57,
                 LEGACY_COMPAT_MARKER_V56,
                 LEGACY_COMPAT_MARKER_V55,
