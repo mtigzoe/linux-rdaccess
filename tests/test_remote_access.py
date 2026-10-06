@@ -1270,25 +1270,23 @@ class RemoteController:
         self.assertEqual(names.count((0x28, False)), 1)
         self.assertNotIn((0x6B, True), names)
 
-    def test_plain_arrow_is_untouched_but_nvda_numpad2_is_intercepted(self):
+    def test_ambiguous_nonextended_arrow_payload_is_preserved(self):
         c, _, _ = self._patched_controller()
         self._key(c, 0x28, True, extended=True)    # no NVDA key: plain Down
         self._key(c, 0x28, False, extended=True)
         self._key(c, 0x2D, True, extended=True)
-        self._key(c, 0x28, True, extended=False)   # NVDA+Numpad2: first child object
+        # With no key_name/scan_code, non-extended VK_DOWN is not sufficient
+        # proof that this was physical Numpad2 rather than a legacy nav payload.
+        self._key(c, 0x28, True, extended=False)
         self._key(c, 0x28, False, extended=False)
-        self.assertEqual(self._names(c), [(0x28, True), (0x28, False), (0x2D, True)])
+        self.assertEqual(
+            self._names(c),
+            [(0x28, True), (0x28, False), (0x2D, True), (0x28, True), (0x28, False)],
+        )
 
     def test_desktop_unimplemented_nvda_object_commands_do_not_run_orca_keypad_commands(self):
         cases = (
-            (0x26, False),  # NVDA+Numpad8: parent object
-            (0x27, False),  # NVDA+Numpad6: next object
-            (0x25, False),  # NVDA+Numpad4: previous object
-            (0x28, False),  # NVDA+Numpad2: first child
-            (0x0C, False),  # NVDA+Numpad5: report navigator object
-            (0x24, False),  # NVDA+Numpad7: next review mode
-            (0x23, False),  # NVDA+Numpad1: previous review mode
-            (0x2E, False),  # NVDA+NumpadDelete: caret/focus location
+            (0x0C, False),  # NVDA+Numpad5 / VK_CLEAR
             (0x6D, False),  # NVDA+NumpadMinus: navigator to focus
             (0x6F, True),   # NVDA+NumpadDivide: mouse to navigator
             (0x6A, False),  # NVDA+NumpadMultiply: navigator to mouse
@@ -1302,7 +1300,7 @@ class RemoteController:
                 self.assertNotIn((vk, True), self._names(c))
 
     def test_desktop_shift_numpad_object_commands_are_intercepted(self):
-        for vk, extended in ((0x6D, False), (0x2E, False)):
+        for vk, extended in ((0x6D, False),):
             with self.subTest(vk=vk):
                 c, _, _ = self._patched_controller()
                 self._key(c, 0x2D, True, extended=True)
