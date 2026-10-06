@@ -852,7 +852,8 @@ LEGACY_COMPAT_MARKER_V72 = "# linux-rdaccess NVDA/Orca input compatibility v72"
 LEGACY_COMPAT_MARKER_V73 = "# linux-rdaccess NVDA/Orca input compatibility v73"
 LEGACY_COMPAT_MARKER_V74 = "# linux-rdaccess NVDA/Orca input compatibility v74"
 LEGACY_COMPAT_MARKER_V75 = "# linux-rdaccess NVDA/Orca input compatibility v75"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v76"
+LEGACY_COMPAT_MARKER_V76 = "# linux-rdaccess NVDA/Orca input compatibility v76"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v77"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -1272,14 +1273,6 @@ _LEGACY_HELPERS = '''\
         if isinstance(browse_unsupported, dict):
             _lrd_clear_navigation_markers(browse_unsupported)
             browse_unsupported["held"] = {}
-        browse_nvda = globals().get("_LRD_BROWSE_NVDA")
-        if isinstance(browse_nvda, dict):
-            _lrd_clear_navigation_markers(browse_nvda)
-            browse_nvda["held"] = {}
-        table_edge = globals().get("_LRD_TABLE_EDGE")
-        if isinstance(table_edge, dict):
-            _lrd_clear_navigation_markers(table_edge)
-            table_edge["held"] = {}
         nvda_browse = globals().get("_LRD_NVDA_BROWSE")
         if isinstance(nvda_browse, dict):
             _lrd_clear_navigation_markers(nvda_browse)
@@ -1501,26 +1494,6 @@ _LEGACY_HELPERS = '''\
                 for k in self._lrd_down):
             self._lrd_navigation_marker = ("_LRD_D", "d", held)
 
-        # NVDA table-edge commands keep the current column/row while moving to
-        # the first/last row/column. Orca 42 has no equivalent keybinding, so
-        # publish provenance and invoke its native table APIs on the main thread.
-        if (
-            pressed
-            and bool(extended)
-            and vk_code in (0x21, 0x22, 0x24, 0x23)
-            and not self._lrd_nvda_down
-            and any(k[0] in self._LRD_CTRL_VKS for k in self._lrd_down)
-            and any(k[0] in (0x12, 0xA4, 0xA5) for k in self._lrd_down)
-            and not any(k[0] in self._LRD_SHIFT_VKS + (0x5B, 0x5C)
-                        for k in self._lrd_down)
-        ):
-            self._lrd_navigation_marker = (
-                "_LRD_TABLE_EDGE",
-                {0x21: "first_row", 0x22: "last_row",
-                 0x24: "first_col", 0x23: "last_col"}[vk_code],
-                held,
-            )
-
         # NVDA's table commands are Ctrl+Alt+Arrow. Mark only an extended arrow
         # with Ctrl and Alt held and no Shift/Win/NVDA key; the Orca-side hook
         # below decides, per key and only in browse mode, whether to translate.
@@ -1537,30 +1510,6 @@ _LEGACY_HELPERS = '''\
         ):
             self._lrd_navigation_marker = (
                 "_LRD_T", {0x25: "Left", 0x26: "Up", 0x27: "Right", 0x28: "Down"}[vk_code], held)
-
-        # NVDA browse-mode commands which need Orca's current document-mode
-        # decision are marked here and handled on Orca's main thread.
-        if pressed and self._lrd_nvda_down and not repeat:
-            shift = any(k[0] in self._LRD_SHIFT_VKS for k in self._lrd_down)
-            ctrl = any(k[0] in self._LRD_CTRL_VKS for k in self._lrd_down)
-            alt = any(k[0] in (0x12, 0xA4, 0xA5) for k in self._lrd_down)
-            win = any(k[0] in (0x5B, 0x5C) for k in self._lrd_down)
-            if vk_code == 0x56 and not shift and not ctrl and not alt and not win:
-                self._lrd_navigation_marker = ("_LRD_BROWSE_NVDA", "nvda_v", held)
-            elif vk_code == 0x79 and shift and not ctrl and not alt and not win:
-                self._lrd_navigation_marker = (
-                    "_LRD_BROWSE_NVDA", "nvda_shift_f10", held)
-            elif (
-                vk_code in (0x25, 0x26, 0x27, 0x28)
-                and bool(extended) and ctrl and alt and not shift and not win
-            ):
-                self._lrd_navigation_marker = (
-                    "_LRD_BROWSE_NVDA",
-                    "nvda_table_read_" + {
-                        0x25: "left", 0x26: "up", 0x27: "right", 0x28: "down"
-                    }[vk_code],
-                    held,
-                )
 
         if (
             pressed
@@ -1634,6 +1583,16 @@ _LEGACY_HELPERS = '''\
                 browse_action = "findPrevious" if shifts else "findNext"
             elif vk_code == 0x79 and shifts and not ctrl and not alt_win: # NVDA+Shift+F10
                 browse_action = "nativeSelection"
+            elif (
+                vk_code in (0x25, 0x26, 0x27, 0x28)
+                and bool(extended) and ctrl and not shifts
+                and any(k[0] in (0x12, 0xA4, 0xA5) for k in self._lrd_down)
+                and not any(k[0] in (0x5B, 0x5C) for k in self._lrd_down)
+            ):
+                browse_action = {
+                    0x25: "tableReadLeft", 0x26: "tableReadUp",
+                    0x27: "tableReadRight", 0x28: "tableReadDown",
+                }[vk_code]
             if browse_action is not None:
                 self._lrd_navigation_marker = ("_LRD_NVDA_BROWSE", browse_action, held)
                 if getattr(self, "_lrd_caps_pending", None) is not None:
@@ -2921,6 +2880,14 @@ def _lrd_maybe_nvda_browse(event, keybindings):
                   else "findNext")
     elif key == "F10":
         action = "nativeSelection"
+    elif (
+        key in ("Left", "Right", "Up", "Down")
+        and event.modifiers & keybindings.ORCA_MODIFIER_MASK
+        and event.modifiers & keybindings.CTRL_MODIFIER_MASK
+        and event.modifiers & keybindings.ALT_MODIFIER_MASK
+        and not event.modifiers & keybindings.SHIFT_MODIFIER_MASK
+    ):
+        action = "tableRead" + key
     elif key in ("Up", "Down") and event.modifiers & keybindings.ALT_MODIFIER_MASK:
         action = "collapseExpandUp" if key == "Up" else "collapseExpandDown"
     else:
@@ -2997,7 +2964,6 @@ def _lrd_maybe_nvda_browse(event, keybindings):
 
 
 _LRD_BROWSE_UNSUPPORTED = {"pending": [], "held": {}}
-_LRD_BROWSE_NVDA = {"pending": [], "held": {}}
 _LRD_BROWSE_UNSUPPORTED_KEYS = ("a", "f", "m", "n", "o", "w", "7", "8", "9")
 
 
@@ -3019,68 +2985,6 @@ def _lrd_consume_heading_level(event=None):
         return True
     method, script = action
     return method(script, event)
-
-
-def _lrd_consume_web_layout(event=None):
-    script = getattr(event, "_script", None) if event is not None else None
-    method = getattr(script, "toggleLayoutMode", None)
-    if method is None:
-        method = getattr(script, "toggle_layout_mode", None)
-    if callable(method):
-        method(event)
-    return True
-
-
-def _lrd_maybe_handle_nvda_browse(event, keybindings):
-    pressed = event.isPressedKey()
-    held = _LRD_BROWSE_NVDA["held"]
-    if not pressed:
-        if event.hw_code not in held:
-            return False
-        held.pop(event.hw_code, None)
-        event._handler = None
-        event._consumer = _lrd_consume_unsupported_browse
-        return True
-
-    key = str(getattr(event, "event_string", "") or "").lower()
-    shift = bool(event.modifiers & keybindings.SHIFT_MODIFIER_MASK)
-    orca = bool(event.modifiers & keybindings.ORCA_MODIFIER_MASK)
-    ctrl_alt = event.modifiers & (
-        keybindings.CTRL_MODIFIER_MASK | keybindings.ALT_MODIFIER_MASK)
-    marker_key = None
-    if key == "v" and orca and not shift and not ctrl_alt:
-        marker_key = "nvda_v"
-    elif key == "f10" and orca and shift and not ctrl_alt:
-        marker_key = "nvda_shift_f10"
-    elif (
-        key in ("left", "right", "up", "down")
-        and orca and not shift
-        and ctrl_alt
-        == (keybindings.CTRL_MODIFIER_MASK | keybindings.ALT_MODIFIER_MASK)
-    ):
-        marker_key = "nvda_table_read_" + key
-    if marker_key is None:
-        return False
-    if not _lrd_take_navigation_marker(_LRD_BROWSE_NVDA, marker_key):
-        return False
-
-    script = getattr(event, "_script", None)
-    gate = getattr(script, "useStructuralNavigationModel", None)
-    if not callable(gate) or not gate():
-        return False
-
-    held[event.hw_code] = event.modifiers
-    event._handler = None
-    if marker_key == "nvda_v":
-        method = getattr(script, "toggleLayoutMode", None)
-        if method is None:
-            method = getattr(script, "toggle_layout_mode", None)
-        if callable(method):
-            event._consumer = _lrd_consume_web_layout
-            return True
-    # NVDA+Shift+F10 native-selection mode has no Orca 42 equivalent.
-    event._consumer = _lrd_consume_unsupported_browse
-    return True
 
 
 def _lrd_maybe_suppress_browse(event, keybindings):
@@ -3286,90 +3190,7 @@ def _lrd_maybe_table_edge(event, keybindings):
 # the identity chosen for its press. Opt out with
 # LINUX_RDACCESS_NVDA_TABLE_KEYS=0.
 _LRD_T = {"pending": [], "held": {}}
-_LRD_TABLE_EDGE = {"pending": [], "held": {}}
 _LRD_TABLE_ARROWS = ("Left", "Right", "Up", "Down")
-
-
-def _lrd_consume_table_edge(event=None):
-    action = getattr(event, "_lrd_table_edge_action", None) if event is not None else None
-    if not action:
-        return True
-    nav, cell_object, cell, current, desired = action
-    nav.goCell(cell_object, cell, current, desired)
-    return True
-
-
-def _lrd_maybe_handle_table_edge(event, keybindings):
-    pressed = event.isPressedKey()
-    held = _LRD_TABLE_EDGE["held"]
-    if not pressed:
-        if event.hw_code not in held:
-            return False
-        held.pop(event.hw_code, None)
-        event._handler = None
-        event._consumer = _lrd_consume_unsupported_browse
-        return True
-
-    keys = {
-        keybindings.getKeycode("Page_Up"): "first_row",
-        keybindings.getKeycode("Page_Down"): "last_row",
-        keybindings.getKeycode("Home"): "first_col",
-        keybindings.getKeycode("End"): "last_col",
-    }
-    command = keys.get(event.hw_code)
-    if command is None:
-        return False
-    ctrl, alt = keybindings.CTRL_MODIFIER_MASK, keybindings.ALT_MODIFIER_MASK
-    tracked = (
-        keybindings.SHIFT_MODIFIER_MASK | ctrl | alt | keybindings.ORCA_MODIFIER_MASK)
-    if event.modifiers & tracked != ctrl | alt:
-        return False
-    if not _lrd_take_navigation_marker(_LRD_TABLE_EDGE, command):
-        return False
-
-    script = getattr(event, "_script", None)
-    gate = getattr(script, "useStructuralNavigationModel", None)
-    nav = getattr(script, "structuralNavigation", None)
-    if nav is None:
-        nav = getattr(script, "structural_navigation", None)
-    if not callable(gate) or not gate() or nav is None:
-        return False
-
-    try:
-        obj, _offset = script.utilities.getCaretContext()
-        cell = nav.getCellForObj(obj)
-        if cell is None:
-            raise LookupError
-        current = nav.getCellCoordinates(cell, False)
-        table = nav.getTableForCell(cell)
-        if table is None:
-            raise LookupError
-        rows, cols = script.utilities.rowAndColumnCount(table, False)
-        if rows <= 0 or cols <= 0:
-            raise LookupError
-        row, col = current
-        if command == "first_row":
-            desired = [0, col]
-        elif command == "last_row":
-            desired = [rows - 1, col]
-        elif command == "first_col":
-            desired = [row, 0]
-        else:
-            desired = [row, cols - 1]
-        cell_object = (getattr(nav, "enabledObjects", None) or {}).get("tableCell")
-        if cell_object is None or not callable(getattr(nav, "goCell", None)):
-            raise LookupError
-    except Exception:
-        event._handler = None
-        event._consumer = _lrd_consume_unsupported_browse
-        held[event.hw_code] = event.modifiers
-        return True
-
-    held[event.hw_code] = event.modifiers
-    event._handler = None
-    event._lrd_table_edge_action = (nav, cell_object, cell, current, desired)
-    event._consumer = _lrd_consume_table_edge
-    return True
 
 
 def _lrd_maybe_swap_table(event, keybindings):
@@ -3453,11 +3274,6 @@ def _lrd_install_orca_hook():
         except Exception:
             log.error("linux-rdaccess: NVDA browse-mode command failed")
         try:
-            if _lrd_maybe_handle_nvda_browse(self, keybindings):
-                return True, "linux-rdaccess handled NVDA browse-mode command"
-        except Exception:
-            log.error("linux-rdaccess: NVDA browse command handling failed")
-        try:
             if _lrd_maybe_suppress_browse(self, keybindings):
                 return True, "linux-rdaccess suppressed mismatched NVDA browse command"
         except Exception:
@@ -3467,11 +3283,6 @@ def _lrd_install_orca_hook():
                 return True, "linux-rdaccess translated NVDA table edge command"
         except Exception:
             log.error("linux-rdaccess: table edge navigation translation failed")
-        try:
-            if _lrd_maybe_handle_table_edge(self, keybindings):
-                return True, "linux-rdaccess handled NVDA table-edge command"
-        except Exception:
-            log.error("linux-rdaccess: table-edge navigation failed")
         restore = None
         try:
             restore = _lrd_maybe_swap_d(self, keybindings)
@@ -4234,6 +4045,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V76,
                 LEGACY_COMPAT_MARKER_V75,
                 LEGACY_COMPAT_MARKER_V74,
                 LEGACY_COMPAT_MARKER_V73,
