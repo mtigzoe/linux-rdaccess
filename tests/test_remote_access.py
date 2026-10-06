@@ -1059,6 +1059,18 @@ class RemoteController:
         self.assertEqual(calls, [("where", None)])
         self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [])
 
+    def test_nvda_input_help_uses_orca_learn_mode_instead_of_bookmark_key(self):
+        c, _, _ = self._patched_controller()
+        calls = []
+        c._linux_rdaccess_run_main = lambda func: (func(), True)[1]
+        c._linux_rdaccess_script_call = lambda method, *args: calls.append(method) or True
+        self._key(c, 0x2D, True, extended=True)
+        self._key(c, 0x31, True)
+        self._key(c, 0x31, True)   # auto-repeat must remain consumed
+        self._key(c, 0x31, False)
+        self.assertEqual(calls, ["toggleInputHelp"])
+        self.assertNotIn((0x31, True), self._names(c))
+
     def test_nvda_say_all_calls_orca_directly_and_consumes_repeat(self):
         import os
         c, _, home = self._patched_controller()
