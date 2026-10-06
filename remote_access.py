@@ -835,7 +835,8 @@ LEGACY_COMPAT_MARKER_V55 = "# linux-rdaccess NVDA/Orca input compatibility v55"
 LEGACY_COMPAT_MARKER_V56 = "# linux-rdaccess NVDA/Orca input compatibility v56"
 LEGACY_COMPAT_MARKER_V57 = "# linux-rdaccess NVDA/Orca input compatibility v57"
 LEGACY_COMPAT_MARKER_V58 = "# linux-rdaccess NVDA/Orca input compatibility v58"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v59"
+LEGACY_COMPAT_MARKER_V59 = "# linux-rdaccess NVDA/Orca input compatibility v59"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v60"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -1030,6 +1031,8 @@ _LEGACY_HELPERS = '''\
             (0x44, False, False, False, False),  # NVDA+D: annotation details
             (0x54, False, False, True,  False),  # NVDA+Alt+T: braille mode
             (0x4D, False, False, True,  False),  # NVDA+Alt+M: math interaction
+            (0x24, False, False, True,  True),   # NVDA+Alt+Home: review selection start
+            (0x23, False, False, True,  True),   # NVDA+Alt+End: review selection end
         } or (
             layout == "desktop"
             and gesture in {
@@ -1043,6 +1046,7 @@ _LEGACY_HELPERS = '''\
                 (0x71, False, True,  False, False),  # NVDA+Ctrl+F2: display model
                 (0x63, False, False, False, False),  # NVDA+Numpad3: next in flow
                 (0x69, False, False, False, False),  # NVDA+Numpad9: previous in flow
+                (0x26, True,  False, False, True),   # NVDA+Shift+Up: current selection
             }
         ) or (
             layout == "laptop"
@@ -1056,6 +1060,8 @@ _LEGACY_HELPERS = '''\
                 (0x22, True,  True,  False, True),
                 (0xDB, True,  False, False, False),  # Shift+NVDA+[: previous in flow
                 (0xDD, True,  False, False, False),  # Shift+NVDA+]: next in flow
+                (0x53, True,  False, False, False),  # NVDA+Shift+S: current selection
+                (0xBE, True,  True,  False, False),  # NVDA+Ctrl+Shift+.: focus shortcut
             }
         )
 
@@ -3455,6 +3461,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V59,
                 LEGACY_COMPAT_MARKER_V58,
                 LEGACY_COMPAT_MARKER_V57,
                 LEGACY_COMPAT_MARKER_V56,
