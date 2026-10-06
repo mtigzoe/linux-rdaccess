@@ -25,6 +25,8 @@ ELEMENT_LIST_TYPES = (
     ("Landmarks", "m"),
 )
 
+_ELEMENT_LIST_LAST_INDEX = 0
+
 
 def show_elements_list(send_structural_list: Callable[[str], Any]) -> bool | None:
     """Show an NVDA-style element-type chooser, then delegate to Orca.
@@ -48,7 +50,7 @@ def show_elements_list(send_structural_list: Callable[[str], Any]) -> bool | Non
     combo = Gtk.ComboBoxText()
     for name, key in ELEMENT_LIST_TYPES:
         combo.append(key, name)
-    combo.set_active(0)
+    combo.set_active(_ELEMENT_LIST_LAST_INDEX)
 
     label = Gtk.Label(label="_Element type:")
     label.set_use_underline(True)
@@ -65,6 +67,15 @@ def show_elements_list(send_structural_list: Callable[[str], Any]) -> bool | Non
 
     response = dialog.run()
     key = combo.get_active_id()
+    global _ELEMENT_LIST_LAST_INDEX
+    if key:
+        try:
+            _ELEMENT_LIST_LAST_INDEX = next(
+                index for index, (_name, item_key) in enumerate(ELEMENT_LIST_TYPES)
+                if item_key == key
+            )
+        except StopIteration:
+            pass
     dialog.destroy()
     if response != Gtk.ResponseType.OK or not key:
         # The dialog was shown and the user's Cancel/Escape must be treated as
