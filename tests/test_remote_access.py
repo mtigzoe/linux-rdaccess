@@ -1461,6 +1461,31 @@ class RemoteController:
         self.assertEqual(calls, [("title", None), ("status", None)])
         self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [])
 
+    def test_v46_patch_is_replaced_from_backup_with_braille_handoff_lock(self):
+        c, path, _ = self._patched_controller()
+        previous = path.read_text(encoding="utf-8").replace(
+            remote_access.LEGACY_COMPAT_MARKER,
+            remote_access.LEGACY_COMPAT_MARKER_V46,
+        )
+        # Recreate the ineffective v46 generated hook: braille input was not
+        # included in the ownership-lock wrapper tuple.
+        previous = previous.replace(
+            'for _lrd_name in ("_on_remote_key", "_on_remote_braille_input",\n'
+            '                  "_linux_rdaccess_reset_keys",\n'
+            '                  "_linux_rdaccess_send_structural_list"):',
+            'for _lrd_name in ("_on_remote_key", "_linux_rdaccess_reset_keys",\n'
+            '                  "_linux_rdaccess_send_structural_list"):',
+        )
+        path.write_text(previous, encoding="utf-8")
+        self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
+        result = path.read_text(encoding="utf-8")
+        self.assertIn(remote_access.LEGACY_COMPAT_MARKER, result)
+        self.assertIn(
+            'for _lrd_name in ("_on_remote_key", "_on_remote_braille_input",',
+            result,
+        )
+        self.assertFalse(remote_access.patch_legacy_orca_remote_controller(path))
+
     def test_v28_patch_is_upgraded_to_current(self):
         c, path, _ = self._patched_controller()
         previous = path.read_text(encoding='utf-8').replace(
