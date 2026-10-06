@@ -1541,6 +1541,27 @@ _LEGACY_HELPERS = '''\
                 held,
             )
 
+        # NVDA browse mode assigns Alt+Up/Down to collapse/expand the
+        # control at the virtual caret. Orca 42 has no equivalent native API,
+        # so mark only the exact remote gesture and decide on Orca's main
+        # thread whether browse mode is active.
+        if (
+            pressed
+            and bool(extended)
+            and vk_code in (0x26, 0x28)
+            and not self._lrd_nvda_down
+            and any(k[0] in (0x12, 0xA4, 0xA5) for k in self._lrd_down)
+            and not any(
+                k[0] in self._LRD_SHIFT_VKS + self._LRD_CTRL_VKS + (0x5B, 0x5C)
+                for k in self._lrd_down
+            )
+        ):
+            self._lrd_navigation_marker = (
+                "_LRD_NVDA_BROWSE",
+                "collapseExpandUp" if vk_code == 0x26 else "collapseExpandDown",
+                held,
+            )
+
         # These are NVDA browse-mode commands, not global commands. Defer
         # their context decision to Orca's main-thread keyboard hook. Mark
         # CapsLock-as-NVDA as used so an eventual focus-mode pass-through never
@@ -2848,6 +2869,8 @@ def _lrd_maybe_nvda_browse(event, keybindings):
                   else "findNext")
     elif key == "F10":
         action = "nativeSelection"
+    elif key in ("Up", "Down") and event.modifiers & keybindings.ALT_MODIFIER_MASK:
+        action = "collapseExpandUp" if key == "Up" else "collapseExpandDown"
     else:
         return False
     if not _lrd_take_navigation_marker(_LRD_NVDA_BROWSE, action):
@@ -2870,12 +2893,15 @@ def _lrd_maybe_nvda_browse(event, keybindings):
         gate = getattr(script, "useStructuralNavigationModel", None)
         document_active = bool(callable(gate) and gate())
 
+    if not document_active and action in ("collapseExpandUp", "collapseExpandDown"):
+        return False
+
     held[event.hw_code] = event.modifiers
     event._handler = None
     if not document_active:
         # These are NVDA tree-interceptor commands. Outside document content
-        # they must not fall through as unrelated Orca-modifier commands
-        # (notably Orca+V toggles speech verbosity).
+        # NVDA-modifier gestures must not fall through as unrelated Orca
+        # commands (notably Orca+V toggles speech verbosity).
         event._consumer = _lrd_consume_unsupported_browse
         return True
     if action == "find":
@@ -2909,8 +2935,9 @@ def _lrd_maybe_nvda_browse(event, keybindings):
             event._lrd_layout_mode_action = (method, event)
             event._consumer = _lrd_consume_layout_mode
             return True
-    # Orca 42 has no NVDA-equivalent native-selection-mode command. In browse
-    # mode consume it rather than opening the application's Shift+F10 menu.
+    # Orca 42 has no NVDA-equivalent native-selection-mode or virtual-caret
+    # collapse/expand command. In browse mode consume these rather than
+    # executing unrelated application/desktop shortcuts.
     event._consumer = _lrd_consume_unsupported_browse
     return True
 
