@@ -1135,6 +1135,16 @@ class RemoteController:
                 self._key(c, vk, False)
                 self.assertNotIn((vk, True), self._names(c))
 
+    def test_nvda_shift_b_with_both_physical_shift_keys_is_still_consumed(self):
+        c, _, _ = self._patched_controller()
+        self._key(c, 0x2D, True, extended=True)
+        self._key(c, 0xA0, True)
+        self._key(c, 0xA1, True)
+        self._key(c, 0x42, True)
+        self._key(c, 0x42, True)   # repeat
+        self._key(c, 0x42, False)
+        self.assertNotIn((0x42, True), self._names(c))
+
     def test_nvda_ctrl_space_does_not_open_orca_app_preferences_or_toggle_caps(self):
         for nvda_vk, nvda_extended in ((0x2D, True), (0x14, False)):
             with self.subTest(nvda_vk=nvda_vk):
