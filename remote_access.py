@@ -822,7 +822,8 @@ LEGACY_COMPAT_MARKER_V42 = "# linux-rdaccess NVDA/Orca input compatibility v42"
 LEGACY_COMPAT_MARKER_V43 = "# linux-rdaccess NVDA/Orca input compatibility v43"
 LEGACY_COMPAT_MARKER_V44 = "# linux-rdaccess NVDA/Orca input compatibility v44"
 LEGACY_COMPAT_MARKER_V45 = "# linux-rdaccess NVDA/Orca input compatibility v45"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v46"
+LEGACY_COMPAT_MARKER_V46 = "# linux-rdaccess NVDA/Orca input compatibility v46"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v47"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -2588,7 +2589,8 @@ _LEGACY_RESET_HOOKS = (
     "    wrapper.__name__ = original.__name__\n"
     "    setattr(RemoteController, name, wrapper)\n"
     "\n"
-    "for _lrd_name in (\"_on_remote_key\", \"_linux_rdaccess_reset_keys\",\n"
+    "for _lrd_name in (\"_on_remote_key\", \"_on_remote_braille_input\",\n"
+    "                  \"_linux_rdaccess_reset_keys\",\n"
     "                  \"_linux_rdaccess_send_structural_list\"):\n"
     "    _linux_rdaccess_wrap_input(_lrd_name)\n"
     "\n"
@@ -3237,6 +3239,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V46,
                 LEGACY_COMPAT_MARKER_V45,
                 LEGACY_COMPAT_MARKER_V44,
                 LEGACY_COMPAT_MARKER_V43,
