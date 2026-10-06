@@ -842,7 +842,8 @@ LEGACY_COMPAT_MARKER_V62 = "# linux-rdaccess NVDA/Orca input compatibility v62"
 LEGACY_COMPAT_MARKER_V63 = "# linux-rdaccess NVDA/Orca input compatibility v63"
 LEGACY_COMPAT_MARKER_V64 = "# linux-rdaccess NVDA/Orca input compatibility v64"
 LEGACY_COMPAT_MARKER_V65 = "# linux-rdaccess NVDA/Orca input compatibility v65"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v66"
+LEGACY_COMPAT_MARKER_V66 = "# linux-rdaccess NVDA/Orca input compatibility v66"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v67"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -1252,6 +1253,10 @@ _LEGACY_HELPERS = '''\
         if isinstance(browse_unsupported, dict):
             _lrd_clear_navigation_markers(browse_unsupported)
             browse_unsupported["held"] = {}
+        table_edge = globals().get("_LRD_TABLE_EDGE")
+        if isinstance(table_edge, dict):
+            _lrd_clear_navigation_markers(table_edge)
+            table_edge["held"] = {}
 
     def _linux_rdaccess_flush_pending_caps(self):
         """Forward the original deferred CapsLock press when it was not an NVDA command."""
@@ -1496,6 +1501,26 @@ _LEGACY_HELPERS = '''\
             if getattr(self, "_lrd_caps_pending", None) is not None:
                 self._lrd_caps_used = True
             return True
+
+        # NVDA table edge commands preserve the current column/row. Orca 42
+        # has only first/last *table cell* keybindings, so publish a remote
+        # provenance claim and let the Orca-side hook use goCell coordinates.
+        if (
+            pressed
+            and bool(extended)
+            and vk_code in (0x21, 0x22, 0x23, 0x24)
+            and not self._lrd_nvda_down
+            and any(k[0] in self._LRD_CTRL_VKS for k in self._lrd_down)
+            and any(k[0] in (0x12, 0xA4, 0xA5) for k in self._lrd_down)
+            and not any(k[0] in self._LRD_SHIFT_VKS + (0x5B, 0x5C)
+                        for k in self._lrd_down)
+        ):
+            self._lrd_navigation_marker = (
+                "_LRD_TABLE_EDGE",
+                {0x21: "firstRow", 0x22: "lastRow",
+                 0x24: "firstColumn", 0x23: "lastColumn"}[vk_code],
+                held,
+            )
 
         # Some NVDA commands have no proven Orca-42 equivalent but collide
         # with unrelated Orca modifier bindings. Consume those exact remote
@@ -2787,6 +2812,104 @@ def _lrd_maybe_suppress_browse(event, keybindings):
     return True
 
 
+# NVDA Ctrl+Alt+PageUp/PageDown/Home/End move to the first/last row or
+# column while preserving the other coordinate. Orca 42's Shift+Alt+Home/End
+# instead jump to the first/last table cell, so use its native goCell primitive.
+_LRD_TABLE_EDGE = {"pending": [], "held": {}}
+_LRD_TABLE_EDGE_KEYS = {
+    "Page_Up": "firstRow",
+    "Page_Down": "lastRow",
+    "Home": "firstColumn",
+    "End": "lastColumn",
+}
+
+
+def _lrd_consume_table_edge(event=None):
+    action = getattr(event, "_lrd_table_edge_action", None) if event is not None else None
+    if not action:
+        return True
+    nav, cell_obj, this_cell, current, desired = action
+    nav.goCell(cell_obj, this_cell, current, desired)
+    return True
+
+
+def _lrd_maybe_table_edge(event, keybindings):
+    pressed = event.isPressedKey()
+    held = _LRD_TABLE_EDGE["held"]
+    if not pressed:
+        if event.hw_code not in held:
+            return False
+        held.pop(event.hw_code, None)
+        event._handler = None
+        event._consumer = _lrd_consume_unsupported_browse
+        return True
+
+    key = str(getattr(event, "event_string", "") or "")
+    action_name = _LRD_TABLE_EDGE_KEYS.get(key)
+    if action_name is None:
+        return False
+    ctrl, alt = keybindings.CTRL_MODIFIER_MASK, keybindings.ALT_MODIFIER_MASK
+    tracked = (keybindings.SHIFT_MODIFIER_MASK | ctrl | alt
+               | keybindings.ORCA_MODIFIER_MASK)
+    if event.modifiers & tracked != ctrl | alt:
+        return False
+    if not _lrd_take_navigation_marker(_LRD_TABLE_EDGE, action_name):
+        return False
+
+    script = getattr(event, "_script", None)
+    gate = getattr(script, "useStructuralNavigationModel", None)
+    if not callable(gate) or not gate():
+        return False
+    nav = getattr(script, "structuralNavigation", None)
+    if nav is None:
+        nav = getattr(script, "structural_navigation", None)
+    objects = getattr(nav, "enabledObjects", None) if nav is not None else None
+    if objects is None and nav is not None:
+        objects = getattr(nav, "enabled_objects", None)
+    cell_obj = objects.get("tableCell") if isinstance(objects, dict) else None
+    if cell_obj is None:
+        return False
+
+    utilities = getattr(script, "utilities", None)
+    get_context = getattr(utilities, "getCaretContext", None)
+    get_cell = getattr(nav, "getCellForObj", None)
+    get_coords = getattr(nav, "getCellCoordinates", None)
+    get_table = getattr(nav, "getTableForCell", None)
+    go_cell = getattr(nav, "goCell", None)
+    row_col_count = getattr(utilities, "rowAndColumnCount", None)
+    if not all(callable(x) for x in (
+            get_context, get_cell, get_coords, get_table, go_cell, row_col_count)):
+        return False
+    obj, _offset = get_context()
+    this_cell = get_cell(obj)
+    if this_cell is None:
+        return False
+    current = list(get_coords(this_cell, False))
+    if len(current) != 2 or min(current) < 0:
+        return False
+    table = get_table(this_cell)
+    if table is None:
+        return False
+    rows, columns = row_col_count(table, False)
+    if rows <= 0 or columns <= 0:
+        return False
+    row, column = current
+    if action_name == "firstRow":
+        desired = [0, column]
+    elif action_name == "lastRow":
+        desired = [rows - 1, column]
+    elif action_name == "firstColumn":
+        desired = [row, 0]
+    else:
+        desired = [row, columns - 1]
+
+    held[event.hw_code] = event.modifiers
+    event._handler = None
+    event._lrd_table_edge_action = (nav, cell_obj, this_cell, current, desired)
+    event._consumer = _lrd_consume_table_edge
+    return True
+
+
 # NVDA's table commands are Ctrl+Alt+Arrow; Orca 42 binds the same actions to
 # Shift+Alt+Arrow (structural navigation, tableCell). Translate only an arrow
 # that arrived from the remote session with exactly Ctrl+Alt held, and only
@@ -2879,6 +3002,11 @@ def _lrd_install_orca_hook():
                 return True, "linux-rdaccess suppressed mismatched NVDA browse command"
         except Exception:
             log.error("linux-rdaccess: browse command suppression failed")
+        try:
+            if _lrd_maybe_table_edge(self, keybindings):
+                return True, "linux-rdaccess translated NVDA table edge command"
+        except Exception:
+            log.error("linux-rdaccess: table edge navigation translation failed")
         restore = None
         try:
             restore = _lrd_maybe_swap_d(self, keybindings)
@@ -3641,6 +3769,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V66,
                 LEGACY_COMPAT_MARKER_V65,
                 LEGACY_COMPAT_MARKER_V64,
                 LEGACY_COMPAT_MARKER_V63,
