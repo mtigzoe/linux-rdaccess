@@ -150,10 +150,10 @@ mode on and off rather than falling through to Orca's bookmark-1 command.
 
 Known NVDA commands which have no proven Orca 42 equivalent are consumed when
 their physical gesture would otherwise run an unrelated Orca command:
-NVDA+2 through NVDA+6 (Orca bookmarks), NVDA+B / NVDA+Shift+B (next/previous
-Orca bookmark), NVDA+F (Orca character-attributes report), NVDA+S (Orca speech
-silence), and NVDA+Ctrl+Space (Orca
-application preferences). These suppress incorrect side effects; they do not
+NVDA+2 through NVDA+7, NVDA+B / NVDA+Shift+B, NVDA+F, NVDA+K, NVDA+M, NVDA+P,
+NVDA+S, NVDA+U, and NVDA+Ctrl+Space. Depending on Orca's own keyboard layout,
+the conflicting Orca actions include bookmark navigation, character-attribute
+reporting, flat/review navigation, speech silence, and application preferences. These suppress incorrect side effects; they do not
 yet implement the corresponding NVDA setting, foreground-window, battery,
 speech-mode, or embedded-object behavior. Current-line reporting uses
 Orca's native caret context and does not move the caret or review cursor; it
@@ -182,6 +182,12 @@ landmark translation above is off too, so single-letter keys never get in the
 way of typing. Plain Shift+Space and plain F2 (Thunar rename) are untouched.
 
 Object/review commands still need additional work. Numpad review keys match Orca's desktop
+Desktop keypad object-navigation interception is deliberately limited to
+unambiguous keypad VKs (for example Numpad5, Minus, Divide, Multiply, and
+extended NumpadEnter). Legacy payloads containing only non-extended
+Home/End/Arrow/Delete VKs are not sufficient proof of a physical keypad key,
+so those ambiguous gestures remain a live-test gap rather than risking normal
+Linux navigation input.
 layout and pass through unchanged. CapsLock presses are deferred so translated
 NVDA commands can call Orca directly without toggling Caps Lock. A standalone
 CapsLock press is forwarded as one complete press/release.
@@ -271,7 +277,7 @@ individual on/off results. Num Lock auto-repeat produces one toggle and one
 announcement per press. CapsLock used for a translated NVDA command produces
 neither a lock toggle nor a lock announcement.
 
-The current patches are controller **v49** and local-machine **v10**. Update the
+The current patches are controller **v54** and local-machine **v10**. Update the
 installed command from the repository with `python3 linux_rdaccess.py install`,
 then run `linux-rdaccess connect` to update the Orca-side files and restart Orca.
 `doctor` verifies the connected patch hooks, valid Python, and the installed
