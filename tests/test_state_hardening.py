@@ -138,6 +138,39 @@ class RuntimeStateTests(Harness, unittest.TestCase):
         self.assertNotIn(8, c.connected_clients)
         self.assertIsNotNone(c._lrd_state)
 
+    def test_braille_key_callback_is_atomic_with_control_handoff(self):
+        c, _, _ = self._patched_controller()
+        entered, resume, handoff_done = (threading.Event() for _ in range(3))
+        original = c._linux_rdaccess_classify_braille
+
+        def paused_classify(kwargs):
+            result = original(kwargs)
+            entered.set()
+            resume.wait(2)
+            return result
+
+        c._linux_rdaccess_classify_braille = paused_classify
+        braille = threading.Thread(
+            target=lambda: c._on_remote_braille_input(
+                scriptPath=["globalCommands", "GlobalCommands", "kb:downArrow"]))
+        handoff = threading.Thread(target=lambda: (c.toggle_control(), handoff_done.set()))
+        braille.start()
+        try:
+            self.assertTrue(entered.wait(1))
+            handoff.start()
+            # The same ownership lock used by remote keyboard input must make
+            # a handoff wait until the in-flight braille key gesture finishes.
+            self.assertFalse(handoff_done.wait(0.05))
+        finally:
+            resume.set()
+            braille.join(2)
+            if handoff.ident is not None:
+                handoff.join(2)
+        self.assertFalse(braille.is_alive())
+        self.assertFalse(handoff.is_alive())
+        self.assertTrue(handoff_done.is_set())
+        self.assertEqual(c._lrd_forwarded, {})
+
     def test_timing_debug_is_private_and_never_contains_key_metadata(self):
         c, _, _ = self._patched_controller()
         with tempfile.TemporaryDirectory() as temp:
