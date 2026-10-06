@@ -500,7 +500,7 @@ class RemoteController:
         import sys, types
         c, _, _ = self._patched_controller()
         calls = []
-        script = types.SimpleNamespace()
+        script = SimpleNamespace()
         for name in ('sayAll', 'presentTitle', 'presentStatusBar',
                      'togglePresentationMode'):
             # These signatures require inputEvent in actual ORCA_42_0 source.
@@ -508,7 +508,7 @@ class RemoteController:
                 calls.append((command, inputEvent))
             setattr(script, name, handler)
         orca = types.ModuleType('orca')
-        orca.orca_state = types.SimpleNamespace(activeScript=script)
+        orca.orca_state = SimpleNamespace(activeScript=script)
         with mock.patch.dict(sys.modules, {'orca': orca,
                                           'linux_rdaccess_orca_adapter': None}):
             for name in ('sayAll', 'presentTitle', 'presentStatusBar',
@@ -541,7 +541,7 @@ class RemoteController:
         import sys, types
         c, _, _ = self._patched_controller()
         orca = types.ModuleType('orca')
-        orca.orca_state = types.SimpleNamespace(bypassNextCommand=True)
+        orca.orca_state = SimpleNamespace(bypassNextCommand=True)
         with mock.patch.dict(sys.modules, {'orca': orca}):
             self._key(c, 0x14, True)
             self._key(c, 0x54, True)
@@ -789,10 +789,10 @@ class RemoteController:
     def _with_fake_orca(self, c, home):
         import sys, types
         calls = []
-        nav = types.SimpleNamespace(
+        nav = SimpleNamespace(
             toggleStructuralNavigation=lambda script_obj, ev=None: calls.append(("structural", ev)),
         )
-        script = types.SimpleNamespace(
+        script = SimpleNamespace(
             panBrailleLeft=lambda ev=None: calls.append(("left", ev)),
             panBrailleRight=lambda ev=None: calls.append(("right", ev)),
             processRoutingKey=lambda ev=None: calls.append(("route", ev.event["argument"])),
@@ -2443,7 +2443,7 @@ class LocalMachine:
     def _fake_glib(self):
         import sys, types
         queue = []
-        glib = types.SimpleNamespace(idle_add=lambda fn: queue.append(fn))
+        glib = SimpleNamespace(idle_add=lambda fn: queue.append(fn))
         gi = types.ModuleType("gi")
         repo = types.ModuleType("gi.repository")
         repo.GLib = glib
@@ -2586,26 +2586,26 @@ class LocalMachine:
             "Up": self.UP, "Down": self.DOWN,
         }.get(key)
 
-        landmark_next = types.SimpleNamespace(function="landmark_next")
-        landmark_prev = types.SimpleNamespace(function="landmark_prev")
-        live_region = types.SimpleNamespace(function="live_region")
-        clickable_next = types.SimpleNamespace(function="clickable_next")
-        clickable_prev = types.SimpleNamespace(function="clickable_prev")
-        chunk_next = types.SimpleNamespace(function="chunk_next")
-        chunk_prev = types.SimpleNamespace(function="chunk_prev")
-        cell_left = types.SimpleNamespace(function="cell_left")
-        cell_right = types.SimpleNamespace(function="cell_right")
-        cell_up = types.SimpleNamespace(function="cell_up")
-        cell_down = types.SimpleNamespace(function="cell_down")
-        other_nav = types.SimpleNamespace(function="other_nav")
+        landmark_next = SimpleNamespace(function="landmark_next")
+        landmark_prev = SimpleNamespace(function="landmark_prev")
+        live_region = SimpleNamespace(function="live_region")
+        clickable_next = SimpleNamespace(function="clickable_next")
+        clickable_prev = SimpleNamespace(function="clickable_prev")
+        chunk_next = SimpleNamespace(function="chunk_next")
+        chunk_prev = SimpleNamespace(function="chunk_prev")
+        cell_left = SimpleNamespace(function="cell_left")
+        cell_right = SimpleNamespace(function="cell_right")
+        cell_up = SimpleNamespace(function="cell_up")
+        cell_down = SimpleNamespace(function="cell_down")
+        other_nav = SimpleNamespace(function="other_nav")
         form_calls = []
-        form_field = types.SimpleNamespace(
+        form_field = SimpleNamespace(
             goNext=lambda script, event: form_calls.append("next"),
             goPrevious=lambda script, event: form_calls.append("previous"),
             functions=[],
         )
         heading_calls = []
-        heading = types.SimpleNamespace(
+        heading = SimpleNamespace(
             goNextAtLevelFactory=lambda level: (
                 lambda script, event: heading_calls.append(("next", level))),
             goPreviousAtLevelFactory=lambda level: (
@@ -2640,10 +2640,10 @@ class LocalMachine:
 
         class Script:
             keyBindings = Bindings()
-            structuralNavigation = types.SimpleNamespace(
+            structuralNavigation = SimpleNamespace(
                 functions=["landmark_next", "landmark_prev", "cell_left",
                            "cell_right", "cell_up", "cell_down", "other_nav"],
-                enabledObjects={"tableCell": types.SimpleNamespace(
+                enabledObjects={"tableCell": SimpleNamespace(
                     functions=["cell_left", "cell_right", "cell_up", "cell_down"])})
             state = {"browse": browse}
 
@@ -3187,7 +3187,7 @@ class LocalMachine:
                 nav.getTableForCell = lambda obj, table=table: table
                 nav.goCell = lambda objtype, this, current, desired: calls.append(
                     (this, list(current), list(desired)))
-                script.utilities = types.SimpleNamespace(
+                script.utilities = SimpleNamespace(
                     getCaretContext=lambda: (caret, 0),
                     rowAndColumnCount=lambda obj, prefer: (5, 6),
                 )
@@ -3204,7 +3204,7 @@ class LocalMachine:
         c, KE, script = self._hooked()
         nav = script.structuralNavigation
         nav.getCellForObj = lambda obj: None
-        script.utilities = types.SimpleNamespace(getCaretContext=lambda: (object(), 0))
+        script.utilities = SimpleNamespace(getCaretContext=lambda: (object(), 0))
         self._key(c, 0xA2, True)
         self._key(c, 0xA4, True)
         self._key(c, 0x21, True, extended=True)
