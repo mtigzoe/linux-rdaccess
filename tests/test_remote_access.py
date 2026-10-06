@@ -1148,6 +1148,54 @@ class RemoteController:
                 self._key(c, vk, False)
                 self.assertNotIn((vk, True), self._names(c))
 
+    def test_other_documented_unimplemented_nvda_commands_do_not_reach_linux_apps(self):
+        # Representative NVDA 2026.2 global commands which linux-rdaccess does
+        # not yet emulate. They must not become ordinary Linux app shortcuts.
+        cases = (
+            (0x51, False, False, False, False),  # NVDA+Q quit NVDA
+            (0x43, False, False, False, False),  # NVDA+C clipboard report
+            (0x52, False, False, False, False),  # NVDA+R OCR
+            (0x58, False, False, False, False),  # NVDA+X repeat last speech
+            (0x78, False, False, False, False),  # NVDA+F9 mark review start
+            (0x78, True,  False, False, False),  # NVDA+Shift+F9
+            (0x79, False, False, False, False),  # NVDA+F10 review copy
+            (0x72, False, True,  False, False),  # NVDA+Ctrl+F3 reload plugins
+            (0x1B, False, True,  False, False),  # NVDA+Ctrl+Escape screen curtain
+            (0x57, True,  False, False, False),  # NVDA+Shift+W magnifier
+            (0xBB, True,  False, False, False),  # NVDA+Shift+= zoom in
+            (0xBD, True,  False, False, False),  # NVDA+Shift+- zoom out
+            (0x49, True,  False, False, False),  # NVDA+Shift+I filter
+            (0x4C, True,  False, False, False),  # NVDA+Shift+L overview
+            (0x53, False, False, True,  False),  # NVDA+Alt+S sound split
+            (0x52, False, False, True,  False),  # NVDA+Alt+R remote connect
+            (0x09, False, False, True,  False),  # NVDA+Alt+Tab remote-control toggle
+            (0x25, False, False, True,  True),   # NVDA+Alt+Left magnifier pan
+            (0x27, False, False, True,  True),
+            (0x26, False, False, True,  True),
+            (0x28, False, False, True,  True),
+            (0x25, True,  False, True,  True),   # NVDA+Shift+Alt+Arrow edge pan
+            (0x27, True,  False, True,  True),
+            (0x26, True,  False, True,  True),
+            (0x28, True,  False, True,  True),
+            (0x54, False, True,  True,  False),  # NVDA+Ctrl+Alt+T
+            (0x70, False, False, False, False),  # NVDA+F1 developer info
+            (0x70, False, True,  False, False),  # NVDA+Ctrl+F1 speech mode/settings
+            (0x70, True,  True,  False, False),  # NVDA+Ctrl+Shift+F1
+        )
+        for vk, shift, ctrl, alt, extended in cases:
+            with self.subTest(vk=vk, shift=shift, ctrl=ctrl, alt=alt):
+                c, _, _ = self._patched_controller()
+                self._key(c, 0x2D, True, extended=True)
+                if shift:
+                    self._key(c, 0xA0, True)
+                if ctrl:
+                    self._key(c, 0xA2, True)
+                if alt:
+                    self._key(c, 0xA4, True)
+                self._key(c, vk, True, extended=extended)
+                self._key(c, vk, False, extended=extended)
+                self.assertNotIn((vk, True), self._names(c))
+
     def test_nvda_ctrl_settings_chords_do_not_run_orca_laptop_review_commands(self):
         for vk in (0x55, 0x4B, 0x4D, 0x4F):  # U/K/M/O
             with self.subTest(vk=vk):
@@ -1570,19 +1618,19 @@ class RemoteController:
         self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [])
         self.assertEqual([k for k in self._names(c) if k[0] == 0x28], [])
 
-    def test_nvda_n_opens_orca_preferences_and_consumes_the_key(self):
+    def test_nvda_n_is_consumed_without_opening_unrelated_orca_preferences(self):
         c, _, _ = self._patched_controller()
         calls = []
         c._linux_rdaccess_script_call = (
             lambda method, *args: calls.append((method, args)) or True
         )
         self._key(c, 0x2D, True, extended=True)  # Insert/NVDA
-        self._key(c, 0x4E, True)                 # N
+        self._key(c, 0x4E, True)                 # NVDA+N: NVDA menu
         self._key(c, 0x4E, False)
-        self.assertEqual(calls, [("showPreferences", ())])
+        self.assertEqual(calls, [])
         self.assertEqual([k for k in self._names(c) if k[0] == 0x4E], [])
 
-    def test_capslock_nvda_n_opens_preferences_without_toggling_capslock(self):
+    def test_capslock_nvda_n_is_consumed_without_toggling_capslock(self):
         c, _, _ = self._patched_controller()
         calls = []
         c._linux_rdaccess_script_call = (
@@ -1592,7 +1640,7 @@ class RemoteController:
         self._key(c, 0x4E, True)
         self._key(c, 0x4E, False)
         self._key(c, 0x14, False)
-        self.assertEqual(calls, [("showPreferences", ())])
+        self.assertEqual(calls, [])
         self.assertEqual([k for k in self._names(c) if k[0] == 0x14], [])
         self.assertEqual([k for k in self._names(c) if k[0] == 0x4E], [])
 
