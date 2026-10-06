@@ -635,6 +635,26 @@ class RemoteController:
             ("key", 0xA0, False),
         ])
 
+    def test_structural_list_retries_failed_synthetic_modifier_release(self):
+        c, _, _ = self._patched_controller()
+        backend = c.local_machine.send_key
+        failed = {"done": False}
+        releases = []
+
+        def flaky_send(**payload):
+            if payload.get("vk_code") == 0xA4 and not payload.get("pressed"):
+                releases.append(payload["vk_code"])
+                if not failed["done"]:
+                    failed["done"] = True
+                    return False
+            return backend(**payload)
+
+        c.local_machine.send_key = flaky_send
+        c._linux_rdaccess_send_structural_list("m", None)
+        self.assertEqual(releases, [0xA4, 0xA4])
+        self.assertNotIn((0xA4, False), c._lrd_forwarded)
+        self.assertEqual(c._lrd_forwarded, {})
+
     def test_nvda_f7_opens_elements_list_once_and_consumes_release(self):
         c, _, _ = self._patched_controller()
         calls = []
@@ -977,6 +997,28 @@ class RemoteController:
         self.assertEqual(keys, [
             (0xA0, True, "Shift_L"), (0x09, True, "Tab"),
             (0x09, False, "Tab"), (0xA0, False, "Shift_L")])
+
+    def test_braille_key_retries_failed_synthetic_modifier_release(self):
+        c, _, home = self._patched_controller()
+        backend = c.local_machine.send_key
+        failed = {"done": False}
+        releases = []
+
+        def flaky_send(**payload):
+            if payload.get("vk_code") == 0xA0 and not payload.get("pressed"):
+                releases.append(payload["vk_code"])
+                if not failed["done"]:
+                    failed["done"] = True
+                    return False
+            return backend(**payload)
+
+        c.local_machine.send_key = flaky_send
+        self._braille_keys(
+            c, home, id="chord",
+            scriptPath=["globalCommands", "GlobalCommands", "kb:shift+tab"])
+        self.assertEqual(releases, [0xA0, 0xA0])
+        self.assertNotIn((0xA0, False), c._lrd_forwarded)
+        self.assertEqual(c._lrd_forwarded, {})
 
     def test_display_space_dot_chord_bound_to_a_command_key_is_forwarded(self):
         # space+dots chords are how many displays emit Escape/Enter/arrows.
