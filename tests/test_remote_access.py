@@ -1120,6 +1120,22 @@ class RemoteController:
         self.assertEqual(calls, ["toggleInputHelp"])
         self.assertNotIn((0x31, True), self._names(c))
 
+    def test_nvda_p_cycles_orca_punctuation_in_desktop_and_laptop_layouts(self):
+        import os
+        for layout in ("desktop", "laptop"):
+            with self.subTest(layout=layout):
+                c, _, _ = self._patched_controller()
+                calls = []
+                c._linux_rdaccess_run_main = lambda func: (func(), True)[1]
+                c._linux_rdaccess_script_call = lambda method, *args: calls.append(method) or True
+                with mock.patch.dict(os.environ, {"LINUX_RDACCESS_NVDA_LAYOUT": layout}):
+                    self._key(c, 0x2D, True, extended=True)
+                    self._key(c, 0x50, True)
+                    self._key(c, 0x50, True)  # repeat is consumed without cycling again
+                    self._key(c, 0x50, False)
+                self.assertEqual(calls, ["cycleSpeakingPunctuationLevel"])
+                self.assertNotIn((0x50, True), self._names(c))
+
     def test_unmapped_nvda_commands_do_not_fall_through_to_orca_bookmarks_or_silence(self):
         for vk, shift in (
             (0x32, False), (0x33, False), (0x34, False),
