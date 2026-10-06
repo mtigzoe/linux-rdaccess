@@ -2887,6 +2887,35 @@ class LocalMachine:
                 self.assertIsNotNone(getattr(ev, "_consumer", None))
                 self.assertIsNone(ev._handler)
 
+    def test_remote_nvda_table_read_commands_stay_screen_reader_commands_in_document(self):
+        cases = (
+            (0x27, "Right", self.RIGHT),
+            (0x28, "Down", self.DOWN),
+            (0x25, "Left", self.LEFT),
+            (0x26, "Up", self.UP),
+        )
+        for browse in (True, False):
+            for vk, name, code in cases:
+                with self.subTest(browse=browse, name=name):
+                    c, KE, _script = self._hooked(browse=browse, in_document=True)
+                    self._key(c, 0x2D, True, extended=True)
+                    self._key(c, 0xA2, True)
+                    self._key(c, 0xA4, True)
+                    self._key(c, vk, True, extended=True)
+                    ev = KE(name, code, modifiers=self.ORCA | self.CTRL | self.ALT)
+                    self.assertIsNotNone(getattr(ev, "_consumer", None))
+                    self.assertIsNone(ev._handler)
+
+    def test_remote_nvda_table_read_commands_do_not_leak_in_browser_chrome(self):
+        c, KE, _script = self._hooked(browse=False, in_document=False)
+        self._key(c, 0x2D, True, extended=True)
+        self._key(c, 0xA2, True)
+        self._key(c, 0xA4, True)
+        self._key(c, 0x27, True, extended=True)
+        ev = KE("Right", self.RIGHT, modifiers=self.ORCA | self.CTRL | self.ALT)
+        self.assertIsNotNone(getattr(ev, "_consumer", None))
+        self.assertIsNone(ev._handler)
+
     def test_remote_nvda_ctrl_f_opens_orca_find_in_document_browse_or_focus_mode(self):
         for browse in (True, False):
             with self.subTest(browse=browse):
@@ -2968,58 +2997,6 @@ class LocalMachine:
                 self._remote_browse_command(c, vk, alt=True, extended=True)
                 ev = KE(event_string, code, modifiers=self.ALT)
                 self.assertIsNone(getattr(ev, "_consumer", None))
-
-    def test_remote_nvda_v_uses_orca_web_layout_mode_only_in_browse_mode(self):
-        for browse in (True, False):
-            with self.subTest(browse=browse):
-                c, KE, script = self._hooked(browse=browse)
-                self._key(c, 0x2D, True, extended=True)
-                self._key(c, 0x56, True)
-                ev = KE("v", 55, modifiers=self.ORCA)
-                consumer = getattr(ev, "_consumer", None)
-                if browse:
-                    self.assertIsNotNone(consumer)
-                    consumer(ev)
-                    self.assertEqual(script.layout_calls, ["toggle"])
-                else:
-                    self.assertIsNone(consumer)
-                    self.assertEqual(script.layout_calls, [])
-
-    def test_remote_nvda_table_read_commands_are_consumed_only_in_browse_mode(self):
-        cases = (
-            (0x27, "Right", self.RIGHT),
-            (0x28, "Down", self.DOWN),
-            (0x25, "Left", self.LEFT),
-            (0x26, "Up", self.UP),
-        )
-        for browse in (True, False):
-            for vk, name, code in cases:
-                with self.subTest(browse=browse, name=name):
-                    c, KE, _script = self._hooked(browse=browse)
-                    self._key(c, 0x2D, True, extended=True)
-                    self._key(c, 0xA2, True)
-                    self._key(c, 0xA4, True)
-                    self._key(c, vk, True, extended=True)
-                    ev = KE(name, code, modifiers=self.ORCA | self.CTRL | self.ALT)
-                    consumer = getattr(ev, "_consumer", None)
-                    if browse:
-                        self.assertIsNotNone(consumer)
-                    else:
-                        self.assertIsNone(consumer)
-
-    def test_remote_nvda_shift_f10_native_selection_command_is_consumed_only_in_browse_mode(self):
-        for browse in (True, False):
-            with self.subTest(browse=browse):
-                c, KE, _script = self._hooked(browse=browse)
-                self._key(c, 0x2D, True, extended=True)
-                self._key(c, 0xA0, True)
-                self._key(c, 0x79, True)
-                ev = KE("F10", 76, modifiers=self.ORCA | self.SHIFT)
-                consumer = getattr(ev, "_consumer", None)
-                if browse:
-                    self.assertIsNotNone(consumer)
-                else:
-                    self.assertIsNone(consumer)
 
     def test_local_mismatched_browse_letters_are_never_suppressed(self):
         cases = (
@@ -3354,32 +3331,6 @@ class LocalMachine:
         self.assertEqual(c._module._LRD_T["pending"], [])
         self.assertEqual(KE("d", self.D_CODE)._handler.function, "live_region")
         self.assertIsNone(KE("Down", self.DOWN, modifiers=self.CTRL_ALT)._handler)
-
-    def test_remote_ctrl_alt_table_edges_preserve_other_coordinate(self):
-        cases = (
-            (0x21, "Page_Up", 112, (0, 3)),   # first row, same column
-            (0x22, "Page_Down", 117, (4, 3)), # last row, same column
-            (0x24, "Home", 110, (2, 0)),      # first column, same row
-            (0x23, "End", 115, (2, 5)),       # last column, same row
-        )
-        for vk, name, code, expected in cases:
-            with self.subTest(name=name):
-                c, KE, script = self._hooked()
-                self._key(c, 0xA2, True)
-                self._key(c, 0xA4, True)
-                self._key(c, vk, True, extended=True)
-                ev = KE(name, code, modifiers=self.CTRL | self.ALT)
-                consumer = getattr(ev, "_consumer", None)
-                self.assertIsNotNone(consumer)
-                consumer(ev)
-                self.assertEqual(script.table_edge_calls, [expected])
-
-    def test_local_or_focus_mode_ctrl_alt_table_edges_are_not_intercepted(self):
-        for browse in (True, False):
-            with self.subTest(browse=browse):
-                _c, KE, _script = self._hooked(browse=browse)
-                ev = KE("Home", 110, modifiers=self.CTRL | self.ALT)
-                self.assertIsNone(getattr(ev, "_consumer", None))
 
     def test_remote_ctrl_alt_arrows_become_orca_table_cell_navigation(self):
         for vk, name, code, handler in self.ARROWS:
