@@ -250,6 +250,37 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
             self.assertIs(OrcaRuntimeAdapter.show_structural_list("h", script=script), True)
         handler.assert_called_once_with(script, None)
 
+    def test_progress_output_cycles_four_states_without_touching_braille(self):
+        state = {"speakProgressBarUpdates": True,
+                 "beepProgressBarUpdates": True,
+                 "brailleProgressBarUpdates": True}
+        messages = []
+        script = types.SimpleNamespace(presentMessage=messages.append)
+
+        class Manager:
+            def getSetting(self, name):
+                return state.get(name)
+            def setSetting(self, name, value):
+                state[name] = value
+
+        settings_manager = types.ModuleType("orca.settings_manager")
+        settings_manager.getManager = lambda: Manager()
+        for expected, label in (
+            ((False, False), "No progress bar updates"),
+            ((True, False), "Speak progress bar updates"),
+            ((False, True), "Beep for progress bar updates"),
+            ((True, True), "Beep and speak progress bar updates"),
+        ):
+            with self._fake_orca(script), mock.patch.dict(
+                    sys.modules, {"orca.settings_manager": settings_manager}):
+                self.assertIs(OrcaRuntimeAdapter.cycle_progress_bar_output(), True)
+            self.assertEqual(
+                (state["speakProgressBarUpdates"], state["beepProgressBarUpdates"]),
+                expected,
+            )
+            self.assertTrue(state["brailleProgressBarUpdates"])
+            self.assertEqual(messages[-1], label)
+
     def test_mouse_review_uses_orca_input_handler(self):
         calls = []
         handler = types.SimpleNamespace(
