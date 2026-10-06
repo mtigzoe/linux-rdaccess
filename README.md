@@ -106,15 +106,21 @@ NVDA's table commands Ctrl+Alt+Left/Right/Up/Down are translated to Orca 42's
 Shift+Alt+Arrow table-cell navigation, but only for an arrow that arrived from
 the remote session and only where Orca itself would use structural navigation
 (web document, browse mode). Editable grids, focus mode and non-document windows
-keep Ctrl+Alt+Arrow. Orca 42 has no first/last row or column commands, so NVDA's
-row/column-edge table commands are not translated. Set
-`LINUX_RDACCESS_NVDA_TABLE_KEYS=0` to disable the translation. Desktop window
+keep Ctrl+Alt+Arrow. NVDA's Ctrl+Alt+PageUp/PageDown/Home/End table-edge
+commands are implemented with Orca 42's native table APIs: they preserve the
+current column or row and re-read the caret/table when Orca's delayed consumer
+runs, which also preserves nested/non-uniform table context. Set
+`LINUX_RDACCESS_NVDA_TABLE_KEYS=0` to disable arrow translation. Desktop window
 managers may grab Ctrl+Alt+Arrow (XFCE uses it for workspaces) before Orca sees
 it; see the [shortcut audit](docs/nvda-orca-shortcut-audit-2026-10-05.md).
 Queued table arrows and landmark keys have separate, bounded pending claims,
 so fast presses retain their translations. Failed injection removes its claim.
 XTest does not identify individual input sources: a simultaneous local press
-of the same key can still be confused with a pending remote press.
+of the same key can still be confused with a pending remote press. NVDA's
+NVDA+Ctrl+Alt+Arrow row/column reading commands remain controller-consumed:
+Orca 42 has no exact caret-preserving read-row/read-column equivalent, and
+forwarding those chords into X11 could let XFCE intercept Ctrl+Alt+Arrow before
+Orca sees them.
 
 Compatibility covers the NVDA global and browse-mode gestures for which Orca
 42 has a proven equivalent, and explicitly consumes known NVDA commands that
@@ -131,6 +137,11 @@ linux-rdaccess additionally translates:
         Toggle Orca browse/focus mode as a manual command, including editor focus
 
 This lets Windows NVDA users use the familiar NVDA browse/focus gesture while controlling Firefox on Linux.
+NVDA+V uses Orca's native web layout/object mode toggle in document content;
+NVDA+Ctrl+F and NVDA+F3/Shift+F3 use Orca's native find commands. NVDA+Shift+F10
+(native selection mode) and Alt+Up/Down virtual-caret collapse/expand are
+consumed where Orca 42 has no equivalent, rather than falling through to an
+unrelated Orca or application command.
 
 Other NVDA chords translated to native Orca commands (desktop NVDA layout;
 only with the NVDA key held and no Shift/Ctrl/Alt/Win unless noted):
@@ -290,7 +301,7 @@ individual on/off results. Num Lock auto-repeat produces one toggle and one
 announcement per press. CapsLock used for a translated NVDA command produces
 neither a lock toggle nor a lock announcement.
 
-The current patches are controller **v76** and local-machine **v11**. Update the
+The current patches are controller **v79** and local-machine **v11**. Update the
 installed command from the repository with `python3 linux_rdaccess.py install`,
 then run `linux-rdaccess connect` to update the Orca-side files and restart Orca.
 `doctor` verifies the connected patch hooks, valid Python, and the installed
