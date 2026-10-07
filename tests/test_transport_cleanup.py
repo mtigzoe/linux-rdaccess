@@ -164,6 +164,20 @@ class TransportCleanupTests(unittest.TestCase):
         self.assertIsNone(transport.server_sock)
         self.assertEqual(queue.items, [])
 
+    def test_closed_fd_select_value_error_disconnects_cleanly(self):
+        def selector(readers, writers, errors):
+            raise ValueError("file descriptor cannot be a negative integer")
+
+        source, transport_cls = self.patched_class(selector)
+        self.assertTrue(remote_access.legacy_transport_cleanup_patch_current(source))
+        sock = FakeSocket()
+        callbacks = FakeCallbacks()
+        transport = transport_cls(lambda: sock, callbacks, FakeQueue())
+        transport.run()
+        self.assertTrue(sock.closed)
+        self.assertIsNone(transport.server_sock)
+        self.assertEqual(callbacks.calls, ["transport_disconnected"])
+
     def test_malformed_frame_disconnects_cleanly_instead_of_escaping(self):
         selected = [True]
 
@@ -230,6 +244,22 @@ class TransportCleanupTests(unittest.TestCase):
         self.assertTrue(remote_access.legacy_transport_cleanup_patch_current(updated))
         self.assertNotIn(remote_access.TRANSPORT_CLEANUP_MARKER_V2 + "\n", updated)
 
+    def test_v3_cleanup_patch_upgrades_to_v4(self):
+        current = remote_access._patch_legacy_transport_cleanup(SOURCE)
+        v3 = current.replace(
+            "except (socket.error, ValueError):",
+            "except socket.error:",
+            1,
+        ).replace(
+            remote_access.TRANSPORT_CLEANUP_MARKER,
+            remote_access.TRANSPORT_CLEANUP_MARKER_V3,
+            1,
+        )
+        self.assertFalse(remote_access.legacy_transport_cleanup_patch_current(v3))
+        updated = remote_access._patch_legacy_transport_cleanup(v3)
+        self.assertTrue(remote_access.legacy_transport_cleanup_patch_current(updated))
+        self.assertNotIn(remote_access.TRANSPORT_CLEANUP_MARKER_V3 + "\n", updated)
+
     def test_cleanup_patch_is_idempotent_and_rejects_tampering(self):
         source = remote_access._patch_legacy_transport_cleanup(SOURCE)
         self.assertEqual(remote_access._patch_legacy_transport_cleanup(source), source)
@@ -264,6 +294,21 @@ class TransportCleanupTests(unittest.TestCase):
             )
             v1 = v1.rstrip("\n") + "\n\n" + remote_access.TRANSPORT_CLEANUP_MARKER_V1 + "\n"
             transport.write_text(v1, encoding="utf-8")
+            rows = dict(linux_rdaccess.patch_status(config))
+            self.assertIn(
+                "outdated",
+                rows["relay transport cleanup (transport.py)"],
+            )
+            v3 = source.replace(
+                remote_access.TRANSPORT_CLEANUP_MARKER,
+                remote_access.TRANSPORT_CLEANUP_MARKER_V3,
+                1,
+            ).replace(
+                "except (socket.error, ValueError):",
+                "except socket.error:",
+                1,
+            )
+            transport.write_text(v3, encoding="utf-8")
             rows = dict(linux_rdaccess.patch_status(config))
             self.assertIn(
                 "outdated",
