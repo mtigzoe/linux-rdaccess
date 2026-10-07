@@ -29,7 +29,7 @@ class ControllerV89UpgradeTests(unittest.TestCase):
             self.assertFalse(remote_access.patch_legacy_orca_remote_controller(path))
             self.assertEqual(path.read_text(), current)
 
-    def test_v90_through_v94_markers_upgrade_to_current_from_original_backup(self):
+    def test_v90_through_v95_markers_upgrade_to_current_from_original_backup(self):
         original = (FIXTURES / "controller-upstream.txt").read_text()
         for marker in (
             remote_access.LEGACY_COMPAT_MARKER_V90,
@@ -37,6 +37,7 @@ class ControllerV89UpgradeTests(unittest.TestCase):
             remote_access.LEGACY_COMPAT_MARKER_V92,
             remote_access.LEGACY_COMPAT_MARKER_V93,
             remote_access.LEGACY_COMPAT_MARKER_V94,
+            remote_access.LEGACY_COMPAT_MARKER_V95,
         ):
             with self.subTest(marker=marker), tempfile.TemporaryDirectory() as directory:
                 path = Path(directory) / "remote_controller.py"
