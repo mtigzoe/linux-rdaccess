@@ -475,8 +475,7 @@ class RemoteController:
         self._key(c, 0x14, True)  # deferred, never injected
         c._on_client_left(client={'id': 23})
         keys = [e[:3] for e in c.local_machine.events if e[0] == 'key']
-        self.assertEqual(keys, [('key', 0xA2, True), ('key', 0x2D, True),
-                                ('key', 0x2D, False), ('key', 0xA2, False)])
+        self.assertEqual(keys, [('key', 0xA2, True), ('key', 0xA2, False)])
         self.assertTrue(c.transport.connected)
         self.assertEqual(c._lrd_down, set())
         self.assertEqual(c.connected_clients, {})
@@ -530,8 +529,7 @@ class RemoteController:
         self._key(c, 0x20, True)
         self._key(c, 0x20, False)
         keys = [e[:3] for e in c.local_machine.events if e[0] == 'key']
-        self.assertEqual(keys, [('key', 0x2D, True), ('key', 0x20, True),
-                                ('key', 0x20, False)])
+        self.assertEqual(keys, [('key', 0x20, True), ('key', 0x20, False)])
         self.assertFalse(c._lrd_bypass_next)
         # A later chord is translated again after the one bypassed command.
         self._key(c, 0x54, True)
@@ -713,7 +711,7 @@ class RemoteController:
         self._key(c, 0x20, True)
         self._key(c, 0x20, False)
         keys = [e[:3] for e in c.local_machine.events if e[0] == "key"]
-        self.assertIn(("key", 0x2D, False), keys)
+        self.assertFalse(any(k[1] == 0x2D for k in keys))
         self.assertIn(("key", 0x20, True), keys)
         self.assertFalse(any(k[1] == 0x41 for k in keys))
 
@@ -730,7 +728,7 @@ class RemoteController:
         c2.toggle_control()
         keys2 = [e[:3] for e in c2.local_machine.events if e[0] == "key"]
         self.assertNotIn(("key", 0x20, False), keys2)
-        self.assertIn(("key", 0x2D, False), keys2)
+        self.assertFalse(any(k[1] == 0x2D for k in keys2))
 
     def test_zero_valued_braille_input_is_still_redacted(self):
         c, _, _ = self._patched_controller()
