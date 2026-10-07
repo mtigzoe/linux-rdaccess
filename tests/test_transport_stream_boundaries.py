@@ -264,19 +264,19 @@ class TransportStreamBoundariesTests(unittest.TestCase):
     def test_v6_cleanup_patch_upgrades_to_v7(self):
         current = remote_access._patch_legacy_transport_cleanup(UPSTREAM)
         pattern = (
-            r"(?m)^([ \t]*)if b'\\n' not in data:[ \t]*\\n"
-            r"([ \t]*)if len\\(data\\) > 1 << 20:[ \t]*\\n"
-            r"([ \t]*)self\\.buffer = b''[ \t]*\\n"
-            r"\\3self\\._disconnect\\(\\)[ \t]*\\n"
-            r"\\3return[ \t]*\\n"
-            r"\\2self\\.buffer \\+= data[ \t]*\\n"
-            r"\\2return[ \t]*$"
+            r"(?m)^([ \\t]*)if b\'\\\\n\' not in data:[ \\t]*\\n"
+            r"([ \\t]*)if len\\(data\\) > 1 << 20:[ \\t]*\\n"
+            r"([ \\t]*)self\\.buffer = b\'\'[ \\t]*\\n"
+            r"\\3self\\._disconnect\\(\\)[ \\t]*\\n"
+            r"\\3return[ \\t]*\\n"
+            r"\\2self\\.buffer \\+= data[ \\t]*\\n"
+            r"\\2return[ \\t]*$"
         )
 
         def remove_bound(match):
             indent, body = match.group(1), match.group(2)
             return (
-                indent + "if b'\\n' not in data:\\n"
+                indent + "if b\'\\\\n\' not in data:\\n"
                 + body + "self.buffer += data\\n"
                 + body + "return"
             )
