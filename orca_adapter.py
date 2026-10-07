@@ -359,6 +359,23 @@ class OrcaRuntimeAdapter:
         except Exception:
             return False
 
+
+    @staticmethod
+    def set_semantic_caret(object_id: str, offset: int) -> bool:
+        """Route NVDA's semantic text position back to the current AT-SPI object."""
+        if not isinstance(object_id, str) or not object_id or len(object_id) > 256:
+            return False
+        if type(offset) is not int or not 0 <= offset <= 8192:
+            return False
+        obj = _REMOTE_SEMANTIC_OBJECTS.get(object_id)
+        if obj is None:
+            return False
+        try:
+            from a11y_model import set_caret_offset
+            return bool(set_caret_offset(obj, offset))
+        except Exception:
+            return False
+
     @staticmethod
     def braille_cells(*, get_link_mask: bool = True) -> list[int]:
         """Serialize Orca 42's native cells without translating them again.
