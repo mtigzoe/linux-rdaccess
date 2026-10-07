@@ -1453,13 +1453,16 @@ _LEGACY_HELPERS = '''\
             return False
 
     def _linux_rdaccess_flush_pending_nvda_modifiers(self):
-        """Replay unused deferred modifiers; fail closed if injection is rejected."""
-        ok = True
+        """Replay unused deferred modifiers; fail closed for a rejected Insert."""
+        # CapsLock is a toggle, not a held application-chord modifier. Preserve
+        # the established behavior where a failed CapsLock toggle does not eat
+        # the following typing key. Insert must succeed before Insert+key can
+        # safely be degraded to ordinary Linux input.
         if not getattr(self, "_lrd_caps_used", False):
-            ok = self._linux_rdaccess_flush_pending_caps() and ok
+            self._linux_rdaccess_flush_pending_caps()
         if not getattr(self, "_lrd_insert_used", False):
-            ok = self._linux_rdaccess_flush_pending_insert() and ok
-        return ok
+            return self._linux_rdaccess_flush_pending_insert()
+        return True
 
     def _linux_rdaccess_sync_state(self):
         """Initialize/change the input generation for either input channel."""
