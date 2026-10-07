@@ -590,7 +590,8 @@ def _patch_legacy_customization_reconnect(text: str) -> str:
     return result
 
 
-CUSTOMIZATION_BRAILLE_CELLS_MARKER_V1 = "# linux-rdaccess native Orca braille cells v1"\nCUSTOMIZATION_BRAILLE_CELLS_MARKER = "# linux-rdaccess native Orca braille cells v2"
+CUSTOMIZATION_BRAILLE_CELLS_MARKER_V1 = "# linux-rdaccess native Orca braille cells v1"
+CUSTOMIZATION_BRAILLE_CELLS_MARKER = "# linux-rdaccess native Orca braille cells v2"
 _LEGACY_CUSTOMIZATION_BRAILLE_SOURCE = '''
 try:
     import orca.braille as _remote_braille
