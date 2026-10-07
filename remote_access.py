@@ -3512,6 +3512,26 @@ _LEGACY_HELPERS = '''\
 
         self._linux_rdaccess_run_main(run_action)
 
+    def _linux_rdaccess_semantic_caret(
+            self, version=None, object_id=None, offset=None, **kwargs):
+        """Move the current semantic text caret using NVDA braille coordinates."""
+        if (not getattr(self, "_lrd_nvda_native_braille", False)
+                or version != self._LRD_NATIVE_BRAILLE_VERSION):
+            return
+        if (not isinstance(object_id, str) or not object_id or len(object_id) > 256
+                or type(offset) is not int or not 0 <= offset <= 8192):
+            return
+
+        def set_caret():
+            try:
+                from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _adapter
+                if not _adapter.set_semantic_caret(object_id, offset):
+                    log.error("linux-rdaccess: semantic caret rejected")
+            except Exception:
+                log.error("linux-rdaccess: semantic caret failed")
+
+        self._linux_rdaccess_run_main(set_caret)
+
     def _linux_rdaccess_handle_braille_info(self, num_cells):
         """Apply NVDA Remote's display width to Orca's native pan/routing state."""
         self._linux_rdaccess_sync_state()
@@ -5298,6 +5318,9 @@ _LEGACY_RESET_HOOKS = (
     "                manager.register_callback(\n"
     "                    \"msg_lrd_a11y_action\",\n"
     "                    self._linux_rdaccess_semantic_action)\n"
+    "                manager.register_callback(\n"
+    "                    \"msg_lrd_a11y_caret\",\n"
+    "                    self._linux_rdaccess_semantic_caret)\n"
     "                self._lrd_semantic_transport = transport\n"
     "            self._lrd_nvda_native_braille = False\n"
     "            self._lrd_last_semantic_braille = None\n"
