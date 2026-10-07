@@ -249,6 +249,11 @@ class Receiver:
                         self.junk_bytes += len(self.buf)
                         self.buf.clear()
                     return  # wait for the rest of the line
+                if end > MAX_PENDING_BYTES:
+                    log.warning("dropping %d bytes of oversized JSON", end)
+                    self.junk_bytes += end
+                    del self.buf[: end + 1]
+                    continue
                 line = bytes(self.buf[:end])
                 del self.buf[: end + 1]
                 try:

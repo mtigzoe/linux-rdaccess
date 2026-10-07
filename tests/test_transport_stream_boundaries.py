@@ -4,7 +4,9 @@ Fixture: serrebidev/orca-remote d47a085945576d8e973f9c686587bdfc90ae061c,
 orca-scripts/transport.py. Tests use fake sockets and native sender threads.
 """
 
+import ast
 import json
+import re
 from pathlib import Path
 import sys
 import threading
@@ -178,6 +180,43 @@ class TransportStreamBoundariesTests(unittest.TestCase):
         self.assertEqual(transport.callback_manager.calls, [("msg_first", {})])
         self.assertEqual(transport.buffer, b'{"type":"new-partial')
 
+    def test_oversized_complete_frame_disconnects_before_deserialization(self):
+        source = remote_access._patch_legacy_transport_cleanup(UPSTREAM)
+        payload = b'{"type":"oversized","data":"' + (b"x" * ((1 << 20) + 1)) + b'"}\n'
+        chunks = [payload[index:index + 16384] for index in range(0, len(payload), 16384)]
+        transport, sock, selector = transport_from_source(source, chunks)
+        transport.serializer.deserialize = mock.Mock(
+            side_effect=AssertionError("oversized frame must not be deserialized"))
+        try:
+            with mock.patch("select.select", selector):
+                transport.run()
+        finally:
+            transport._disconnect()
+        transport.serializer.deserialize.assert_not_called()
+        self.assertFalse(transport.connected)
+        self.assertTrue(sock.closed)
+        self.assertIsNone(transport.server_sock)
+        self.assertEqual(transport.buffer, b"")
+
+    def test_oversized_unterminated_frame_disconnects_and_clears_partial_state(self):
+        source = remote_access._patch_legacy_transport_cleanup(UPSTREAM)
+        chunk = b"{" + (b"x" * 16383)
+        incoming = [chunk] * 65
+        transport, sock, selector = transport_from_source(source, incoming)
+        try:
+            with mock.patch("select.select", selector):
+                transport.run()
+        finally:
+            transport._disconnect()
+        self.assertFalse(transport.connected)
+        self.assertTrue(sock.closed)
+        self.assertIsNone(transport.server_sock)
+        self.assertEqual(transport.buffer, b"")
+        self.assertEqual(
+            [event for event, _ in transport.callback_manager.calls],
+            ["transport_connected", "transport_disconnected"],
+        )
+
     def test_eof_with_truncated_frame_disconnects_and_clears_partial_state(self):
         source = remote_access._patch_legacy_transport_cleanup(UPSTREAM)
         transport, sock, selector = transport_from_source(
@@ -222,6 +261,63 @@ class TransportStreamBoundariesTests(unittest.TestCase):
         self.assertFalse(transport.connected)
         self.assertTrue(sock.closed)
         self.assertEqual(transport.buffer, b"")
+
+    def test_v6_cleanup_patch_upgrades_to_v7(self):
+        current = remote_access._patch_legacy_transport_cleanup(UPSTREAM)
+        tree = ast.parse(current)
+        tcp = next(
+            node for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "TCPTransport"
+        )
+        receiver = next(
+            node for node in tcp.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "handle_server_data"
+        )
+        current_receiver = ast.get_source_segment(current, receiver)
+        pending_v7 = (
+            "\t\tif b'\\n' not in data:\n"
+            "\t\t\tif len(data) > 1 << 20:\n"
+            "\t\t\t\tself.buffer = b''\n"
+            "\t\t\t\tself._disconnect()\n"
+            "\t\t\t\treturn\n"
+            "\t\t\tself.buffer += data\n"
+            "\t\t\treturn"
+        )
+        pending_v6 = (
+            "\t\tif b'\\n' not in data:\n"
+            "\t\t\tself.buffer += data\n"
+            "\t\t\treturn"
+        )
+        complete_v7 = (
+            "\t\t\tline, sep, data = data.partition(b'\\n')\n"
+            "\t\t\tif len(line) > 1 << 20:\n"
+            "\t\t\t\tself.buffer = b''\n"
+            "\t\t\t\tself._disconnect()\n"
+            "\t\t\t\treturn\n"
+            "\t\t\tself.parse(line)"
+        )
+        complete_v6 = (
+            "\t\t\tline, sep, data = data.partition(b'\\n')\n"
+            "\t\t\tself.parse(line)"
+        )
+        v6_receiver = current_receiver.replace(pending_v7, pending_v6, 1)
+        v6_receiver = v6_receiver.replace(complete_v7, complete_v6, 1)
+        self.assertNotEqual(v6_receiver, current_receiver)
+        v6 = current.replace(current_receiver, v6_receiver, 1)
+        v6 = v6.replace(
+            remote_access.TRANSPORT_CLEANUP_MARKER,
+            remote_access.TRANSPORT_CLEANUP_MARKER_V6,
+            1,
+        )
+        self.assertFalse(remote_access.legacy_transport_cleanup_patch_current(v6))
+        upgraded = remote_access._patch_legacy_transport_cleanup(v6)
+        self.assertTrue(remote_access.legacy_transport_cleanup_patch_current(upgraded))
+        self.assertIn(remote_access.TRANSPORT_CLEANUP_MARKER, upgraded)
+        self.assertNotIn(remote_access.TRANSPORT_CLEANUP_MARKER_V6 + "\\n", upgraded)
+        self.assertIn("if len(data) > 1 << 20:", upgraded)
+        self.assertIn("if len(line) > 1 << 20:", upgraded)
+
 
     def test_genuine_v5_upgrade_preserves_original_backup_and_is_idempotent(self):
         import tempfile

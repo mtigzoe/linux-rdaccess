@@ -303,7 +303,10 @@ class OrcaRuntimeAdapter:
         if not callable(handler):
             return None
 
-        in_document = getattr(getattr(script, "utilities", None), "inDocumentContent", None)
+        utilities = getattr(script, "utilities", None)
+        in_document = getattr(utilities, "inDocumentContent", None)
+        if not callable(in_document):
+            in_document = getattr(utilities, "in_document_content", None)
         if callable(in_document):
             from orca import orca_state
             focus = getattr(orca_state, "locusOfFocus", None)
@@ -419,12 +422,18 @@ class OrcaRuntimeAdapter:
     @classmethod
     def present_time(cls) -> bool | None:
         """Present the time using Orca's configured format and output."""
-        return cls.call_script("presentTime", default_event=True)
+        return cls.call_script(
+            ("presentTime", "present_time"),
+            default_event=True,
+        )
 
     @classmethod
     def present_date(cls) -> bool | None:
         """Present the date using Orca's configured format and output."""
-        return cls.call_script("presentDate", default_event=True)
+        return cls.call_script(
+            ("presentDate", "present_date"),
+            default_event=True,
+        )
 
     @classmethod
     def present_current_line(cls) -> bool | None:
@@ -433,6 +442,8 @@ class OrcaRuntimeAdapter:
         if script is None:
             return None
         handler = getattr(script, "sayLine", None)
+        if not callable(handler):
+            handler = getattr(script, "say_line", None)
         if not callable(handler):
             return None
 
@@ -447,7 +458,11 @@ class OrcaRuntimeAdapter:
         obj = focus
         utilities = getattr(script, "utilities", None)
         get_context = getattr(utilities, "getCaretContext", None)
+        if not callable(get_context):
+            get_context = getattr(utilities, "get_caret_context", None)
         in_document = getattr(utilities, "inDocumentContent", None)
+        if not callable(in_document):
+            in_document = getattr(utilities, "in_document_content", None)
         document_focus = bool(in_document(focus)) if callable(in_document) else None
         browse_focus = document_focus is True and not bool(
             getattr(script, "_inFocusMode", False))

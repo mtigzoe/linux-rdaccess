@@ -678,6 +678,32 @@ def handle_server_data(self):
     self.buffer += data
 '''
 
+_TRANSPORT_RECEIVER_V7 = _TRANSPORT_RECEIVER_V6.replace(
+    """    if b'\\n' not in data:
+        self.buffer += data
+        return
+""",
+    """    if b'\\n' not in data:
+        if len(data) > 1 << 20:
+            self.buffer = b''
+            self._disconnect()
+            return
+        self.buffer += data
+        return
+""",
+).replace(
+    """        line, sep, data = data.partition(b'\\n')
+        self.parse(line)
+""",
+    """        line, sep, data = data.partition(b'\\n')
+        if len(line) > 1 << 20:
+            self.buffer = b''
+            self._disconnect()
+            return
+        self.parse(line)
+""",
+)
+
 
 def legacy_transport_cleanup_patch_current(text: str) -> bool:
     """Whether the legacy transport safely cleans resources before reconnect."""
@@ -709,7 +735,7 @@ def legacy_transport_cleanup_patch_current(text: str) -> bool:
     receiver = methods.get("handle_server_data")
     receiver_source = ast.get_source_segment(text, receiver) if receiver is not None else ""
     eof_safe = (".recv(" not in receiver_source or _ast_equal(
-        receiver, ast.parse(_TRANSPORT_RECEIVER_V6).body[0]))
+        receiver, ast.parse(_TRANSPORT_RECEIVER_V7).body[0]))
     shutdown = disconnect_source.find("self.server_sock.shutdown(socket.SHUT_RDWR)")
     join = disconnect_source.find("self.queue_thread.join()")
     receive = run_source.split("self.handle_server_data()", 1)
@@ -753,6 +779,7 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
     upgrading_v3 = TRANSPORT_CLEANUP_MARKER_V3 in text
     upgrading_v4 = TRANSPORT_CLEANUP_MARKER_V4 in text
     upgrading_v5 = TRANSPORT_CLEANUP_MARKER_V5 in text
+    upgrading_v6 = TRANSPORT_CLEANUP_MARKER_V6 in text
     if upgrading_v1:
         text = text.replace(TRANSPORT_CLEANUP_MARKER_V1, "", 1).rstrip("\n") + "\n"
     elif upgrading_v2:
@@ -763,6 +790,8 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
         text = text.replace(TRANSPORT_CLEANUP_MARKER_V4, "", 1).rstrip("\n") + "\n"
     elif upgrading_v5:
         text = text.replace(TRANSPORT_CLEANUP_MARKER_V5, "", 1).rstrip("\n") + "\n"
+    elif upgrading_v6:
+        text = text.replace(TRANSPORT_CLEANUP_MARKER_V6, "", 1).rstrip("\n") + "\n"
 
     try:
         tree = ast.parse(text, feature_version=(3, 10))
@@ -784,7 +813,7 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
     if disconnect is None or run is None:
         raise ValueError("unsupported legacy TCPTransport layout")
 
-    if not (upgrading_v1 or upgrading_v2 or upgrading_v3 or upgrading_v4 or upgrading_v5):
+    if not (upgrading_v1 or upgrading_v2 or upgrading_v3 or upgrading_v4 or upgrading_v5 or upgrading_v6):
         disconnect_source = ast.get_source_segment(text, disconnect) or ""
         updated_disconnect, count = re.subn(
             r"(?m)^([ \t]*)if not self\.connected:[ \t]*$",
@@ -826,7 +855,7 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
             raise ValueError("unsupported legacy transport connection-failure path")
         text = text.replace(run_source, updated_run, 1)
 
-    if not (upgrading_v2 or upgrading_v3 or upgrading_v4 or upgrading_v5):
+    if not (upgrading_v2 or upgrading_v3 or upgrading_v4 or upgrading_v5 or upgrading_v6):
         # Shut down the socket before joining the sender. A sender blocked in
         # sendall() otherwise prevents _disconnect() and reconnect from completing.
         tree = ast.parse(text, feature_version=(3, 10))
@@ -879,7 +908,7 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
             raise ValueError("unsupported legacy transport socket close")
         text = text.replace(disconnect_source, updated_disconnect, 1)
 
-    if not (upgrading_v3 or upgrading_v4 or upgrading_v5):
+    if not (upgrading_v3 or upgrading_v4 or upgrading_v5 or upgrading_v6):
         # A malformed relay frame raises JSONDecodeError/ValueError, not socket.error.
         # Treat any ordinary receive/parse exception as a broken connection so the
         # native connector loop survives and retries. BaseException still propagates.
@@ -907,7 +936,7 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
             raise ValueError("unsupported legacy transport receive-failure path")
         text = text.replace(run_source, updated_run, 1)
 
-    if not (upgrading_v4 or upgrading_v5):
+    if not (upgrading_v4 or upgrading_v5 or upgrading_v6):
         # Concurrent close can invalidate the descriptor between the while guard and
         # select(). Python reports that as ValueError, not OSError/socket.error.
         tree = ast.parse(text, feature_version=(3, 10))
@@ -967,7 +996,7 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
             + body + "return"
         )
 
-    if not upgrading_v5:
+    if not (upgrading_v5 or upgrading_v6):
         updated_send, count = re.subn(send_pattern, wake_receiver, send_source, count=1)
         if count != 1:
             raise ValueError("unsupported legacy transport send-failure path")
@@ -1024,6 +1053,82 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
         ):
             raise ValueError("unsupported legacy transport receive ownership")
         text = text.replace(receiver_source, updated_receiver, 1)
+
+    # A peer can otherwise send an unterminated JSON record forever and grow
+    # self.buffer without bound. Normalize all supported versions to the
+    # verified v6 receiver first, then add a bounded pending-frame policy.
+    tree = ast.parse(text, feature_version=(3, 10))
+    tcp = next(node for node in tree.body if isinstance(node, ast.ClassDef)
+               and node.name == "TCPTransport")
+    receiver = next((node for node in tcp.body if isinstance(node, ast.FunctionDef)
+                     and node.name == "handle_server_data"), None)
+    receiver_source = ast.get_source_segment(text, receiver) if receiver is not None else ""
+    if ".recv(" in receiver_source:
+        if receiver is None or not _ast_equal(
+                receiver, ast.parse(_TRANSPORT_RECEIVER_V6).body[0]):
+            raise ValueError("unsupported legacy transport pending-frame layout")
+        pending_pattern = (
+            r"(?m)^([ \t]*)if b'\\n' not in data:[ \t]*\n"
+            r"([ \t]*)self\.buffer \+= data[ \t]*\n"
+            r"\2return[ \t]*$"
+        )
+
+        def bound_pending_frame(match):
+            indent, body = match.group(1), match.group(2)
+            unit = body[len(indent):] if body.startswith(indent) else ""
+            if not unit:
+                unit = "\t" if "\t" in body else "    "
+            nested = body + unit
+            return (
+                indent + "if b'\\n' not in data:\n"
+                + body + "if len(data) > 1 << 20:\n"
+                + nested + "self.buffer = b''\n"
+                + nested + "self._disconnect()\n"
+                + nested + "return\n"
+                + body + "self.buffer += data\n"
+                + body + "return"
+            )
+
+        bounded_receiver, count = re.subn(
+            pending_pattern, bound_pending_frame, receiver_source, count=1)
+        if count != 1:
+            raise ValueError("unsupported legacy transport pending-frame guard")
+
+        line_pattern = (
+            r"(?m)^([ \t]*)line, sep, data = data\.partition\(b'\\n'\)[ \t]*\n"
+            r"\1self\.parse\(line\)[ \t]*$"
+        )
+
+        def bound_complete_frame(match):
+            indent = match.group(1)
+            unit = "\t" if "\t" in indent else "    "
+            body = indent + unit
+            return (
+                indent + "line, sep, data = data.partition(b'\\n')\n"
+                + indent + "if len(line) > 1 << 20:\n"
+                + body + "self.buffer = b''\n"
+                + body + "self._disconnect()\n"
+                + body + "return\n"
+                + indent + "self.parse(line)"
+            )
+
+        bounded_receiver, line_count = re.subn(
+            line_pattern, bound_complete_frame, bounded_receiver, count=1)
+        if line_count != 1 or not _ast_equal(
+                ast.parse(bounded_receiver).body[0],
+                ast.parse(_TRANSPORT_RECEIVER_V7).body[0]):
+            raise ValueError("unsupported legacy transport frame-size guard")
+        text = text.replace(receiver_source, bounded_receiver, 1)
+
+    # A genuine v6 transport already includes the disconnect-state and
+    # reconnect-ownership hardening below. Reapplying those edits corrupts
+    # the upgrade path. Once the v7 frame bounds are added, validate and
+    # finish the marker upgrade directly.
+    if upgrading_v6:
+        text = text.rstrip("\n") + "\n\n" + TRANSPORT_CLEANUP_MARKER + "\n"
+        if not legacy_transport_cleanup_patch_current(text):
+            raise ValueError("transport cleanup patch validation failed")
+        return text
 
     # close() may run before run() reaches its final connected=False assignment.
     # Invalidate the advertised state now so speech and input are not queued
@@ -1257,7 +1362,8 @@ TRANSPORT_CLEANUP_MARKER_V2 = "# linux-rdaccess transport cleanup v2"
 TRANSPORT_CLEANUP_MARKER_V3 = "# linux-rdaccess transport cleanup v3"
 TRANSPORT_CLEANUP_MARKER_V4 = "# linux-rdaccess transport cleanup v4"
 TRANSPORT_CLEANUP_MARKER_V5 = "# linux-rdaccess transport cleanup v5"
-TRANSPORT_CLEANUP_MARKER = "# linux-rdaccess transport cleanup v6"
+TRANSPORT_CLEANUP_MARKER_V6 = "# linux-rdaccess transport cleanup v6"
+TRANSPORT_CLEANUP_MARKER = "# linux-rdaccess transport cleanup v7"
 LEGACY_COMPAT_MARKER_V1 = "# linux-rdaccess NVDA/Orca input compatibility"
 LEGACY_COMPAT_MARKER_V2 = "# linux-rdaccess NVDA/Orca input compatibility v2"
 LEGACY_COMPAT_MARKER_V3 = "# linux-rdaccess NVDA/Orca input compatibility v3"
@@ -1348,7 +1454,8 @@ LEGACY_COMPAT_MARKER_V89 = "# linux-rdaccess NVDA/Orca input compatibility v89"
 LEGACY_COMPAT_MARKER_V90 = "# linux-rdaccess NVDA/Orca input compatibility v90"
 LEGACY_COMPAT_MARKER_V91 = "# linux-rdaccess NVDA/Orca input compatibility v91"
 LEGACY_COMPAT_MARKER_V92 = "# linux-rdaccess NVDA/Orca input compatibility v92"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v93"
+LEGACY_COMPAT_MARKER_V93 = "# linux-rdaccess NVDA/Orca input compatibility v93"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v94"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -5164,6 +5271,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V93,
                 LEGACY_COMPAT_MARKER_V92,
                 LEGACY_COMPAT_MARKER_V91,
                 LEGACY_COMPAT_MARKER_V90,
