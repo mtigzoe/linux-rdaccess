@@ -310,6 +310,13 @@ network thread (GTK is not thread-safe). Run `linux-rdaccess doctor` to check th
 patches are active; set `LINUX_RDACCESS_DEBUG=1` to log key-handling stalls
 (duration only, never which key) to `~/.local/share/orca/orca-remote-slow-events.log`.
 
+Orca Remote's legacy transport is also patched so failed initial connections and
+socket/select disconnects close the socket and send-thread resources before the
+native reconnect worker starts another attempt. Upstream clears `connected`
+before one cleanup path, while its original `_disconnect()` returned immediately
+when `connected` was false; that could leave stale transport resources across a
+retry. `doctor` reports the relay transport cleanup separately.
+
 Caps Lock, Num Lock, and Scroll Lock feedback reads the actual named XKB indicator after a
 successful key release, when X11 has completed the toggle. The state is captured
 before queuing the Orca announcement, so quick consecutive toggles retain their
