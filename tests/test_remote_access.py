@@ -1625,6 +1625,23 @@ class RemoteController:
         )
         self.assertEqual(presented, [("presentLockState", (0x90, True))])
 
+    def test_scrolllock_repeat_is_consumed_and_announced_once(self):
+        c, _, _ = self._patched_controller()
+        c._linux_rdaccess_read_lock_state = lambda vk: True
+        presented = []
+        c._linux_rdaccess_script_call = (
+            lambda method, *args: presented.append((method, args)) or True
+        )
+        self._key(c, 0x91, True)
+        self._key(c, 0x91, True)
+        self._key(c, 0x91, True)
+        self._key(c, 0x91, False)
+        self.assertEqual(
+            [k for k in self._names(c) if k[0] == 0x91],
+            [(0x91, True), (0x91, False)],
+        )
+        self.assertEqual(presented, [("presentLockState", (0x91, True))])
+
     def test_fresh_numlock_presses_each_toggle_and_announce(self):
         c, _, _ = self._patched_controller()
         states = iter((True, False))
