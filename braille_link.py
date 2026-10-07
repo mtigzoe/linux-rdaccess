@@ -57,7 +57,7 @@ class NvdaBrailleLink:
             if self._channel is None:
                 return
 
-        for message in self._rx.drain():
+        for message in self._rx.drain_current_session():
             self._handle(message)
             if self._channel is None:
                 return
