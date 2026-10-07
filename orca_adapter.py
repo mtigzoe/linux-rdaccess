@@ -297,6 +297,9 @@ class OrcaRuntimeAdapter:
     def semantic_focus_payload() -> dict[str, Any] | None:
         """Build a bounded AT-SPI focus snapshot for NVDA-native braille."""
         global _REMOTE_SEMANTIC_OBJECTS
+        # A failed or oversized rebuild must never leave actions pointing at
+        # objects from the previous focus/session.
+        _REMOTE_SEMANTIC_OBJECTS = {}
         try:
             from orca import orca_state
             from a11y_model import build_focus_payload
