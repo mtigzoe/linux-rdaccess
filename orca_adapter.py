@@ -299,7 +299,7 @@ class OrcaRuntimeAdapter:
         global _REMOTE_SEMANTIC_OBJECTS
         try:
             from orca import orca_state
-            from linux_rdaccess_a11y_model import build_focus_payload
+            from a11y_model import build_focus_payload
         except Exception:
             return None
 
@@ -338,7 +338,7 @@ class OrcaRuntimeAdapter:
         if obj is None:
             return False
         try:
-            from linux_rdaccess_a11y_model import perform_action
+            from a11y_model import perform_action
             return bool(perform_action(obj, action_index))
         except Exception:
             return False
