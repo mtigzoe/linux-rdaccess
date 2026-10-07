@@ -857,7 +857,8 @@ LEGACY_COMPAT_MARKER_V77 = "# linux-rdaccess NVDA/Orca input compatibility v77"
 LEGACY_COMPAT_MARKER_V78 = "# linux-rdaccess NVDA/Orca input compatibility v78"
 LEGACY_COMPAT_MARKER_V79 = "# linux-rdaccess NVDA/Orca input compatibility v79"
 LEGACY_COMPAT_MARKER_V80 = "# linux-rdaccess NVDA/Orca input compatibility v80"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v81"
+LEGACY_COMPAT_MARKER_V81 = "# linux-rdaccess NVDA/Orca input compatibility v81"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v82"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -1378,6 +1379,8 @@ _LEGACY_HELPERS = '''\
         self._lrd_nvda_key = None
         self._lrd_caps_pending = None
         self._lrd_caps_used = False
+        self._lrd_insert_pending = None
+        self._lrd_insert_used = False
         self._lrd_bypass_next = False
         bypass_request = getattr(self, "_lrd_bypass_request", None)
         self._lrd_bypass_request = None
@@ -1411,6 +1414,13 @@ _LEGACY_HELPERS = '''\
             _lrd_clear_navigation_markers(nvda_browse)
             nvda_browse["held"] = {}
 
+    def _linux_rdaccess_mark_nvda_modifier_used(self):
+        """Keep deferred NVDA modifiers out of Linux for a consumed command."""
+        if getattr(self, "_lrd_caps_pending", None) is not None:
+            self._lrd_caps_used = True
+        if getattr(self, "_lrd_insert_pending", None) is not None:
+            self._lrd_insert_used = True
+
     def _linux_rdaccess_flush_pending_caps(self):
         """Forward the original deferred CapsLock press when it was not an NVDA command."""
         pending = getattr(self, "_lrd_caps_pending", None)
@@ -1423,6 +1433,23 @@ _LEGACY_HELPERS = '''\
             self._linux_rdaccess_forward_key(**payload)
         except Exception:
             log.error("linux-rdaccess: failed to forward deferred CapsLock")
+
+    def _linux_rdaccess_flush_pending_insert(self):
+        """Forward deferred Insert only after proving it is ordinary Linux input."""
+        pending = getattr(self, "_lrd_insert_pending", None)
+        if pending is None:
+            return
+        _held, payload = pending
+        self._lrd_insert_pending = None
+        self._lrd_insert_used = False
+        try:
+            self._linux_rdaccess_forward_key(**payload)
+        except Exception:
+            log.error("linux-rdaccess: failed to forward deferred Insert")
+
+    def _linux_rdaccess_flush_pending_nvda_modifiers(self):
+        self._linux_rdaccess_flush_pending_caps()
+        self._linux_rdaccess_flush_pending_insert()
 
     def _linux_rdaccess_sync_state(self):
         """Initialize/change the input generation for either input channel."""
@@ -1484,6 +1511,8 @@ _LEGACY_HELPERS = '''\
             disposition = "forwarded"
         elif vk_code == 0x14:
             disposition = "caps_deferred"
+        elif vk_code == 0x2D and getattr(self, "_lrd_insert_pending", None) is not None:
+            disposition = "insert_deferred"
         elif before_swapped:
             disposition = "owned_press" if pressed else "owned_release"
         elif why == "pass_next":
@@ -1544,13 +1573,11 @@ _LEGACY_HELPERS = '''\
             # modifier; CapsLock cannot be safely released/re-pressed because
             # doing so would toggle the lock state.
             self._lrd_nvda_key = nvda_keys[0] if nvda_keys else None
-            if (
-                pressed
-                and vk_code != 0x14
-                and vk_code in self._LRD_NVDA_VKS
-                and getattr(self, "_lrd_caps_pending", None) is not None
-            ):
-                self._lrd_caps_used = True
+            if pressed and not repeat and vk_code in self._LRD_NVDA_VKS:
+                if vk_code != 0x14 and getattr(self, "_lrd_caps_pending", None) is not None:
+                    self._lrd_caps_used = True
+                if vk_code != 0x2D and getattr(self, "_lrd_insert_pending", None) is not None:
+                    self._lrd_insert_used = True
 
         # Only consecutive clock gestures count as a double press. Modifier
         # releases between taps are normal; another action starts a new count.
@@ -1559,6 +1586,39 @@ _LEGACY_HELPERS = '''\
                      and not any(k[0] in self._LRD_OTHER_MOD_VKS for k in self._lrd_down))
             if not clock:
                 self._lrd_last_clock_press = None
+
+        # Insert is also an NVDA modifier. Forwarding it immediately makes
+        # consumed NVDA commands leak a standalone Insert press into Linux
+        # applications (for example toggling overwrite mode in an editor).
+        # Defer it just like CapsLock, then replay it only for ordinary input.
+        if vk_code == 0x2D:
+            pending = getattr(self, "_lrd_insert_pending", None)
+            if pressed:
+                if not repeat:
+                    self._lrd_insert_pending = (
+                        held,
+                        {
+                            "key_name": key_name,
+                            "pressed": True,
+                            "modifiers": modifiers,
+                            "vk_code": vk_code,
+                            "scan_code": scan_code,
+                            "extended": extended,
+                        },
+                    )
+                    self._lrd_insert_used = any(
+                        k != held and k[0] in self._LRD_NVDA_VKS
+                        for k in self._lrd_down
+                    )
+                return True
+            if pending is not None and pending[0] == held:
+                used = bool(getattr(self, "_lrd_insert_used", False))
+                if used:
+                    self._lrd_insert_pending = None
+                    self._lrd_insert_used = False
+                    return True
+                self._linux_rdaccess_flush_pending_insert()
+                return False
 
         # CapsLock can be configured as the NVDA modifier. Forwarding its press
         # immediately toggles Linux Caps Lock before we know whether this is a
@@ -1589,7 +1649,7 @@ _LEGACY_HELPERS = '''\
                     self._lrd_caps_pending = None
                     self._lrd_caps_used = False
                     return True
-                self._linux_rdaccess_flush_pending_caps()
+                self._linux_rdaccess_flush_pending_nvda_modifiers()
                 return False
 
         # Lock keys toggle state on key-down. Remote auto-repeat must not
@@ -1672,7 +1732,7 @@ _LEGACY_HELPERS = '''\
                 request["used"] = True
                 self._lrd_trace_why = "pass_next"
                 self._lrd_bypass_next = False
-                self._linux_rdaccess_flush_pending_caps()
+                self._linux_rdaccess_flush_pending_nvda_modifiers()
                 result = self._linux_rdaccess_forward_bypass_key(
                     request, held, pressed, key_name, modifiers, vk_code, scan_code, extended)
                 if result is False:
@@ -1737,8 +1797,7 @@ _LEGACY_HELPERS = '''\
         ):
             self._lrd_trace_why = "unsupported_nvda_command"
             self._lrd_swapped.add(held)
-            if getattr(self, "_lrd_caps_pending", None) is not None:
-                self._lrd_caps_used = True
+            self._linux_rdaccess_mark_nvda_modifier_used()
             return True
 
         # NVDA table edge commands preserve the current column/row. Orca 42
@@ -1804,8 +1863,7 @@ _LEGACY_HELPERS = '''\
                 browse_action = "nativeSelection"
             if browse_action is not None:
                 self._lrd_navigation_marker = ("_LRD_NVDA_BROWSE", browse_action, held)
-                if getattr(self, "_lrd_caps_pending", None) is not None:
-                    self._lrd_caps_used = True
+                self._linux_rdaccess_mark_nvda_modifier_used()
                 return False
 
         # Some NVDA commands have no proven Orca-42 equivalent but collide
@@ -1835,8 +1893,7 @@ _LEGACY_HELPERS = '''\
             if collision:
                 self._lrd_trace_why = "nvda_orca_collision"
                 self._lrd_swapped.add(held)
-                if getattr(self, "_lrd_caps_pending", None) is not None:
-                    self._lrd_caps_used = True
+                self._linux_rdaccess_mark_nvda_modifier_used()
                 return True
 
         if (
@@ -1848,8 +1905,7 @@ _LEGACY_HELPERS = '''\
         ):
             self._lrd_trace_why = "unsupported_object_review"
             self._lrd_swapped.add(held)
-            if getattr(self, "_lrd_caps_pending", None) is not None:
-                self._lrd_caps_used = True
+            self._linux_rdaccess_mark_nvda_modifier_used()
             return True
 
         if (
@@ -1861,8 +1917,7 @@ _LEGACY_HELPERS = '''\
         ):
             self._lrd_trace_why = "unsupported_object_review"
             self._lrd_swapped.add(held)
-            if getattr(self, "_lrd_caps_pending", None) is not None:
-                self._lrd_caps_used = True
+            self._linux_rdaccess_mark_nvda_modifier_used()
             return True
 
         # NVDA's desktop and laptop layouts reuse several physical gestures
@@ -1897,8 +1952,7 @@ _LEGACY_HELPERS = '''\
                     "unsupported_object_review" if action == "unsupported_review"
                     else "translate:" + action)
                 self._lrd_swapped.add(held)
-                if getattr(self, "_lrd_caps_pending", None) is not None:
-                    self._lrd_caps_used = True
+                self._linux_rdaccess_mark_nvda_modifier_used()
                 if action != "unsupported_review":
                     self._linux_rdaccess_run_main(
                         lambda action=action: self._linux_rdaccess_script_call(action))
@@ -1919,8 +1973,7 @@ _LEGACY_HELPERS = '''\
         ):
             self._lrd_trace_why = "translate:sayAll"
             self._lrd_swapped.add(held)
-            if getattr(self, "_lrd_caps_pending", None) is not None:
-                self._lrd_caps_used = True
+            self._linux_rdaccess_mark_nvda_modifier_used()
             self._linux_rdaccess_run_main(
                 lambda: self._linux_rdaccess_script_call("sayAll"))
             return True
@@ -1943,8 +1996,7 @@ _LEGACY_HELPERS = '''\
         ):
             self._lrd_trace_why = "unsupported_exit_embedded"
             self._lrd_swapped.add(held)
-            if getattr(self, "_lrd_caps_pending", None) is not None:
-                self._lrd_caps_used = True
+            self._linux_rdaccess_mark_nvda_modifier_used()
             return True
 
         # NVDA+Space and NVDA+Shift+Space have exact Orca APIs. Calling
@@ -1960,8 +2012,7 @@ _LEGACY_HELPERS = '''\
                     "translate:toggleStructuralNavigation" if shifts
                     else "translate:togglePresentationMode")
                 self._lrd_swapped.add(held)
-                if getattr(self, "_lrd_caps_pending", None) is not None:
-                    self._lrd_caps_used = True
+                self._linux_rdaccess_mark_nvda_modifier_used()
                 if shifts:
                     self._linux_rdaccess_run_main(
                         lambda: self._linux_rdaccess_script_call(
@@ -1984,8 +2035,7 @@ _LEGACY_HELPERS = '''\
             ):
                 self._lrd_trace_why = "translate:" + action
                 self._lrd_swapped.add(held)
-                if getattr(self, "_lrd_caps_pending", None) is not None:
-                    self._lrd_caps_used = True
+                self._linux_rdaccess_mark_nvda_modifier_used()
                 if action == "input_help":
                     self._linux_rdaccess_run_main(
                         lambda: self._linux_rdaccess_script_call("toggleInputHelp"))
@@ -2048,7 +2098,7 @@ _LEGACY_HELPERS = '''\
                     and vk_code not in self._LRD_MODIFIER_VKS
                     and getattr(self, "_lrd_caps_pending", None) is not None
                 ):
-                    self._linux_rdaccess_flush_pending_caps()
+                    self._linux_rdaccess_flush_pending_nvda_modifiers()
                 return False
             need_ext, name, target_vk, drop, count, drop_shift = chord
             nvda = self._lrd_nvda_key
@@ -2056,8 +2106,7 @@ _LEGACY_HELPERS = '''\
                 # Re-pressing CapsLock would toggle the lock state.
                 return False
             self._lrd_swapped.add(held)
-            if getattr(self, "_lrd_caps_pending", None) is not None:
-                self._lrd_caps_used = True
+            self._linux_rdaccess_mark_nvda_modifier_used()
             send = self.local_machine.send_key
             if drop:
                 send(key_name=None, pressed=False, modifiers=modifiers,
