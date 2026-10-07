@@ -1219,6 +1219,30 @@ class RemoteController:
                     self._key(c, vk, False, extended=True)
                 self.assertNotIn((vk, True), self._names(c))
 
+    def test_nvda_current_selection_calls_orca_in_both_layouts(self):
+        import os
+        cases = (
+            ("desktop", 0x26, True),   # NVDA+Shift+Up
+            ("laptop", 0x53, False),   # NVDA+Shift+S
+        )
+        for layout, vk, extended in cases:
+            with self.subTest(layout=layout):
+                c, _, _ = self._patched_controller()
+                calls = []
+                c._linux_rdaccess_run_main = lambda func: (func(), True)[1]
+                c._linux_rdaccess_script_call = (
+                    lambda method, *args: calls.append((method, args)) or True
+                )
+                with mock.patch.dict(os.environ, {"LINUX_RDACCESS_NVDA_LAYOUT": layout}):
+                    self._key(c, 0x2D, True, extended=True)
+                    self._key(c, 0xA0, True)
+                    self._key(c, vk, True, extended=extended)
+                    self._key(c, vk, True, extended=extended)  # repeat is owned
+                    self._key(c, vk, False, extended=extended)
+                self.assertEqual(calls, [("whereAmISelection", ())])
+                self.assertNotIn((vk, True), self._names(c))
+                self.assertNotIn((0x2D, True), self._names(c))
+
     def test_nvda_selection_and_location_commands_do_not_fall_through(self):
         cases = (
             # vk, shift, ctrl, alt, extended, layout
