@@ -1152,7 +1152,8 @@ LEGACY_COMPAT_MARKER_V81 = "# linux-rdaccess NVDA/Orca input compatibility v81"
 LEGACY_COMPAT_MARKER_V82 = "# linux-rdaccess NVDA/Orca input compatibility v82"
 LEGACY_COMPAT_MARKER_V83 = "# linux-rdaccess NVDA/Orca input compatibility v83"
 LEGACY_COMPAT_MARKER_V84 = "# linux-rdaccess NVDA/Orca input compatibility v84"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v85"
+LEGACY_COMPAT_MARKER_V85 = "# linux-rdaccess NVDA/Orca input compatibility v85"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v86"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -1223,6 +1224,21 @@ _LEGACY_HELPERS = '''\
     _LRD_OTHER_MOD_VKS = (
         0x10, 0xA0, 0xA1, 0x11, 0xA2, 0xA3, 0x12, 0xA4, 0xA5, 0x5B, 0x5C,
     )
+    # Low-level Windows scan codes for physical numpad navigation keys.
+    # NVDA Remote forwards KBDLLHOOKSTRUCT.scanCode verbatim, so these let us
+    # distinguish a proven numpad key from a legacy non-extended navigation VK.
+    _LRD_NUMPAD_SCAN_VKS = {
+        0x4F: 0x23,  # Numpad1 -> End
+        0x50: 0x28,  # Numpad2 -> Down
+        0x51: 0x22,  # Numpad3 -> PageDown
+        0x4B: 0x25,  # Numpad4 -> Left
+        0x4C: 0x0C,  # Numpad5 -> Clear
+        0x4D: 0x27,  # Numpad6 -> Right
+        0x47: 0x24,  # Numpad7 -> Home
+        0x48: 0x26,  # Numpad8 -> Up
+        0x49: 0x21,  # Numpad9 -> PageUp
+        0x53: 0x2E,  # NumpadDelete -> Delete
+    }
     # NVDA chord -> Orca command, checked against the Orca 42 desktop keymap.
     # Report the caret line through Orca's script rather than entering flat
     # review with KP_Up. Other review commands still retain their native keys.
@@ -1304,7 +1320,18 @@ _LEGACY_HELPERS = '''\
             "LINUX_RDACCESS_NVDA_LAYOUT", "desktop").strip().lower()
         return value if value in ("desktop", "laptop") else "desktop"
 
-    def _linux_rdaccess_desktop_unimplemented(self, vk_code, extended):
+    @classmethod
+    def _linux_rdaccess_proven_nvda_keypad(cls, vk_code, extended, scan_code, shift):
+        """Whether scan metadata proves an NVDA object/review numpad gesture."""
+        if bool(extended) or isinstance(scan_code, bool) or not isinstance(scan_code, int):
+            return False
+        if cls._LRD_NUMPAD_SCAN_VKS.get(scan_code) != vk_code:
+            return False
+        # NVDA 2026.2 object/review navigation uses NVDA+Numpad1..9 and
+        # NVDA+NumpadDelete. Of these, only NumpadDelete also has a Shift form.
+        return not shift or vk_code == 0x2E
+
+    def _linux_rdaccess_desktop_unimplemented(self, vk_code, extended, scan_code=None):
         """Whether an exact NVDA desktop keypad object/review gesture is unsupported."""
         down = getattr(self, "_lrd_down", set())
         shift = any(k[0] in self._LRD_SHIFT_VKS for k in down)
@@ -1313,12 +1340,14 @@ _LEGACY_HELPERS = '''\
         if ctrl or alt_win:
             return False
         gesture = (vk_code, shift, bool(extended))
-        # Navigation-cluster VKs (Home/End/Arrows/Delete) are ambiguous when
-        # key_name and scan_code are absent: legacy payloads only leave the
-        # extended bit, and existing callers can emit non-extended navigation
-        # keys which are not proven keypad gestures. Preserve those rather than
-        # swallowing normal Linux input. Intercept only keypad commands whose
-        # VK/extended identity is unambiguous.
+        # With a matching low-level scan code, NVDA Remote has proven that a
+        # non-extended navigation VK came from the physical numpad. Consume
+        # those unsupported NVDA object/review commands instead of leaking them
+        # into the Linux application. Legacy packets without that evidence
+        # retain the previous fail-open behavior.
+        if self._linux_rdaccess_proven_nvda_keypad(
+                vk_code, extended, scan_code, shift):
+            return True
         return gesture in {
             (0x0C, False, False),  # NVDA+Numpad5 (VK_CLEAR): current navigator object
             (0x6D, False, False),  # NVDA+NumpadMinus: navigator to focus
@@ -1328,7 +1357,7 @@ _LEGACY_HELPERS = '''\
             (0x0D, False, True),   # NVDA+NumpadEnter: activate navigator object
         }
 
-    def _linux_rdaccess_laptop_unimplemented(self, vk_code, extended):
+    def _linux_rdaccess_laptop_unimplemented(self, vk_code, extended, scan_code=None):
         """Whether an exact NVDA laptop object/review gesture is known but unsupported."""
         down = getattr(self, "_lrd_down", set())
         shift = any(k[0] in self._LRD_SHIFT_VKS for k in down)
@@ -1375,6 +1404,12 @@ _LEGACY_HELPERS = '''\
             (0x6A, False, False),  # NVDA+NumpadMultiply: navigator to mouse
             (0x0D, False, True),   # NVDA+NumpadEnter: activate navigator object
         }
+        # The physical numpad object/review bindings remain active regardless
+        # of NVDA keyboard layout. Require scan-code proof so dedicated laptop
+        # navigation keys are never mistaken for numpad input.
+        if not ctrl and self._linux_rdaccess_proven_nvda_keypad(
+                vk_code, extended, scan_code, shift):
+            return True
         # Ctrl review commands are distinct from the plain/Shift gestures above.
         if ctrl:
             ctrl_gestures = {
@@ -2215,7 +2250,7 @@ _LEGACY_HELPERS = '''\
             and self._lrd_nvda_down
             and not repeat
             and nvda_layout == "desktop"
-            and self._linux_rdaccess_desktop_unimplemented(vk_code, extended)
+            and self._linux_rdaccess_desktop_unimplemented(vk_code, extended, scan_code)
         ):
             self._lrd_trace_why = "unsupported_object_review"
             self._lrd_swapped.add(held)
@@ -2227,7 +2262,7 @@ _LEGACY_HELPERS = '''\
             and self._lrd_nvda_down
             and not repeat
             and nvda_layout == "laptop"
-            and self._linux_rdaccess_laptop_unimplemented(vk_code, extended)
+            and self._linux_rdaccess_laptop_unimplemented(vk_code, extended, scan_code)
         ):
             self._lrd_trace_why = "unsupported_object_review"
             self._lrd_swapped.add(held)
@@ -4802,6 +4837,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V85,
                 LEGACY_COMPAT_MARKER_V84,
                 LEGACY_COMPAT_MARKER_V83,
                 LEGACY_COMPAT_MARKER_V82,
