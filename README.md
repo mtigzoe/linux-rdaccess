@@ -338,7 +338,7 @@ individual on/off results. Num Lock and Scroll Lock auto-repeat produce one togg
 announcement per press. CapsLock used for a translated NVDA command produces
 neither a lock toggle nor a lock announcement.
 
-The current patches are controller **v92**, local-machine **v12**, and transport cleanup **v6**. Update the
+The current patches are controller **v93**, local-machine **v12**, and transport cleanup **v6**. Update the
 installed command from the repository with `python3 linux_rdaccess.py install`,
 then run `linux-rdaccess connect` to update the Orca-side files and restart Orca.
 `doctor` verifies the connected patch hooks, valid Python, and the installed
