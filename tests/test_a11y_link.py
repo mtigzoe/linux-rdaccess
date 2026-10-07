@@ -280,6 +280,44 @@ class A11yLinkTests(unittest.TestCase):
         self.link.poll()
         self.assertEqual(self.actions, [("abc", 1)])
 
+    def test_xon_and_action_in_same_batch_handshake_before_dispatch(self):
+        seen = []
+        link = NvdaA11yLink(
+            self._open,
+            on_action=lambda object_id, index: seen.append(
+                (object_id, index, list(self.channels[-1].written))
+            ),
+        )
+        link.poll()
+        ch = self.channels[-1]
+        ch.incoming.append(
+            bytes([XON])
+            + b'{"type":"a11y_action","object_id":"abc","action_index":0}\n'
+        )
+        link.poll()
+        self.assertEqual(len(seen), 1)
+        self.assertEqual(seen[0][:2], ("abc", 0))
+        self.assertTrue(seen[0][2])
+        self.assertEqual(seen[0][2][0]["type"], "protocol_version")
+
+    def test_failed_same_batch_handshake_prevents_action_dispatch(self):
+        seen = []
+        link = NvdaA11yLink(
+            self._open,
+            on_action=lambda object_id, index: seen.append((object_id, index)),
+        )
+        link.poll()
+        ch = self.channels[-1]
+        ch.incoming.append(
+            bytes([XON])
+            + b'{"type":"a11y_action","object_id":"abc","action_index":0}\n'
+        )
+        with mock.patch.object(ch, "write", side_effect=ConnectionError("handshake lost")):
+            link.poll()
+        self.assertEqual(seen, [])
+        self.assertFalse(link.ready)
+        self.assertTrue(ch.closed)
+
     def test_action_before_xon_is_ignored(self):
         self.link.poll()
         ch = self.channels[-1]
