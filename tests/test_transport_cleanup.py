@@ -245,7 +245,7 @@ class TransportCleanupTests(unittest.TestCase):
             ["transport_disconnected"],
         )
 
-    def test_v1_cleanup_patch_upgrades_to_v6(self):
+    def test_v1_cleanup_patch_upgrades_to_v7(self):
         # Reconstruct the v1 transformation: resource-aware guard plus failed
         # connect cleanup, but no pre-join socket shutdown yet.
         source = SOURCE.replace(
@@ -269,7 +269,7 @@ class TransportCleanupTests(unittest.TestCase):
             disconnect.index("self.queue_thread.join()"),
         )
 
-    def test_v2_cleanup_patch_upgrades_to_v6(self):
+    def test_v2_cleanup_patch_upgrades_to_v7(self):
         current = HISTORICAL_V5
         v2 = current.replace(
             "self.handle_server_data()\n                except Exception:",
@@ -293,7 +293,7 @@ class TransportCleanupTests(unittest.TestCase):
         self.assertTrue(remote_access.legacy_transport_cleanup_patch_current(updated))
         self.assertNotIn(remote_access.TRANSPORT_CLEANUP_MARKER_V2 + "\n", updated)
 
-    def test_v3_cleanup_patch_upgrades_to_v6(self):
+    def test_v3_cleanup_patch_upgrades_to_v7(self):
         current = HISTORICAL_V5
         v3 = current.replace(
             "except (socket.error, ValueError):",
@@ -313,7 +313,7 @@ class TransportCleanupTests(unittest.TestCase):
         self.assertTrue(remote_access.legacy_transport_cleanup_patch_current(updated))
         self.assertNotIn(remote_access.TRANSPORT_CLEANUP_MARKER_V3 + "\n", updated)
 
-    def test_v4_cleanup_patch_upgrades_to_v6(self):
+    def test_v4_cleanup_patch_upgrades_to_v7(self):
         current = HISTORICAL_V5
         send_block = (
             "            except socket.error:\n"
