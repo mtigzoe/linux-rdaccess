@@ -683,6 +683,10 @@ def legacy_transport_cleanup_patch_current(text: str) -> bool:
     join = disconnect_source.find("self.queue_thread.join()")
     receive = run_source.split("self.handle_server_data()", 1)
     receive_safe = len(receive) == 2 and "except Exception:" in receive[1].split("self.connected = False", 1)[0]
+    select_safe = (
+        "except (socket.error, ValueError):" in run_source
+        or "except (OSError, ValueError):" in run_source
+    )
     return (
         "if self.server_sock is None and self.queue_thread is None:" in disconnect_source
         and shutdown >= 0
@@ -690,6 +694,7 @@ def legacy_transport_cleanup_patch_current(text: str) -> bool:
         and "except Exception:" in run_source
         and "self._disconnect()" in run_source.split("except Exception:", 1)[1].split("raise", 1)[0]
         and receive_safe
+        and select_safe
     )
 
 
@@ -702,10 +707,13 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
 
     upgrading_v1 = TRANSPORT_CLEANUP_MARKER_V1 in text
     upgrading_v2 = TRANSPORT_CLEANUP_MARKER_V2 in text
+    upgrading_v3 = TRANSPORT_CLEANUP_MARKER_V3 in text
     if upgrading_v1:
         text = text.replace(TRANSPORT_CLEANUP_MARKER_V1, "", 1).rstrip("\n") + "\n"
     elif upgrading_v2:
         text = text.replace(TRANSPORT_CLEANUP_MARKER_V2, "", 1).rstrip("\n") + "\n"
+    elif upgrading_v3:
+        text = text.replace(TRANSPORT_CLEANUP_MARKER_V3, "", 1).rstrip("\n") + "\n"
 
     try:
         tree = ast.parse(text, feature_version=(3, 10))
@@ -727,7 +735,7 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
     if disconnect is None or run is None:
         raise ValueError("unsupported legacy TCPTransport layout")
 
-    if not (upgrading_v1 or upgrading_v2):
+    if not (upgrading_v1 or upgrading_v2 or upgrading_v3):
         disconnect_source = ast.get_source_segment(text, disconnect) or ""
         updated_disconnect, count = re.subn(
             r"(?m)^([ \t]*)if not self\.connected:[ \t]*$",
@@ -769,7 +777,7 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
             raise ValueError("unsupported legacy transport connection-failure path")
         text = text.replace(run_source, updated_run, 1)
 
-    if not upgrading_v2:
+    if not (upgrading_v2 or upgrading_v3):
         # Shut down the socket before joining the sender. A sender blocked in
         # sendall() otherwise prevents _disconnect() and reconnect from completing.
         tree = ast.parse(text, feature_version=(3, 10))
@@ -822,9 +830,36 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
             raise ValueError("unsupported legacy transport socket close")
         text = text.replace(disconnect_source, updated_disconnect, 1)
 
-    # A malformed relay frame raises JSONDecodeError/ValueError, not socket.error.
-    # Treat any ordinary receive/parse exception as a broken connection so the
-    # native connector loop survives and retries. BaseException still propagates.
+    if not upgrading_v3:
+        # A malformed relay frame raises JSONDecodeError/ValueError, not socket.error.
+        # Treat any ordinary receive/parse exception as a broken connection so the
+        # native connector loop survives and retries. BaseException still propagates.
+        tree = ast.parse(text, feature_version=(3, 10))
+        tcp = next(
+            node for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "TCPTransport"
+        )
+        run = next(
+            node for node in tcp.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "run"
+        )
+        run_source = ast.get_source_segment(text, run) or ""
+        receive_pattern = (
+            r"(self\.handle_server_data\(\)[ \t]*\n"
+            r"([ \t]*)except )socket\.error(:)"
+        )
+        updated_run, count = re.subn(
+            receive_pattern,
+            lambda match: match.group(1) + "Exception" + match.group(3),
+            run_source,
+            count=1,
+        )
+        if count != 1:
+            raise ValueError("unsupported legacy transport receive-failure path")
+        text = text.replace(run_source, updated_run, 1)
+
+    # Concurrent close can invalidate the descriptor between the while guard and
+    # select(). Python reports that as ValueError, not OSError/socket.error.
     tree = ast.parse(text, feature_version=(3, 10))
     tcp = next(
         node for node in tree.body
@@ -835,18 +870,18 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "run"
     )
     run_source = ast.get_source_segment(text, run) or ""
-    receive_pattern = (
-        r"(self\.handle_server_data\(\)[ \t]*\n"
+    select_pattern = (
+        r"(select\.select\([^\n]*\n(?:[^\n]*\n)*?"
         r"([ \t]*)except )socket\.error(:)"
     )
     updated_run, count = re.subn(
-        receive_pattern,
-        lambda match: match.group(1) + "Exception" + match.group(3),
+        select_pattern,
+        lambda match: match.group(1) + "(socket.error, ValueError)" + match.group(3),
         run_source,
         count=1,
     )
     if count != 1:
-        raise ValueError("unsupported legacy transport receive-failure path")
+        raise ValueError("unsupported legacy transport select-failure path")
     text = text.replace(run_source, updated_run, 1)
 
     text = text.rstrip("\n") + "\n\n" + TRANSPORT_CLEANUP_MARKER + "\n"
@@ -987,7 +1022,8 @@ LEGACY_REMOTE_CONTROLLER_RELATIVE = Path("orca-scripts/remote_controller.py")
 LEGACY_TRANSPORT_RELATIVE = Path("orca-scripts/transport.py")
 TRANSPORT_CLEANUP_MARKER_V1 = "# linux-rdaccess transport cleanup v1"
 TRANSPORT_CLEANUP_MARKER_V2 = "# linux-rdaccess transport cleanup v2"
-TRANSPORT_CLEANUP_MARKER = "# linux-rdaccess transport cleanup v3"
+TRANSPORT_CLEANUP_MARKER_V3 = "# linux-rdaccess transport cleanup v3"
+TRANSPORT_CLEANUP_MARKER = "# linux-rdaccess transport cleanup v4"
 LEGACY_COMPAT_MARKER_V1 = "# linux-rdaccess NVDA/Orca input compatibility"
 LEGACY_COMPAT_MARKER_V2 = "# linux-rdaccess NVDA/Orca input compatibility v2"
 LEGACY_COMPAT_MARKER_V3 = "# linux-rdaccess NVDA/Orca input compatibility v3"
