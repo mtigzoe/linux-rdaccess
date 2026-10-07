@@ -691,6 +691,17 @@ _TRANSPORT_RECEIVER_V7 = _TRANSPORT_RECEIVER_V6.replace(
         self.buffer += data
         return
 """,
+).replace(
+    """        line, sep, data = data.partition(b'\\n')
+        self.parse(line)
+""",
+    """        line, sep, data = data.partition(b'\\n')
+        if len(line) > 1 << 20:
+            self.buffer = b''
+            self._disconnect()
+            return
+        self.parse(line)
+""",
 )
 
 
@@ -1080,10 +1091,33 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
 
         bounded_receiver, count = re.subn(
             pending_pattern, bound_pending_frame, receiver_source, count=1)
-        if count != 1 or not _ast_equal(
+        if count != 1:
+            raise ValueError("unsupported legacy transport pending-frame guard")
+
+        line_pattern = (
+            r"(?m)^([ \t]*)line, sep, data = data\.partition\(b'\\n'\)[ \t]*\n"
+            r"\1self\.parse\(line\)[ \t]*$"
+        )
+
+        def bound_complete_frame(match):
+            indent = match.group(1)
+            unit = "\t" if "\t" in indent else "    "
+            body = indent + unit
+            return (
+                indent + "line, sep, data = data.partition(b'\\n')\n"
+                + indent + "if len(line) > 1 << 20:\n"
+                + body + "self.buffer = b''\n"
+                + body + "self._disconnect()\n"
+                + body + "return\n"
+                + indent + "self.parse(line)"
+            )
+
+        bounded_receiver, line_count = re.subn(
+            line_pattern, bound_complete_frame, bounded_receiver, count=1)
+        if line_count != 1 or not _ast_equal(
                 ast.parse(bounded_receiver).body[0],
                 ast.parse(_TRANSPORT_RECEIVER_V7).body[0]):
-            raise ValueError("unsupported legacy transport pending-frame guard")
+            raise ValueError("unsupported legacy transport frame-size guard")
         text = text.replace(receiver_source, bounded_receiver, 1)
 
     # close() may run before run() reaches its final connected=False assignment.
