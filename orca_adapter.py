@@ -320,6 +320,19 @@ class OrcaRuntimeAdapter:
         except Exception:
             return None
         if payload is not None:
+            try:
+                import json
+                encoded = json.dumps(
+                    payload,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            except Exception:
+                return None
+            # Leave headroom for the Remote Access type/version envelope.
+            if len(encoded) > 60 * 1024:
+                return None
             _REMOTE_SEMANTIC_OBJECTS = registry
         return payload
 
