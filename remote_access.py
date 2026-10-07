@@ -1347,7 +1347,8 @@ LEGACY_COMPAT_MARKER_V88 = "# linux-rdaccess NVDA/Orca input compatibility v88"
 LEGACY_COMPAT_MARKER_V89 = "# linux-rdaccess NVDA/Orca input compatibility v89"
 LEGACY_COMPAT_MARKER_V90 = "# linux-rdaccess NVDA/Orca input compatibility v90"
 LEGACY_COMPAT_MARKER_V91 = "# linux-rdaccess NVDA/Orca input compatibility v91"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v92"
+LEGACY_COMPAT_MARKER_V92 = "# linux-rdaccess NVDA/Orca input compatibility v92"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v93"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -2165,6 +2166,14 @@ _LEGACY_HELPERS = '''\
         if vk_code == 0x2D:
             pending = getattr(self, "_lrd_insert_pending", None)
             if pressed:
+                if not repeat and pending is not None and pending[0] != held:
+                    # Dedicated Insert and numpad Insert are distinct physical
+                    # NVDA modifiers but share VK_INSERT. Do not overwrite the
+                    # first deferred press: own the additional modifier until
+                    # its release and mark the original as modifier-used.
+                    self._lrd_insert_used = True
+                    self._lrd_swapped.add(held)
+                    return True
                 if not repeat:
                     self._lrd_insert_pending = (
                         held,
@@ -5155,6 +5164,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V92,
                 LEGACY_COMPAT_MARKER_V91,
                 LEGACY_COMPAT_MARKER_V90,
                 LEGACY_COMPAT_MARKER_V89,
