@@ -72,6 +72,50 @@ class SemanticFocusPayloadTests(unittest.TestCase):
                 orca_adapter.OrcaRuntimeAdapter.perform_semantic_action(focus_id, 0),
             )
 
+
+    def test_oversized_semantic_tree_fails_back_and_clears_previous_action_registry(self):
+        action = FakeAction(["click"])
+        first_app = FakeAccessible("First App", "application")
+        first = FakeAccessible(
+            "First button",
+            "push button",
+            first_app,
+            action_iface=action,
+        )
+        orca_state = types.ModuleType("orca.orca_state")
+        orca_state.locusOfFocus = first
+        orca = types.ModuleType("orca")
+        orca.orca_state = orca_state
+        with mock.patch.dict(sys.modules, {
+            "orca": orca,
+            "orca.orca_state": orca_state,
+        }):
+            payload = orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload()
+            self.assertIsNotNone(payload)
+            old_id = payload["focus_id"]
+            self.assertTrue(
+                orca_adapter.OrcaRuntimeAdapter.perform_semantic_action(old_id, 0))
+
+            large_app = FakeAccessible("Large App", "application")
+            large_focus = FakeAccessible(
+                "Focused",
+                "push button",
+                large_app,
+                "x" * 8192,
+            )
+            for index in range(30):
+                FakeAccessible(
+                    f"Sibling {index}",
+                    "push button",
+                    large_app,
+                    "y" * 8192,
+                )
+            orca_state.locusOfFocus = large_focus
+            self.assertIsNone(
+                orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload())
+            self.assertFalse(
+                orca_adapter.OrcaRuntimeAdapter.perform_semantic_action(old_id, 0))
+
     def test_missing_orca_focus_fails_closed(self):
         orca_state = types.ModuleType("orca.orca_state")
         orca_state.locusOfFocus = None
