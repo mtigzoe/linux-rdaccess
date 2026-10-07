@@ -219,6 +219,37 @@ def _text_iface(obj):
     return _invoke(obj, ("get_text_iface", "queryText"))
 
 
+def set_caret_offset(obj, offset: int) -> bool:
+    """Move one current semantic text object's caret to a bounded character offset."""
+    if type(offset) is not int or offset < 0 or offset > MAX_FOCUS_TEXT_CHARS:
+        return False
+    iface = _text_iface(obj)
+    if iface is None:
+        return False
+    character_count = _invoke(iface, ("get_character_count", "getCharacterCount"))
+    if character_count is None:
+        character_count = getattr(iface, "characterCount", None)
+    try:
+        character_count = int(character_count)
+    except (TypeError, ValueError):
+        return False
+    if character_count < 0 or offset > character_count:
+        return False
+    for name in ("set_caret_offset", "setCaretOffset"):
+        method = getattr(iface, name, None)
+        if not callable(method):
+            continue
+        try:
+            return method(offset) is not False
+        except Exception:
+            continue
+    try:
+        iface.caretOffset = offset
+    except Exception:
+        return False
+    return True
+
+
 def _selection_offsets(iface) -> tuple[int, int] | None:
     count = _invoke(iface, ("get_n_selections", "getNSelections"))
     if count is None:
