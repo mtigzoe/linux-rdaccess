@@ -36,6 +36,49 @@ class InsertModifierDeferralTests(Harness, unittest.TestCase):
                 self.assertIn(("key", 0x20, True), keys)
                 self.assertIn(("key", 0x20, False), keys)
 
+    def test_failed_deferred_insert_blocks_remainder_of_chord(self):
+        for failure in (False, OSError("backend unavailable")):
+            with self.subTest(failure=type(failure).__name__):
+                c, _, _ = self._patched_controller()
+                attempts = []
+
+                def send(**kw):
+                    attempts.append((kw["vk_code"], kw["pressed"]))
+                    if kw["vk_code"] == 0x2D and kw["pressed"]:
+                        if isinstance(failure, Exception):
+                            raise failure
+                        return False
+                    return True
+
+                c.local_machine.send_key = send
+                self._key(c, 0x2D, True, extended=True)
+                self._key(c, 0x59, True)   # Insert+Y, modifier replay fails
+                self._key(c, 0x59, False)
+                self._key(c, 0x2D, False, extended=True)
+                self.assertNotIn((0x59, True), attempts)
+                self.assertNotIn((0x59, False), attempts)
+
+                # Ownership is cleared after the failed chord; later plain
+                # input must not remain suppressed.
+                self._key(c, 0x41, True)
+                self._key(c, 0x41, False)
+                self.assertIn((0x41, True), attempts)
+                self.assertIn((0x41, False), attempts)
+
+    def test_v83_controller_patch_upgrades_to_v84(self):
+        import remote_access
+        c, path, _ = self._patched_controller()
+        previous = path.read_text(encoding="utf-8").replace(
+            remote_access.LEGACY_COMPAT_MARKER,
+            remote_access.LEGACY_COMPAT_MARKER_V83,
+        )
+        path.write_text(previous, encoding="utf-8")
+        self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
+        result = path.read_text(encoding="utf-8")
+        self.assertIn(remote_access.LEGACY_COMPAT_MARKER, result)
+        self.assertNotIn(remote_access.LEGACY_COMPAT_MARKER_V83 + "\n", result)
+        self.assertFalse(remote_access.patch_legacy_orca_remote_controller(path))
+
     def test_non_nvda_insert_chord_replays_modifier_before_application_key(self):
         c, _, _ = self._patched_controller()
         self._key(c, 0x2D, True, extended=True)
