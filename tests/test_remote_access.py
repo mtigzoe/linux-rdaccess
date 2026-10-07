@@ -1563,6 +1563,42 @@ class RemoteController:
         self.assertIn((0x2D, True), names)
         self.assertIn((0x28, True), names)
 
+    def test_desktop_shift_numpad_review_commands_are_consumed(self):
+        cases = (
+            (0x23, 0x4F),  # Shift+Numpad1: line start
+            (0x28, 0x50),  # Shift+Numpad2: focus accelerator
+            (0x22, 0x51),  # Shift+Numpad3: line end
+            (0x24, 0x47),  # Shift+Numpad7: review top
+            (0x21, 0x49),  # Shift+Numpad9: review bottom
+        )
+        for vk, scan in cases:
+            with self.subTest(vk=hex(vk), scan=hex(scan)):
+                c, _, _ = self._patched_controller()
+                self._key(c, 0xA0, True)
+                self._key(c, vk, True, extended=False, scan_code=scan)
+                self._key(c, vk, True, extended=False, scan_code=scan)
+                self._key(c, vk, False, extended=False, scan_code=scan)
+                names = self._names(c)
+                self.assertNotIn((vk, True), names)
+                self.assertIn((0xA0, True), names)
+
+    def test_desktop_shift_numpad_mouse_lock_commands_do_not_click(self):
+        for vk, extended in ((0x6F, True), (0x6A, False)):
+            with self.subTest(vk=hex(vk)):
+                c, _, _ = self._patched_controller()
+                self._key(c, 0xA0, True)
+                self._key(c, vk, True, extended=extended)
+                self._key(c, vk, False, extended=extended)
+                self.assertNotIn((vk, True), self._names(c))
+                self.assertIn((0xA0, True), self._names(c))
+
+    def test_shift_navigation_without_matching_numpad_scan_stays_native(self):
+        c, _, _ = self._patched_controller()
+        self._key(c, 0xA0, True)
+        self._key(c, 0x24, True, extended=False, scan_code=0)
+        self._key(c, 0x24, False, extended=False, scan_code=0)
+        self.assertIn((0x24, True), self._names(c))
+
     def test_desktop_unimplemented_nvda_object_commands_do_not_run_orca_keypad_commands(self):
         cases = (
             (0x0C, False),  # NVDA+Numpad5 / VK_CLEAR
