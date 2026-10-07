@@ -1052,38 +1052,39 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
     receiver = next((node for node in tcp.body if isinstance(node, ast.FunctionDef)
                      and node.name == "handle_server_data"), None)
     receiver_source = ast.get_source_segment(text, receiver) if receiver is not None else ""
-    if receiver is None or not _ast_equal(
-            receiver, ast.parse(_TRANSPORT_RECEIVER_V6).body[0]):
-        raise ValueError("unsupported legacy transport pending-frame layout")
-    pending_pattern = (
-        r"(?m)^([ \t]*)if b'\\n' not in data:[ \t]*\n"
-        r"([ \t]*)self\.buffer \+= data[ \t]*\n"
-        r"\2return[ \t]*$"
-    )
-
-    def bound_pending_frame(match):
-        indent, body = match.group(1), match.group(2)
-        unit = body[len(indent):] if body.startswith(indent) else ""
-        if not unit:
-            unit = "\t" if "\t" in body else "    "
-        nested = body + unit
-        return (
-            indent + "if b'\\n' not in data:\n"
-            + body + "if len(data) > 1 << 20:\n"
-            + nested + "self.buffer = b''\n"
-            + nested + "self._disconnect()\n"
-            + nested + "return\n"
-            + body + "self.buffer += data\n"
-            + body + "return"
+    if ".recv(" in receiver_source:
+        if receiver is None or not _ast_equal(
+                receiver, ast.parse(_TRANSPORT_RECEIVER_V6).body[0]):
+            raise ValueError("unsupported legacy transport pending-frame layout")
+        pending_pattern = (
+            r"(?m)^([ \t]*)if b'\\n' not in data:[ \t]*\n"
+            r"([ \t]*)self\.buffer \+= data[ \t]*\n"
+            r"\2return[ \t]*$"
         )
 
-    bounded_receiver, count = re.subn(
-        pending_pattern, bound_pending_frame, receiver_source, count=1)
-    if count != 1 or not _ast_equal(
-            ast.parse(bounded_receiver).body[0],
-            ast.parse(_TRANSPORT_RECEIVER_V7).body[0]):
-        raise ValueError("unsupported legacy transport pending-frame guard")
-    text = text.replace(receiver_source, bounded_receiver, 1)
+        def bound_pending_frame(match):
+            indent, body = match.group(1), match.group(2)
+            unit = body[len(indent):] if body.startswith(indent) else ""
+            if not unit:
+                unit = "\t" if "\t" in body else "    "
+            nested = body + unit
+            return (
+                indent + "if b'\\n' not in data:\n"
+                + body + "if len(data) > 1 << 20:\n"
+                + nested + "self.buffer = b''\n"
+                + nested + "self._disconnect()\n"
+                + nested + "return\n"
+                + body + "self.buffer += data\n"
+                + body + "return"
+            )
+
+        bounded_receiver, count = re.subn(
+            pending_pattern, bound_pending_frame, receiver_source, count=1)
+        if count != 1 or not _ast_equal(
+                ast.parse(bounded_receiver).body[0],
+                ast.parse(_TRANSPORT_RECEIVER_V7).body[0]):
+            raise ValueError("unsupported legacy transport pending-frame guard")
+        text = text.replace(receiver_source, bounded_receiver, 1)
 
     # close() may run before run() reaches its final connected=False assignment.
     # Invalidate the advertised state now so speech and input are not queued
