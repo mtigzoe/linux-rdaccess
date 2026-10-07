@@ -50,9 +50,13 @@ class NvdaBrailleLink:
         if self._rx.xon_count != self._seen_xon:
             self._seen_xon = self._rx.xon_count
             self._start_handshake()
+            if self._channel is None:
+                return
 
         for message in self._rx.drain():
             self._handle(message)
+            if self._channel is None:
+                return
 
     def display(self, cells):
         if not self.ready:

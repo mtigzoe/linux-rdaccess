@@ -1,5 +1,6 @@
 import json
 import unittest
+from unittest import mock
 
 from a11y_link import A11Y_CHANNEL, NvdaA11yLink, decode_action_request, decode_pong
 from rdaccess_dvc import XOFF, XON
@@ -96,6 +97,49 @@ class A11yLinkTests(unittest.TestCase):
         self.assertEqual(ch.written[0]["type"], "protocol_version")
         self.assertEqual(ch.written[0]["version"], 2)
         self.assertEqual(ch.written[0]["channel"], A11Y_CHANNEL)
+
+    def test_action_write_failure_stops_batch_before_reconnect_handshake(self):
+        clock = FakeClock()
+        self.link._clock = clock
+        ch = self.connect()
+
+        def action(object_id, index):
+            self.actions.append((object_id, index))
+            self.link.send_focus(focus_id=object_id, objects=[])
+
+        self.link._on_action = action
+        ch.incoming.append(
+            bytes([XON])
+            + b'{"type":"a11y_action","object_id":"target","action_index":0}\n'
+            + b'{"type":"a11y_action","object_id":"later","action_index":0}\n'
+        )
+        with mock.patch.object(
+            ch, "write", side_effect=ConnectionError("channel lost")
+        ) as write:
+            self.link.poll()
+        self.assertEqual(write.call_count, 1)
+        self.assertEqual(self.actions, [("target", 0)])
+        self.assertTrue(ch.closed)
+        self.assertIsNone(self.link._channel)
+        self.assertFalse(self.link.ready)
+
+        clock.advance(2.0)
+        self.link.poll()
+        self.assertEqual(len(self.channels), 1)
+        clock.advance(1.0)
+        self.link.poll()
+        self.assertEqual(len(self.channels), 2)
+        replacement = self.channels[-1]
+        self.assertFalse(self.link.ready)
+        replacement.incoming.append(bytes([XON]))
+        self.link.poll()
+        self.assertTrue(self.link.ready)
+        self.assertEqual(replacement.written[0]["type"], "protocol_version")
+        self.assertEqual(
+            replacement.written[1],
+            {"type": "a11y_focus", "focus_id": "target", "objects": []},
+        )
+        self.assertEqual(self.actions, [("target", 0)])
 
     def test_focus_tree_is_sent_after_xon(self):
         ch = self.connect()

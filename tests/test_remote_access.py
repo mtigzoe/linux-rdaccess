@@ -336,6 +336,29 @@ class RemoteController:
             self.UPSTREAM_CONTROLLER,
         )
 
+    def test_v88_controller_patch_upgrades_shift_numpad_ownership(self):
+        _, path, _ = self._patched_controller()
+        previous = path.read_text(encoding="utf-8").replace(
+            remote_access.LEGACY_COMPAT_MARKER,
+            remote_access.LEGACY_COMPAT_MARKER_V88,
+        ).replace(
+            "            and self._linux_rdaccess_plain_shift_numpad_unimplemented(",
+            '            and nvda_layout == "desktop"\n'
+            "            and self._linux_rdaccess_plain_shift_numpad_unimplemented(",
+        )
+        path.write_text(previous, encoding="utf-8")
+        self.assertFalse(remote_access.legacy_controller_patch_current(previous))
+        self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
+        result = path.read_text(encoding="utf-8")
+        self.assertIn(remote_access.LEGACY_COMPAT_MARKER, result)
+        self.assertNotIn(remote_access.LEGACY_COMPAT_MARKER_V88 + "\n", result)
+        self.assertTrue(remote_access.legacy_controller_patch_current(result))
+        self.assertFalse(remote_access.patch_legacy_orca_remote_controller(path))
+        self.assertEqual(
+            path.with_name(path.name + ".linux-rdaccess-backup").read_text(encoding="utf-8"),
+            self.UPSTREAM_CONTROLLER,
+        )
+
     def test_patch_rejects_signature_without_vk_code(self):
         broken = self.UPSTREAM_CONTROLLER.replace("vk_code=None, ", "")
         with tempfile.TemporaryDirectory() as temp:
@@ -1587,7 +1610,7 @@ class RemoteController:
         self.assertIn((0x2D, True), names)
         self.assertIn((0x28, True), names)
 
-    def test_desktop_shift_numpad_review_commands_are_consumed(self):
+    def test_shift_numpad_review_commands_are_consumed_in_both_layouts(self):
         cases = (
             (0x23, 0x4F),  # Shift+Numpad1: line start
             (0x28, 0x50),  # Shift+Numpad2: focus accelerator
@@ -1595,33 +1618,77 @@ class RemoteController:
             (0x24, 0x47),  # Shift+Numpad7: review top
             (0x21, 0x49),  # Shift+Numpad9: review bottom
         )
-        for vk, scan in cases:
-            with self.subTest(vk=hex(vk), scan=hex(scan)):
-                c, _, _ = self._patched_controller()
-                self._key(c, 0xA0, True)
-                self._key(c, vk, True, extended=False, scan_code=scan)
-                self._key(c, vk, True, extended=False, scan_code=scan)
-                self._key(c, vk, False, extended=False, scan_code=scan)
-                names = self._names(c)
-                self.assertNotIn((vk, True), names)
-                self.assertIn((0xA0, True), names)
+        for layout in ("desktop", "laptop"):
+            for vk, scan in cases:
+                with self.subTest(layout=layout, vk=hex(vk), scan=hex(scan)):
+                    c, _, _ = self._patched_controller()
+                    with mock.patch.dict(os.environ, {"LINUX_RDACCESS_NVDA_LAYOUT": layout}):
+                        self._key(c, 0xA0, True)
+                        self._key(c, vk, True, extended=False, scan_code=scan)
+                        self._key(c, 0xA0, False)  # ownership outlives Shift
+                        self._key(c, vk, True, extended=False, scan_code=scan)
+                        self._key(c, vk, False, extended=False, scan_code=scan)
+                    self.assertEqual(self._names(c), [(0xA0, True), (0xA0, False)])
+                    self.assertEqual(c._lrd_swapped, set())
+                    self.assertEqual(c._lrd_down, set())
+                    self.assertEqual(c._lrd_forwarded, {})
 
-    def test_desktop_shift_numpad_mouse_lock_commands_do_not_click(self):
-        for vk, extended in ((0x6F, True), (0x6A, False)):
-            with self.subTest(vk=hex(vk)):
-                c, _, _ = self._patched_controller()
-                self._key(c, 0xA0, True)
-                self._key(c, vk, True, extended=extended)
-                self._key(c, vk, False, extended=extended)
-                self.assertNotIn((vk, True), self._names(c))
-                self.assertIn((0xA0, True), self._names(c))
+    def test_shift_numpad_mouse_lock_commands_do_not_click_in_both_layouts(self):
+        for layout in ("desktop", "laptop"):
+            for vk, extended, scan in ((0x6F, True, 0x35), (0x6A, False, 0x37)):
+                for scan_code in (0, scan):  # these keypad VKs are unambiguous
+                    with self.subTest(layout=layout, vk=hex(vk), scan=scan_code):
+                        c, _, _ = self._patched_controller()
+                        with mock.patch.dict(os.environ, {"LINUX_RDACCESS_NVDA_LAYOUT": layout}):
+                            self._key(c, 0xA0, True)
+                            self._key(c, vk, True, extended=extended, scan_code=scan_code)
+                            self._key(c, 0xA0, False)
+                            self._key(c, vk, True, extended=extended, scan_code=scan_code)
+                            self._key(c, vk, False, extended=extended, scan_code=scan_code)
+                        self.assertEqual(self._names(c), [(0xA0, True), (0xA0, False)])
+                        self.assertEqual(c._lrd_swapped, set())
+                        self.assertEqual(c._lrd_down, set())
+                        self.assertEqual(c._lrd_forwarded, {})
+
+    def test_shift_numpad_ownership_is_cleared_on_reset_in_both_layouts(self):
+        for layout in ("desktop", "laptop"):
+            for vk, extended, scan in ((0x23, False, 0x4F), (0x6F, True, 0x35),
+                                       (0x6A, False, 0x37)):
+                with self.subTest(layout=layout, vk=hex(vk)):
+                    c, _, _ = self._patched_controller()
+                    with mock.patch.dict(os.environ, {"LINUX_RDACCESS_NVDA_LAYOUT": layout}):
+                        self._key(c, 0xA0, True)
+                        self._key(c, vk, True, extended=extended, scan_code=scan)
+                        self.assertIn((vk, extended), c._lrd_swapped)
+                        c._linux_rdaccess_reset_keys()
+                        self._key(c, vk, False, extended=extended, scan_code=scan)
+                        self._key(c, 0xA0, False)
+                        self.assertEqual(self._names(c), [(0xA0, True), (0xA0, False)])
+                        self.assertEqual(c._lrd_swapped, set())
+                        self.assertEqual(c._lrd_down, set())
+                        self.assertEqual(c._lrd_forwarded, {})
+
+                        # A later unshifted press must retain native behavior.
+                        self._key(c, vk, True, extended=extended, scan_code=scan)
+                        self._key(c, vk, False, extended=extended, scan_code=scan)
+                        self.assertEqual(self._names(c)[-2:], [(vk, True), (vk, False)])
 
     def test_shift_navigation_without_matching_numpad_scan_stays_native(self):
-        c, _, _ = self._patched_controller()
-        self._key(c, 0xA0, True)
-        self._key(c, 0x24, True, extended=False, scan_code=0)
-        self._key(c, 0x24, False, extended=False, scan_code=0)
-        self.assertIn((0x24, True), self._names(c))
+        for layout in ("desktop", "laptop"):
+            for vk, scan in ((0x23, 0x4F), (0x28, 0x50), (0x22, 0x51),
+                             (0x24, 0x47), (0x21, 0x49)):
+                for extended, scan_code in ((True, scan), (False, 0), (False, 0x4C)):
+                    with self.subTest(layout=layout, vk=hex(vk), extended=extended,
+                                      scan=scan_code):
+                        c, _, _ = self._patched_controller()
+                        with mock.patch.dict(os.environ, {"LINUX_RDACCESS_NVDA_LAYOUT": layout}):
+                            self._key(c, 0xA0, True)
+                            self._key(c, vk, True, extended=extended, scan_code=scan_code)
+                            self._key(c, vk, False, extended=extended, scan_code=scan_code)
+                            self._key(c, 0xA0, False)
+                        self.assertEqual(self._names(c), [
+                            (0xA0, True), (vk, True), (vk, False), (0xA0, False),
+                        ])
 
     def test_desktop_unimplemented_nvda_object_commands_do_not_run_orca_keypad_commands(self):
         cases = (

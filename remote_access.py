@@ -1155,7 +1155,8 @@ LEGACY_COMPAT_MARKER_V84 = "# linux-rdaccess NVDA/Orca input compatibility v84"
 LEGACY_COMPAT_MARKER_V85 = "# linux-rdaccess NVDA/Orca input compatibility v85"
 LEGACY_COMPAT_MARKER_V86 = "# linux-rdaccess NVDA/Orca input compatibility v86"
 LEGACY_COMPAT_MARKER_V87 = "# linux-rdaccess NVDA/Orca input compatibility v87"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v88"
+LEGACY_COMPAT_MARKER_V88 = "# linux-rdaccess NVDA/Orca input compatibility v88"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v89"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -1344,7 +1345,8 @@ _LEGACY_HELPERS = '''\
         )
         if not shift or other or self._lrd_nvda_down:
             return False
-        # NVDA 2026.2 desktop review boundary/focus-accelerator commands.
+        # NVDA 2026.2 binds these review/focus commands with plain "kb:"
+        # gestures, so the physical numpad bindings apply in both layouts.
         if (vk_code, scan_code) in {
             (0x23, 0x4F),  # Shift+Numpad1: start of review line
             (0x28, 0x50),  # Shift+Numpad2: focused-object accelerator
@@ -2121,7 +2123,7 @@ _LEGACY_HELPERS = '''\
                 return True
             return False
 
-        # NVDA desktop assigns several plain Shift+numpad gestures to review
+        # NVDA assigns several plain Shift+numpad gestures to review
         # boundaries, focus-accelerator reporting, and mouse-lock toggles.
         # Orca 42 either has no exact equivalent or gives the same physical
         # key a different meaning. Consume only scan-proven/unambiguous forms
@@ -2129,7 +2131,6 @@ _LEGACY_HELPERS = '''\
         if (
             pressed
             and not repeat
-            and nvda_layout == "desktop"
             and self._linux_rdaccess_plain_shift_numpad_unimplemented(
                 vk_code, extended, scan_code)
         ):
@@ -4904,6 +4905,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V88,
                 LEGACY_COMPAT_MARKER_V87,
                 LEGACY_COMPAT_MARKER_V86,
                 LEGACY_COMPAT_MARKER_V85,

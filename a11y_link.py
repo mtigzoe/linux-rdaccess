@@ -106,6 +106,8 @@ class NvdaA11yLink:
                 continue
             if msg.get("type") == "a11y_action":
                 self._handle_action_message(msg)
+                if self._channel is None:
+                    return
         if self._rx.xon_count != self._seen_xon_count:
             self._seen_xon_count = self._rx.xon_count
             self._handshake()

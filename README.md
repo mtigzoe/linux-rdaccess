@@ -206,11 +206,12 @@ Desktop keypad object-navigation interception uses unambiguous keypad VKs
 for Numpad1-9/Delete, the low-level Windows scan code forwarded by NVDA Remote.
 This distinguishes physical numpad navigation keys from dedicated navigation
 keys that share the same VK. Legacy payloads without matching scan-code evidence
-still pass through rather than being guessed as keypad input. NVDA's desktop
+still pass through rather than being guessed as keypad input. NVDA's
 Shift+Numpad1/2/3/7/9 review commands and Shift+NumpadDivide/Multiply mouse-lock
 commands are also consumed when their keypad identity is proven, because Orca
 42 either has no exact equivalent or assigns the physical gesture a conflicting
-meaning; they are not falsely presented as implemented.
+meaning; they are not falsely presented as implemented. These physical keypad
+bindings apply in both NVDA keyboard layouts.
 CapsLock and Insert presses used as NVDA modifiers are deferred so translated
 or consumed NVDA commands do not leak those modifier presses into Linux. A
 standalone CapsLock or Insert press is replayed as one complete press/release.
@@ -337,7 +338,7 @@ individual on/off results. Num Lock and Scroll Lock auto-repeat produce one togg
 announcement per press. CapsLock used for a translated NVDA command produces
 neither a lock toggle nor a lock announcement.
 
-The current patches are controller **v88**, local-machine **v12**, and transport cleanup **v5**. Update the
+The current patches are controller **v89**, local-machine **v12**, and transport cleanup **v5**. Update the
 installed command from the repository with `python3 linux_rdaccess.py install`,
 then run `linux-rdaccess connect` to update the Orca-side files and restart Orca.
 `doctor` verifies the connected patch hooks, valid Python, and the installed
