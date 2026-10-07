@@ -263,45 +263,12 @@ class TransportStreamBoundariesTests(unittest.TestCase):
 
     def test_v6_cleanup_patch_upgrades_to_v7(self):
         current = remote_access._patch_legacy_transport_cleanup(UPSTREAM)
-        pattern = (
-            r"(?m)^([ \\t]*)if b\'\\\\n\' not in data:[ \\t]*\\n"
-            r"([ \\t]*)if len\\(data\\) > 1 << 20:[ \\t]*\\n"
-            r"([ \\t]*)self\\.buffer = b\'\'[ \\t]*\\n"
-            r"\\3self\\._disconnect\\(\\)[ \\t]*\\n"
-            r"\\3return[ \\t]*\\n"
-            r"\\2self\\.buffer \\+= data[ \\t]*\\n"
-            r"\\2return[ \\t]*$"
+        v6 = current.replace(
+            remote_access._TRANSPORT_RECEIVER_V7,
+            remote_access._TRANSPORT_RECEIVER_V6,
+            1,
         )
-
-        def remove_bound(match):
-            indent, body = match.group(1), match.group(2)
-            return (
-                indent + "if b\'\\\\n\' not in data:\\n"
-                + body + "self.buffer += data\\n"
-                + body + "return"
-            )
-
-        v6, count = re.subn(pattern, remove_bound, current, count=1)
-        self.assertEqual(count, 1)
-        complete_pattern = (
-            r"(?m)^([ \t]*)line, sep, data = data\.partition\(b'\\n'\)[ \t]*\n"
-            r"\1if len\(line\) > 1 << 20:[ \t]*\n"
-            r"([ \t]*)self\.buffer = b''[ \t]*\n"
-            r"\2self\._disconnect\(\)[ \t]*\n"
-            r"\2return[ \t]*\n"
-            r"\1self\.parse\(line\)[ \t]*$"
-        )
-
-        def remove_complete_bound(match):
-            indent = match.group(1)
-            return (
-                indent + "line, sep, data = data.partition(b'\\n')\n"
-                + indent + "self.parse(line)"
-            )
-
-        v6, complete_count = re.subn(
-            complete_pattern, remove_complete_bound, v6, count=1)
-        self.assertEqual(complete_count, 1)
+        self.assertNotEqual(v6, current)
         v6 = v6.replace(
             remote_access.TRANSPORT_CLEANUP_MARKER,
             remote_access.TRANSPORT_CLEANUP_MARKER_V6,
@@ -313,6 +280,8 @@ class TransportStreamBoundariesTests(unittest.TestCase):
         self.assertIn(remote_access.TRANSPORT_CLEANUP_MARKER, upgraded)
         self.assertNotIn(remote_access.TRANSPORT_CLEANUP_MARKER_V6 + "\\n", upgraded)
         self.assertIn("if len(data) > 1 << 20:", upgraded)
+        self.assertIn("if len(line) > 1 << 20:", upgraded)
+
 
     def test_genuine_v5_upgrade_preserves_original_backup_and_is_idempotent(self):
         import tempfile
