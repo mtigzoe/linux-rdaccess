@@ -654,16 +654,124 @@ def _replace_configuration_values(text: str, replacements: dict[str, str], *, ro
     return data.decode("utf-8")
 
 
+def legacy_transport_cleanup_patch_current(text: str) -> bool:
+    """Whether the legacy transport safely cleans resources before reconnect."""
+    if TRANSPORT_CLEANUP_MARKER not in text:
+        return False
+    try:
+        tree = ast.parse(text, feature_version=(3, 10))
+    except SyntaxError:
+        return False
+    tcp = next(
+        (node for node in tree.body
+         if isinstance(node, ast.ClassDef) and node.name == "TCPTransport"),
+        None,
+    )
+    if tcp is None:
+        return False
+    methods = {
+        node.name: node for node in tcp.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    disconnect = methods.get("_disconnect")
+    run = methods.get("run")
+    if disconnect is None or run is None:
+        return False
+    disconnect_source = ast.get_source_segment(text, disconnect) or ""
+    run_source = ast.get_source_segment(text, run) or ""
+    return (
+        "if self.server_sock is None and self.queue_thread is None:" in disconnect_source
+        and "except Exception:" in run_source
+        and "self._disconnect()" in run_source.split("except Exception:", 1)[1].split("raise", 1)[0]
+    )
+
+
+def _patch_legacy_transport_cleanup(text: str) -> str:
+    """Fix stale socket/send-thread ownership in the verified Orca Remote transport."""
+    if TRANSPORT_CLEANUP_MARKER in text:
+        if legacy_transport_cleanup_patch_current(text):
+            return text
+        raise ValueError("current transport cleanup marker has an incomplete patch")
+    try:
+        tree = ast.parse(text, feature_version=(3, 10))
+    except SyntaxError:
+        raise ValueError("legacy transport source is invalid Python") from None
+    tcp = next(
+        (node for node in tree.body
+         if isinstance(node, ast.ClassDef) and node.name == "TCPTransport"),
+        None,
+    )
+    if tcp is None:
+        return text
+    methods = {
+        node.name: node for node in tcp.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    disconnect = methods.get("_disconnect")
+    run = methods.get("run")
+    if disconnect is None or run is None:
+        raise ValueError("unsupported legacy TCPTransport layout")
+
+    disconnect_source = ast.get_source_segment(text, disconnect) or ""
+    updated_disconnect, count = re.subn(
+        r"(?m)^([ \t]*)if not self\.connected:[ \t]*$",
+        r"\1if self.server_sock is None and self.queue_thread is None:",
+        disconnect_source,
+        count=1,
+    )
+    if count != 1:
+        raise ValueError("unsupported legacy transport disconnect guard")
+    text = text.replace(disconnect_source, updated_disconnect, 1)
+
+    # Reparse after the first source edit so line/column spans remain exact.
+    tree = ast.parse(text, feature_version=(3, 10))
+    tcp = next(
+        node for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "TCPTransport"
+    )
+    run = next(
+        node for node in tcp.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "run"
+    )
+    run_source = ast.get_source_segment(text, run) or ""
+    pattern = (
+        r"(?m)^([ \t]*)except Exception:[ \t]*\n"
+        r"([ \t]*)(self\.callback_manager\.call_callbacks\("
+        r"['\"]transport_connection_failed['\"]\))"
+    )
+    updated_run, count = re.subn(
+        pattern,
+        lambda match: (
+            match.group(1) + "except Exception:\n"
+            + match.group(2) + "self._disconnect()\n"
+            + match.group(2) + match.group(3)
+        ),
+        run_source,
+        count=1,
+    )
+    if count != 1:
+        raise ValueError("unsupported legacy transport connection-failure path")
+    text = text.replace(run_source, updated_run, 1)
+    text = text.rstrip("\n") + "\n\n" + TRANSPORT_CLEANUP_MARKER + "\n"
+    if not legacy_transport_cleanup_patch_current(text):
+        raise ValueError("transport cleanup patch validation failed")
+    return text
+
+
 def _patch_legacy_transport_logging(path: Path) -> bool:
-    """Remove the verified legacy constructor's connection-key log."""
+    """Redact the relay key log and repair verified legacy transport cleanup."""
     text = path.read_text(encoding="utf-8")
     backup = path.with_name(path.name + ".linux-rdaccess-backup")
     if backup.exists():
         backup.chmod(0o600)
+    updated = text
     original = 'log.info("Connecting to %s channel %s" % (address, channel))'
-    if original not in text:
+    if original in updated:
+        updated = updated.replace(
+            original, 'log.info("Connecting to remote relay %s", address)')
+    updated = _patch_legacy_transport_cleanup(updated)
+    if updated == text:
         return False
-    updated = text.replace(original, 'log.info("Connecting to remote relay %s", address)')
     try:
         compile(updated, str(path), "exec")
     except SyntaxError:
@@ -729,7 +837,7 @@ def update_legacy_orca_customizations(
             pass
     _write_private_text(path, text)
 
-    transport_path = path.parent / "orca-scripts" / "transport.py"
+    transport_path = path.parent / LEGACY_TRANSPORT_RELATIVE
     if transport_path.exists():
         try:
             _patch_legacy_transport_logging(transport_path)
@@ -779,6 +887,8 @@ def update_legacy_orca_customizations(
 
 
 LEGACY_REMOTE_CONTROLLER_RELATIVE = Path("orca-scripts/remote_controller.py")
+LEGACY_TRANSPORT_RELATIVE = Path("orca-scripts/transport.py")
+TRANSPORT_CLEANUP_MARKER = "# linux-rdaccess transport cleanup v1"
 LEGACY_COMPAT_MARKER_V1 = "# linux-rdaccess NVDA/Orca input compatibility"
 LEGACY_COMPAT_MARKER_V2 = "# linux-rdaccess NVDA/Orca input compatibility v2"
 LEGACY_COMPAT_MARKER_V3 = "# linux-rdaccess NVDA/Orca input compatibility v3"
