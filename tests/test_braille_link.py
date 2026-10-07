@@ -3,7 +3,7 @@ import unittest
 from unittest import mock
 
 from braille_link import NvdaBrailleLink
-from rdaccess_dvc import LEGACY_GENERIC_ATTRIBUTE, XON
+from rdaccess_dvc import LEGACY_GENERIC_ATTRIBUTE, XOFF, XON
 
 
 class FakeChannel:
@@ -146,6 +146,26 @@ class BrailleLinkTests(unittest.TestCase):
         self.assertTrue(link.display([1, 2]))
         msg = json.loads(replacement.writes[-1])
         self.assertEqual(len(msg["cells"]), 80)
+
+    def test_xoff_xon_resets_previous_session_cell_count(self):
+        self.connect_v2()
+        self.channel.incoming.append(
+            b'{"type":"attribute_value","attribute":"numCells","value":4}\n'
+        )
+        self.link.poll()
+        self.assertEqual(self.link.num_cells, 4)
+
+        self.channel.incoming.append(bytes([XOFF, XON]))
+        self.link.poll()
+        self.assertFalse(self.link.ready)
+        self.assertEqual(self.link.num_cells, 80)
+
+        self.channel.incoming.append(
+            b'{"type":"protocol_version","version":2}\n'
+        )
+        self.link.poll()
+        self.assertTrue(self.link.ready)
+        self.assertEqual(self.link.num_cells, 80)
 
     def test_failed_handshake_stops_batch_and_reconnects_cleanly(self):
         replacement = FakeChannel()
