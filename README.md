@@ -155,6 +155,8 @@ only with the NVDA key held and no Shift/Ctrl/Alt/Win unless noted):
     NVDA+Tab   Where am I
     NVDA+T     Window title
     NVDA+End   Status bar
+    NVDA+Shift+Up (desktop) / NVDA+Shift+S (laptop)
+               Report current selection through Orca's native selection command
     NVDA+F12   Time; press twice quickly for date
 
 The clock uses Orca's configured format and Linux time zone. NVDA+F12 is consumed
@@ -335,7 +337,7 @@ individual on/off results. Num Lock and Scroll Lock auto-repeat produce one togg
 announcement per press. CapsLock used for a translated NVDA command produces
 neither a lock toggle nor a lock announcement.
 
-The current patches are controller **v87**, local-machine **v12**, and transport cleanup **v5**. Update the
+The current patches are controller **v88**, local-machine **v12**, and transport cleanup **v5**. Update the
 installed command from the repository with `python3 linux_rdaccess.py install`,
 then run `linux-rdaccess connect` to update the Orca-side files and restart Orca.
 `doctor` verifies the connected patch hooks, valid Python, and the installed
