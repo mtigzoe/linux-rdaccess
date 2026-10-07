@@ -55,6 +55,14 @@ jobs:
             tests.test_remote_access \
             tests.test_linux_rdaccess
           python -m py_compile nvda_remote_check.py remote_access.py linux_rdaccess.py tests/test_nvda_remote_check.py tests/test_remote_access.py tests/test_linux_rdaccess.py
+      - name: Run pre-live compatibility smoke contracts
+        run: |
+          python -m unittest -v \
+            tests.test_control_pattern_contracts \
+            tests.test_prelive_fixtures
+          python tests/apps/accessibility_smoke_app.py --list-controls > prelive-control-matrix.json
+          python -m json.tool prelive-control-matrix.json > /dev/null
+
       - name: Key-injection latency test on a real X server
         run: |
           sudo apt-get update -qq
