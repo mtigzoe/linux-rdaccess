@@ -100,6 +100,10 @@ class NvdaBrailleLink:
     def _start_handshake(self):
         self._json_ready = False
         self._requested_cells = False
+        # numCells is session-scoped even when rd_pipe reuses the same DVC
+        # across an XOFF -> XON client reconnect. Do not expose the previous
+        # display width while the replacement client is still negotiating.
+        self.num_cells = self._default_cells
         try:
             send_legacy_attribute_value(
                 self._channel, self.DRIVER_TYPE, "protocolVersion", PROTOCOL_VERSION
