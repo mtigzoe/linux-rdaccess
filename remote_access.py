@@ -1153,7 +1153,8 @@ LEGACY_COMPAT_MARKER_V82 = "# linux-rdaccess NVDA/Orca input compatibility v82"
 LEGACY_COMPAT_MARKER_V83 = "# linux-rdaccess NVDA/Orca input compatibility v83"
 LEGACY_COMPAT_MARKER_V84 = "# linux-rdaccess NVDA/Orca input compatibility v84"
 LEGACY_COMPAT_MARKER_V85 = "# linux-rdaccess NVDA/Orca input compatibility v85"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v86"
+LEGACY_COMPAT_MARKER_V86 = "# linux-rdaccess NVDA/Orca input compatibility v86"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v87"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -1330,6 +1331,33 @@ _LEGACY_HELPERS = '''\
         # NVDA 2026.2 object/review navigation uses NVDA+Numpad1..9 and
         # NVDA+NumpadDelete. Of these, only NumpadDelete also has a Shift form.
         return not shift or vk_code == 0x2E
+
+    def _linux_rdaccess_plain_shift_numpad_unimplemented(
+            self, vk_code, extended, scan_code=None):
+        """Whether an exact plain Shift+numpad NVDA command is unsupported."""
+        down = getattr(self, "_lrd_down", set())
+        shift = any(k[0] in self._LRD_SHIFT_VKS for k in down)
+        other = any(
+            k[0] in self._LRD_OTHER_MOD_VKS and k[0] not in self._LRD_SHIFT_VKS
+            for k in down
+        )
+        if not shift or other or self._lrd_nvda_down:
+            return False
+        # NVDA 2026.2 desktop review boundary/focus-accelerator commands.
+        if (vk_code, scan_code) in {
+            (0x23, 0x4F),  # Shift+Numpad1: start of review line
+            (0x28, 0x50),  # Shift+Numpad2: focused-object accelerator
+            (0x22, 0x51),  # Shift+Numpad3: end of review line
+            (0x24, 0x47),  # Shift+Numpad7: top of review
+            (0x21, 0x49),  # Shift+Numpad9: bottom of review
+        } and not bool(extended):
+            return True
+        # These are unambiguous keypad VKs. Orca 42 treats Divide/Multiply as
+        # clicks, whereas NVDA uses Shift+them to toggle mouse-button lock.
+        return (
+            (vk_code == 0x6F and bool(extended))
+            or (vk_code == 0x6A and not bool(extended))
+        )
 
     def _linux_rdaccess_desktop_unimplemented(self, vk_code, extended, scan_code=None):
         """Whether an exact NVDA desktop keypad object/review gesture is unsupported."""
@@ -2093,6 +2121,22 @@ _LEGACY_HELPERS = '''\
                     self._lrd_bypass_keys[held] = request
                 return True
             return False
+
+        # NVDA desktop assigns several plain Shift+numpad gestures to review
+        # boundaries, focus-accelerator reporting, and mouse-lock toggles.
+        # Orca 42 either has no exact equivalent or gives the same physical
+        # key a different meaning. Consume only scan-proven/unambiguous forms
+        # instead of leaking an unrelated click or selection into Linux.
+        if (
+            pressed
+            and not repeat
+            and nvda_layout == "desktop"
+            and self._linux_rdaccess_plain_shift_numpad_unimplemented(
+                vk_code, extended, scan_code)
+        ):
+            self._lrd_trace_why = "unsupported_shift_numpad"
+            self._lrd_swapped.add(held)
+            return True
 
         # NVDA and Orca assign different browse-mode meanings to A/M/N/O/W.
         # Mark only a remote plain/Shift letter; the Orca-side hook consumes it
@@ -4837,6 +4881,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V86,
                 LEGACY_COMPAT_MARKER_V85,
                 LEGACY_COMPAT_MARKER_V84,
                 LEGACY_COMPAT_MARKER_V83,
