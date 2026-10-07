@@ -200,6 +200,38 @@ class NvdaModifierProtocolTests(Harness, unittest.TestCase):
                 self.assertIsNone(c._lrd_insert_pending)
                 self.assertIsNone(c._lrd_caps_pending)
 
+    def test_both_physical_insert_modifiers_do_not_overwrite_pending_ownership(self):
+        forms = ((0x2D, False, 0x52), (0x2D, True, 0x52))
+        for first, second in (forms, forms[::-1]):
+            with self.subTest(first_extended=first[1]):
+                c, _, _ = self._patched_controller()
+                self._key(c, *first[:1], extended=first[1], scan_code=first[2], pressed=True)
+                self._key(c, *second[:1], extended=second[1], scan_code=second[2], pressed=True)
+                self._key(c, *second[:1], extended=second[1], scan_code=second[2], pressed=True)
+                self._key(c, *second[:1], extended=second[1], scan_code=second[2], pressed=False)
+                self._key(c, *first[:1], extended=first[1], scan_code=first[2], pressed=False)
+                self.assertFalse([e for e in c.local_machine.events if e[0] == "key"])
+                self.assertFalse(c._lrd_down)
+                self.assertFalse(c._lrd_swapped)
+                self.assertFalse(c._lrd_forwarded)
+                self.assertIsNone(c._lrd_insert_pending)
+
+    def test_both_physical_insert_modifiers_own_one_nvda_command(self):
+        c, _, _ = self._patched_controller()
+        calls = []
+        c._linux_rdaccess_script_call = lambda *args: calls.append(args)
+        self._key(c, 0x2D, True, extended=True, scan_code=0x52)
+        self._key(c, 0x2D, True, extended=False, scan_code=0x52)
+        self._key(c, 0x54, True)
+        self._key(c, 0x54, False)
+        self._key(c, 0x2D, False, extended=False, scan_code=0x52)
+        self._key(c, 0x2D, False, extended=True, scan_code=0x52)
+        self.assertEqual(calls, [("presentTitle",)])
+        self.assertFalse([e for e in c.local_machine.events if e[0] == "key"])
+        self.assertFalse(c._lrd_down)
+        self.assertFalse(c._lrd_swapped)
+        self.assertIsNone(c._lrd_insert_pending)
+
     def test_numpad_zero_is_ordinary_input(self):
         c, _, _ = self._patched_controller()
         self._key(c, 0x60, True, scan_code=0x52)
