@@ -320,10 +320,10 @@ class RemoteController:
             controller._linux_rdaccess_run_main = lambda func: func()
         return controller, path, temp.name
 
-    def _key(self, controller, vk, pressed, extended=False):
+    def _key(self, controller, vk, pressed, extended=False, scan_code=0):
         controller._on_remote_key(
             key_name=None, pressed=pressed, modifiers=None,
-            vk_code=vk, scan_code=0, extended=extended,
+            vk_code=vk, scan_code=scan_code, extended=extended,
         )
 
     def test_patch_is_idempotent_compiles_and_backs_up(self):
@@ -1518,6 +1518,50 @@ class RemoteController:
             self._names(c),
             [(0x28, True), (0x28, False), (0x2D, True), (0x28, True), (0x28, False)],
         )
+
+    def test_scan_proven_nvda_numpad_navigation_is_consumed(self):
+        # KBDLLHOOKSTRUCT scan codes forwarded by NVDA Remote distinguish the
+        # physical numpad from legacy non-extended navigation-key payloads.
+        cases = (
+            (0x23, 0x4F),  # NVDA+Numpad1: previous review mode
+            (0x28, 0x50),  # NVDA+Numpad2: first child
+            (0x22, 0x51),  # NVDA+Numpad3: next object in flow
+            (0x25, 0x4B),  # NVDA+Numpad4: previous object
+            (0x0C, 0x4C),  # NVDA+Numpad5: current navigator object
+            (0x27, 0x4D),  # NVDA+Numpad6: next object
+            (0x24, 0x47),  # NVDA+Numpad7: next review mode
+            (0x26, 0x48),  # NVDA+Numpad8: parent object
+            (0x21, 0x49),  # NVDA+Numpad9: previous object in flow
+            (0x2E, 0x53),  # NVDA+NumpadDelete: caret/focus location
+        )
+        for vk, scan in cases:
+            with self.subTest(vk=hex(vk), scan=hex(scan)):
+                c, _, _ = self._patched_controller()
+                self._key(c, 0x2D, True, extended=True)
+                self._key(c, vk, True, extended=False, scan_code=scan)
+                self._key(c, vk, False, extended=False, scan_code=scan)
+                self._key(c, 0x2D, False, extended=True)
+                names = self._names(c)
+                self.assertNotIn((vk, True), names)
+                self.assertNotIn((0x2D, True), names)
+
+    def test_scan_proven_shift_nvda_numpad_delete_is_consumed(self):
+        c, _, _ = self._patched_controller()
+        self._key(c, 0x2D, True, extended=True)
+        self._key(c, 0xA0, True)
+        self._key(c, 0x2E, True, extended=False, scan_code=0x53)
+        self._key(c, 0x2E, False, extended=False, scan_code=0x53)
+        self.assertNotIn((0x2E, True), self._names(c))
+        self.assertNotIn((0x2D, True), self._names(c))
+
+    def test_mismatched_scan_does_not_guess_nonextended_navigation_is_keypad(self):
+        c, _, _ = self._patched_controller()
+        self._key(c, 0x2D, True, extended=True)
+        self._key(c, 0x28, True, extended=False, scan_code=0x48)  # Up scan, Down VK
+        self._key(c, 0x28, False, extended=False, scan_code=0x48)
+        names = self._names(c)
+        self.assertIn((0x2D, True), names)
+        self.assertIn((0x28, True), names)
 
     def test_desktop_unimplemented_nvda_object_commands_do_not_run_orca_keypad_commands(self):
         cases = (
