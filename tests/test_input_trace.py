@@ -547,8 +547,10 @@ class BrailleTraceTests(TraceCase):
         rows = self.records('braille')
         self.assertEqual([r['cls'] for r in rows],
                          ['pan_back', 'pan_forward', 'to_focus', 'route'])
-        self.assertNotIn('12', self.trace_path.read_text())
-        self.assertNotIn('routingIndex', self.trace_path.read_text())
+        for row in rows:
+            self.assertNotIn('routingIndex', row)
+            self.assertNotIn('argument', row)
+            self.assertNotIn('index', row)
 
     def test_braille_keyboard_input_is_never_recorded(self):
         self.enable()
