@@ -109,8 +109,7 @@ class A11yLinkTests(unittest.TestCase):
 
         self.link._on_action = action
         ch.incoming.append(
-            bytes([XON])
-            + b'{"type":"a11y_action","object_id":"target","action_index":0}\n'
+            b'{"type":"a11y_action","object_id":"target","action_index":0}\n'
             + b'{"type":"a11y_action","object_id":"later","action_index":0}\n'
         )
         with mock.patch.object(
