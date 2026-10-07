@@ -12,6 +12,7 @@ from rdaccess_dvc import (
 )
 
 log = logging.getLogger("brailleLink")
+MAX_BRAILLE_CELLS = 1024
 
 
 class NvdaBrailleLink:
@@ -148,11 +149,12 @@ class NvdaBrailleLink:
             return
 
         if kind == "attribute_value" and attribute == "numCells":
+            raw_value = message.get("value", 0)
             try:
-                value = int(message.get("value", 0))
+                value = int(raw_value)
             except (TypeError, ValueError, OverflowError):
                 value = 0
-            if value > 0:
+            if type(raw_value) is not bool and 0 < value <= MAX_BRAILLE_CELLS:
                 self.num_cells = value
                 log.info("remote braille display has %d cells", value)
 
