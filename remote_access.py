@@ -590,7 +590,8 @@ def _patch_legacy_customization_reconnect(text: str) -> str:
     return result
 
 
-CUSTOMIZATION_BRAILLE_CELLS_MARKER = "# linux-rdaccess native Orca braille cells v1"
+CUSTOMIZATION_BRAILLE_CELLS_MARKER_V1 = "# linux-rdaccess native Orca braille cells v1"
+CUSTOMIZATION_BRAILLE_CELLS_MARKER = "# linux-rdaccess native Orca braille cells v2"
 _LEGACY_CUSTOMIZATION_BRAILLE_SOURCE = '''
 try:
     import orca.braille as _remote_braille
@@ -640,7 +641,7 @@ except Exception:
     print("Orca Remote: diagnostic details redacted")
     _dbg("Could not install braille forwarding hook")
 '''
-_CUSTOMIZATION_BRAILLE_CELLS_HOOK = CUSTOMIZATION_BRAILLE_CELLS_MARKER + '''
+_CUSTOMIZATION_BRAILLE_CELLS_HOOK_V1 = CUSTOMIZATION_BRAILLE_CELLS_MARKER_V1 + '''
 try:
     import orca.braille as _remote_braille
     from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _linux_rdaccess_braille_adapter
@@ -661,6 +662,54 @@ try:
 
     _remote_braille.refresh = _patched_braille_refresh
     _dbg("Orca 42 native braille forwarding hook installed")
+except Exception:
+    print("Orca Remote: diagnostic details redacted")
+    _dbg("Could not install braille forwarding hook")
+'''
+
+_CUSTOMIZATION_BRAILLE_CELLS_HOOK = CUSTOMIZATION_BRAILLE_CELLS_MARKER + '''
+try:
+    import json as _remote_json
+    import orca.braille as _remote_braille
+    from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _linux_rdaccess_braille_adapter
+
+    _old_braille_refresh = _remote_braille.refresh
+
+    def _patched_braille_refresh(*args, **kwargs):
+        result = _old_braille_refresh(*args, **kwargs)
+        try:
+            if controller.transport.connected and controller.transport.connection_type == "slave":
+                semantic = None
+                native = getattr(controller, "_lrd_nvda_native_braille", False)
+                if native:
+                    semantic = _linux_rdaccess_braille_adapter.semantic_focus_payload()
+                else:
+                    controller._linux_rdaccess_offer_native_braille()
+                if semantic:
+                    canonical = _remote_json.dumps(
+                        semantic, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+                    if canonical != getattr(controller, "_lrd_last_semantic_braille", None):
+                        controller.transport.send(
+                            type="lrd_a11y_focus", version=1, **semantic)
+                        controller._lrd_last_semantic_braille = canonical
+                        _dbg("NVDA semantic braille focus forwarded")
+                else:
+                    if native:
+                        controller.transport.send(type="lrd_a11y_fallback", version=1)
+                        controller._lrd_nvda_native_braille = False
+                        controller._lrd_last_semantic_braille = None
+                    get_link_mask = kwargs.get(
+                        "getLinkMask", args[2] if len(args) > 2 else True)
+                    cells = _linux_rdaccess_braille_adapter.braille_cells(
+                        get_link_mask=get_link_mask)
+                    controller.transport.send(type="display", cells=cells)
+                    _dbg("braille display forwarded: %d cells" % len(cells))
+        except Exception:
+            _dbg("braille forward failed")
+        return result
+
+    _remote_braille.refresh = _patched_braille_refresh
+    _dbg("Orca 42 native/semantic braille forwarding hook installed")
 except Exception:
     print("Orca Remote: diagnostic details redacted")
     _dbg("Could not install braille forwarding hook")
@@ -702,6 +751,18 @@ def _patch_legacy_customization_braille_cells(text: str) -> str:
         if not legacy_customization_braille_cells_patch_current(text):
             raise ValueError("incomplete native Orca braille cells patch")
         return text
+    if CUSTOMIZATION_BRAILLE_CELLS_MARKER_V1 in text:
+        if (text.count(CUSTOMIZATION_BRAILLE_CELLS_MARKER_V1) != 1
+                or _CUSTOMIZATION_BRAILLE_CELLS_HOOK_V1 not in text):
+            raise ValueError("incomplete legacy native Orca braille cells patch")
+        upgraded = text.replace(
+            _CUSTOMIZATION_BRAILLE_CELLS_HOOK_V1,
+            _CUSTOMIZATION_BRAILLE_CELLS_HOOK,
+            1,
+        )
+        if not legacy_customization_braille_cells_patch_current(upgraded):
+            raise ValueError("updated native Orca braille cells patch is incomplete")
+        return upgraded
     tree = ast.parse(text, feature_version=(3, 10))
     blocks = _customization_braille_blocks(tree)
     if not blocks:
@@ -1652,6 +1713,10 @@ def update_legacy_orca_customizations(
         adapter_target = remote_controller.parent / "linux_rdaccess_orca_adapter.py"
         if adapter_source.exists():
             shutil.copy2(adapter_source, adapter_target)
+        model_source = Path(__file__).with_name("a11y_model.py")
+        model_target = remote_controller.parent / "linux_rdaccess_a11y_model.py"
+        if model_source.exists():
+            shutil.copy2(model_source, model_target)
         # The input shim is an enhancement: a changed upstream layout must not
         # stop the connection settings above from being applied.
         try:
@@ -1773,7 +1838,9 @@ LEGACY_COMPAT_MARKER_V91 = "# linux-rdaccess NVDA/Orca input compatibility v91"
 LEGACY_COMPAT_MARKER_V92 = "# linux-rdaccess NVDA/Orca input compatibility v92"
 LEGACY_COMPAT_MARKER_V93 = "# linux-rdaccess NVDA/Orca input compatibility v93"
 LEGACY_COMPAT_MARKER_V94 = "# linux-rdaccess NVDA/Orca input compatibility v94"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v95"
+LEGACY_COMPAT_MARKER_V95 = "# linux-rdaccess NVDA/Orca input compatibility v95"
+LEGACY_COMPAT_MARKER_V96 = "# linux-rdaccess NVDA/Orca input compatibility v96"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v97"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -1794,6 +1861,10 @@ _LEGACY_HELPERS = '''\
         "braille_routeTo": "route",
         "braille_toFocus": "to_focus",
     }
+    _LRD_NATIVE_BRAILLE_VERSION = 1
+    _lrd_nvda_native_braille = False
+    _lrd_last_semantic_braille = None
+
     # Display keys NVDA binds to "kb:<key>" emulation scripts. Only keys that
     # cannot type a character are forwarded; "kb:a", "kb:space" and any unknown
     # name stay redacted braille-keyboard input. name: (X key, vk, extended).
@@ -3383,6 +3454,84 @@ _LEGACY_HELPERS = '''\
                         pass
                 if identity in getattr(self, "_lrd_forwarded", {}):
                     log.error("linux-rdaccess: failed to release braille modifier")
+
+    def _linux_rdaccess_offer_native_braille(self):
+        """Rate-limit semantic braille capability offers for late Windows attach."""
+        if getattr(self, "_lrd_nvda_native_braille", False):
+            return
+        transport = getattr(self, "transport", None)
+        if (transport is None or not getattr(transport, "connected", False)
+                or getattr(transport, "connection_type", None) != "slave"):
+            return
+        now = __import__("time").monotonic()
+        if now - getattr(self, "_lrd_last_native_braille_offer", 0.0) < 2.0:
+            return
+        self._lrd_last_native_braille_offer = now
+        try:
+            transport.send(
+                type="lrd_a11y_hello", version=self._LRD_NATIVE_BRAILLE_VERSION)
+        except Exception:
+            log.error("linux-rdaccess: semantic braille offer failed")
+
+    def _linux_rdaccess_native_braille_capability(
+            self, version=None, presentation=None, **kwargs):
+        """Enable NVDA-owned braille only after the Windows peer opts in."""
+        if version != self._LRD_NATIVE_BRAILLE_VERSION or presentation != "nvda":
+            return
+        self._lrd_nvda_native_braille = True
+        self._lrd_last_native_braille_offer = 0.0
+        self._lrd_last_semantic_braille = None
+
+        def refresh():
+            try:
+                from orca import braille as _braille
+                from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _adapter
+                _adapter.clear_semantic_focus()
+                _braille.refresh(True)
+            except Exception:
+                log.error("linux-rdaccess: semantic braille refresh failed")
+
+        self._linux_rdaccess_run_main(refresh)
+
+    def _linux_rdaccess_semantic_action(
+            self, version=None, object_id=None, action_index=None, **kwargs):
+        """Run a bounded NVDA semantic-object action on Orca's main loop."""
+        if (not getattr(self, "_lrd_nvda_native_braille", False)
+                or version != self._LRD_NATIVE_BRAILLE_VERSION):
+            return
+        if (not isinstance(object_id, str) or not object_id or len(object_id) > 256
+                or type(action_index) is not int or not 0 <= action_index < 32):
+            return
+
+        def run_action():
+            try:
+                from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _adapter
+                if not _adapter.perform_semantic_action(object_id, action_index):
+                    log.error("linux-rdaccess: semantic action rejected")
+            except Exception:
+                log.error("linux-rdaccess: semantic action failed")
+
+        self._linux_rdaccess_run_main(run_action)
+
+    def _linux_rdaccess_semantic_caret(
+            self, version=None, object_id=None, offset=None, **kwargs):
+        """Move the current semantic text caret using NVDA braille coordinates."""
+        if (not getattr(self, "_lrd_nvda_native_braille", False)
+                or version != self._LRD_NATIVE_BRAILLE_VERSION):
+            return
+        if (not isinstance(object_id, str) or not object_id or len(object_id) > 256
+                or type(offset) is not int or not 0 <= offset <= 8192):
+            return
+
+        def set_caret():
+            try:
+                from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _adapter
+                if not _adapter.set_semantic_caret(object_id, offset):
+                    log.error("linux-rdaccess: semantic caret rejected")
+            except Exception:
+                log.error("linux-rdaccess: semantic caret failed")
+
+        self._linux_rdaccess_run_main(set_caret)
 
     def _linux_rdaccess_handle_braille_info(self, num_cells):
         """Apply NVDA Remote's display width to Orca's native pan/routing state."""
@@ -5125,6 +5274,9 @@ _LEGACY_RESET_HOOKS = (
     "            try:\n"
     "                self._lrd_reset_reason = name\n"
     "                self._linux_rdaccess_reset_keys()\n"
+    "                if name in (\"disconnect\", \"_on_transport_disconnected\"):\n"
+    "                    self._lrd_nvda_native_braille = False\n"
+    "                    self._lrd_last_semantic_braille = None\n"
     "            finally:\n"
     "                self._lrd_state = None\n"
     "            return original(self, *args, **kwargs)\n"
@@ -5147,8 +5299,38 @@ _LEGACY_RESET_HOOKS = (
     "                    self._lrd_reset_reason = \"client_left\"\n"
     "                    self._linux_rdaccess_reset_keys()\n"
     "                    self._lrd_state = None\n"
+    "                    self._lrd_nvda_native_braille = False\n"
+    "                    self._lrd_last_semantic_braille = None\n"
     "            return _lrd_original_client_left(self, client=client, **kwargs)\n"
     "    RemoteController._on_client_left = _lrd_on_client_left\n"
+    "\n"
+    "_lrd_original_channel_joined = getattr(RemoteController, \"_on_channel_joined\", None)\n"
+    "if _lrd_original_channel_joined is not None:\n"
+    "    def _lrd_on_channel_joined(self, channel=None, **kwargs):\n"
+    "        result = _lrd_original_channel_joined(self, channel=channel, **kwargs)\n"
+    "        try:\n"
+    "            transport = self.transport\n"
+    "            manager = getattr(transport, \"callback_manager\", None)\n"
+    "            if (manager is not None\n"
+    "                    and getattr(self, \"_lrd_semantic_transport\", None) is not transport):\n"
+    "                manager.register_callback(\n"
+    "                    \"msg_lrd_a11y_capability\",\n"
+    "                    self._linux_rdaccess_native_braille_capability)\n"
+    "                manager.register_callback(\n"
+    "                    \"msg_lrd_a11y_action\",\n"
+    "                    self._linux_rdaccess_semantic_action)\n"
+    "                manager.register_callback(\n"
+    "                    \"msg_lrd_a11y_caret\",\n"
+    "                    self._linux_rdaccess_semantic_caret)\n"
+    "                self._lrd_semantic_transport = transport\n"
+    "            self._lrd_nvda_native_braille = False\n"
+    "            self._lrd_last_semantic_braille = None\n"
+    "            transport.send(\n"
+    "                type=\"lrd_a11y_hello\", version=self._LRD_NATIVE_BRAILLE_VERSION)\n"
+    "        except Exception:\n"
+    "            log.error(\"linux-rdaccess: semantic braille negotiation failed\")\n"
+    "        return result\n"
+    "    RemoteController._on_channel_joined = _lrd_on_channel_joined\n"
     "\n"
     "_lrd_original_clipboard = getattr(RemoteController, \"_on_remote_clipboard\", None)\n"
     "if _lrd_original_clipboard is not None:\n"
@@ -5788,6 +5970,8 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V96,
+                LEGACY_COMPAT_MARKER_V95,
                 LEGACY_COMPAT_MARKER_V94,
                 LEGACY_COMPAT_MARKER_V93,
                 LEGACY_COMPAT_MARKER_V92,

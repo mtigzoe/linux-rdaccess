@@ -289,7 +289,7 @@ def old_speakCharacter(*args, **kwargs):
     def test_install_can_run_from_installed_runtime_directory(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            for name in ('linux_rdaccess.py', 'remote_access.py', 'nvda_remote_check.py', 'orca_adapter.py'):
+            for name in ('linux_rdaccess.py', 'remote_access.py', 'nvda_remote_check.py', 'orca_adapter.py', 'a11y_model.py'):
                 (root / name).write_text('# fixture\n')
             linux_rdaccess.install_user_files(root, share_dir=root, bin_path=root / 'bin' / 'linux-rdaccess')
             self.assertTrue((root / 'bin' / 'linux-rdaccess').exists())

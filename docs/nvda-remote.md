@@ -81,6 +81,22 @@ A compatible bridge can:
 4. convert Unicode braille patterns `U+2800..U+28FF` to raw cell values,
 5. send those values in an NVDA Remote `display` message.
 
+## NVDA-native braille presentation
+
+The preferred braille behavior is negotiated rather than assumed.
+
+When a compatible Windows `rdAccess` semantic bridge is present:
+
+1. Linux sends `lrd_a11y_hello` after the Remote Access channel joins.
+2. Windows replies with `lrd_a11y_capability` using `presentation="nvda"`.
+3. Linux sends bounded `lrd_a11y_focus` snapshots containing AT-SPI name, role, state, value, text/caret/selection and action metadata.
+4. Windows builds NVDA objects and asks NVDA's own braille handler to present them.
+5. Orca continues to own Linux navigation and speech; the Windows semantic bridge does not fire NVDA speech focus events or replace the local Windows focus object.
+
+If the capability response is absent, invalid, disconnected, or semantic snapshot construction fails, linux-rdaccess keeps the existing raw Orca-cell `display` path. This fail-safe fallback means an unmodified Remote Access installation continues to work exactly as before.
+
+Semantic braille is session scoped. Reconnect resets capability state and the Linux object registry before a new snapshot is accepted.
+
 ## Speech behavior
 
 When Linux is the controlled endpoint, local Orca speech and NVDA speech should not both play.

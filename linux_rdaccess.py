@@ -161,7 +161,7 @@ def install_user_files(
     share_dir: Path = DEFAULT_SHARE_DIR,
     bin_path: Path = DEFAULT_BIN,
 ) -> None:
-    names = ("linux_rdaccess.py", "remote_access.py", "nvda_remote_check.py", "orca_adapter.py")
+    names = ("linux_rdaccess.py", "remote_access.py", "nvda_remote_check.py", "orca_adapter.py", "a11y_model.py")
     # Check the whole runtime bundle before replacing any installed member.
     for name in names:
         if not (source_dir / name).is_file():

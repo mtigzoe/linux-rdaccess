@@ -27,6 +27,7 @@ ELEMENT_LIST_TYPES = (
 
 _ELEMENT_LIST_LAST_INDEX = 0
 _REMOTE_BRAILLE_DISPLAY = None
+_REMOTE_SEMANTIC_OBJECTS: dict[str, object] = {}
 
 
 def show_elements_list(send_structural_list: Callable[[str], Any]) -> bool | None:
@@ -291,6 +292,89 @@ class OrcaRuntimeAdapter:
             size[0] = previous["original"]
             braille.refresh(True)
         return True
+
+    @staticmethod
+    def semantic_focus_payload() -> dict[str, Any] | None:
+        """Build a bounded AT-SPI focus snapshot for NVDA-native braille."""
+        global _REMOTE_SEMANTIC_OBJECTS
+        # A failed or oversized rebuild must never leave actions pointing at
+        # objects from the previous focus/session.
+        _REMOTE_SEMANTIC_OBJECTS = {}
+        try:
+            from orca import orca_state
+            from a11y_model import build_focus_payload
+        except Exception:
+            return None
+
+        focus = getattr(orca_state, "locusOfFocus", None)
+        if focus is None:
+            focus = getattr(orca_state, "locus_of_focus", None)
+        if focus is None:
+            return None
+        registry: dict[str, object] = {}
+        try:
+            payload = build_focus_payload(
+                "object:state-changed:focused",
+                1,
+                focus,
+                max_objects=32,
+                object_registry=registry,
+            )
+        except Exception:
+            return None
+        if payload is not None:
+            try:
+                import json
+                encoded = json.dumps(
+                    payload,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            except Exception:
+                return None
+            # Leave headroom for the Remote Access type/version envelope.
+            if len(encoded) > 60 * 1024:
+                return None
+            _REMOTE_SEMANTIC_OBJECTS = registry
+        return payload
+
+    @staticmethod
+    def clear_semantic_focus() -> None:
+        global _REMOTE_SEMANTIC_OBJECTS
+        _REMOTE_SEMANTIC_OBJECTS = {}
+
+    @staticmethod
+    def perform_semantic_action(object_id: str, action_index: int) -> bool:
+        if not isinstance(object_id, str) or not object_id or len(object_id) > 256:
+            return False
+        if type(action_index) is not int or not 0 <= action_index < 32:
+            return False
+        obj = _REMOTE_SEMANTIC_OBJECTS.get(object_id)
+        if obj is None:
+            return False
+        try:
+            from a11y_model import perform_action
+            return bool(perform_action(obj, action_index))
+        except Exception:
+            return False
+
+
+    @staticmethod
+    def set_semantic_caret(object_id: str, offset: int) -> bool:
+        """Route NVDA's semantic text position back to the current AT-SPI object."""
+        if not isinstance(object_id, str) or not object_id or len(object_id) > 256:
+            return False
+        if type(offset) is not int or not 0 <= offset <= 8192:
+            return False
+        obj = _REMOTE_SEMANTIC_OBJECTS.get(object_id)
+        if obj is None:
+            return False
+        try:
+            from a11y_model import set_caret_offset
+            return bool(set_caret_offset(obj, offset))
+        except Exception:
+            return False
 
     @staticmethod
     def braille_cells(*, get_link_mask: bool = True) -> list[int]:
