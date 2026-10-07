@@ -1649,7 +1649,7 @@ _LEGACY_HELPERS = '''\
                     self._lrd_caps_pending = None
                     self._lrd_caps_used = False
                     return True
-                self._linux_rdaccess_flush_pending_nvda_modifiers()
+                self._linux_rdaccess_flush_pending_caps()
                 return False
 
         # Lock keys toggle state on key-down. Remote auto-repeat must not
@@ -2096,7 +2096,10 @@ _LEGACY_HELPERS = '''\
                 if (
                     not repeat
                     and vk_code not in self._LRD_MODIFIER_VKS
-                    and getattr(self, "_lrd_caps_pending", None) is not None
+                    and (
+                        getattr(self, "_lrd_caps_pending", None) is not None
+                        or getattr(self, "_lrd_insert_pending", None) is not None
+                    )
                 ):
                     self._linux_rdaccess_flush_pending_nvda_modifiers()
                 return False
