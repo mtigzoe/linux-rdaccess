@@ -4,6 +4,7 @@ from __future__ import annotations
 import socket
 import tempfile
 from pathlib import Path
+import types
 import unittest
 
 import linux_rdaccess
@@ -14,7 +15,7 @@ SOURCE = '''\
 import socket
 
 class TCPTransport:
-    def __init__(self, socket_factory, callback_manager, queue):
+    def __init__(self, socket_factory, callback_manager, queue, handler=None):
         self.socket_factory = socket_factory
         self.callback_manager = callback_manager
         self.queue = queue
@@ -22,9 +23,14 @@ class TCPTransport:
         self.server_sock = None
         self.queue_thread = None
         self.connected = False
+        self.buffer = b""
+        self.handler = handler or (lambda: None)
 
     def create_outbound_socket(self, address):
         return self.socket_factory()
+
+    def handle_server_data(self):
+        self.handler()
 
     def run(self):
         try:
@@ -33,6 +39,26 @@ class TCPTransport:
         except Exception:
             self.callback_manager.call_callbacks('transport_connection_failed')
             raise
+        self.connected = True
+        while self.server_sock is not None:
+            try:
+                readers, writers, error = select.select(
+                    [self.server_sock], [], [self.server_sock])
+            except socket.error:
+                self.buffer = b''
+                break
+            if self.server_sock in error:
+                self.buffer = b""
+                break
+            if self.server_sock in readers:
+                try:
+                    self.handle_server_data()
+                except socket.error:
+                    self.buffer = b''
+                    break
+        self.connected = False
+        self.callback_manager.call_callbacks('transport_disconnected')
+        self._disconnect()
 
     def _disconnect(self):
         """Disconnect the transport due to an error, without closing the connector thread."""
@@ -96,9 +122,14 @@ class FakeThread:
 
 class TransportCleanupTests(unittest.TestCase):
     @staticmethod
-    def patched_class():
+    def patched_class(selector=None):
         source = remote_access._patch_legacy_transport_cleanup(SOURCE)
-        namespace = {"clear_queue": lambda queue: queue.items.clear()}
+        if selector is None:
+            selector = lambda readers, writers, errors: ([], [], [])
+        namespace = {
+            "clear_queue": lambda queue: queue.items.clear(),
+            "select": types.SimpleNamespace(select=selector),
+        }
         exec(source, namespace)
         return source, namespace["TCPTransport"]
 
@@ -133,7 +164,33 @@ class TransportCleanupTests(unittest.TestCase):
         self.assertIsNone(transport.server_sock)
         self.assertEqual(queue.items, [])
 
-    def test_v1_cleanup_patch_upgrades_to_v2(self):
+    def test_malformed_frame_disconnects_cleanly_instead_of_escaping(self):
+        selected = [True]
+
+        def selector(readers, writers, errors):
+            if selected.pop():
+                return (readers, [], [])
+            return ([], [], [])
+
+        source, transport_cls = self.patched_class(selector)
+        self.assertTrue(remote_access.legacy_transport_cleanup_patch_current(source))
+        sock = FakeSocket()
+        callbacks = FakeCallbacks()
+        transport = transport_cls(
+            lambda: sock,
+            callbacks,
+            FakeQueue(),
+            handler=lambda: (_ for _ in ()).throw(ValueError("malformed JSON")),
+        )
+        transport.run()
+        self.assertTrue(sock.closed)
+        self.assertIsNone(transport.server_sock)
+        self.assertEqual(
+            callbacks.calls,
+            ["transport_disconnected"],
+        )
+
+    def test_v1_cleanup_patch_upgrades_to_v3(self):
         # Reconstruct the v1 transformation: resource-aware guard plus failed
         # connect cleanup, but no pre-join socket shutdown yet.
         source = SOURCE.replace(
@@ -156,6 +213,22 @@ class TransportCleanupTests(unittest.TestCase):
             disconnect.index("shutdown(socket.SHUT_RDWR)"),
             disconnect.index("self.queue_thread.join()"),
         )
+
+    def test_v2_cleanup_patch_upgrades_to_v3(self):
+        current = remote_access._patch_legacy_transport_cleanup(SOURCE)
+        v2 = current.replace(
+            "self.handle_server_data()\n                except Exception:",
+            "self.handle_server_data()\n                except socket.error:",
+            1,
+        ).replace(
+            remote_access.TRANSPORT_CLEANUP_MARKER,
+            remote_access.TRANSPORT_CLEANUP_MARKER_V2,
+            1,
+        )
+        self.assertFalse(remote_access.legacy_transport_cleanup_patch_current(v2))
+        updated = remote_access._patch_legacy_transport_cleanup(v2)
+        self.assertTrue(remote_access.legacy_transport_cleanup_patch_current(updated))
+        self.assertNotIn(remote_access.TRANSPORT_CLEANUP_MARKER_V2 + "\n", updated)
 
     def test_cleanup_patch_is_idempotent_and_rejects_tampering(self):
         source = remote_access._patch_legacy_transport_cleanup(SOURCE)
