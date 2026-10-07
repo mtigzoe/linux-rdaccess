@@ -1207,6 +1207,17 @@ class RemoteController:
                 self._key(c, vk, False)
                 self.assertNotIn((vk, True), self._names(c))
 
+    def test_nvda_2026_2_ctrl_x_is_not_claimed_as_an_nvda_command(self):
+        # NVDA+Ctrl+X (copy last speech) was added after NVDA 2026.2.
+        # Under the 2026.2 compatibility baseline it must remain ordinary
+        # remote input rather than being swallowed as an NVDA-only command.
+        c, _, _ = self._patched_controller()
+        self._key(c, 0x2D, True, extended=True)
+        self._key(c, 0xA2, True)
+        self._key(c, 0x58, True)
+        self._key(c, 0x58, False)
+        self.assertIn((0x58, True), self._names(c))
+
     def test_unimplemented_nvda_table_reading_commands_do_not_reach_linux(self):
         for vk in (0x25, 0x26, 0x27, 0x28):
             with self.subTest(vk=vk):
@@ -1344,7 +1355,6 @@ class RemoteController:
             (0x43, False, False, False, False),  # NVDA+C clipboard report
             (0x52, False, False, False, False),  # NVDA+R OCR
             (0x58, False, False, False, False),  # NVDA+X repeat last speech
-            (0x58, False, True,  False, False),  # NVDA+Ctrl+X copy last speech
             (0x78, False, False, False, False),  # NVDA+F9 mark review start
             (0x78, True,  False, False, False),  # NVDA+Shift+F9
             (0x79, False, False, False, False),  # NVDA+F10 review copy
