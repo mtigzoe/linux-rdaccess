@@ -265,11 +265,19 @@ class TransportCleanupTests(unittest.TestCase):
             disconnect.index("self.queue_thread.join()"),
         )
 
-    def test_v2_cleanup_patch_upgrades_to_v3(self):
+    def test_v2_cleanup_patch_upgrades_to_v5(self):
         current = remote_access._patch_legacy_transport_cleanup(SOURCE)
         v2 = current.replace(
             "self.handle_server_data()\n                except Exception:",
             "self.handle_server_data()\n                except socket.error:",
+            1,
+        ).replace(
+            "except (socket.error, ValueError):",
+            "except socket.error:",
+            1,
+        ).replace(
+            "            except socket.error:\n                try:\n                    if self.server_sock is not None:\n                        self.server_sock.shutdown(socket.SHUT_RDWR)\n                except (OSError, AttributeError):\n                    pass\n                return",
+            "            except socket.error:\n                return",
             1,
         ).replace(
             remote_access.TRANSPORT_CLEANUP_MARKER,
@@ -281,11 +289,15 @@ class TransportCleanupTests(unittest.TestCase):
         self.assertTrue(remote_access.legacy_transport_cleanup_patch_current(updated))
         self.assertNotIn(remote_access.TRANSPORT_CLEANUP_MARKER_V2 + "\n", updated)
 
-    def test_v3_cleanup_patch_upgrades_to_v4(self):
+    def test_v3_cleanup_patch_upgrades_to_v5(self):
         current = remote_access._patch_legacy_transport_cleanup(SOURCE)
         v3 = current.replace(
             "except (socket.error, ValueError):",
             "except socket.error:",
+            1,
+        ).replace(
+            "            except socket.error:\n                try:\n                    if self.server_sock is not None:\n                        self.server_sock.shutdown(socket.SHUT_RDWR)\n                except (OSError, AttributeError):\n                    pass\n                return",
+            "            except socket.error:\n                return",
             1,
         ).replace(
             remote_access.TRANSPORT_CLEANUP_MARKER,
@@ -368,6 +380,10 @@ class TransportCleanupTests(unittest.TestCase):
             ).replace(
                 "except (socket.error, ValueError):",
                 "except socket.error:",
+                1,
+            ).replace(
+                "            except socket.error:\n                try:\n                    if self.server_sock is not None:\n                        self.server_sock.shutdown(socket.SHUT_RDWR)\n                except (OSError, AttributeError):\n                    pass\n                return",
+                "            except socket.error:\n                return",
                 1,
             )
             transport.write_text(v3, encoding="utf-8")
