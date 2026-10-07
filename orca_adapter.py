@@ -293,6 +293,30 @@ class OrcaRuntimeAdapter:
         return True
 
     @staticmethod
+    def semantic_focus_payload() -> dict[str, Any] | None:
+        """Build a bounded AT-SPI focus snapshot for NVDA-native braille."""
+        try:
+            from orca import orca_state
+            from linux_rdaccess_a11y_model import build_focus_payload
+        except Exception:
+            return None
+
+        focus = getattr(orca_state, "locusOfFocus", None)
+        if focus is None:
+            focus = getattr(orca_state, "locus_of_focus", None)
+        if focus is None:
+            return None
+        try:
+            return build_focus_payload(
+                "object:state-changed:focused",
+                1,
+                focus,
+                max_objects=32,
+            )
+        except Exception:
+            return None
+
+    @staticmethod
     def braille_cells(*, get_link_mask: bool = True) -> list[int]:
         """Serialize Orca 42's native cells without translating them again.
 
