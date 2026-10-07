@@ -5,6 +5,7 @@ orca-scripts/transport.py. Tests use fake sockets and native sender threads.
 """
 
 import json
+import re
 from pathlib import Path
 import sys
 import threading
@@ -241,6 +242,40 @@ class TransportStreamBoundariesTests(unittest.TestCase):
         self.assertFalse(transport.connected)
         self.assertTrue(sock.closed)
         self.assertEqual(transport.buffer, b"")
+
+    def test_v6_cleanup_patch_upgrades_to_v7(self):
+        current = remote_access._patch_legacy_transport_cleanup(UPSTREAM)
+        pattern = (
+            r"(?m)^([ \t]*)if b'\\n' not in data:[ \t]*\\n"
+            r"([ \t]*)if len\\(data\\) > 1 << 20:[ \t]*\\n"
+            r"([ \t]*)self\\.buffer = b''[ \t]*\\n"
+            r"\\3self\\._disconnect\\(\\)[ \t]*\\n"
+            r"\\3return[ \t]*\\n"
+            r"\\2self\\.buffer \\+= data[ \t]*\\n"
+            r"\\2return[ \t]*$"
+        )
+
+        def remove_bound(match):
+            indent, body = match.group(1), match.group(2)
+            return (
+                indent + "if b'\\n' not in data:\\n"
+                + body + "self.buffer += data\\n"
+                + body + "return"
+            )
+
+        v6, count = re.subn(pattern, remove_bound, current, count=1)
+        self.assertEqual(count, 1)
+        v6 = v6.replace(
+            remote_access.TRANSPORT_CLEANUP_MARKER,
+            remote_access.TRANSPORT_CLEANUP_MARKER_V6,
+            1,
+        )
+        self.assertFalse(remote_access.legacy_transport_cleanup_patch_current(v6))
+        upgraded = remote_access._patch_legacy_transport_cleanup(v6)
+        self.assertTrue(remote_access.legacy_transport_cleanup_patch_current(upgraded))
+        self.assertIn(remote_access.TRANSPORT_CLEANUP_MARKER, upgraded)
+        self.assertNotIn(remote_access.TRANSPORT_CLEANUP_MARKER_V6 + "\\n", upgraded)
+        self.assertIn("if len(data) > 1 << 20:", upgraded)
 
     def test_genuine_v5_upgrade_preserves_original_backup_and_is_idempotent(self):
         import tempfile
