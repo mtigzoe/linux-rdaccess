@@ -999,6 +999,7 @@ _LEGACY_HELPERS = '''\
             "fwd": sorted(label(k[0], k[1]) for k in forwarded if k[0] in held_vks),
             "nvda": label(nvda[0], nvda[1]) if nvda else None,
             "caps_pending": getattr(self, "_lrd_caps_pending", None) is not None,
+            "insert_pending": getattr(self, "_lrd_insert_pending", None) is not None,
             "other_down": sum(1 for k in down if k[0] not in held_vks),
             "other_fwd": sum(1 for k in forwarded if k[0] not in held_vks),
         }
@@ -4484,6 +4485,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V81,
                 LEGACY_COMPAT_MARKER_V80,
                 LEGACY_COMPAT_MARKER_V79,
                 LEGACY_COMPAT_MARKER_V78,
