@@ -194,12 +194,15 @@ def perform_action(obj, index: int) -> bool:
         return False
     if index >= count:
         return False
-    result = _invoke(iface, ("do_action", "doAction"), index)
-    if result is None and not (
-            callable(getattr(iface, "do_action", None))
-            or callable(getattr(iface, "doAction", None))):
-        return False
-    return result is not False
+    for name in ("do_action", "doAction"):
+        method = getattr(iface, name, None)
+        if not callable(method):
+            continue
+        try:
+            return method(index) is not False
+        except Exception:
+            continue
+    return False
 
 
 def _text_iface(obj):
