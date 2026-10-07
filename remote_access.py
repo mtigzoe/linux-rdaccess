@@ -590,7 +590,7 @@ def _patch_legacy_customization_reconnect(text: str) -> str:
     return result
 
 
-CUSTOMIZATION_BRAILLE_CELLS_MARKER = "# linux-rdaccess native Orca braille cells v1"
+CUSTOMIZATION_BRAILLE_CELLS_MARKER_V1 = "# linux-rdaccess native Orca braille cells v1"\nCUSTOMIZATION_BRAILLE_CELLS_MARKER = "# linux-rdaccess native Orca braille cells v2"
 _LEGACY_CUSTOMIZATION_BRAILLE_SOURCE = '''
 try:
     import orca.braille as _remote_braille
@@ -640,7 +640,7 @@ except Exception:
     print("Orca Remote: diagnostic details redacted")
     _dbg("Could not install braille forwarding hook")
 '''
-_CUSTOMIZATION_BRAILLE_CELLS_HOOK = CUSTOMIZATION_BRAILLE_CELLS_MARKER + '''
+_CUSTOMIZATION_BRAILLE_CELLS_HOOK_V1 = CUSTOMIZATION_BRAILLE_CELLS_MARKER_V1 + '''
 try:
     import orca.braille as _remote_braille
     from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _linux_rdaccess_braille_adapter
@@ -661,6 +661,47 @@ try:
 
     _remote_braille.refresh = _patched_braille_refresh
     _dbg("Orca 42 native braille forwarding hook installed")
+except Exception:
+    print("Orca Remote: diagnostic details redacted")
+    _dbg("Could not install braille forwarding hook")
+'''
+
+_CUSTOMIZATION_BRAILLE_CELLS_HOOK = CUSTOMIZATION_BRAILLE_CELLS_MARKER + '''
+try:
+    import json as _remote_json
+    import orca.braille as _remote_braille
+    from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _linux_rdaccess_braille_adapter
+
+    _old_braille_refresh = _remote_braille.refresh
+
+    def _patched_braille_refresh(*args, **kwargs):
+        result = _old_braille_refresh(*args, **kwargs)
+        try:
+            if controller.transport.connected and controller.transport.connection_type == "slave":
+                semantic = None
+                if getattr(controller, "_lrd_nvda_native_braille", False):
+                    semantic = _linux_rdaccess_braille_adapter.semantic_focus_payload()
+                if semantic:
+                    canonical = _remote_json.dumps(
+                        semantic, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+                    if canonical != getattr(controller, "_lrd_last_semantic_braille", None):
+                        controller.transport.send(
+                            type="lrd_a11y_focus", version=1, **semantic)
+                        controller._lrd_last_semantic_braille = canonical
+                        _dbg("NVDA semantic braille focus forwarded")
+                else:
+                    get_link_mask = kwargs.get(
+                        "getLinkMask", args[2] if len(args) > 2 else True)
+                    cells = _linux_rdaccess_braille_adapter.braille_cells(
+                        get_link_mask=get_link_mask)
+                    controller.transport.send(type="display", cells=cells)
+                    _dbg("braille display forwarded: %d cells" % len(cells))
+        except Exception:
+            _dbg("braille forward failed")
+        return result
+
+    _remote_braille.refresh = _patched_braille_refresh
+    _dbg("Orca 42 native/semantic braille forwarding hook installed")
 except Exception:
     print("Orca Remote: diagnostic details redacted")
     _dbg("Could not install braille forwarding hook")
