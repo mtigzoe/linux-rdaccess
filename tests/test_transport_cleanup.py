@@ -60,6 +60,16 @@ class TCPTransport:
         self.callback_manager.call_callbacks('transport_disconnected')
         self._disconnect()
 
+    def send_queue(self):
+        while True:
+            item = self.queue.get()
+            if item is None:
+                return
+            try:
+                self.server_sock.sendall(item)
+            except socket.error:
+                return
+
     def _disconnect(self):
         """Disconnect the transport due to an error, without closing the connector thread."""
         if not self.connected:
@@ -74,15 +84,22 @@ class TCPTransport:
 
 
 class FakeSocket:
-    def __init__(self, fail_connect=False, events=None, shutdown_raises=False):
+    def __init__(self, fail_connect=False, events=None, shutdown_raises=False,
+                 fail_send=False):
         self.fail_connect = fail_connect
         self.closed = False
         self.events = events if events is not None else []
         self.shutdown_raises = shutdown_raises
+        self.fail_send = fail_send
 
     def connect(self, address):
         if self.fail_connect:
             raise OSError("synthetic connect failure")
+
+    def sendall(self, item):
+        self.events.append("send")
+        if self.fail_send:
+            raise OSError("synthetic send failure")
 
     def shutdown(self, how):
         self.events.append("shutdown")
@@ -108,6 +125,11 @@ class FakeQueue:
 
     def put(self, item):
         self.items.append(item)
+
+    def get(self):
+        if not self.items:
+            raise AssertionError("queue unexpectedly empty")
+        return self.items.pop(0)
 
 
 class FakeThread:
@@ -163,6 +185,21 @@ class TransportCleanupTests(unittest.TestCase):
         self.assertLess(events.index("join"), events.index("close"))
         self.assertIsNone(transport.server_sock)
         self.assertEqual(queue.items, [])
+
+    def test_sender_failure_shuts_socket_to_wake_reconnect_loop(self):
+        source, transport_cls = self.patched_class()
+        self.assertTrue(remote_access.legacy_transport_cleanup_patch_current(source))
+        events = []
+        sock = FakeSocket(events=events, fail_send=True)
+        queue = FakeQueue()
+        queue.items.append(b"message")
+        transport = transport_cls(lambda: sock, FakeCallbacks(), queue)
+        transport.server_sock = sock
+        transport.connected = True
+        transport.send_queue()
+        self.assertIn("send", events)
+        self.assertIn("shutdown", events)
+        self.assertLess(events.index("send"), events.index("shutdown"))
 
     def test_closed_fd_select_value_error_disconnects_cleanly(self):
         def selector(readers, writers, errors):
@@ -260,6 +297,31 @@ class TransportCleanupTests(unittest.TestCase):
         self.assertTrue(remote_access.legacy_transport_cleanup_patch_current(updated))
         self.assertNotIn(remote_access.TRANSPORT_CLEANUP_MARKER_V3 + "\n", updated)
 
+    def test_v4_cleanup_patch_upgrades_to_v5(self):
+        current = remote_access._patch_legacy_transport_cleanup(SOURCE)
+        send_block = (
+            "            except socket.error:\n"
+            "                try:\n"
+            "                    if self.server_sock is not None:\n"
+            "                        self.server_sock.shutdown(socket.SHUT_RDWR)\n"
+            "                except (OSError, AttributeError):\n"
+            "                    pass\n"
+            "                return"
+        )
+        v4 = current.replace(
+            send_block,
+            "            except socket.error:\n                return",
+            1,
+        ).replace(
+            remote_access.TRANSPORT_CLEANUP_MARKER,
+            remote_access.TRANSPORT_CLEANUP_MARKER_V4,
+            1,
+        )
+        self.assertFalse(remote_access.legacy_transport_cleanup_patch_current(v4))
+        updated = remote_access._patch_legacy_transport_cleanup(v4)
+        self.assertTrue(remote_access.legacy_transport_cleanup_patch_current(updated))
+        self.assertNotIn(remote_access.TRANSPORT_CLEANUP_MARKER_V4 + "\n", updated)
+
     def test_cleanup_patch_is_idempotent_and_rejects_tampering(self):
         source = remote_access._patch_legacy_transport_cleanup(SOURCE)
         self.assertEqual(remote_access._patch_legacy_transport_cleanup(source), source)
@@ -309,6 +371,17 @@ class TransportCleanupTests(unittest.TestCase):
                 1,
             )
             transport.write_text(v3, encoding="utf-8")
+            rows = dict(linux_rdaccess.patch_status(config))
+            self.assertIn(
+                "outdated",
+                rows["relay transport cleanup (transport.py)"],
+            )
+            v4 = source.replace(
+                remote_access.TRANSPORT_CLEANUP_MARKER,
+                remote_access.TRANSPORT_CLEANUP_MARKER_V4,
+                1,
+            )
+            transport.write_text(v4, encoding="utf-8")
             rows = dict(linux_rdaccess.patch_status(config))
             self.assertIn(
                 "outdated",
