@@ -28,7 +28,6 @@ class SemanticFocusPayloadTests(unittest.TestCase):
         with mock.patch.dict(sys.modules, {
             "orca": orca,
             "orca.orca_state": orca_state,
-            "linux_rdaccess_a11y_model": a11y_model,
         }):
             payload = orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload()
         self.assertIsNotNone(payload)
@@ -57,7 +56,6 @@ class SemanticFocusPayloadTests(unittest.TestCase):
         with mock.patch.dict(sys.modules, {
             "orca": orca,
             "orca.orca_state": orca_state,
-            "linux_rdaccess_a11y_model": a11y_model,
         }):
             payload = orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload()
             self.assertIsNotNone(payload)
@@ -82,7 +80,6 @@ class SemanticFocusPayloadTests(unittest.TestCase):
         with mock.patch.dict(sys.modules, {
             "orca": orca,
             "orca.orca_state": orca_state,
-            "linux_rdaccess_a11y_model": a11y_model,
         }):
             self.assertIsNone(orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload())
 
@@ -106,6 +103,7 @@ class CustomizationSemanticBrailleTests(unittest.TestCase):
         adapter.OrcaRuntimeAdapter = Adapter
         orca = types.ModuleType("orca")
         orca.braille = braille
+        offers = []
         controller = types.SimpleNamespace(
             transport=types.SimpleNamespace(
                 connected=True,
@@ -114,7 +112,9 @@ class CustomizationSemanticBrailleTests(unittest.TestCase):
             ),
             _lrd_nvda_native_braille=native,
             _lrd_last_semantic_braille=None,
+            _linux_rdaccess_offer_native_braille=lambda: offers.append(True),
         )
+        controller._lrd_native_braille_offers = offers
         namespace = {"controller": controller, "_dbg": lambda *_args: None}
         with mock.patch.dict(sys.modules, {
             "orca": orca,
@@ -126,8 +126,8 @@ class CustomizationSemanticBrailleTests(unittest.TestCase):
             second = braille.refresh()
         return first, messages, controller
 
-    def test_without_capability_raw_orca_cells_remain_fallback(self):
-        result, messages, _ = self.run_hook(
+    def test_without_capability_raw_orca_cells_remain_fallback_and_reoffers(self):
+        result, messages, controller = self.run_hook(
             native=False,
             semantic={"focus_id": "button", "objects": []},
         )
@@ -139,6 +139,7 @@ class CustomizationSemanticBrailleTests(unittest.TestCase):
                 {"type": "display", "cells": [1, 2, 3, 0]},
             ],
         )
+        self.assertEqual(controller._lrd_native_braille_offers, [True, True])
 
     def test_capability_sends_semantics_and_dedupes_identical_focus(self):
         semantic = {
@@ -157,15 +158,155 @@ class CustomizationSemanticBrailleTests(unittest.TestCase):
         self.assertEqual(messages[0]["objects"], semantic["objects"])
         self.assertIsNotNone(controller._lrd_last_semantic_braille)
 
-    def test_semantic_snapshot_failure_falls_back_to_raw_cells(self):
-        _, messages, _ = self.run_hook(native=True, semantic=None)
+    def test_semantic_snapshot_failure_notifies_windows_then_falls_back_to_raw_cells(self):
+        _, messages, controller = self.run_hook(native=True, semantic=None)
         self.assertEqual(
             messages,
             [
+                {"type": "lrd_a11y_fallback", "version": 1},
                 {"type": "display", "cells": [1, 2, 3, 0]},
                 {"type": "display", "cells": [1, 2, 3, 0]},
             ],
         )
+        self.assertFalse(controller._lrd_nvda_native_braille)
+        self.assertEqual(controller._lrd_native_braille_offers, [True])
+
+
+class LegacyStateSet:
+    def __init__(self, *states):
+        self._states = states
+
+    def getStates(self):
+        return list(self._states)
+
+
+class LegacyAction:
+    def __init__(self):
+        self.nActions = 1
+        self.performed = []
+
+    def getName(self, index):
+        return "click" if index == 0 else ""
+
+    def doAction(self, index):
+        self.performed.append(index)
+        return True
+
+
+class LegacyText:
+    def __init__(self, text, caret):
+        self.characterCount = len(text)
+        self.caretOffset = caret
+        self._text = text
+        self.nSelections = 0
+
+    def getText(self, start, end):
+        return self._text[start:end]
+
+    def getNSelections(self):
+        return self.nSelections
+
+
+class LegacyAccessible:
+    def __init__(self, name, role, parent=None, *, states=(), action=None, text=None):
+        self.name = name
+        self._role = role
+        self.parent = parent
+        self.children = []
+        self.childCount = 0
+        self._states = states
+        self._action = action
+        self._text = text
+        self.description = ""
+        if parent is not None:
+            parent.children.append(self)
+            parent.childCount = len(parent.children)
+
+    def getRoleName(self):
+        return self._role
+
+    def getState(self):
+        return LegacyStateSet(*self._states)
+
+    def getChildAtIndex(self, index):
+        return self.children[index]
+
+    def queryAction(self):
+        if self._action is None:
+            raise RuntimeError("no action")
+        return self._action
+
+    def queryText(self):
+        if self._text is None:
+            raise RuntimeError("no text")
+        return self._text
+
+
+class Orca42LegacyApiTests(unittest.TestCase):
+    def test_semantic_focus_supports_pyatspi_style_name_role_tree_and_actions(self):
+        action = LegacyAction()
+        app = LegacyAccessible("Smoke App", "application")
+        button = LegacyAccessible(
+            "Apply changes",
+            "push button",
+            app,
+            states=("focusable", "enabled"),
+            action=action,
+        )
+        orca_state = types.ModuleType("orca.orca_state")
+        orca_state.locusOfFocus = button
+        orca = types.ModuleType("orca")
+        orca.orca_state = orca_state
+        with mock.patch.dict(sys.modules, {
+            "orca": orca,
+            "orca.orca_state": orca_state,
+        }):
+            payload = orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload()
+            self.assertIsNotNone(payload)
+            focus = next(item for item in payload["objects"]
+                         if item["id"] == payload["focus_id"])
+            self.assertEqual(focus["name"], "Apply changes")
+            self.assertEqual(focus["role"], "push button")
+            self.assertIn("focusable", focus["states"])
+            self.assertEqual(focus["actions"], ["click"])
+            self.assertTrue(
+                orca_adapter.OrcaRuntimeAdapter.perform_semantic_action(
+                    payload["focus_id"], 0))
+        self.assertEqual(action.performed, [0])
+
+    def test_semantic_focus_supports_pyatspi_query_text_and_caret(self):
+        app = LegacyAccessible("Editor App", "application")
+        editor = LegacyAccessible(
+            "Notes",
+            "text",
+            app,
+            states=("focusable", "editable"),
+            text=LegacyText("alpha bravo", 5),
+        )
+        orca_state = types.ModuleType("orca.orca_state")
+        orca_state.locusOfFocus = editor
+        orca = types.ModuleType("orca")
+        orca.orca_state = orca_state
+        with mock.patch.dict(sys.modules, {
+            "orca": orca,
+            "orca.orca_state": orca_state,
+        }):
+            payload = orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload()
+        self.assertIsNotNone(payload)
+        focus = next(item for item in payload["objects"]
+                     if item["id"] == payload["focus_id"])
+        self.assertTrue(focus["text_supported"])
+        self.assertEqual(focus["text"], "alpha bravo")
+        self.assertEqual(focus["caret_offset"], 5)
+
+    def test_legacy_action_exception_fails_closed(self):
+        class BrokenAction(LegacyAction):
+            def doAction(self, index):
+                raise RuntimeError("gone")
+
+        button = LegacyAccessible(
+            "Gone", "push button", action=BrokenAction())
+        self.assertFalse(a11y_model.perform_action(button, 0))
 
 
 class SemanticBrailleUpgradeTests(unittest.TestCase):
