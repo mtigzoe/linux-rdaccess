@@ -2226,8 +2226,21 @@ class LocalMachine:
         self.assertEqual(resolve(None, 0x14, True), 'Caps_Lock')
         self.assertEqual(resolve(None, 0x90, False), 'Num_Lock')
         self.assertEqual(resolve(None, 0x90, True), 'Num_Lock')
+        self.assertEqual(resolve(None, 0x91, False), 'Scroll_Lock')
+        self.assertEqual(resolve(None, 0x91, True), 'Scroll_Lock')
         # An explicit peer-provided key name still has priority.
         self.assertEqual(resolve('PeerCaps', 0x14, False), 'PeerCaps')
+
+    def test_local_machine_v11_patch_is_upgraded_to_current(self):
+        module, path, _ = self._patched_local()
+        path.write_text(path.read_text(encoding='utf-8').replace(
+            remote_access.LOCAL_MACHINE_MARKER, remote_access.LOCAL_MACHINE_MARKER_V11),
+            encoding='utf-8')
+        self.assertTrue(remote_access.patch_legacy_orca_local_machine(path))
+        result = path.read_text(encoding='utf-8')
+        self.assertIn(remote_access.LOCAL_MACHINE_MARKER, result)
+        self.assertNotIn(remote_access.LOCAL_MACHINE_MARKER_V11 + '\n', result)
+        self.assertFalse(remote_access.patch_legacy_orca_local_machine(path))
 
     def test_local_machine_v5_patch_is_upgraded_to_current(self):
         module, path, _ = self._patched_local()
