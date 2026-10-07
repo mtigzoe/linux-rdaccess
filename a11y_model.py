@@ -507,7 +507,7 @@ def build_focus_payload(
     for obj in selected:
         oid = object_id(obj)
         parent = _parent(obj)
-        role = _clean(obj.get_role_name())
+        role = _role_name(obj)
         parent_oid = object_id(parent) if parent is not None else None
         parent_id = None if role == "application" or parent_oid not in selected_ids else parent_oid
         child_ids = [
