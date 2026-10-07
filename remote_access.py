@@ -1120,6 +1120,16 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
             raise ValueError("unsupported legacy transport frame-size guard")
         text = text.replace(receiver_source, bounded_receiver, 1)
 
+    # A genuine v6 transport already includes the disconnect-state and
+    # reconnect-ownership hardening below. Reapplying those edits corrupts
+    # the upgrade path. Once the v7 frame bounds are added, validate and
+    # finish the marker upgrade directly.
+    if upgrading_v6:
+        text = text.rstrip("\n") + "\n\n" + TRANSPORT_CLEANUP_MARKER + "\n"
+        if not legacy_transport_cleanup_patch_current(text):
+            raise ValueError("transport cleanup patch validation failed")
+        return text
+
     # close() may run before run() reaches its final connected=False assignment.
     # Invalidate the advertised state now so speech and input are not queued
     # for a dead channel, and no incomplete frame survives that session.
