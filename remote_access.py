@@ -1847,6 +1847,10 @@ _LEGACY_HELPERS = '''\
         "braille_routeTo": "route",
         "braille_toFocus": "to_focus",
     }
+    _LRD_NATIVE_BRAILLE_VERSION = 1
+    _lrd_nvda_native_braille = False
+    _lrd_last_semantic_braille = None
+
     # Display keys NVDA binds to "kb:<key>" emulation scripts. Only keys that
     # cannot type a character are forwarded; "kb:a", "kb:space" and any unknown
     # name stay redacted braille-keyboard input. name: (X key, vk, extended).
@@ -3436,6 +3440,23 @@ _LEGACY_HELPERS = '''\
                         pass
                 if identity in getattr(self, "_lrd_forwarded", {}):
                     log.error("linux-rdaccess: failed to release braille modifier")
+
+    def _linux_rdaccess_native_braille_capability(
+            self, version=None, presentation=None, **kwargs):
+        """Enable NVDA-owned braille only after the Windows peer opts in."""
+        if version != self._LRD_NATIVE_BRAILLE_VERSION or presentation != "nvda":
+            return
+        self._lrd_nvda_native_braille = True
+        self._lrd_last_semantic_braille = None
+
+        def refresh():
+            try:
+                from orca import braille as _braille
+                _braille.refresh(True)
+            except Exception:
+                log.error("linux-rdaccess: semantic braille refresh failed")
+
+        self._linux_rdaccess_run_main(refresh)
 
     def _linux_rdaccess_handle_braille_info(self, num_cells):
         """Apply NVDA Remote's display width to Orca's native pan/routing state."""
@@ -5841,6 +5862,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V95,
                 LEGACY_COMPAT_MARKER_V94,
                 LEGACY_COMPAT_MARKER_V93,
                 LEGACY_COMPAT_MARKER_V92,
