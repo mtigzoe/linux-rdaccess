@@ -407,6 +407,17 @@ class TransportCleanupTests(unittest.TestCase):
                 "outdated",
                 rows["relay transport cleanup (transport.py)"],
             )
+            v6 = source.replace(
+                remote_access.TRANSPORT_CLEANUP_MARKER,
+                remote_access.TRANSPORT_CLEANUP_MARKER_V6,
+                1,
+            )
+            transport.write_text(v6, encoding="utf-8")
+            rows = dict(linux_rdaccess.patch_status(config))
+            self.assertIn(
+                "outdated",
+                rows["relay transport cleanup (transport.py)"],
+            )
             transport.write_text(SOURCE, encoding="utf-8")
             rows = dict(linux_rdaccess.patch_status(config))
             self.assertIn(
