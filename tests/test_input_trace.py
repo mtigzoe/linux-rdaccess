@@ -231,6 +231,8 @@ class KeyDispositionTests(TraceCase):
         row = self.last('key')
         self.assertEqual(row['own']['nvda'], 'Insert/ext')
         self.assertEqual(row['own']['down'], ['CapsLock', 'Insert/ext'])
+        self.assertTrue(row['own']['caps_pending'])
+        self.assertTrue(row['own']['insert_pending'])
 
     def test_nonextended_insert_is_not_labelled_as_the_keypad(self):
         self.enable()
