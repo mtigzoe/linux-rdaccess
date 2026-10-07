@@ -36,6 +36,20 @@ class InsertModifierDeferralTests(Harness, unittest.TestCase):
                 self.assertIn(("key", 0x20, True), keys)
                 self.assertIn(("key", 0x20, False), keys)
 
+    def test_non_nvda_insert_chord_replays_modifier_before_application_key(self):
+        c, _, _ = self._patched_controller()
+        self._key(c, 0x2D, True, extended=True)
+        self._key(c, 0x59, True)   # Insert+Y is not an NVDA 2026.2 command
+        self._key(c, 0x59, False)
+        self._key(c, 0x2D, False, extended=True)
+        keys = [e[:3] for e in c.local_machine.events if e[0] == "key"]
+        self.assertEqual(keys, [
+            ("key", 0x2D, True),
+            ("key", 0x59, True),
+            ("key", 0x59, False),
+            ("key", 0x2D, False),
+        ])
+
     def test_standalone_insert_still_replays_one_press_release(self):
         c, _, _ = self._patched_controller()
         self._key(c, 0x2D, True, extended=True)
