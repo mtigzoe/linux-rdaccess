@@ -67,7 +67,7 @@ class SayAllCallbacksTests(Harness, unittest.TestCase):
         server._acss_manipulators = (
             ('rate', server._set_rate), ('average-pitch', server._set_pitch),
             ('gain', server._set_volume), ('family', server._set_family))
-        server._CALLBACK_TYPE_MAP = {'BEGIN': 0, 'CANCEL': 1, 'END': 2, 'INDEX_MARK': 0}
+        server._CALLBACK_TYPE_MAP = {'begin': 0, 'cancel': 1, 'end': 2, 'index_marks': 0}
         server._cancel = lambda: None
         native_speak = cls._speak
         return namespace, server, native_speak, idle
@@ -96,14 +96,14 @@ class SayAllCallbacksTests(Harness, unittest.TestCase):
         voice = Voice(gain=8, rate=60, **{'average-pitch': 6})
         original_voice = voice.copy()
         callback = lambda *a, **kw: None
-        server._speak('TEST WORDS', voice, callback=callback, event_types=['END'])
+        server._speak('TEST WORDS', voice, callback=callback, event_types=['end'])
         self.assertEqual(messages, [{'type': 'speak', 'sequence': ['TEST WORDS']}])
         self.assertEqual(len(server._client.queued), 1)
         volume, ssml, kwargs = server._client.queued[0]
         self.assertEqual(volume, -100)
         self.assertIn('<mark name="0:4"/>', ssml)
         self.assertIs(kwargs['callback'], callback)
-        self.assertEqual(kwargs['event_types'], ['END'])
+        self.assertEqual(kwargs['event_types'], ['end'])
         self.assertEqual(voice, original_voice)
         self.assertEqual(server._client.volume, 40)
         self.assertNotIn('gain', server._current_voice_properties)
@@ -142,7 +142,7 @@ class SayAllCallbacksTests(Harness, unittest.TestCase):
         self.assertEqual(len(consumed), 1)
         self.assertEqual(idle, [])
         callback = server._client.queued[0][2]['callback']
-        callback('END')
+        callback('end')
         while idle:
             func, args = idle.pop(0)
             func(*args)
@@ -161,7 +161,7 @@ class SayAllCallbacksTests(Harness, unittest.TestCase):
         func, args = idle.pop(0)
         func(*args)
         namespace['old_stop'](server)
-        server._client.queued[0][2]['callback']('CANCEL')
+        server._client.queued[0][2]['callback']('cancel')
         while idle:
             func, args = idle.pop(0)
             func(*args)
@@ -174,7 +174,7 @@ class SayAllCallbacksTests(Harness, unittest.TestCase):
         server.sayAll(iter([(context, Voice(gain=5))]), lambda *a: None)
         func, args = idle.pop(0)
         func(*args)
-        server._client.queued[0][2]['callback']('INDEX_MARK', index_mark='1:4')
+        server._client.queued[0][2]['callback']('index_marks', index_mark='1:4')
         while idle:
             func, args = idle.pop(0)
             func(*args)
@@ -189,7 +189,7 @@ class SayAllCallbacksTests(Harness, unittest.TestCase):
                       lambda context, kind: progress.append((context, kind)))
         func, args = idle.pop(0)
         func(*args)
-        server._client.queued[0][2]['callback']('END')
+        server._client.queued[0][2]['callback']('end')
         namespace['old_stop'](server)
         while idle:
             func, args = idle.pop(0)
@@ -212,7 +212,7 @@ class SayAllCallbacksTests(Harness, unittest.TestCase):
                       lambda context, kind: progress.append((context, kind)))
         func, args = idle.pop(0)
         func(*args)
-        server._client.queued[0][2]['callback']('END')
+        server._client.queued[0][2]['callback']('end')
         self._key(controller, 0xA2, True)
         self.assertEqual(controller.transport.sent, ['speak', 'cancel'])
         while idle:
@@ -259,7 +259,7 @@ class Script:
         func, args = idle.pop(0)
         func(*args)
         self.assertTrue(script._inSayAll)
-        server._client.queued[0][2]['callback']('END')
+        server._client.queued[0][2]['callback']('end')
         namespace['controller']._lrd_generation += 1
         while idle:
             func, args = idle.pop(0)
@@ -275,7 +275,7 @@ class Script:
         server.sayAll(script.textLines(iter(chunks)), script._Script__sayAllProgressCallback)
         func, args = idle.pop(0)
         func(*args)
-        server._client.queued[-1][2]['callback']('END')
+        server._client.queued[-1][2]['callback']('end')
         server.sayAll(script.textLines(iter(chunks)), script._Script__sayAllProgressCallback)
         while idle:
             func, args = idle.pop(0)
@@ -295,7 +295,7 @@ class Script:
                       lambda context, kind: progress.append((context, kind)))
         func, args = idle.pop(0)
         func(*args)
-        server._client.queued[0][2]['callback']('END')
+        server._client.queued[0][2]['callback']('end')
         namespace['controller']._lrd_generation += 1
         while idle:
             func, args = idle.pop(0)
@@ -345,8 +345,8 @@ class Script:
                       lambda *args: progress.append('second'))
         func, args = idle.pop(0)
         func(*args)
-        server._client.queued[0][2]['callback']('CANCEL')
-        server._client.queued[1][2]['callback']('INDEX_MARK', index_mark='1:4')
+        server._client.queued[0][2]['callback']('cancel')
+        server._client.queued[1][2]['callback']('index_marks', index_mark='1:4')
         while idle:
             func, args = idle.pop(0)
             func(*args)

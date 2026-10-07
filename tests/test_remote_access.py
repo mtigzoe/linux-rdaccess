@@ -614,7 +614,7 @@ class RemoteController:
 
         class Adapter:
             @staticmethod
-            def show_structural_list(key):
+            def show_structural_list(key, **kwargs):
                 return key == "m"
 
         module.OrcaRuntimeAdapter = Adapter

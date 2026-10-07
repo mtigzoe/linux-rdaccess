@@ -260,13 +260,13 @@ class AdapterResultTests(Harness, unittest.TestCase):
         controller._linux_rdaccess_send_structural_list = mock.Mock()
         with self.modules(types.SimpleNamespace(show_structural_list=primary), types.SimpleNamespace()):
             controller._linux_rdaccess_open_structural_list('h', None)
-        primary.assert_called_once_with('h')
+        primary.assert_called_once_with('h', lifetime_valid=mock.ANY)
         controller._linux_rdaccess_send_structural_list.assert_not_called()
 
     def test_unsupported_structural_list_keeps_verified_fallback(self):
         controller, _, _ = self._patched_controller()
         controller._linux_rdaccess_send_structural_list = mock.Mock()
-        with self.modules(types.SimpleNamespace(show_structural_list=lambda key: None), types.SimpleNamespace()):
+        with self.modules(types.SimpleNamespace(show_structural_list=lambda key, **kwargs: None), types.SimpleNamespace()):
             controller._linux_rdaccess_open_structural_list('h', None)
         controller._linux_rdaccess_send_structural_list.assert_called_once_with('h', None)
 
@@ -275,7 +275,7 @@ class AdapterResultTests(Harness, unittest.TestCase):
             with self.subTest(error=error):
                 controller, _, _ = self._patched_controller()
                 calls = []
-                def primary(key):
+                def primary(key, **kwargs):
                     calls.append(key)
                     raise error('handler failed')
                 controller._linux_rdaccess_send_structural_list = mock.Mock()

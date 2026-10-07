@@ -86,6 +86,85 @@ def show_elements_list(send_structural_list: Callable[[str], Any]) -> bool | Non
     return True
 
 
+def _show_guarded_structural_list(
+    handler: Callable[..., Any], script: Any,
+    lifetime_valid: Callable[[], bool] | None,
+) -> Any:
+    """Keep Orca 42's native list, guarding its later target callbacks.
+
+    Orca stores the result accessibles and originating document in its GTK
+    list. Reloading Firefox while that dialog is open destroys those objects;
+    Orca 42's Jump/Activate callbacks otherwise still use the stored objects.
+    The temporary showUI wrapper only applies to lists opened by this bridge.
+    """
+    try:
+        from orca import orca_gui_navlist, orca_state
+    except ImportError:
+        return handler(script, None)
+    native_class = getattr(orca_gui_navlist, "OrcaNavListGUI", None)
+    native_show = getattr(orca_gui_navlist, "showUI", None)
+    if not isinstance(native_class, type) or not callable(native_show):
+        return handler(script, None)
+
+    window = getattr(orca_state, "activeWindow", None)
+    if window is None:
+        window = getattr(orca_state, "active_window", None)
+
+    class RemoteNavListGUI(native_class):
+        def _target_is_current(self) -> bool:
+            try:
+                if lifetime_valid is not None and not lifetime_valid():
+                    return False
+                if self._script is not script or self._document is None:
+                    return False
+                utilities = script.utilities
+                active_document = getattr(utilities, "activeDocument", None)
+                if not callable(active_document):
+                    active_document = getattr(utilities, "active_document", None)
+                if (not callable(active_document) or window is None
+                        or active_document(window) != self._document):
+                    return False
+                obj, _offset = self._getSelectedAccessibleAndOffset()
+                if obj is None:
+                    return False
+                for name, alias in (("isDead", "is_dead"), ("isZombie", "is_zombie")):
+                    check = getattr(utilities, name, None)
+                    if not callable(check):
+                        check = getattr(utilities, alias, None)
+                    if callable(check) and (check(self._document) or check(obj)):
+                        return False
+                get_document = getattr(utilities, "getTopLevelDocumentForObject", None)
+                if not callable(get_document):
+                    get_document = getattr(utilities, "get_top_level_document_for_object", None)
+                return callable(get_document) and get_document(obj) == self._document
+            except Exception:
+                # A disappearing AT-SPI object can raise even before isDead.
+                return False
+
+        def _onJumpToClicked(self, widget):
+            if not self._target_is_current():
+                self._gui.destroy()
+                return
+            return super()._onJumpToClicked(widget)
+
+        def _onActivateClicked(self, widget):
+            if not self._target_is_current():
+                self._gui.destroy()
+                return
+            return super()._onActivateClicked(widget)
+
+    def show_guarded(*args, **kwargs):
+        gui = RemoteNavListGUI(*args, **kwargs)
+        gui.showGUI()
+
+    orca_gui_navlist.showUI = show_guarded
+    try:
+        return handler(script, None)
+    finally:
+        if orca_gui_navlist.showUI is show_guarded:
+            orca_gui_navlist.showUI = native_show
+
+
 class OrcaRuntimeAdapter:
     """Resolve and invoke the active Orca script without owning Orca state."""
 
@@ -213,6 +292,63 @@ class OrcaRuntimeAdapter:
             braille.refresh(True)
         return True
 
+    @staticmethod
+    def braille_cells(*, get_link_mask: bool = True) -> list[int]:
+        """Serialize Orca 42's native cells without translating them again.
+
+        Region.string is already contracted when contraction is enabled, and
+        Orca's routing maps refer to positions in that string. charToDots only
+        converts its display characters to dot patterns; it preserves both
+        those positions and cursor-expanded words.
+        """
+        from orca import braille
+        import louis
+
+        width = braille._displaySize[0]
+        if type(width) is not int or not 0 < width <= 1024:
+            raise ValueError("invalid Orca braille display width")
+        line = braille.getShowingLine()
+        if line is None:
+            return [0] * width
+        start = braille.viewport[0]
+        end = start + width
+        # refresh() has already set viewport[0] to the wrapped range's start.
+        # Preserve its shorter end so padding does not reveal the next word.
+        wrap = getattr(braille, "_adjustForWordWrap", None)
+        if callable(wrap):
+            wrapped_start, wrapped_end = wrap(0)
+            if wrapped_start == start:
+                end = min(end, wrapped_end)
+        _, _, attributes, _ = line.getLineInfo(get_link_mask)
+        cells = []
+        offset = 0
+        for region in line.regions:
+            string = region.string
+            region_end = offset + len(string)
+            visible = string[max(0, start - offset):max(0, end - offset)]
+            if visible:
+                table = (region.contractionTable if region.contracted
+                         else "en-us-comp8.ctb")
+                dots = louis.charToDots([table], visible, mode=louis.ucBrl)
+                if (len(dots) != len(visible)
+                        or any(not 0x2800 <= ord(dot) <= 0x28ff for dot in dots)):
+                    raise ValueError("braille display conversion changed cell positions")
+                cells.extend(
+                    ord(ch) - 0x2800 if 0x2800 <= ord(ch) <= 0x28ff
+                    else ord(dot) - 0x2800
+                    for ch, dot in zip(visible, dots))
+            offset = region_end
+            if offset >= end:
+                break
+        cells += [0] * (width - len(cells))
+        if attributes:
+            for index, attribute in enumerate(attributes[start:end]):
+                cells[index] |= ord(attribute)
+        cursor = getattr(braille, "cursorCell", 0)
+        if type(cursor) is int and 1 <= cursor <= width:
+            cells[cursor - 1] |= 0xc0
+        return cells
+
     @classmethod
     def route_braille(cls, index: int) -> bool | None:
         if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < 1024:
@@ -224,7 +360,10 @@ class OrcaRuntimeAdapter:
         )
 
     @classmethod
-    def show_structural_list(cls, key: str, *, script: Any | None = None) -> bool | None:
+    def show_structural_list(
+        cls, key: str, *, script: Any | None = None,
+        lifetime_valid: Callable[[], bool] | None = None,
+    ) -> bool | None:
         """Open Orca's native structural-navigation list for one shortcut key."""
         if script is None:
             script = cls.active_script()
@@ -248,7 +387,7 @@ class OrcaRuntimeAdapter:
                 handler = getattr(obj, "show_list", None)
             if not callable(handler):
                 continue
-            return handler(script, None) is not False
+            return _show_guarded_structural_list(handler, script, lifetime_valid) is not False
         return None
 
     @classmethod
