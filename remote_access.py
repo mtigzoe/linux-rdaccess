@@ -1705,6 +1705,10 @@ def update_legacy_orca_customizations(
         adapter_target = remote_controller.parent / "linux_rdaccess_orca_adapter.py"
         if adapter_source.exists():
             shutil.copy2(adapter_source, adapter_target)
+        model_source = Path(__file__).with_name("a11y_model.py")
+        model_target = remote_controller.parent / "linux_rdaccess_a11y_model.py"
+        if model_source.exists():
+            shutil.copy2(model_source, model_target)
         # The input shim is an enhancement: a changed upstream layout must not
         # stop the connection settings above from being applied.
         try:
