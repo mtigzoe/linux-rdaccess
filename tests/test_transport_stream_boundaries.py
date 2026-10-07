@@ -179,6 +179,24 @@ class TransportStreamBoundariesTests(unittest.TestCase):
         self.assertEqual(transport.callback_manager.calls, [("msg_first", {})])
         self.assertEqual(transport.buffer, b'{"type":"new-partial')
 
+    def test_oversized_complete_frame_disconnects_before_deserialization(self):
+        source = remote_access._patch_legacy_transport_cleanup(UPSTREAM)
+        payload = b'{"type":"oversized","data":"' + (b"x" * ((1 << 20) + 1)) + b'"}\n'
+        chunks = [payload[index:index + 16384] for index in range(0, len(payload), 16384)]
+        transport, sock, selector = transport_from_source(source, chunks)
+        transport.serializer.deserialize = mock.Mock(
+            side_effect=AssertionError("oversized frame must not be deserialized"))
+        try:
+            with mock.patch("select.select", selector):
+                transport.run()
+        finally:
+            transport._disconnect()
+        transport.serializer.deserialize.assert_not_called()
+        self.assertFalse(transport.connected)
+        self.assertTrue(sock.closed)
+        self.assertIsNone(transport.server_sock)
+        self.assertEqual(transport.buffer, b"")
+
     def test_oversized_unterminated_frame_disconnects_and_clears_partial_state(self):
         source = remote_access._patch_legacy_transport_cleanup(UPSTREAM)
         chunk = b"{" + (b"x" * 16383)
@@ -265,6 +283,25 @@ class TransportStreamBoundariesTests(unittest.TestCase):
 
         v6, count = re.subn(pattern, remove_bound, current, count=1)
         self.assertEqual(count, 1)
+        complete_pattern = (
+            r"(?m)^([ \t]*)line, sep, data = data\.partition\(b'\\n'\)[ \t]*\n"
+            r"\1if len\(line\) > 1 << 20:[ \t]*\n"
+            r"([ \t]*)self\.buffer = b''[ \t]*\n"
+            r"\2self\._disconnect\(\)[ \t]*\n"
+            r"\2return[ \t]*\n"
+            r"\1self\.parse\(line\)[ \t]*$"
+        )
+
+        def remove_complete_bound(match):
+            indent = match.group(1)
+            return (
+                indent + "line, sep, data = data.partition(b'\\n')\n"
+                + indent + "self.parse(line)"
+            )
+
+        v6, complete_count = re.subn(
+            complete_pattern, remove_complete_bound, v6, count=1)
+        self.assertEqual(complete_count, 1)
         v6 = v6.replace(
             remote_access.TRANSPORT_CLEANUP_MARKER,
             remote_access.TRANSPORT_CLEANUP_MARKER_V6,
