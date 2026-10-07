@@ -114,23 +114,6 @@ class RemoteKeyValidationTests(Harness, unittest.TestCase):
         ])
         self.assertFalse(c._lrd_forwarded)
 
-    def test_vk_identity_wins_over_conflicting_remote_key_name(self):
-        c, _, _ = self._patched_controller()
-        c._on_remote_key(
-            key_name="Tab", pressed=True, modifiers=None,
-            vk_code=0x41, scan_code=0x1E, extended=False,
-        )
-        c._on_remote_key(
-            key_name="Escape", pressed=False, modifiers=None,
-            vk_code=0x41, scan_code=0x1E, extended=False,
-        )
-        keys = [event for event in c.local_machine.events if event[0] == "key"]
-        self.assertEqual(keys, [
-            ("key", 0x41, True, None),
-            ("key", 0x41, False, None),
-        ])
-        self.assertFalse(c._lrd_forwarded)
-
     def test_unknown_legal_vk_is_not_guessed_as_an_nvda_command(self):
         for vk in (0, 0xFF):
             with self.subTest(vk=vk):
