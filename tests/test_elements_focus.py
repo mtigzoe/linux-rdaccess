@@ -12,7 +12,8 @@ class ElementsFocusTests(Harness, unittest.TestCase):
         controller, _, _ = self._patched_controller()
         self.document = object()
         origin = types.SimpleNamespace(utilities=types.SimpleNamespace(
-            documentFrame=lambda: self.document))
+            documentFrame=lambda: self.document,
+            inDocumentContent=lambda: True))
         window = object()
         state = types.SimpleNamespace(activeScript=origin, activeWindow=window)
         orca = types.ModuleType('orca')
@@ -55,6 +56,37 @@ class ElementsFocusTests(Harness, unittest.TestCase):
             state.activeWindow = window
             self.assertFalse(queue[0]())
         self.assertEqual(calls, [(('t', None), origin, window)])
+
+    def test_browser_chrome_does_not_open_chooser_for_cached_document(self):
+        c, _, origin, _, queue, calls, patches = self.setup_context()
+        origin.utilities.inDocumentContent = lambda: False
+        with patches:
+            show = mock.Mock(wraps=sys.modules['linux_rdaccess_orca_adapter'].show_elements_list)
+            sys.modules['linux_rdaccess_orca_adapter'].show_elements_list = show
+            c._linux_rdaccess_show_elements_list(None)
+            show.assert_not_called()
+        self.assertEqual(queue, [])
+        self.assertEqual(calls, [])
+
+    def test_restored_browser_window_with_chrome_focus_does_not_open_page_list(self):
+        c, state, origin, window, queue, calls, patches = self.setup_context()
+        with patches:
+            c._linux_rdaccess_show_elements_list(None)
+            state.activeScript, state.activeWindow = origin, window
+            origin.utilities.inDocumentContent = lambda: False
+            self.assertFalse(queue[0]())
+        self.assertEqual(calls, [])
+        self.assertEqual(c.local_machine.events, [])
+
+    def test_snake_case_document_context_keeps_same_browser_chrome_guard(self):
+        c, _, origin, _, queue, calls, patches = self.setup_context()
+        origin.utilities = types.SimpleNamespace(
+            document_frame=lambda: self.document,
+            in_document_content=lambda: False)
+        with patches:
+            c._linux_rdaccess_show_elements_list(None)
+        self.assertEqual(queue, [])
+        self.assertEqual(calls, [])
 
     def test_changed_document_never_opens_list_or_injects_fallback(self):
         c, state, origin, window, queue, calls, patches = self.setup_context()

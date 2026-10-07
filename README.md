@@ -338,7 +338,7 @@ individual on/off results. Num Lock and Scroll Lock auto-repeat produce one togg
 announcement per press. CapsLock used for a translated NVDA command produces
 neither a lock toggle nor a lock announcement.
 
-The current patches are controller **v93**, local-machine **v12**, and transport cleanup **v6**. Update the
+The current patches are controller **v95**, local-machine **v12**, and transport cleanup **v7**. Update the
 installed command from the repository with `python3 linux_rdaccess.py install`,
 then run `linux-rdaccess connect` to update the Orca-side files and restart Orca.
 `doctor` verifies the connected patch hooks, valid Python, and the installed
@@ -352,6 +352,9 @@ source evidence, regressions and remaining desktop checks.
 The [October 6 audit](docs/compatibility-audit-2026-10-06.md) covers table/landmark
 burst handling, manual focus switching, command retries, current-line reporting
 and the clock shortcut conflict, plus automatic relay retries.
+The [state and timing audit](docs/compatibility-audit-2026-10-07-live-edgecases.md)
+records Orca 42 speech cancellation, stale browser actions, remote braille display
+width and gesture ownership, focus restoration fixes, and the remaining live checks.
 The [follow-up audit](docs/compatibility-audit-2026-10-06-followup.md) records
 current-line context, modal focus, pass-next ordering and speech/Say All repairs,
 with the remaining eighteen acceptance areas.

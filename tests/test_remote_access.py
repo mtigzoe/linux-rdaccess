@@ -2975,6 +2975,7 @@ class LocalMachine:
         ie.KeyboardEvent = KeyboardEvent
         orca = types.ModuleType("orca")
         orca.input_event, orca.keybindings = ie, kb
+        orca.orca_state = SimpleNamespace(activeScript=script)
         patches = mock.patch.dict(sys.modules, {
             "orca": orca, "orca.input_event": ie, "orca.keybindings": kb})
         return KeyboardEvent, script, patches

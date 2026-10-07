@@ -150,8 +150,60 @@ def my_speak(self, text, acss, **kw):
 _CUSTOMIZATION_SPEECH_CALLBACK_SOURCE = _CUSTOMIZATION_SPEECH_FORWARD_SOURCE.replace(
     "        return None\n", "        if not callable(kw.get(\"callback\")):\n            return None\n")
 
-CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER = "# linux-rdaccess native Say All callbacks v1"
-_CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK = CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER + '''
+_CUSTOMIZATION_SPEECH_SERVER_SOURCE = '''
+def _get_speech_server():
+    try:
+        import orca.speech as speech
+        return speech._state.server
+    except Exception:
+        return None
+'''
+_CUSTOMIZATION_SPEECH_SERVER_RETURN = (
+    'getattr(speech, "_speechserver", None) or '
+    'getattr(getattr(speech, "_state", None), "server", None)')
+
+
+def _customization_speech_server_function(tree):
+    getters = [node for node in ast.walk(tree)
+               if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+               and node.name == "_get_speech_server"]
+    if not getters and not _binding_count(tree.body, "_get_speech_server"):
+        return None
+    if (len(getters) != 1 or getters[0] not in tree.body
+            or _binding_count(tree.body, "_get_speech_server") != 1):
+        raise ValueError("unsupported legacy speech-server getter")
+    getter = getters[0]
+    if (getter.body and isinstance(getter.body[0], ast.Expr)
+            and isinstance(getter.body[0].value, ast.Constant)
+            and isinstance(getter.body[0].value.value, str)):
+        getter.body.pop(0)  # The connector's explanatory docstring can vary.
+    return getter
+
+
+def _patch_legacy_customization_speech_server(text: str) -> str:
+    tree = ast.parse(text, feature_version=(3, 10))
+    getter = _customization_speech_server_function(tree)
+    if getter is None:
+        return text
+    expected = ast.parse(_CUSTOMIZATION_SPEECH_SERVER_SOURCE).body[0]
+    current = ast.parse(_CUSTOMIZATION_SPEECH_SERVER_SOURCE.replace(
+        "speech._state.server", _CUSTOMIZATION_SPEECH_SERVER_RETURN)).body[0]
+    if _ast_equal(getter, current):
+        return text
+    if not _ast_equal(getter, expected):
+        raise ValueError("unsupported legacy speech-server getter")
+    returned = getter.body[0].body[1].value
+    data = text.encode("utf-8")
+    starts = [0]
+    for line in data.splitlines(keepends=True):
+        starts.append(starts[-1] + len(line))
+    start = starts[returned.lineno - 1] + returned.col_offset
+    end = starts[returned.end_lineno - 1] + returned.end_col_offset
+    return (data[:start] + _CUSTOMIZATION_SPEECH_SERVER_RETURN.encode("utf-8")
+            + data[end:]).decode("utf-8")
+
+CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V1 = "# linux-rdaccess native Say All callbacks v1"
+_CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V1 = CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V1 + '''
 def _linux_rdaccess_silent_callback_speech(original, *args, **kwargs):
     # Obtain genuine native synthesis events while Windows speaks the text.
     # Timing follows the local synthesizer; it is not a Windows completion ACK.
@@ -226,6 +278,103 @@ def _linux_rdaccess_silent_callback_speech(original, *args, **kwargs):
             current_properties.pop("gain", None)
 '''
 
+_CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK = '''
+def _linux_rdaccess_say_all_session():
+    peer = globals().get("transport")
+    owner = globals().get("controller")
+    return (id(peer), getattr(peer, "connected", False),
+            getattr(peer, "connection_type", None),
+            getattr(owner, "_lrd_generation", 0))
+
+def _linux_rdaccess_wrap_say_all(original):
+    def wrapped(server, iterator, callback):
+        run = object()
+        server._linux_rdaccess_say_all_run = run
+        epoch = getattr(server, "_linux_rdaccess_say_all_epoch", 0)
+        requested = getattr(globals().get("controller"), "_lrd_speech_epoch", 0)
+        session = _linux_rdaccess_say_all_session()
+        interrupted = getattr(server, "_CALLBACK_TYPE_MAP", {}).get("CANCEL", object())
+        script = getattr(callback, "__self__", None)
+        if (getattr(callback, "__module__", None) not in (
+                "orca.scripts.default", "orca.scripts.web.script")
+                or getattr(callback, "__name__", None) != "__sayAllProgressCallback"
+                or not hasattr(script, "_inSayAll")):
+            script = None
+        if script is not None:
+            script._linux_rdaccess_say_all_run = run
+
+        def cleanup():
+            # Orca 42 clears these fields at textLines' normal tail or on
+            # INTERRUPTED. A completed utterance may produce no CANCEL after
+            # stop, so expiring its queued END must clear them explicitly.
+            # Do not call the old progress callback: it can restore old focus.
+            if (script is not None
+                    and getattr(script, "_linux_rdaccess_say_all_run", None) is run):
+                script._inSayAll = False
+                script._sayAllContexts = []
+                if hasattr(script, "_sayAllContents"):
+                    script._sayAllContents = []
+
+        def current_session():
+            return (getattr(server, "_linux_rdaccess_say_all_run", None) is run
+                    and _linux_rdaccess_say_all_session() == session)
+
+        def current():
+            return (current_session()
+                    and getattr(server, "_linux_rdaccess_say_all_epoch", 0) == epoch
+                    and getattr(globals().get("controller"), "_lrd_speech_epoch", 0) == requested)
+
+        def chunks():
+            while current():
+                try:
+                    chunk = next(iterator)
+                except StopIteration:
+                    return
+                if not current():
+                    break
+                yield chunk
+            cleanup()
+
+        def progress(context, kind):
+            # Keep native cancellation cleanup for the stopped run, but never
+            # move the old caret after a new Say All or session has started.
+            if current() or (current_session() and kind == interrupted):
+                return callback(context, kind)
+            cleanup()
+            return False
+
+        # Orca still owns synthesis, completion pacing and GLib scheduling.
+        # Its already-posted END continuation consumes this guarded iterator.
+        return original(server, chunks(), progress)
+    wrapped._linux_rdaccess_original = original
+    return wrapped
+
+def _linux_rdaccess_wrap_say_all_stop(original):
+    def wrapped(server, *args, **kwargs):
+        server._linux_rdaccess_say_all_epoch = getattr(
+            server, "_linux_rdaccess_say_all_epoch", 0) + 1
+        return original(server, *args, **kwargs)
+    wrapped._linux_rdaccess_original = original
+    return wrapped
+
+_linux_rdaccess_native_say_all = getattr(globals().get("SpeechServer"), "sayAll", None)
+_linux_rdaccess_native_stop = globals().get("old_stop")
+if (getattr(_linux_rdaccess_native_say_all, "__module__", None) == "orca.speechdispatcherfactory"
+        and getattr(_linux_rdaccess_native_say_all, "__name__", None) == "sayAll"
+        and getattr(_linux_rdaccess_native_stop, "__module__", None) == "orca.speechdispatcherfactory"
+        and getattr(_linux_rdaccess_native_stop, "__name__", None) == "stop"):
+    SpeechServer.sayAll = _linux_rdaccess_wrap_say_all(_linux_rdaccess_native_say_all)
+    old_stop = _linux_rdaccess_wrap_say_all_stop(_linux_rdaccess_native_stop)
+    if SpeechServer.stop is _linux_rdaccess_native_stop:
+        SpeechServer.stop = old_stop
+'''
+
+CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER = "# linux-rdaccess native Say All callbacks v2"
+_CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK = _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V1.replace(
+    CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V1,
+    CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER,
+) + _CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK
+
 
 def _customization_speech_functions(tree):
     return [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
@@ -289,11 +438,15 @@ def _patch_legacy_customization_speech_sequence(text: str) -> str:
 
 
 def legacy_customization_say_all_callback_patch_current(text: str) -> bool:
-    if text.count(CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER) != 1 or _LOCAL_SPEECH_PREF_HOOK not in text:
+    if (text.count(CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER) != 1
+            or _LOCAL_SPEECH_PREF_HOOK not in text
+            or _CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK not in text):
         return False
     try:
         tree = ast.parse(text, feature_version=(3, 10))
-    except SyntaxError:
+        if _patch_legacy_customization_speech_server(text) != text:
+            return False
+    except (SyntaxError, ValueError):
         return False
     expected_helper = ast.parse(_CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK).body[0]
     helpers = [node for node in tree.body if isinstance(node, ast.FunctionDef)
@@ -304,6 +457,9 @@ def legacy_customization_say_all_callback_patch_current(text: str) -> bool:
     return (len(helpers) == 1 and _binding_count(tree.body, expected_helper.name) == 1
             and _ast_equal(helpers[0], expected_helper)
             and _binding_count(tree.body, "_linux_rdaccess_wrap_local_speech") == 1
+            and all(_binding_count(tree.body, name) == 1 for name in (
+                "_linux_rdaccess_say_all_session", "_linux_rdaccess_wrap_say_all",
+                "_linux_rdaccess_wrap_say_all_stop"))
             and _binding_count(tree.body, "my_speak") == 1
             and len(wrappers) == 1 and wrappers[0] in tree.body
             and _ast_equal(wrappers[0], expected_wrapper)
@@ -311,6 +467,16 @@ def legacy_customization_say_all_callback_patch_current(text: str) -> bool:
 
 
 def _patch_legacy_customization_say_all_callbacks(text: str) -> str:
+    text = _patch_legacy_customization_speech_server(text)
+    if CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V1 in text:
+        if (text.count(CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V1) != 1
+                or _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V1 not in text):
+            raise ValueError("incomplete native Say All callback patch")
+        upgraded = text.replace(_CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V1,
+                                _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK, 1)
+        if not legacy_customization_say_all_callback_patch_current(upgraded):
+            raise ValueError("incomplete native Say All callback patch")
+        return upgraded
     if CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER in text:
         if not legacy_customization_say_all_callback_patch_current(text):
             raise ValueError("incomplete native Say All callback patch")
@@ -1455,7 +1621,8 @@ LEGACY_COMPAT_MARKER_V90 = "# linux-rdaccess NVDA/Orca input compatibility v90"
 LEGACY_COMPAT_MARKER_V91 = "# linux-rdaccess NVDA/Orca input compatibility v91"
 LEGACY_COMPAT_MARKER_V92 = "# linux-rdaccess NVDA/Orca input compatibility v92"
 LEGACY_COMPAT_MARKER_V93 = "# linux-rdaccess NVDA/Orca input compatibility v93"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v94"
+LEGACY_COMPAT_MARKER_V94 = "# linux-rdaccess NVDA/Orca input compatibility v94"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v95"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -1855,6 +2022,10 @@ _LEGACY_HELPERS = '''\
         keys stalled all key forwarding whenever Orca was busy (Firefox), which
         looked like a freeze. Requests are coalesced: at most one is pending.
         """
+        # Invalidate native Say All continuations at receipt: an END idle can
+        # already be ahead of the queued native stop on Orca's main loop.
+        # Updating a scalar does not touch the speech-dispatcher client here.
+        self._lrd_speech_epoch = getattr(self, "_lrd_speech_epoch", 0) + 1
         if getattr(self, "_lrd_local_stop_pending", False):
             self._linux_rdaccess_trace("speech", what="local_stop_coalesced")
             return
@@ -2046,7 +2217,9 @@ _LEGACY_HELPERS = '''\
             _lrd_schedule_bypass_cleanup(bypass_request)
         self._lrd_navigation_marker = None
         self._lrd_generation = getattr(self, "_lrd_generation", 0) + 1
+        self._linux_rdaccess_reset_braille_width()
         self._lrd_local_stop_pending = False
+        self._lrd_speech_epoch = 0
         marker = globals().get("_LRD_D")
         if isinstance(marker, dict):
             _lrd_clear_navigation_markers(marker)
@@ -3060,6 +3233,76 @@ _LEGACY_HELPERS = '''\
                 if identity in getattr(self, "_lrd_forwarded", {}):
                     log.error("linux-rdaccess: failed to release braille modifier")
 
+    def _linux_rdaccess_handle_braille_info(self, num_cells):
+        """Apply NVDA Remote's display width to Orca's native pan/routing state."""
+        self._linux_rdaccess_sync_state()
+        if type(num_cells) is not int or not 0 <= num_cells <= 1024:
+            return
+        previous = getattr(self, "_lrd_braille_display", None)
+        if (previous is not None and previous["width"] == num_cells
+                and previous["ready"] is not False):
+            return
+        request = self._lrd_braille_display = {
+            "width": num_cells,
+            "owner": previous["owner"] if previous is not None else object(),
+            "ready": None,
+        }
+
+        def apply():
+            if getattr(self, "_lrd_braille_display", None) is not request:
+                return
+            try:
+                from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter
+                request["ready"] = OrcaRuntimeAdapter.set_remote_braille_width(
+                    num_cells, request["owner"]) is True
+            except Exception:
+                request["ready"] = False
+                log.error("linux-rdaccess: remote braille width unavailable")
+
+        if self._linux_rdaccess_run_main(apply) is False:
+            self._lrd_braille_display = previous
+
+    def _linux_rdaccess_reset_braille_width(self):
+        request = getattr(self, "_lrd_braille_display", None)
+        self._lrd_braille_display = None
+        if request is None:
+            return
+
+        def restore():
+            try:
+                from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter
+                OrcaRuntimeAdapter.restore_remote_braille_width(request["owner"])
+            except Exception:
+                log.error("linux-rdaccess: remote braille width cleanup failed")
+            return False
+
+        # Cleanup survives the input generation it releases. Adapter ownership
+        # prevents an old callback from restoring over a replacement session.
+        try:
+            from gi.repository import GLib
+        except ImportError:
+            restore()
+        else:
+            try:
+                if GLib.idle_add(restore) == 0:
+                    raise RuntimeError("idle source was not registered")
+            except Exception:
+                log.error("linux-rdaccess: failed to schedule braille width cleanup")
+
+    def _linux_rdaccess_run_braille(self, callback):
+        display = getattr(self, "_lrd_braille_display", None)
+        if display is not None and display["width"] == 0:
+            return
+
+        def invoke():
+            # Cell positions and pan amounts belong to the display which
+            # generated them, even if its replacement shares the transport.
+            if (getattr(self, "_lrd_braille_display", None) is display
+                    and (display is None or display["ready"])):
+                callback()
+
+        self._linux_rdaccess_run_main(invoke)
+
     def _linux_rdaccess_classify_braille(self, kwargs):
         """Validate protocol shapes; persist only canonical command metadata."""
         invalid = (None, {"redacted": "invalid-braille-input"})
@@ -3204,11 +3447,11 @@ _LEGACY_HELPERS = '''\
         except Exception:
             log.error("linux-rdaccess: failed to trace braille input")
         if action in ("pan_back", "pan_forward"):
-            self._linux_rdaccess_run_main(
+            self._linux_rdaccess_run_braille(
                 lambda: self._linux_rdaccess_script_call(
                     "panBrailleLeft" if action == "pan_back" else "panBrailleRight"))
         elif action == "to_focus":
-            self._linux_rdaccess_run_main(
+            self._linux_rdaccess_run_braille(
                 lambda: self._linux_rdaccess_script_call("goBrailleHome"))
         elif action == "key":
             self._linux_rdaccess_send_braille_key(record["scriptPath"][2])
@@ -3229,9 +3472,12 @@ _LEGACY_HELPERS = '''\
                 index = cell
             if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < 1024:
                 return
+            display = getattr(self, "_lrd_braille_display", None)
+            if display is not None and index >= display["width"]:
+                return
             import types as _types
             event = _types.SimpleNamespace(event={"argument": index})
-            self._linux_rdaccess_run_main(
+            self._linux_rdaccess_run_braille(
                 lambda: self._linux_rdaccess_script_call("processRoutingKey", event))
 
     def _linux_rdaccess_send_structural_list(self, key, modifiers):
@@ -3349,8 +3595,16 @@ _LEGACY_HELPERS = '''\
                 if active_window is None:
                     active_window = getattr(state, "active_window", None)
                 if active is origin and active_window == window:
+                    utilities = getattr(origin, "utilities", None)
+                    in_document = getattr(utilities, "inDocumentContent", None)
+                    if not callable(in_document):
+                        in_document = getattr(utilities, "in_document_content", None)
+                    if callable(in_document) and not in_document():
+                        return False
                     if document is not None:
-                        getter = getattr(getattr(origin, "utilities", None), "documentFrame", None)
+                        getter = getattr(utilities, "documentFrame", None)
+                        if not callable(getter):
+                            getter = getattr(utilities, "document_frame", None)
                         if not callable(getter) or getter() != document:
                             log.error("linux-rdaccess: elements list document changed")
                             return False
@@ -3396,7 +3650,17 @@ _LEGACY_HELPERS = '''\
             window = getattr(state, "activeWindow", None)
             if window is None:
                 window = getattr(state, "active_window", None)
-            getter = getattr(getattr(origin, "utilities", None), "documentFrame", None)
+            utilities = getattr(origin, "utilities", None)
+            in_document = getattr(utilities, "inDocumentContent", None)
+            if not callable(in_document):
+                in_document = getattr(utilities, "in_document_content", None)
+            # Orca 42 documentFrame() can return the active page even while
+            # the address bar has focus. Prove content focus independently.
+            if callable(in_document) and not in_document():
+                return
+            getter = getattr(utilities, "documentFrame", None)
+            if not callable(getter):
+                getter = getattr(utilities, "document_frame", None)
             if callable(getter):
                 document = getter()
         except ImportError:
@@ -3813,12 +4077,14 @@ def _lrd_remove_navigation_marker(marker, token):
                                 if item is not token]
 
 
-def _lrd_take_navigation_marker(marker, key):
+def _lrd_take_navigation_marker(marker, key, event=None):
     with _LRD_NAV_LOCK:
         _lrd_prune_navigation_markers(marker, __import__("time").monotonic())
         for index, token in enumerate(marker["pending"]):
             if token[1] == key:
                 marker["pending"].pop(index)
+                if event is not None:
+                    event._lrd_navigation_claim = (marker, marker.setdefault("epoch", object()))
                 return True
     return False
 
@@ -3826,6 +4092,69 @@ def _lrd_take_navigation_marker(marker, key):
 def _lrd_clear_navigation_markers(marker):
     with _LRD_NAV_LOCK:
         marker["pending"].clear()
+        # Orca can already have scheduled an event's consumer. Clearing its
+        # injection token does not cancel that callback; invalidate it too.
+        marker["epoch"] = object()
+
+
+def _lrd_track_navigation_consumer(event, marker, browse=True):
+    script = getattr(event, "_script", None)
+    utilities = getattr(script, "utilities", None)
+    getter = getattr(utilities, "documentFrame", None)
+    if not callable(getter):
+        getter = getattr(utilities, "document_frame", None)
+    claim = getattr(event, "_lrd_navigation_claim", None)
+    epoch = claim[1] if claim is not None and claim[0] is marker else None
+    try:
+        document = getter() if callable(getter) else None
+    except Exception:
+        document = None
+        epoch = None
+    event._lrd_navigation_context = (marker, epoch, script, document, browse)
+
+
+def _lrd_navigation_consumer_is_current(event):
+    context = getattr(event, "_lrd_navigation_context", None)
+    if context is None:
+        return False
+    marker, epoch, script, document, browse = context
+    if epoch is None or marker.get("epoch") is not epoch:
+        return False
+    try:
+        from orca import orca_state
+        active = getattr(orca_state, "activeScript", None)
+        if active is None:
+            active = getattr(orca_state, "active_script", None)
+        if active is not script:
+            return False
+    except ImportError:
+        pass
+    try:
+        utilities = getattr(script, "utilities", None)
+        in_document = getattr(utilities, "inDocumentContent", None)
+        if not callable(in_document):
+            in_document = getattr(utilities, "in_document_content", None)
+        if callable(in_document) and not in_document():
+            return False
+        if browse or not callable(in_document):
+            gate = getattr(script, "useStructuralNavigationModel", None)
+            if not callable(gate) or not gate():
+                return False
+        if document is not None:
+            getter = getattr(utilities, "documentFrame", None)
+            if not callable(getter):
+                getter = getattr(utilities, "document_frame", None)
+            if not callable(getter) or getter() != document:
+                return False
+    except Exception:
+        return False
+    return True
+
+
+def _lrd_consume_native_navigation(event):
+    if _lrd_navigation_consumer_is_current(event):
+        event._handler.function(event._script, event)
+    return True
 
 
 _LRD_BYPASS = {"pending": [], "owner": None, "codes": {}}
@@ -3982,7 +4311,7 @@ def _lrd_maybe_swap_d(event, keybindings):
         return None
     # An earlier, ineligible same-key event can still be queued when a later
     # remote landmark press publishes its claim. It must not steal that claim.
-    fresh = _lrd_take_navigation_marker(_LRD_D, "d")
+    fresh = _lrd_take_navigation_marker(_LRD_D, "d", event)
     if not fresh:
         return None
     script = getattr(event, "_script", None)
@@ -4010,6 +4339,7 @@ def _lrd_maybe_swap_d(event, keybindings):
         return None
     if pressed:
         _lrd_trace_hook("letter_nav", "translated", script, cmd="landmark")
+        _lrd_track_navigation_consumer(event, _LRD_D)
         _LRD_D["swapped"] = True
         _LRD_D["modifiers"] = event.modifiers
         _LRD_D["code"] = code
@@ -4033,6 +4363,8 @@ def _lrd_consume_layout_mode(event=None):
     action = getattr(event, "_lrd_layout_mode_action", None) if event is not None else None
     if not action:
         return True
+    if not _lrd_navigation_consumer_is_current(event):
+        return True
     method, event_arg = action
     method(event_arg)
     return True
@@ -4041,6 +4373,8 @@ def _lrd_consume_layout_mode(event=None):
 def _lrd_consume_find(event=None):
     action = getattr(event, "_lrd_find_action", None) if event is not None else None
     if not action:
+        return True
+    if not _lrd_navigation_consumer_is_current(event):
         return True
     method, script = action
     method(script, event)
@@ -4074,7 +4408,7 @@ def _lrd_maybe_nvda_browse(event, keybindings):
         action = "collapseExpandUp" if key == "Up" else "collapseExpandDown"
     else:
         return False
-    if not _lrd_take_navigation_marker(_LRD_NVDA_BROWSE, action):
+    if not _lrd_take_navigation_marker(_LRD_NVDA_BROWSE, action, event):
         return False
 
     script = getattr(event, "_script", None)
@@ -4109,6 +4443,7 @@ def _lrd_maybe_nvda_browse(event, keybindings):
         # commands (notably Orca+V toggles speech verbosity).
         event._consumer = _lrd_consume_unsupported_browse
         return True
+    _lrd_track_navigation_consumer(event, _LRD_NVDA_BROWSE, browse=False)
     if action == "find":
         handlers = getattr(script, "inputEventHandlers", None)
         find_handler = handlers.get("findHandler") if isinstance(handlers, dict) else None
@@ -4163,6 +4498,8 @@ def _lrd_consume_form_field(event=None):
     action = getattr(event, "_lrd_form_field_action", None) if event is not None else None
     if not action:
         return True
+    if not _lrd_navigation_consumer_is_current(event):
+        return True
     method, script = action
     return method(script, event)
 
@@ -4170,6 +4507,8 @@ def _lrd_consume_form_field(event=None):
 def _lrd_consume_heading_level(event=None):
     action = getattr(event, "_lrd_heading_level_action", None) if event is not None else None
     if not action:
+        return True
+    if not _lrd_navigation_consumer_is_current(event):
         return True
     method, script = action
     return method(script, event)
@@ -4209,7 +4548,7 @@ def _lrd_maybe_suppress_browse(event, keybindings):
 
     # Claim the remote provenance before asking Orca's mode gate. A remote key
     # refused in focus mode must not leave a token for a later local key.
-    if not _lrd_take_navigation_marker(_LRD_BROWSE_UNSUPPORTED, key):
+    if not _lrd_take_navigation_marker(_LRD_BROWSE_UNSUPPORTED, key, event):
         return False
 
     script = getattr(event, "_script", None)
@@ -4241,6 +4580,7 @@ def _lrd_maybe_suppress_browse(event, keybindings):
             _lrd_trace_hook("letter_nav", "native", script, cmd="form_field",
                             reverse=reverse)
             event._lrd_form_field_action = (method, script)
+            _lrd_track_navigation_consumer(event, _LRD_BROWSE_UNSUPPORTED)
             event._consumer = _lrd_consume_form_field
             return True
     elif key in ("7", "8", "9"):
@@ -4268,6 +4608,7 @@ def _lrd_maybe_suppress_browse(event, keybindings):
                 _lrd_trace_hook("letter_nav", "native", script,
                                 cmd="heading_level", level=int(key), reverse=reverse)
                 event._lrd_heading_level_action = (method, script)
+                _lrd_track_navigation_consumer(event, _LRD_BROWSE_UNSUPPORTED)
                 event._consumer = _lrd_consume_heading_level
                 return True
     _lrd_trace_hook("letter_nav", "consumed_unsupported", script, cmd="browse_letter")
@@ -4338,6 +4679,9 @@ def _lrd_consume_table_edge(event=None):
     if not action:
         return True
     script, action_name = action
+    if not _lrd_navigation_consumer_is_current(event):
+        _lrd_trace_hook("table", "consumer_stale", script, cmd=action_name)
+        return True
     resolved = _lrd_resolve_table_edge(script, action_name)
     if resolved is None:
         # The cell, table or focus changed between claim and consumer.
@@ -4368,7 +4712,7 @@ def _lrd_maybe_table_edge(event, keybindings):
                | keybindings.ORCA_MODIFIER_MASK)
     if event.modifiers & tracked != ctrl | alt:
         return False
-    if not _lrd_take_navigation_marker(_LRD_TABLE_EDGE, action_name):
+    if not _lrd_take_navigation_marker(_LRD_TABLE_EDGE, action_name, event):
         return False
 
     script = getattr(event, "_script", None)
@@ -4387,6 +4731,7 @@ def _lrd_maybe_table_edge(event, keybindings):
     # re-read caret/cell/table at consume time so focus changes cannot make
     # this command operate on a stale AT-SPI cell.
     event._lrd_table_edge_action = (script, action_name)
+    _lrd_track_navigation_consumer(event, _LRD_TABLE_EDGE)
     event._consumer = _lrd_consume_table_edge
     return True
 
@@ -4435,7 +4780,7 @@ def _lrd_maybe_swap_table(event, keybindings):
         return None
     # Plain arrows and other chords queued before a remote table press do not
     # own its claim. Browse/focus refusal below still consumes an eligible one.
-    fresh = _lrd_take_navigation_marker(_LRD_T, key)
+    fresh = _lrd_take_navigation_marker(_LRD_T, key, event)
     if not fresh:
         return None
     script = getattr(event, "_script", None)
@@ -4462,6 +4807,7 @@ def _lrd_maybe_swap_table(event, keybindings):
         _lrd_trace_hook("table", "refused_no_cell_handler", script, cmd=key)
         return None
     _lrd_trace_hook("table", "translated_arrow", script, cmd=key)
+    _lrd_track_navigation_consumer(event, _LRD_T)
     held[event.hw_code] = event.modifiers
     return original
 
@@ -4510,6 +4856,12 @@ def _lrd_install_orca_hook():
         try:
             result = original(self)
             if restore is not None:
+                if (self.isPressedKey() and self._consumer is None
+                        and callable(getattr(self._handler, "function", None))):
+                    # Orca 42 defers handler invocation by one main-loop tick.
+                    # Keep its handler and release ownership, but recheck the
+                    # claimed session and document before that invocation.
+                    self._consumer = _lrd_consume_native_navigation
                 # Only gestures this patch translated are reported; Orca's
                 # decision for ordinary keys is never recorded.
                 _lrd_trace_hook(
@@ -4580,6 +4932,13 @@ _LEGACY_RESET_HOOKS = (
     LEGACY_COMPAT_MARKER + "\n"
     "# Control hand-over and reconnects forget held-key state, even when no key\n"
     "# event arrives in between.\n"
+    "_lrd_original_braille_info = getattr(RemoteController, \"_on_remote_braille_info\", None)\n"
+    "if _lrd_original_braille_info is not None:\n"
+    "    def _lrd_on_remote_braille_info(self, name=None, numCells=None, **kwargs):\n"
+    "        with self._LRD_INPUT_LOCK:\n"
+    "            self._linux_rdaccess_handle_braille_info(numCells)\n"
+    "    RemoteController._on_remote_braille_info = _lrd_on_remote_braille_info\n"
+    "\n"
     "def _linux_rdaccess_wrap_input(name):\n"
     "    original = getattr(RemoteController, name)\n"
     "    def wrapper(self, *args, **kwargs):\n"
@@ -5271,6 +5630,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V94,
                 LEGACY_COMPAT_MARKER_V93,
                 LEGACY_COMPAT_MARKER_V92,
                 LEGACY_COMPAT_MARKER_V91,
