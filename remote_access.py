@@ -813,7 +813,7 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
     if disconnect is None or run is None:
         raise ValueError("unsupported legacy TCPTransport layout")
 
-    if not (upgrading_v1 or upgrading_v2 or upgrading_v3 or upgrading_v4 or upgrading_v5 or upgrading_v6 or upgrading_v6 or upgrading_v6 or upgrading_v6):
+    if not (upgrading_v1 or upgrading_v2 or upgrading_v3 or upgrading_v4 or upgrading_v5 or upgrading_v6):
         disconnect_source = ast.get_source_segment(text, disconnect) or ""
         updated_disconnect, count = re.subn(
             r"(?m)^([ \t]*)if not self\.connected:[ \t]*$",
@@ -855,7 +855,7 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
             raise ValueError("unsupported legacy transport connection-failure path")
         text = text.replace(run_source, updated_run, 1)
 
-    if not (upgrading_v2 or upgrading_v3 or upgrading_v4 or upgrading_v5 or upgrading_v6 or upgrading_v6 or upgrading_v6):
+    if not (upgrading_v2 or upgrading_v3 or upgrading_v4 or upgrading_v5 or upgrading_v6):
         # Shut down the socket before joining the sender. A sender blocked in
         # sendall() otherwise prevents _disconnect() and reconnect from completing.
         tree = ast.parse(text, feature_version=(3, 10))
@@ -908,7 +908,7 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
             raise ValueError("unsupported legacy transport socket close")
         text = text.replace(disconnect_source, updated_disconnect, 1)
 
-    if not (upgrading_v3 or upgrading_v4 or upgrading_v5 or upgrading_v6 or upgrading_v6):
+    if not (upgrading_v3 or upgrading_v4 or upgrading_v5 or upgrading_v6):
         # A malformed relay frame raises JSONDecodeError/ValueError, not socket.error.
         # Treat any ordinary receive/parse exception as a broken connection so the
         # native connector loop survives and retries. BaseException still propagates.
