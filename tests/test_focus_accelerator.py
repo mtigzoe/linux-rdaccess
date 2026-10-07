@@ -38,7 +38,12 @@ class FocusAcceleratorAdapterTests(unittest.TestCase):
         script.utilities.mnemonicShortcutAccelerator.assert_called_once_with(obj)
         script.utilities.getCaretContext.assert_not_called()
         script.whereAmIDetailed.assert_not_called()
-        script.presentMessage.assert_called_once_with("Alt+F O; Ctrl+O")
+        script.presentMessage.assert_called_once_with("Ctrl+O")
+
+    def test_full_menu_path_is_last_resort_when_no_direct_shortcut_exists(self):
+        with self.context(("", "Alt+F O", "")) as (script, _):
+            self.assertIs(OrcaRuntimeAdapter.present_focus_accelerator(), True)
+        script.presentMessage.assert_called_once_with("Alt+F O")
 
     def test_mnemonic_is_used_when_full_menu_shortcut_is_absent(self):
         with self.context(("Alt+O", "", "")) as (script, _):
