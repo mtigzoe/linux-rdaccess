@@ -93,8 +93,11 @@ After each step run the summarizer with `--since` set to the last seen `seq`.
 6. Ctrl+Alt+Arrows and Ctrl+Alt+PageUp/PageDown/Home/End in the table:
    `translated_arrow` / `translated_edge`; at the table edge and outside a table,
    a `refused_*` decision; NVDA+Ctrl+Alt+Arrow: `suppressed`.
-7. Caps Lock and Num Lock, each alone: one `lock` pair with `changed` true then
-   false semantics matching the Linux indicator; as NVDA modifier: no `lock`.
+7. Caps Lock, Num Lock, and Scroll Lock, each alone: one `lock` pair with
+   `changed` true then false semantics matching the Linux indicator. Hold Num Lock
+   or Scroll Lock to confirm repeat key-downs do not re-toggle. Caps Lock used as the
+   NVDA modifier produces no `lock`; Insert used as the NVDA modifier remains
+   deferred and is not injected for translated/consumed NVDA commands.
 8. Ctrl during speech: `speech` `nvda_cancel_sent` once, no repeat; hold an arrow:
    `cancel_throttled`; Say All then Ctrl: no later `script` records.
 9. Hold a modifier and an arrow, disconnect, release, reconnect: a `reset` with
