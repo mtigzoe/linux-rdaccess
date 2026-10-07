@@ -3884,7 +3884,8 @@ LOCAL_MACHINE_MARKER_V7 = LOCAL_MACHINE_MARKER_V1 + " v7"
 LOCAL_MACHINE_MARKER_V8 = LOCAL_MACHINE_MARKER_V1 + " v8"
 LOCAL_MACHINE_MARKER_V9 = LOCAL_MACHINE_MARKER_V1 + " v9"
 LOCAL_MACHINE_MARKER_V10 = LOCAL_MACHINE_MARKER_V1 + " v10"
-LOCAL_MACHINE_MARKER = LOCAL_MACHINE_MARKER_V1 + " v11"
+LOCAL_MACHINE_MARKER_V11 = LOCAL_MACHINE_MARKER_V1 + " v11"
+LOCAL_MACHINE_MARKER = LOCAL_MACHINE_MARKER_V1 + " v12"
 LEGACY_LOCAL_MACHINE_RELATIVE = Path("orca-scripts/local_machine.py")
 
 # Upstream writes every key name (including typed passwords) to a debug log,
@@ -3959,7 +3960,7 @@ _LRD_KEYPAD_NAMES = {
     0x2D: "KP_Insert", 0x2E: "KP_Delete",
 }
 _LRD_LOCK_KEY_NAMES = {
-    0x14: "Caps_Lock", 0x90: "Num_Lock",
+    0x14: "Caps_Lock", 0x90: "Num_Lock", 0x91: "Scroll_Lock",
 }
 
 # Upstream starts one `xdotool` process per key event (~38 ms each, measured),
@@ -4058,7 +4059,7 @@ class _LrdXTest:
                 else:
                     self._down_codes.pop(name, None)
                 self._x11.XFlush(self._dpy)
-                if name in ("Caps_Lock", "Num_Lock"):
+                if name in ("Caps_Lock", "Num_Lock", "Scroll_Lock"):
                     # Make the resulting XKB state authoritative before the
                     # controller schedules lock-state presentation.
                     self._x11.XSync(self._dpy, 0)
