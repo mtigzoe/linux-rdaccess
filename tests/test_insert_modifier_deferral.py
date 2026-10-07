@@ -65,18 +65,50 @@ class InsertModifierDeferralTests(Harness, unittest.TestCase):
                 self.assertIn((0x41, True), attempts)
                 self.assertIn((0x41, False), attempts)
 
-    def test_v83_controller_patch_upgrades_to_v84(self):
+    def test_failed_insert_replay_during_bypass_preserves_next_request(self):
+        c, _, _ = self._patched_controller()
+        attempts = []
+
+        def send(**kw):
+            attempts.append((kw["vk_code"], kw["pressed"]))
+            if kw["vk_code"] == 0x2D and kw["pressed"]:
+                return False
+            return True
+
+        c.local_machine.send_key = send
+        self._key(c, 0x2D, True, extended=True)
+        request = c._lrd_bypass_request = {
+            "generation": c._lrd_generation,
+            "used": False,
+            "external": False,
+            "codes": {},
+        }
+        c._lrd_bypass_next = True
+
+        self._key(c, 0x59, True)   # Insert+Y: Insert replay fails
+        self._key(c, 0x59, False)
+        self.assertNotIn((0x59, True), attempts)
+        self.assertFalse(request["used"])
+        self.assertTrue(c._lrd_bypass_next)
+
+        # The bypass remains available for the next complete gesture.
+        self._key(c, 0x41, True)
+        self._key(c, 0x41, False)
+        self.assertIn((0x41, True), attempts)
+        self.assertFalse(c._lrd_bypass_next)
+
+    def test_v84_controller_patch_upgrades_to_v85(self):
         import remote_access
         c, path, _ = self._patched_controller()
         previous = path.read_text(encoding="utf-8").replace(
             remote_access.LEGACY_COMPAT_MARKER,
-            remote_access.LEGACY_COMPAT_MARKER_V83,
+            remote_access.LEGACY_COMPAT_MARKER_V84,
         )
         path.write_text(previous, encoding="utf-8")
         self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
         result = path.read_text(encoding="utf-8")
         self.assertIn(remote_access.LEGACY_COMPAT_MARKER, result)
-        self.assertNotIn(remote_access.LEGACY_COMPAT_MARKER_V83 + "\n", result)
+        self.assertNotIn(remote_access.LEGACY_COMPAT_MARKER_V84 + "\n", result)
         self.assertFalse(remote_access.patch_legacy_orca_remote_controller(path))
 
     def test_non_nvda_insert_chord_replays_modifier_before_application_key(self):
