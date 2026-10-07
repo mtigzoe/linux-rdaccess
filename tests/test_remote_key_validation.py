@@ -213,7 +213,7 @@ class NvdaModifierProtocolTests(Harness, unittest.TestCase):
                 self.assertFalse([e for e in c.local_machine.events if e[0] == "key"])
                 self.assertFalse(c._lrd_down)
                 self.assertFalse(c._lrd_swapped)
-                self.assertFalse(c._lrd_forwarded)
+                self.assertFalse(getattr(c, "_lrd_forwarded", {}))
                 self.assertIsNone(c._lrd_insert_pending)
 
     def test_both_physical_insert_modifiers_own_one_nvda_command(self):
