@@ -743,6 +743,18 @@ def _patch_legacy_customization_braille_cells(text: str) -> str:
         if not legacy_customization_braille_cells_patch_current(text):
             raise ValueError("incomplete native Orca braille cells patch")
         return text
+    if CUSTOMIZATION_BRAILLE_CELLS_MARKER_V1 in text:
+        if (text.count(CUSTOMIZATION_BRAILLE_CELLS_MARKER_V1) != 1
+                or _CUSTOMIZATION_BRAILLE_CELLS_HOOK_V1 not in text):
+            raise ValueError("incomplete legacy native Orca braille cells patch")
+        upgraded = text.replace(
+            _CUSTOMIZATION_BRAILLE_CELLS_HOOK_V1,
+            _CUSTOMIZATION_BRAILLE_CELLS_HOOK,
+            1,
+        )
+        if not legacy_customization_braille_cells_patch_current(upgraded):
+            raise ValueError("updated native Orca braille cells patch is incomplete")
+        return upgraded
     tree = ast.parse(text, feature_version=(3, 10))
     blocks = _customization_braille_blocks(tree)
     if not blocks:
