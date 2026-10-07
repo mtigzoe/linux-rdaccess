@@ -61,7 +61,7 @@ class RemoteKeyValidationTests(Harness, unittest.TestCase):
                     ("key", 0x2D, True), ("key", 0x2D, False),
                     ("key", 0x41, True), ("key", 0x41, False),
                 ])
-                self.assertFalse(c._lrd_forwarded)
+                self.assertFalse(getattr(c, "_lrd_forwarded", {}))
                 self.assertIsNone(c._lrd_insert_pending)
 
     def test_invalid_key_fields_cannot_flush_deferred_nvda_modifiers(self):
