@@ -4,6 +4,7 @@ import logging
 import time
 
 from rdaccess_dvc import (
+    LEGACY_DRIVER_TYPES,
     PROTOCOL_VERSION,
     Receiver,
     send_json,
@@ -11,6 +12,7 @@ from rdaccess_dvc import (
 )
 
 log = logging.getLogger("brailleLink")
+MAX_BRAILLE_CELLS = 1024
 
 
 class NvdaBrailleLink:
@@ -27,6 +29,7 @@ class NvdaBrailleLink:
         self._next_open = 0.0
         self._json_ready = False
         self._requested_cells = False
+        self._default_cells = default_cells
         self.num_cells = default_cells
 
     @property
@@ -49,11 +52,12 @@ class NvdaBrailleLink:
 
         if self._rx.xon_count != self._seen_xon:
             self._seen_xon = self._rx.xon_count
-            self._start_handshake()
+            if self._rx.xon:
+                self._start_handshake()
             if self._channel is None:
                 return
 
-        for message in self._rx.drain():
+        for message in self._rx.drain_current_session():
             self._handle(message)
             if self._channel is None:
                 return
@@ -87,11 +91,19 @@ class NvdaBrailleLink:
         self._seen_xon = 0
         self._json_ready = False
         self._requested_cells = False
+        # numCells belongs to the current remote display/session. Do not carry
+        # a previous client's width into a freshly opened channel while the
+        # new attribute request is still negotiating.
+        self.num_cells = self._default_cells
         log.info("braille channel open; waiting for XON")
 
     def _start_handshake(self):
         self._json_ready = False
         self._requested_cells = False
+        # numCells is session-scoped even when rd_pipe reuses the same DVC
+        # across an XOFF -> XON client reconnect. Do not expose the previous
+        # display width while the replacement client is still negotiating.
+        self.num_cells = self._default_cells
         try:
             send_legacy_attribute_value(
                 self._channel, self.DRIVER_TYPE, "protocolVersion", PROTOCOL_VERSION
@@ -106,7 +118,7 @@ class NvdaBrailleLink:
         if kind == "protocol_version":
             try:
                 version = int(message.get("version", 0))
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):
                 version = 0
             if version >= PROTOCOL_VERSION:
                 try:
@@ -128,10 +140,14 @@ class NvdaBrailleLink:
         if kind == "attribute_request" and attribute in ("timeSinceInput", "protocolVersion"):
             value = 0 if attribute == "timeSinceInput" else PROTOCOL_VERSION
             legacy_driver = message.get("_legacy_driver_type")
+            if legacy_driver is not None and (
+                type(legacy_driver) is not int or legacy_driver not in LEGACY_DRIVER_TYPES
+            ):
+                return
             try:
                 if legacy_driver is not None:
                     send_legacy_attribute_value(
-                        self._channel, int(legacy_driver), attribute, value
+                        self._channel, legacy_driver, attribute, value
                     )
                 else:
                     send_json(
@@ -142,11 +158,12 @@ class NvdaBrailleLink:
             return
 
         if kind == "attribute_value" and attribute == "numCells":
+            raw_value = message.get("value", 0)
             try:
-                value = int(message.get("value", 0))
-            except (TypeError, ValueError):
+                value = int(raw_value)
+            except (TypeError, ValueError, OverflowError):
                 value = 0
-            if value > 0:
+            if type(raw_value) is not bool and 0 < value <= MAX_BRAILLE_CELLS:
                 self.num_cells = value
                 log.info("remote braille display has %d cells", value)
 

@@ -114,11 +114,29 @@ class LockToggleIntegrationTests(unittest.TestCase):
         self.assertTrue(self.machine.send_key(key_name=key, pressed=True))
         self.assertTrue(self.machine.send_key(key_name=key, pressed=False))
 
-    def _key(self, vk, pressed):
+    def _key(self, vk, pressed, *, name=None, extended=False, scan_code=0):
         self.controller._on_remote_key(
-            key_name=None, pressed=pressed, modifiers=None, vk_code=vk,
-            scan_code=0, extended=False,
+            key_name=name, pressed=pressed, modifiers=None, vk_code=vk,
+            scan_code=scan_code, extended=extended,
         )
+
+    def _is_down(self, name):
+        helper = self.local._LRD_XTEST
+        if helper._dpy:
+            helper._x11.XSync(helper._dpy, 0)
+        lib = self.xkb.lib
+        lib.XStringToKeysym.argtypes = [ctypes.c_char_p]
+        lib.XStringToKeysym.restype = ctypes.c_ulong
+        lib.XKeysymToKeycode.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+        lib.XKeysymToKeycode.restype = ctypes.c_ubyte
+        lib.XQueryKeymap.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        lib.XQueryKeymap.restype = ctypes.c_int
+        code = lib.XKeysymToKeycode(
+            self.xkb.display, lib.XStringToKeysym(name.encode("ascii")))
+        self.assertTrue(code, name)
+        bits = ctypes.create_string_buffer(32)
+        lib.XQueryKeymap(self.xkb.display, bits)
+        return bool(bits.raw[code // 8] & (1 << (code % 8)))
 
     def _drain(self):
         while self.queue:
@@ -193,6 +211,77 @@ class LockToggleIntegrationTests(unittest.TestCase):
                 self.assertEqual(self._state("Caps Lock"), expected)
                 self.assertEqual(self.messages, [])
         self.assertEqual(self.commands, ["title", "title"])
+
+    def test_disconnect_releases_real_modifiers_once_and_reconnect_forgets_them(self):
+        keys = ((0xA0, "Shift_L"), (0xA2, "Control_L"),
+                (0xA4, "Alt_L"), (0x5B, "Super_L"))
+        with mock.patch.object(self.machine, "send_key", wraps=self.machine.send_key) as send:
+            for vk, name in keys:
+                self._key(vk, True, name=name)
+                self._key(vk, True, name=name)  # Repeat must retain one release.
+                self.assertTrue(self._is_down(name))
+            self.controller.transport.connected = False
+            self.controller._linux_rdaccess_sync_state()
+            for _, name in keys:
+                self.assertFalse(self._is_down(name))
+            releases = [call for call in send.call_args_list if not call.kwargs["pressed"]]
+            self.assertEqual(len(releases), len(keys))
+            before_late_releases = send.call_count
+            self.controller.transport.connected = True
+            self.controller._linux_rdaccess_sync_state()
+            for vk, name in keys:
+                self._key(vk, False, name=name)
+            self.assertEqual(send.call_count, before_late_releases)
+        self._drain()
+        self.assertFalse(self.controller._lrd_down)
+        self.assertFalse(self.controller._lrd_forwarded)
+        self.assertFalse(self.controller._lrd_swapped)
+        self.assertFalse(self.local._LRD_XTEST._down_codes)
+
+    def test_all_nvda_modifier_forms_stay_out_of_x11_for_consumed_commands(self):
+        for vk, name, extended, scan in (
+                (0x2D, "Insert", True, 0x52),
+                (0x2D, "KP_Insert", False, 0x52),
+                (0x14, "Caps_Lock", False, 0x3A)):
+            with self.subTest(modifier=name):
+                initial_caps = self._state("Caps Lock")
+                self._key(vk, True, name=name, extended=extended, scan_code=scan)
+                self.assertFalse(self._is_down(name))
+                for pressed in (True, True, False):
+                    self._key(0x54, pressed, name="t")
+                    self.assertFalse(self._is_down(name))
+                self._key(vk, False, name=name, extended=extended, scan_code=scan)
+                self._drain()
+                self.assertEqual(self._state("Caps Lock"), initial_caps)
+                self.assertFalse(getattr(self.controller, "_lrd_forwarded", {}))
+                self.assertFalse(self.controller._lrd_swapped)
+        self.assertEqual(self.commands, ["title"] * 3)
+
+    def test_malformed_modifier_release_preserves_real_key_until_valid_release(self):
+        for vk, name in ((0xA0, "Shift_L"), (0xA2, "Control_L"),
+                         (0xA4, "Alt_L"), (0x5B, "Super_L")):
+            with self.subTest(modifier=name):
+                self._key(vk, True, name=name)
+                self.assertTrue(self._is_down(name))
+                self._key(vk, "false", name=name)
+                self.assertTrue(self._is_down(name))
+                self._key(vk, False, name=name)
+                self.assertFalse(self._is_down(name))
+        self.assertFalse(self.controller._lrd_forwarded)
+        self.assertFalse(self.local._LRD_XTEST._down_codes)
+
+    def test_failed_physical_release_remains_owned_until_reset_retries(self):
+        self._key(0xA0, True, name="Shift_L")
+        self.assertTrue(self._is_down("Shift_L"))
+        helper = self.local._LRD_XTEST
+        with mock.patch.object(helper._xt, "XTestFakeKeyEvent", return_value=0):
+            self._key(0xA0, False, name="Shift_L")
+        self.assertTrue(self._is_down("Shift_L"))
+        self.assertIn((0xA0, False), self.controller._lrd_forwarded)
+        self.controller._linux_rdaccess_reset_keys()
+        self.assertFalse(self._is_down("Shift_L"))
+        self.assertFalse(self.controller._lrd_forwarded)
+        self.assertFalse(helper._down_codes)
 
 
 if __name__ == "__main__":

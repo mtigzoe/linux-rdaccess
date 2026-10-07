@@ -43,6 +43,25 @@ LEGACY_ATTRIBUTE_SEPARATOR = bytes((96,))
 # long-running fix: bound the buffer so a peer that never sends "\n" cannot
 # grow memory forever.
 MAX_PENDING_BYTES = 1 << 20
+MAX_JSON_NESTING = 64
+
+
+def _json_nesting_within_limit(value, limit=MAX_JSON_NESTING):
+    """Reject decoded JSON whose container depth is unsafe for consumers."""
+    stack = [(value, 0)]
+    while stack:
+        current, depth = stack.pop()
+        if isinstance(current, dict):
+            depth += 1
+            if depth > limit:
+                return False
+            stack.extend((item, depth) for item in current.values())
+        elif isinstance(current, list):
+            depth += 1
+            if depth > limit:
+                return False
+            stack.extend((item, depth) for item in current)
+    return True
 
 
 # --------------------------------------------------------------------------
@@ -153,6 +172,11 @@ class Receiver:
         self.xon = False
         self.xon_count = 0  # how many XON bytes were seen; lets callers notice XOFF->XON flaps
         self.messages: list[dict] = []
+        # Parallel provenance for each queued message: (XON generation,
+        # whether the receiver was inside that active session when parsed).
+        # This lets long-lived links discard pre-XON and stale-session
+        # messages without changing the public message dictionaries.
+        self._message_sessions: list[tuple[int, bool]] = []
         self.legacy_frames = 0
         self.junk_bytes = 0
 
@@ -163,7 +187,31 @@ class Receiver:
         `index` message after every utterance). Long-running callers must drain.
         """
         out, self.messages = self.messages, []
+        self._message_sessions = []
         return out
+
+    def drain_current_session(self) -> list[dict]:
+        """Return only messages parsed in the currently active XON session.
+
+        A single DVC read can contain data from both sides of an XOFF/XON
+        boundary. Messages from before the newest XON (or from before any XON)
+        must never be replayed into the replacement client session.
+        """
+        messages, sessions = self.messages, self._message_sessions
+        self.messages = []
+        self._message_sessions = []
+        if not self.xon:
+            return []
+        generation = self.xon_count
+        return [
+            message
+            for message, (message_generation, was_active) in zip(messages, sessions)
+            if was_active and message_generation == generation
+        ]
+
+    def _queue_message(self, message: dict) -> None:
+        self.messages.append(message)
+        self._message_sessions.append((self.xon_count, self.xon))
 
     def feed(self, data: bytes) -> None:
         if data and log.isEnabledFor(logging.DEBUG):
@@ -182,6 +230,19 @@ class Receiver:
                 del self.buf[0]
             elif b == ord("{"):
                 end = self.buf.find(b"\n")
+                # rd_pipe emits flow controls independently of the client's
+                # records. A disconnect can therefore terminate a partial
+                # JSON line. Raw XON/XOFF cannot occur in valid JSON (escaped
+                # controls are ordinary ASCII bytes), so discard only the
+                # interrupted prefix and let the outer loop process them.
+                controls = [pos for pos in (self.buf.find(bytes((XON,))),
+                                            self.buf.find(bytes((XOFF,))))
+                            if pos >= 0 and (end < 0 or pos < end)]
+                if controls:
+                    interrupted = min(controls)
+                    self.junk_bytes += interrupted
+                    del self.buf[:interrupted]
+                    continue
                 if end < 0:
                     if len(self.buf) > MAX_PENDING_BYTES:
                         log.warning("dropping %d bytes of unterminated JSON", len(self.buf))
@@ -192,11 +253,14 @@ class Receiver:
                 del self.buf[: end + 1]
                 try:
                     obj = json.loads(line.decode("utf-8"))
-                except ValueError:
+                except (ValueError, RecursionError):
                     self.junk_bytes += len(line)
                     continue
                 if isinstance(obj, dict):
-                    self.messages.append(obj)
+                    if not _json_nesting_within_limit(obj):
+                        self.junk_bytes += len(line)
+                        continue
+                    self._queue_message(obj)
             elif b in LEGACY_DRIVER_TYPES:
                 if len(self.buf) < 4:
                     return
@@ -223,7 +287,7 @@ class Receiver:
                     except (ValueError, UnicodeDecodeError):
                         continue
                     if not raw_value:
-                        self.messages.append(
+                        self._queue_message(
                             {
                                 "type": "attribute_request",
                                 "attribute": attribute_name,
@@ -231,7 +295,7 @@ class Receiver:
                             }
                         )
                     elif attribute_name == "timeSinceInput" and len(raw_value) == 4:
-                        self.messages.append(
+                        self._queue_message(
                             {
                                 "type": "attribute_value",
                                 "attribute": attribute_name,
@@ -333,12 +397,13 @@ class NvdaSpeechLink:
         except (ConnectionError, OSError) as exc:
             self._drop(f"read failed: {exc}")
             return
-        for msg in self._rx.drain():
+        for msg in self._rx.drain_current_session():
             if msg.get("type") not in ("index", "ping"):
                 log.debug("received a protocol message")
         if self._rx.xon_count != self._seen_xon_count:
             self._seen_xon_count = self._rx.xon_count
-            self._handshake()
+            if self._rx.xon:
+                self._handshake()
 
     def speak(self, text: str, interrupt: bool = False) -> bool:
         if not self.ready:
@@ -378,7 +443,10 @@ class NvdaSpeechLink:
             return
         log.info("XON received; announced protocol v%d", PROTOCOL_VERSION)
         if self._on_ready is not None:
-            self._on_ready()
+            try:
+                self._on_ready()
+            except Exception:
+                log.error("speech on_ready callback failed")
 
     def _drop(self, reason: str, quiet: bool = False) -> None:
         if self._channel is not None:

@@ -85,6 +85,7 @@ class NvdaA11yLink:
         if self._channel is None:
             self._try_open()
             return
+        channel, receiver = self._channel, self._rx
         try:
             for _ in range(16):
                 data = self._channel.read(0)
@@ -94,7 +95,16 @@ class NvdaA11yLink:
         except (ConnectionError, OSError) as exc:
             self._drop(f"read failed: {exc}")
             return
-        for msg in self._rx.drain():
+        # Establish a new XON session before accepting any messages from
+        # the same read batch. Otherwise an a11y_action adjacent to the first
+        # XON can execute before protocol-v2 has been announced.
+        if self._rx.xon_count != self._seen_xon_count:
+            self._seen_xon_count = self._rx.xon_count
+            if self._rx.xon:
+                self._handshake()
+                if self._channel is not channel or self._rx is not receiver:
+                    return
+        for msg in self._rx.drain_current_session():
             if msg.get("type") != "ping":
                 log.debug("received an A11Y protocol message")
             pong_nonce = decode_pong(msg)
@@ -106,11 +116,8 @@ class NvdaA11yLink:
                 continue
             if msg.get("type") == "a11y_action":
                 self._handle_action_message(msg)
-                if self._channel is None:
+                if self._channel is not channel or self._rx is not receiver:
                     return
-        if self._rx.xon_count != self._seen_xon_count:
-            self._seen_xon_count = self._rx.xon_count
-            self._handshake()
         self._poll_heartbeat()
 
     def send_focus(self, *, focus_id: str, objects: list[dict]) -> bool:

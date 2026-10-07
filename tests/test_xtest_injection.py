@@ -93,7 +93,10 @@ class XTestInjectionTests(unittest.TestCase):
         self.assertNotIn('Down', helper._down_codes)
 
     def test_keys_really_reach_the_server_without_a_subprocess(self):
-        for name in ("Down", "KP_Add", "KP_Enter", "KP_Up", "Insert", "Scroll_Lock"):
+        for name in ("Down", "KP_Add", "KP_Enter", "KP_End", "KP_Down",
+                     "KP_Next", "KP_Left", "KP_Begin", "KP_Right",
+                     "KP_Home", "KP_Up", "KP_Prior", "KP_Delete", "KP_Insert",
+                     "Shift_L", "Control_L", "Alt_L", "Super_L", "Insert", "Scroll_Lock"):
             with self.subTest(key=name):
                 self.assertTrue(self.machine._send_key_xdotool(name, True))
                 time.sleep(0.02)

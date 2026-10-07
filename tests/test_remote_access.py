@@ -1668,10 +1668,15 @@ class RemoteController:
                         self.assertEqual(c._lrd_down, set())
                         self.assertEqual(c._lrd_forwarded, {})
 
-                        # A later unshifted press must retain native behavior.
+                        # Review navigation remains native without Shift. The
+                        # mouse keys stay owned: Orca clicks the review/focused
+                        # object while NVDA clicks at the current pointer.
                         self._key(c, vk, True, extended=extended, scan_code=scan)
                         self._key(c, vk, False, extended=extended, scan_code=scan)
-                        self.assertEqual(self._names(c)[-2:], [(vk, True), (vk, False)])
+                        if vk == 0x23:
+                            self.assertEqual(self._names(c)[-2:], [(vk, True), (vk, False)])
+                        else:
+                            self.assertEqual(self._names(c), [(0xA0, True), (0xA0, False)])
 
     def test_shift_navigation_without_matching_numpad_scan_stays_native(self):
         for layout in ("desktop", "laptop"):

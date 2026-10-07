@@ -82,6 +82,10 @@ class TCPTransport:
         self.server_sock = None
 '''
 
+# Frozen output of starting-main a917df5's transport patcher. Later versions
+# add ownership guards, so renaming current output is not an old patch fixture.
+HISTORICAL_V5 = (Path(__file__).parent / "fixtures/legacy-patches/transport-minimal-v5.txt").read_text()
+
 
 class FakeSocket:
     def __init__(self, fail_connect=False, events=None, shutdown_raises=False,
@@ -241,7 +245,7 @@ class TransportCleanupTests(unittest.TestCase):
             ["transport_disconnected"],
         )
 
-    def test_v1_cleanup_patch_upgrades_to_v3(self):
+    def test_v1_cleanup_patch_upgrades_to_v6(self):
         # Reconstruct the v1 transformation: resource-aware guard plus failed
         # connect cleanup, but no pre-join socket shutdown yet.
         source = SOURCE.replace(
@@ -265,8 +269,8 @@ class TransportCleanupTests(unittest.TestCase):
             disconnect.index("self.queue_thread.join()"),
         )
 
-    def test_v2_cleanup_patch_upgrades_to_v5(self):
-        current = remote_access._patch_legacy_transport_cleanup(SOURCE)
+    def test_v2_cleanup_patch_upgrades_to_v6(self):
+        current = HISTORICAL_V5
         v2 = current.replace(
             "self.handle_server_data()\n                except Exception:",
             "self.handle_server_data()\n                except socket.error:",
@@ -280,7 +284,7 @@ class TransportCleanupTests(unittest.TestCase):
             "            except socket.error:\n                return",
             1,
         ).replace(
-            remote_access.TRANSPORT_CLEANUP_MARKER,
+            remote_access.TRANSPORT_CLEANUP_MARKER_V5,
             remote_access.TRANSPORT_CLEANUP_MARKER_V2,
             1,
         )
@@ -289,8 +293,8 @@ class TransportCleanupTests(unittest.TestCase):
         self.assertTrue(remote_access.legacy_transport_cleanup_patch_current(updated))
         self.assertNotIn(remote_access.TRANSPORT_CLEANUP_MARKER_V2 + "\n", updated)
 
-    def test_v3_cleanup_patch_upgrades_to_v5(self):
-        current = remote_access._patch_legacy_transport_cleanup(SOURCE)
+    def test_v3_cleanup_patch_upgrades_to_v6(self):
+        current = HISTORICAL_V5
         v3 = current.replace(
             "except (socket.error, ValueError):",
             "except socket.error:",
@@ -300,7 +304,7 @@ class TransportCleanupTests(unittest.TestCase):
             "            except socket.error:\n                return",
             1,
         ).replace(
-            remote_access.TRANSPORT_CLEANUP_MARKER,
+            remote_access.TRANSPORT_CLEANUP_MARKER_V5,
             remote_access.TRANSPORT_CLEANUP_MARKER_V3,
             1,
         )
@@ -309,8 +313,8 @@ class TransportCleanupTests(unittest.TestCase):
         self.assertTrue(remote_access.legacy_transport_cleanup_patch_current(updated))
         self.assertNotIn(remote_access.TRANSPORT_CLEANUP_MARKER_V3 + "\n", updated)
 
-    def test_v4_cleanup_patch_upgrades_to_v5(self):
-        current = remote_access._patch_legacy_transport_cleanup(SOURCE)
+    def test_v4_cleanup_patch_upgrades_to_v6(self):
+        current = HISTORICAL_V5
         send_block = (
             "            except socket.error:\n"
             "                try:\n"
@@ -325,7 +329,7 @@ class TransportCleanupTests(unittest.TestCase):
             "            except socket.error:\n                return",
             1,
         ).replace(
-            remote_access.TRANSPORT_CLEANUP_MARKER,
+            remote_access.TRANSPORT_CLEANUP_MARKER_V5,
             remote_access.TRANSPORT_CLEANUP_MARKER_V4,
             1,
         )
