@@ -5,7 +5,7 @@ import unittest
 
 from a11y_link import NvdaA11yLink
 from braille_link import NvdaBrailleLink
-from rdaccess_dvc import Receiver, XOFF, XON, NvdaSpeechLink
+from rdaccess_dvc import MAX_PENDING_BYTES, Receiver, XOFF, XON, NvdaSpeechLink
 
 
 class Channel:
@@ -29,6 +29,13 @@ def message(**kwargs):
 
 
 class ReceiverBoundaryTests(unittest.TestCase):
+    def test_oversized_complete_json_is_rejected_and_next_message_is_read(self):
+        receiver = Receiver()
+        oversized = b'{"data":"' + b"x" * (MAX_PENDING_BYTES + 1) + b'"}\n'
+        receiver.feed(oversized + message(type="ping"))
+        self.assertEqual(receiver.drain(), [{"type": "ping"}])
+        self.assertGreaterEqual(receiver.junk_bytes, len(oversized) - 1)
+
     def test_excessively_nested_json_is_rejected_and_next_message_is_read(self):
         receiver = Receiver()
         receiver.feed(b'{"data":' + b"[" * 2000 + b"0" + b"]" * 2000 + b"}\n"
