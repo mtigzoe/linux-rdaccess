@@ -1448,8 +1448,11 @@ _LEGACY_HELPERS = '''\
             log.error("linux-rdaccess: failed to forward deferred Insert")
 
     def _linux_rdaccess_flush_pending_nvda_modifiers(self):
-        self._linux_rdaccess_flush_pending_caps()
-        self._linux_rdaccess_flush_pending_insert()
+        """Replay only deferred modifiers that have not acted as the NVDA key."""
+        if not getattr(self, "_lrd_caps_used", False):
+            self._linux_rdaccess_flush_pending_caps()
+        if not getattr(self, "_lrd_insert_used", False):
+            self._linux_rdaccess_flush_pending_insert()
 
     def _linux_rdaccess_sync_state(self):
         """Initialize/change the input generation for either input channel."""
