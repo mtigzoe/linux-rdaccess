@@ -858,7 +858,8 @@ LEGACY_COMPAT_MARKER_V78 = "# linux-rdaccess NVDA/Orca input compatibility v78"
 LEGACY_COMPAT_MARKER_V79 = "# linux-rdaccess NVDA/Orca input compatibility v79"
 LEGACY_COMPAT_MARKER_V80 = "# linux-rdaccess NVDA/Orca input compatibility v80"
 LEGACY_COMPAT_MARKER_V81 = "# linux-rdaccess NVDA/Orca input compatibility v81"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v82"
+LEGACY_COMPAT_MARKER_V82 = "# linux-rdaccess NVDA/Orca input compatibility v82"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v83"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -867,8 +868,8 @@ _LEGACY_HELPERS = '''\
     # dots, speech text or connection keys.
     _LRD_INPUT_LOCK = __import__("threading").RLock()
     _LRD_CTRL_VKS = (0x11, 0xA2, 0xA3)
-    _LRD_LOCK_VKS = (0x14, 0x90)  # Caps Lock, Num Lock
-    _LRD_REPEAT_TOGGLE_VKS = (0x90,)  # repeated key-down would re-toggle
+    _LRD_LOCK_VKS = (0x14, 0x90, 0x91)  # Caps Lock, Num Lock, Scroll Lock
+    _LRD_REPEAT_TOGGLE_VKS = (0x90, 0x91)  # repeated key-down would re-toggle
     _LRD_MODIFIER_VKS = (
         0x10, 0xA0, 0xA1, 0x11, 0xA2, 0xA3, 0x12, 0xA4, 0xA5,
         0x5B, 0x5C, 0x2D, 0x14,
@@ -4485,6 +4486,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V82,
                 LEGACY_COMPAT_MARKER_V81,
                 LEGACY_COMPAT_MARKER_V80,
                 LEGACY_COMPAT_MARKER_V79,
