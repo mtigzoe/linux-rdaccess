@@ -6,7 +6,6 @@ orca-scripts/transport.py. Tests use fake sockets and native sender threads.
 
 import ast
 import json
-import textwrap
 import re
 from pathlib import Path
 import sys
@@ -276,13 +275,36 @@ class TransportStreamBoundariesTests(unittest.TestCase):
             and node.name == "handle_server_data"
         )
         current_receiver = ast.get_source_segment(current, receiver)
-        indent = "\t"
-        v6_receiver = textwrap.indent(
-            remote_access._TRANSPORT_RECEIVER_V6.strip("\n"),
-            indent,
+        pending_v7 = (
+            "\t\tif b'\\n' not in data:\n"
+            "\t\t\tif len(data) > 1 << 20:\n"
+            "\t\t\t\tself.buffer = b''\n"
+            "\t\t\t\tself._disconnect()\n"
+            "\t\t\t\treturn\n"
+            "\t\t\tself.buffer += data\n"
+            "\t\t\treturn"
         )
+        pending_v6 = (
+            "\t\tif b'\\n' not in data:\n"
+            "\t\t\tself.buffer += data\n"
+            "\t\t\treturn"
+        )
+        complete_v7 = (
+            "\t\t\tline, sep, data = data.partition(b'\\n')\n"
+            "\t\t\tif len(line) > 1 << 20:\n"
+            "\t\t\t\tself.buffer = b''\n"
+            "\t\t\t\tself._disconnect()\n"
+            "\t\t\t\treturn\n"
+            "\t\t\tself.parse(line)"
+        )
+        complete_v6 = (
+            "\t\t\tline, sep, data = data.partition(b'\\n')\n"
+            "\t\t\tself.parse(line)"
+        )
+        v6_receiver = current_receiver.replace(pending_v7, pending_v6, 1)
+        v6_receiver = v6_receiver.replace(complete_v7, complete_v6, 1)
+        self.assertNotEqual(v6_receiver, current_receiver)
         v6 = current.replace(current_receiver, v6_receiver, 1)
-        self.assertNotEqual(v6, current)
         v6 = v6.replace(
             remote_access.TRANSPORT_CLEANUP_MARKER,
             remote_access.TRANSPORT_CLEANUP_MARKER_V6,
