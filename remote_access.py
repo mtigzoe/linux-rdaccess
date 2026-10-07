@@ -278,7 +278,7 @@ def _linux_rdaccess_silent_callback_speech(original, *args, **kwargs):
             current_properties.pop("gain", None)
 '''
 
-_CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK = '''
+_CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK_V2 = '''
 def _linux_rdaccess_say_all_session():
     peer = globals().get("transport")
     owner = globals().get("controller")
@@ -369,7 +369,22 @@ if (getattr(_linux_rdaccess_native_say_all, "__module__", None) == "orca.speechd
         SpeechServer.stop = old_stop
 '''
 
-CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER = "# linux-rdaccess native Say All callbacks v2"
+_CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK = _CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK_V2.replace(
+    '        interrupted = getattr(server, "_CALLBACK_TYPE_MAP", {}).get("CANCEL", object())',
+    '        # Speech Dispatcher callback keys are lowercase protocol values.\n'
+    '        # Compare Orca\'s public progress enum, independent of those keys.\n'
+    '        native_context = getattr(getattr(original, "__globals__", {}).get(\n'
+    '            "speechserver"), "SayAllContext", None)\n'
+    '        interrupted = getattr(native_context, "INTERRUPTED", object())',
+)
+
+CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V2 = "# linux-rdaccess native Say All callbacks v2"
+_CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V2 = _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V1.replace(
+    CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V1,
+    CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V2,
+) + _CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK_V2
+
+CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER = "# linux-rdaccess native Say All callbacks v3"
 _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK = _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V1.replace(
     CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V1,
     CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER,
@@ -468,15 +483,16 @@ def legacy_customization_say_all_callback_patch_current(text: str) -> bool:
 
 def _patch_legacy_customization_say_all_callbacks(text: str) -> str:
     text = _patch_legacy_customization_speech_server(text)
-    if CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V1 in text:
-        if (text.count(CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V1) != 1
-                or _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V1 not in text):
-            raise ValueError("incomplete native Say All callback patch")
-        upgraded = text.replace(_CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V1,
-                                _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK, 1)
-        if not legacy_customization_say_all_callback_patch_current(upgraded):
-            raise ValueError("incomplete native Say All callback patch")
-        return upgraded
+    for marker, hook in (
+            (CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V1, _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V1),
+            (CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V2, _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V2)):
+        if marker in text:
+            if text.count(marker) != 1 or hook not in text:
+                raise ValueError("incomplete native Say All callback patch")
+            upgraded = text.replace(hook, _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK, 1)
+            if not legacy_customization_say_all_callback_patch_current(upgraded):
+                raise ValueError("incomplete native Say All callback patch")
+            return upgraded
     if CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER in text:
         if not legacy_customization_say_all_callback_patch_current(text):
             raise ValueError("incomplete native Say All callback patch")
@@ -571,6 +587,140 @@ def _patch_legacy_customization_reconnect(text: str) -> str:
               + data[end:]).decode("utf-8")
     if not legacy_customization_reconnect_patch_current(result):
         raise ValueError("updated automatic relay reconnect patch is incomplete")
+    return result
+
+
+CUSTOMIZATION_BRAILLE_CELLS_MARKER = "# linux-rdaccess native Orca braille cells v1"
+_LEGACY_CUSTOMIZATION_BRAILLE_SOURCE = '''
+try:
+    import orca.braille as _remote_braille
+    import louis as _remote_louis
+
+    _old_braille_refresh = _remote_braille.refresh
+
+    def _remote_cells_from_text(text):
+        try:
+            dots = _remote_louis.translateString(
+                ["en-ueb-g2.ctb"],
+                text,
+                mode=_remote_louis.dotsIO | _remote_louis.ucBrl,
+            )
+            return [
+                (ord(ch) - 0x2800) if 0x2800 <= ord(ch) <= 0x28ff else 0
+                for ch in dots
+            ]
+        except Exception as e:
+            _dbg("braille translate failed: %r" % (e,))
+            return []
+
+    def _patched_braille_refresh(*args, **kwargs):
+        result = _old_braille_refresh(*args, **kwargs)
+        try:
+            if controller.transport.connected and controller.transport.connection_type == "slave":
+                line = _remote_braille.getShowingLine()
+                info = line.getLineInfo(True)
+                text = info[0] if info else ""
+                start = int(_remote_braille.viewport[0])
+                width = int(_remote_braille._displaySize[0])
+                visible = text[start:start + width]
+                cells = _remote_cells_from_text(visible)
+                if len(cells) < width:
+                    cells += [0] * (width - len(cells))
+                elif len(cells) > width:
+                    cells = cells[:width]
+                controller.transport.send(type="display", cells=cells)
+                _dbg("braille display forwarded: %d cells text=%r" % (len(cells), visible))
+        except Exception as e:
+            _dbg("braille forward failed: %r" % (e,))
+        return result
+
+    _remote_braille.refresh = _patched_braille_refresh
+    _dbg("Orca 42 braille forwarding hook installed")
+except Exception:
+    print("Orca Remote: diagnostic details redacted")
+    _dbg("Could not install braille forwarding hook")
+'''
+_CUSTOMIZATION_BRAILLE_CELLS_HOOK = CUSTOMIZATION_BRAILLE_CELLS_MARKER + '''
+try:
+    import orca.braille as _remote_braille
+    from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _linux_rdaccess_braille_adapter
+
+    _old_braille_refresh = _remote_braille.refresh
+
+    def _patched_braille_refresh(*args, **kwargs):
+        result = _old_braille_refresh(*args, **kwargs)
+        try:
+            if controller.transport.connected and controller.transport.connection_type == "slave":
+                get_link_mask = kwargs.get("getLinkMask", args[2] if len(args) > 2 else True)
+                cells = _linux_rdaccess_braille_adapter.braille_cells(get_link_mask=get_link_mask)
+                controller.transport.send(type="display", cells=cells)
+                _dbg("braille display forwarded: %d cells" % len(cells))
+        except Exception:
+            _dbg("braille forward failed")
+        return result
+
+    _remote_braille.refresh = _patched_braille_refresh
+    _dbg("Orca 42 native braille forwarding hook installed")
+except Exception:
+    print("Orca Remote: diagnostic details redacted")
+    _dbg("Could not install braille forwarding hook")
+'''
+
+
+def _customization_braille_blocks(tree):
+    return [node for node in tree.body if isinstance(node, ast.Try)
+            and any(isinstance(child, ast.FunctionDef)
+                    and child.name == "_patched_braille_refresh" for child in node.body)]
+
+
+def _customization_braille_adapter_bindings(tree):
+    name = "_linux_rdaccess_braille_adapter"
+    return (_binding_count(tree.body, name)
+            + sum(isinstance(node, ast.alias) and (node.asname or node.name) == name
+                  for node in ast.walk(tree)))
+
+
+def legacy_customization_braille_cells_patch_current(text: str) -> bool:
+    if text.count(CUSTOMIZATION_BRAILLE_CELLS_MARKER) != 1:
+        return False
+    try:
+        tree = ast.parse(text, feature_version=(3, 10))
+    except SyntaxError:
+        return False
+    blocks = _customization_braille_blocks(tree)
+    expected = ast.parse(_CUSTOMIZATION_BRAILLE_CELLS_HOOK).body[0]
+    return (len(blocks) == 1 and _ast_equal(blocks[0], expected)
+            and _binding_count(tree.body, "_patched_braille_refresh") == 1
+            and _binding_count(tree.body, "_old_braille_refresh") == 1
+            and _customization_braille_adapter_bindings(tree) == 1
+            and _binding_count(tree.body, "_remote_cells_from_text") == 0)
+
+
+def _patch_legacy_customization_braille_cells(text: str) -> str:
+    """Replace the recognized Orca 42 hook which contracts native cells twice."""
+    if CUSTOMIZATION_BRAILLE_CELLS_MARKER in text:
+        if not legacy_customization_braille_cells_patch_current(text):
+            raise ValueError("incomplete native Orca braille cells patch")
+        return text
+    tree = ast.parse(text, feature_version=(3, 10))
+    blocks = _customization_braille_blocks(tree)
+    if not blocks:
+        if any(_binding_count(tree.body, name) for name in (
+                "_patched_braille_refresh", "_remote_cells_from_text")):
+            raise ValueError("unsupported legacy braille forwarding hook")
+        return text
+    expected = ast.parse(_LEGACY_CUSTOMIZATION_BRAILLE_SOURCE).body[0]
+    if (len(blocks) != 1 or not _ast_equal(blocks[0], expected)
+            or any(_binding_count(tree.body, name) != 1 for name in (
+                "_patched_braille_refresh", "_remote_cells_from_text", "_old_braille_refresh"))
+            or _customization_braille_adapter_bindings(tree)):
+        raise ValueError("unsupported legacy braille forwarding hook")
+    block = blocks[0]
+    lines = text.splitlines(keepends=True)
+    lines[block.lineno - 1:block.end_lineno] = [_CUSTOMIZATION_BRAILLE_CELLS_HOOK]
+    result = "".join(lines)
+    if not legacy_customization_braille_cells_patch_current(result):
+        raise ValueError("updated native Orca braille cells patch is incomplete")
     return result
 
 
@@ -1455,6 +1605,7 @@ def update_legacy_orca_customizations(
     text = _patch_legacy_customization_speech_sequence(text)
     text = _patch_legacy_customization_say_all_callbacks(text)
     text = _patch_legacy_customization_reconnect(text)
+    text = _patch_legacy_customization_braille_cells(text)
 
     try:
         compile(text, str(path), "exec")
@@ -3546,6 +3697,13 @@ _LEGACY_HELPERS = '''\
 
     def _linux_rdaccess_open_structural_list(self, key, modifiers):
         """Prefer Orca's native structural-list API; retain key fallback."""
+        self._linux_rdaccess_sync_state()
+        generation = getattr(self, "_lrd_generation", 0)
+
+        def lifetime_valid():
+            self._linux_rdaccess_sync_state()
+            return generation == getattr(self, "_lrd_generation", 0)
+
         try:
             from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _adapter
         except ImportError:
@@ -3556,7 +3714,7 @@ _LEGACY_HELPERS = '''\
 
         try:
             handler = getattr(_adapter, "show_structural_list", None)
-            if callable(handler) and handler(key) is not None:
+            if callable(handler) and handler(key, lifetime_valid=lifetime_valid) is not None:
                 return
         except Exception:
             # The native handler may have already opened or presented a list.
