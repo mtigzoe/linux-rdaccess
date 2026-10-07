@@ -859,7 +859,8 @@ LEGACY_COMPAT_MARKER_V79 = "# linux-rdaccess NVDA/Orca input compatibility v79"
 LEGACY_COMPAT_MARKER_V80 = "# linux-rdaccess NVDA/Orca input compatibility v80"
 LEGACY_COMPAT_MARKER_V81 = "# linux-rdaccess NVDA/Orca input compatibility v81"
 LEGACY_COMPAT_MARKER_V82 = "# linux-rdaccess NVDA/Orca input compatibility v82"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v83"
+LEGACY_COMPAT_MARKER_V83 = "# linux-rdaccess NVDA/Orca input compatibility v83"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v84"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -1424,37 +1425,41 @@ _LEGACY_HELPERS = '''\
             self._lrd_insert_used = True
 
     def _linux_rdaccess_flush_pending_caps(self):
-        """Forward the original deferred CapsLock press when it was not an NVDA command."""
+        """Forward deferred CapsLock; report whether ordinary input can continue."""
         pending = getattr(self, "_lrd_caps_pending", None)
         if pending is None:
-            return
+            return True
         _held, payload = pending
         self._lrd_caps_pending = None
         self._lrd_caps_used = False
         try:
-            self._linux_rdaccess_forward_key(**payload)
+            return self._linux_rdaccess_forward_key(**payload) is not False
         except Exception:
             log.error("linux-rdaccess: failed to forward deferred CapsLock")
+            return False
 
     def _linux_rdaccess_flush_pending_insert(self):
-        """Forward deferred Insert only after proving it is ordinary Linux input."""
+        """Forward deferred Insert; report whether ordinary input can continue."""
         pending = getattr(self, "_lrd_insert_pending", None)
         if pending is None:
-            return
+            return True
         _held, payload = pending
         self._lrd_insert_pending = None
         self._lrd_insert_used = False
         try:
-            self._linux_rdaccess_forward_key(**payload)
+            return self._linux_rdaccess_forward_key(**payload) is not False
         except Exception:
             log.error("linux-rdaccess: failed to forward deferred Insert")
+            return False
 
     def _linux_rdaccess_flush_pending_nvda_modifiers(self):
-        """Replay only deferred modifiers that have not acted as the NVDA key."""
+        """Replay unused deferred modifiers; fail closed if injection is rejected."""
+        ok = True
         if not getattr(self, "_lrd_caps_used", False):
-            self._linux_rdaccess_flush_pending_caps()
+            ok = self._linux_rdaccess_flush_pending_caps() and ok
         if not getattr(self, "_lrd_insert_used", False):
-            self._linux_rdaccess_flush_pending_insert()
+            ok = self._linux_rdaccess_flush_pending_insert() and ok
+        return ok
 
     def _linux_rdaccess_sync_state(self):
         """Initialize/change the input generation for either input channel."""
@@ -2105,8 +2110,14 @@ _LEGACY_HELPERS = '''\
                         getattr(self, "_lrd_caps_pending", None) is not None
                         or getattr(self, "_lrd_insert_pending", None) is not None
                     )
+                    and not self._linux_rdaccess_flush_pending_nvda_modifiers()
                 ):
-                    self._linux_rdaccess_flush_pending_nvda_modifiers()
+                    # Do not execute the application key without the modifier
+                    # the user physically held. Own its release so a rejected
+                    # deferred press cannot degrade Insert+key into plain key.
+                    self._lrd_trace_why = "deferred_modifier_rejected"
+                    self._lrd_swapped.add(held)
+                    return True
                 return False
             need_ext, name, target_vk, drop, count, drop_shift = chord
             nvda = self._lrd_nvda_key
@@ -4487,6 +4498,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V83,
                 LEGACY_COMPAT_MARKER_V82,
                 LEGACY_COMPAT_MARKER_V81,
                 LEGACY_COMPAT_MARKER_V80,
