@@ -273,7 +273,7 @@ to `~/.local/share/orca/orca-remote-input-trace.log` (mode 0600, rotated at
 256 KiB). It records, per remote key, whether the controller forwarded,
 translated or suppressed it, the modifier ownership (received versus injected,
 left/right distinguished, NVDA modifier, pending Caps Lock/Insert), the control
-generation, XKB Caps/Num Lock transitions, held-key release failures after a
+generation, XKB Caps/Num/Scroll Lock transitions, held-key release failures after a
 reconnect, speech-cancel and stale main-loop events, braille command classes, and
 the Orca-side browse/table decisions with a Firefox context class. A character
 key is never identified, braille keyboard input, speech, clipboard data,
@@ -310,14 +310,14 @@ network thread (GTK is not thread-safe). Run `linux-rdaccess doctor` to check th
 patches are active; set `LINUX_RDACCESS_DEBUG=1` to log key-handling stalls
 (duration only, never which key) to `~/.local/share/orca/orca-remote-slow-events.log`.
 
-Caps Lock and Num Lock feedback reads the actual named XKB indicator after a
+Caps Lock, Num Lock, and Scroll Lock feedback reads the actual named XKB indicator after a
 successful key release, when X11 has completed the toggle. The state is captured
 before queuing the Orca announcement, so quick consecutive toggles retain their
-individual on/off results. Num Lock auto-repeat produces one toggle and one
+individual on/off results. Num Lock and Scroll Lock auto-repeat produce one toggle and one
 announcement per press. CapsLock used for a translated NVDA command produces
 neither a lock toggle nor a lock announcement.
 
-The current patches are controller **v82** and local-machine **v11**. Update the
+The current patches are controller **v83** and local-machine **v11**. Update the
 installed command from the repository with `python3 linux_rdaccess.py install`,
 then run `linux-rdaccess connect` to update the Orca-side files and restart Orca.
 `doctor` verifies the connected patch hooks, valid Python, and the installed
