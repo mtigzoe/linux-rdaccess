@@ -199,12 +199,12 @@ Orca's native table coordinates so they preserve the current column or row.
 NVDA's row/column reading commands remain unsupported because Orca 42 has no
 non-moving full-row/full-column presentation primitive.
 
-Desktop keypad object-navigation interception is deliberately limited to
-unambiguous keypad VKs (for example Numpad5, Minus, Divide, Multiply, and
-extended NumpadEnter). Legacy payloads containing only non-extended
-Home/End/Arrow/Delete VKs are not sufficient proof of a physical keypad key,
-so those ambiguous gestures remain a live-test gap rather than risking normal
-Linux navigation input.
+Desktop keypad object-navigation interception uses unambiguous keypad VKs
+(for example Numpad5, Minus, Divide, Multiply, and extended NumpadEnter) and,
+for Numpad1-9/Delete, the low-level Windows scan code forwarded by NVDA Remote.
+This distinguishes physical numpad navigation keys from dedicated navigation
+keys that share the same VK. Legacy payloads without matching scan-code evidence
+still pass through rather than being guessed as keypad input.
 CapsLock and Insert presses used as NVDA modifiers are deferred so translated
 or consumed NVDA commands do not leak those modifier presses into Linux. A
 standalone CapsLock or Insert press is replayed as one complete press/release.
@@ -331,7 +331,7 @@ individual on/off results. Num Lock and Scroll Lock auto-repeat produce one togg
 announcement per press. CapsLock used for a translated NVDA command produces
 neither a lock toggle nor a lock announcement.
 
-The current patches are controller **v85**, local-machine **v12**, and transport cleanup **v5**. Update the
+The current patches are controller **v86**, local-machine **v12**, and transport cleanup **v5**. Update the
 installed command from the repository with `python3 linux_rdaccess.py install`,
 then run `linux-rdaccess connect` to update the Orca-side files and restart Orca.
 `doctor` verifies the connected patch hooks, valid Python, and the installed
