@@ -85,6 +85,7 @@ class NvdaA11yLink:
         if self._channel is None:
             self._try_open()
             return
+        channel, receiver = self._channel, self._rx
         try:
             for _ in range(16):
                 data = self._channel.read(0)
@@ -106,11 +107,12 @@ class NvdaA11yLink:
                 continue
             if msg.get("type") == "a11y_action":
                 self._handle_action_message(msg)
-                if self._channel is None:
+                if self._channel is not channel or self._rx is not receiver:
                     return
         if self._rx.xon_count != self._seen_xon_count:
             self._seen_xon_count = self._rx.xon_count
-            self._handshake()
+            if self._rx.xon:
+                self._handshake()
         self._poll_heartbeat()
 
     def send_focus(self, *, focus_id: str, objects: list[dict]) -> bool:

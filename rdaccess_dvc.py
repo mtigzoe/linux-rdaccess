@@ -182,6 +182,19 @@ class Receiver:
                 del self.buf[0]
             elif b == ord("{"):
                 end = self.buf.find(b"\n")
+                # rd_pipe emits flow controls independently of the client's
+                # records. A disconnect can therefore terminate a partial
+                # JSON line. Raw XON/XOFF cannot occur in valid JSON (escaped
+                # controls are ordinary ASCII bytes), so discard only the
+                # interrupted prefix and let the outer loop process them.
+                controls = [pos for pos in (self.buf.find(bytes((XON,))),
+                                            self.buf.find(bytes((XOFF,))))
+                            if pos >= 0 and (end < 0 or pos < end)]
+                if controls:
+                    interrupted = min(controls)
+                    self.junk_bytes += interrupted
+                    del self.buf[:interrupted]
+                    continue
                 if end < 0:
                     if len(self.buf) > MAX_PENDING_BYTES:
                         log.warning("dropping %d bytes of unterminated JSON", len(self.buf))
@@ -192,7 +205,7 @@ class Receiver:
                 del self.buf[: end + 1]
                 try:
                     obj = json.loads(line.decode("utf-8"))
-                except ValueError:
+                except (ValueError, RecursionError):
                     self.junk_bytes += len(line)
                     continue
                 if isinstance(obj, dict):
@@ -338,7 +351,8 @@ class NvdaSpeechLink:
                 log.debug("received a protocol message")
         if self._rx.xon_count != self._seen_xon_count:
             self._seen_xon_count = self._rx.xon_count
-            self._handshake()
+            if self._rx.xon:
+                self._handshake()
 
     def speak(self, text: str, interrupt: bool = False) -> bool:
         if not self.ready:
@@ -378,7 +392,10 @@ class NvdaSpeechLink:
             return
         log.info("XON received; announced protocol v%d", PROTOCOL_VERSION)
         if self._on_ready is not None:
-            self._on_ready()
+            try:
+                self._on_ready()
+            except Exception:
+                log.error("speech on_ready callback failed")
 
     def _drop(self, reason: str, quiet: bool = False) -> None:
         if self._channel is not None:

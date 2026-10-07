@@ -4,6 +4,7 @@ import logging
 import time
 
 from rdaccess_dvc import (
+    LEGACY_DRIVER_TYPES,
     PROTOCOL_VERSION,
     Receiver,
     send_json,
@@ -49,7 +50,8 @@ class NvdaBrailleLink:
 
         if self._rx.xon_count != self._seen_xon:
             self._seen_xon = self._rx.xon_count
-            self._start_handshake()
+            if self._rx.xon:
+                self._start_handshake()
             if self._channel is None:
                 return
 
@@ -106,7 +108,7 @@ class NvdaBrailleLink:
         if kind == "protocol_version":
             try:
                 version = int(message.get("version", 0))
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):
                 version = 0
             if version >= PROTOCOL_VERSION:
                 try:
@@ -128,10 +130,14 @@ class NvdaBrailleLink:
         if kind == "attribute_request" and attribute in ("timeSinceInput", "protocolVersion"):
             value = 0 if attribute == "timeSinceInput" else PROTOCOL_VERSION
             legacy_driver = message.get("_legacy_driver_type")
+            if legacy_driver is not None and (
+                type(legacy_driver) is not int or legacy_driver not in LEGACY_DRIVER_TYPES
+            ):
+                return
             try:
                 if legacy_driver is not None:
                     send_legacy_attribute_value(
-                        self._channel, int(legacy_driver), attribute, value
+                        self._channel, legacy_driver, attribute, value
                     )
                 else:
                     send_json(
@@ -144,7 +150,7 @@ class NvdaBrailleLink:
         if kind == "attribute_value" and attribute == "numCells":
             try:
                 value = int(message.get("value", 0))
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):
                 value = 0
             if value > 0:
                 self.num_cells = value

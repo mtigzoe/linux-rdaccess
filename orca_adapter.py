@@ -376,6 +376,47 @@ class OrcaRuntimeAdapter:
         )
 
     @classmethod
+    def present_focus_accelerator(cls) -> bool | None:
+        """Report focused-object shortcuts using Orca's speech/braille presenter.
+
+        NVDA's command reports focus, even when its review position differs.
+        Orca's utility returns localized mnemonic, menu shortcut and accelerator
+        strings; a complete menu shortcut takes precedence over its mnemonic.
+        This operation does not enter flat review or detailed Where Am I.
+        """
+        script = cls.active_script()
+        if script is None:
+            return None
+        utilities = getattr(script, "utilities", None)
+        get_keys = getattr(utilities, "mnemonicShortcutAccelerator", None)
+        if not callable(get_keys):
+            get_keys = getattr(utilities, "mnemonic_shortcut_accelerator", None)
+        present = getattr(script, "presentMessage", None)
+        if not callable(present):
+            present = getattr(script, "present_message", None)
+        if not callable(get_keys) or not callable(present):
+            return None
+        try:
+            from orca import orca_state
+            focus = getattr(orca_state, "locusOfFocus", None)
+            if focus is None:
+                focus = getattr(orca_state, "locus_of_focus", None)
+            if focus is None:
+                return False
+            keys = get_keys(focus)
+            if not isinstance(keys, (tuple, list)) or len(keys) != 3 \
+                    or not all(isinstance(key, str) for key in keys):
+                return False
+            mnemonic, shortcut, accelerator = keys
+            available = list(dict.fromkeys(
+                key for key in (shortcut or mnemonic, accelerator) if key))
+            return present("; ".join(available) if available else "No shortcut key") is not False
+        except Exception:
+            # A presenter can speak before raising. Do not permit a fallback
+            # which retries that partial operation or persists application text.
+            return False
+
+    @classmethod
     def present_time(cls) -> bool | None:
         """Present the time using Orca's configured format and output."""
         return cls.call_script("presentTime", default_event=True)

@@ -1,0 +1,82 @@
+import socket
+
+class TCPTransport:
+    def __init__(self, socket_factory, callback_manager, queue, handler=None):
+        self.socket_factory = socket_factory
+        self.callback_manager = callback_manager
+        self.queue = queue
+        self.address = ("relay.example", 6837)
+        self.server_sock = None
+        self.queue_thread = None
+        self.connected = False
+        self.buffer = b""
+        self.handler = handler or (lambda: None)
+
+    def create_outbound_socket(self, address):
+        return self.socket_factory()
+
+    def handle_server_data(self):
+        self.handler()
+
+    def run(self):
+        try:
+            self.server_sock = self.create_outbound_socket(self.address)
+            self.server_sock.connect(self.address)
+        except Exception:
+            self._disconnect()
+            self.callback_manager.call_callbacks('transport_connection_failed')
+            raise
+        self.connected = True
+        while self.server_sock is not None:
+            try:
+                readers, writers, error = select.select(
+                    [self.server_sock], [], [self.server_sock])
+            except (socket.error, ValueError):
+                self.buffer = b''
+                break
+            if self.server_sock in error:
+                self.buffer = b""
+                break
+            if self.server_sock in readers:
+                try:
+                    self.handle_server_data()
+                except Exception:
+                    self.buffer = b''
+                    break
+        self.connected = False
+        self.callback_manager.call_callbacks('transport_disconnected')
+        self._disconnect()
+
+    def send_queue(self):
+        while True:
+            item = self.queue.get()
+            if item is None:
+                return
+            try:
+                self.server_sock.sendall(item)
+            except socket.error:
+                try:
+                    if self.server_sock is not None:
+                        self.server_sock.shutdown(socket.SHUT_RDWR)
+                except (OSError, AttributeError):
+                    pass
+                return
+
+    def _disconnect(self):
+        """Disconnect the transport due to an error, without closing the connector thread."""
+        if self.server_sock is None and self.queue_thread is None:
+            return
+        if self.server_sock is not None:
+            try:
+                self.server_sock.shutdown(socket.SHUT_RDWR)
+            except (OSError, AttributeError):
+                pass
+        if self.queue_thread is not None:
+            self.queue.put(None)
+            self.queue_thread.join()
+        clear_queue(self.queue)
+        if self.server_sock is not None:
+            self.server_sock.close()
+            self.server_sock = None
+
+# linux-rdaccess transport cleanup v5
