@@ -2043,6 +2043,12 @@ _LEGACY_HELPERS = '''\
                 or (vk_code is None
                     and (not isinstance(key_name, str) or not key_name))):
             return True
+        # A Windows VK is the authoritative identity for NVDA Remote.
+        # Legacy name-only packets remain supported, but when both are present
+        # do not let a contradictory key_name make the backend inject a
+        # different key than the controller owns and later releases.
+        if vk_code is not None:
+            key_name = None
         if not self._linux_rdaccess_trace_enabled():
             return self._linux_rdaccess_filter_key_impl(
                 pressed, vk_code, extended, modifiers, key_name, scan_code)
