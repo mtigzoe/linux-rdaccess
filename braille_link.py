@@ -29,6 +29,7 @@ class NvdaBrailleLink:
         self._next_open = 0.0
         self._json_ready = False
         self._requested_cells = False
+        self._default_cells = default_cells
         self.num_cells = default_cells
 
     @property
@@ -90,6 +91,10 @@ class NvdaBrailleLink:
         self._seen_xon = 0
         self._json_ready = False
         self._requested_cells = False
+        # numCells belongs to the current remote display/session. Do not carry
+        # a previous client's width into a freshly opened channel while the
+        # new attribute request is still negotiating.
+        self.num_cells = self._default_cells
         log.info("braille channel open; waiting for XON")
 
     def _start_handshake(self):
