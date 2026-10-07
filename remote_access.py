@@ -2039,7 +2039,9 @@ _LEGACY_HELPERS = '''\
                 or (vk_code is not None and (type(vk_code) is not int or not 0 <= vk_code <= 255))
                 or (scan_code is not None and (type(scan_code) is not int
                                                or not 0 <= scan_code <= 0xFFFFFFFF))
-                or (key_name is not None and not isinstance(key_name, str))):
+                or (key_name is not None and not isinstance(key_name, str))
+                or (vk_code is None
+                    and (not isinstance(key_name, str) or not key_name))):
             return True
         if not self._linux_rdaccess_trace_enabled():
             return self._linux_rdaccess_filter_key_impl(
