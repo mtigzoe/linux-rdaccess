@@ -806,6 +806,10 @@ class SummarizerTests(TraceCase):
         c.local_machine.send_key = lambda **kw: kw['pressed'] or False
         c._linux_rdaccess_script_call = lambda *a: True
         with patches:
+            # Hold an ordinary forwarded key so reset has a genuine injected
+            # key whose release can fail. Insert itself is now deferred and
+            # must not be treated as forwarded ownership.
+            self._key(c, 0x25, True, extended=True)
             self._key(c, 0x2D, True, extended=True)
             self._key(c, 0x28, True, extended=True)
             c.toggle_control()
