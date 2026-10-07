@@ -1348,7 +1348,8 @@ LEGACY_COMPAT_MARKER_V89 = "# linux-rdaccess NVDA/Orca input compatibility v89"
 LEGACY_COMPAT_MARKER_V90 = "# linux-rdaccess NVDA/Orca input compatibility v90"
 LEGACY_COMPAT_MARKER_V91 = "# linux-rdaccess NVDA/Orca input compatibility v91"
 LEGACY_COMPAT_MARKER_V92 = "# linux-rdaccess NVDA/Orca input compatibility v92"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v93"
+LEGACY_COMPAT_MARKER_V93 = "# linux-rdaccess NVDA/Orca input compatibility v93"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v94"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -1660,6 +1661,7 @@ _LEGACY_HELPERS = '''\
             (0x43, False, False, False, False),  # NVDA+C: clipboard report
             (0x52, False, False, False, False),  # NVDA+R: OCR
             (0x58, False, False, False, False),  # NVDA+X: repeat last speech
+            (0x58, False, True,  False, False),  # NVDA+Ctrl+X: copy last speech
             (0x78, False, False, False, False),  # NVDA+F9: review mark
             (0x78, True,  False, False, False),  # NVDA+Shift+F9
             (0x79, False, False, False, False),  # NVDA+F10: select/copy review
@@ -5164,6 +5166,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V93,
                 LEGACY_COMPAT_MARKER_V92,
                 LEGACY_COMPAT_MARKER_V91,
                 LEGACY_COMPAT_MARKER_V90,
