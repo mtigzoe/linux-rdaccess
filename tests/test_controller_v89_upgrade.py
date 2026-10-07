@@ -29,28 +29,32 @@ class ControllerV89UpgradeTests(unittest.TestCase):
             self.assertFalse(remote_access.patch_legacy_orca_remote_controller(path))
             self.assertEqual(path.read_text(), current)
 
-    def test_v90_marker_upgrades_to_v91_from_original_backup(self):
+    def test_v90_and_v91_markers_upgrade_to_v92_from_original_backup(self):
         original = (FIXTURES / "controller-upstream.txt").read_text()
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "remote_controller.py"
-            backup = path.with_name(path.name + ".linux-rdaccess-backup")
-            path.write_text(original)
-            self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
-            v91 = path.read_text()
-            v90 = v91.replace(
-                remote_access.LEGACY_COMPAT_MARKER,
-                remote_access.LEGACY_COMPAT_MARKER_V90,
-                1,
-            )
-            path.write_text(v90)
-            self.assertFalse(remote_access.legacy_controller_patch_current(v90))
-            self.assertEqual(backup.read_text(), original)
-            self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
-            upgraded = path.read_text()
-            self.assertIn(remote_access.LEGACY_COMPAT_MARKER, upgraded)
-            self.assertNotIn(remote_access.LEGACY_COMPAT_MARKER_V90, upgraded)
-            self.assertTrue(remote_access.legacy_controller_patch_current(upgraded))
-            self.assertEqual(backup.read_text(), original)
+        for marker in (
+            remote_access.LEGACY_COMPAT_MARKER_V90,
+            remote_access.LEGACY_COMPAT_MARKER_V91,
+        ):
+            with self.subTest(marker=marker), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "remote_controller.py"
+                backup = path.with_name(path.name + ".linux-rdaccess-backup")
+                path.write_text(original)
+                self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
+                current = path.read_text()
+                previous = current.replace(
+                    remote_access.LEGACY_COMPAT_MARKER,
+                    marker,
+                    1,
+                )
+                path.write_text(previous)
+                self.assertFalse(remote_access.legacy_controller_patch_current(previous))
+                self.assertEqual(backup.read_text(), original)
+                self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
+                upgraded = path.read_text()
+                self.assertIn(remote_access.LEGACY_COMPAT_MARKER, upgraded)
+                self.assertNotIn(marker, upgraded)
+                self.assertTrue(remote_access.legacy_controller_patch_current(upgraded))
+                self.assertEqual(backup.read_text(), original)
 
     def test_genuine_v89_without_original_backup_is_preserved_and_rejected(self):
         previous = (FIXTURES / "controller-v89.txt").read_text()
