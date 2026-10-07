@@ -380,8 +380,9 @@ class OrcaRuntimeAdapter:
         """Report focused-object shortcuts using Orca's speech/braille presenter.
 
         NVDA's command reports focus, even when its review position differs.
-        Orca's utility returns localized mnemonic, menu shortcut and accelerator
-        strings; a complete menu shortcut takes precedence over its mnemonic.
+        Orca's utility returns localized mnemonic, full menu path and direct
+        accelerator strings. Prefer the direct accelerator, then the mnemonic,
+        then the full path so this remains a single NVDA-like shortcut report.
         This operation does not enter flat review or detailed Where Am I.
         """
         script = cls.active_script()
@@ -408,9 +409,8 @@ class OrcaRuntimeAdapter:
                     or not all(isinstance(key, str) for key in keys):
                 return False
             mnemonic, shortcut, accelerator = keys
-            available = list(dict.fromkeys(
-                key for key in (shortcut or mnemonic, accelerator) if key))
-            return present("; ".join(available) if available else "No shortcut key") is not False
+            key = accelerator or mnemonic or shortcut
+            return present(key if key else "No shortcut key") is not False
         except Exception:
             # A presenter can speak before raising. Do not permit a fallback
             # which retries that partial operation or persists application text.
