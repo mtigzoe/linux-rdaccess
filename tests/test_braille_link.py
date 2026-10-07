@@ -110,6 +110,43 @@ class BrailleLinkTests(unittest.TestCase):
         self.assertEqual(len(msg["cells"]), 80)
         self.assertEqual(msg["cells"][:2], [1, 2])
 
+    def test_reopen_resets_previous_session_cell_count(self):
+        first = self.channel
+        replacement = FakeChannel()
+        channels = iter((first, replacement))
+        now = [0.0]
+        link = NvdaBrailleLink(lambda: next(channels), clock=lambda: now[0], default_cells=80)
+
+        link.poll()
+        first.incoming.append(bytes([XON]))
+        link.poll()
+        first.incoming.append(
+            b'{"type":"protocol_version","version":2}\n'
+            b'{"type":"attribute_value","attribute":"numCells","value":4}\n'
+        )
+        link.poll()
+        self.assertEqual(link.num_cells, 4)
+
+        with mock.patch.object(first, "read", side_effect=ConnectionError("session lost")):
+            link.poll()
+        self.assertIsNone(link._channel)
+
+        now[0] = 3.0
+        link.poll()
+        self.assertIs(link._channel, replacement)
+        self.assertEqual(link.num_cells, 80)
+
+        replacement.incoming.append(
+            bytes([XON]) + b'{"type":"protocol_version","version":2}\n'
+        )
+        link.poll()
+        self.assertTrue(link.ready)
+        self.assertEqual(link.num_cells, 80)
+        replacement.writes.clear()
+        self.assertTrue(link.display([1, 2]))
+        msg = json.loads(replacement.writes[-1])
+        self.assertEqual(len(msg["cells"]), 80)
+
     def test_failed_handshake_stops_batch_and_reconnects_cleanly(self):
         replacement = FakeChannel()
         channels = iter((self.channel, replacement))
