@@ -680,8 +680,11 @@ try:
         try:
             if controller.transport.connected and controller.transport.connection_type == "slave":
                 semantic = None
-                if getattr(controller, "_lrd_nvda_native_braille", False):
+                native = getattr(controller, "_lrd_nvda_native_braille", False)
+                if native:
                     semantic = _linux_rdaccess_braille_adapter.semantic_focus_payload()
+                else:
+                    controller._linux_rdaccess_offer_native_braille()
                 if semantic:
                     canonical = _remote_json.dumps(
                         semantic, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
@@ -691,6 +694,10 @@ try:
                         controller._lrd_last_semantic_braille = canonical
                         _dbg("NVDA semantic braille focus forwarded")
                 else:
+                    if native:
+                        controller.transport.send(type="lrd_a11y_fallback", version=1)
+                        controller._lrd_nvda_native_braille = False
+                        controller._lrd_last_semantic_braille = None
                     get_link_mask = kwargs.get(
                         "getLinkMask", args[2] if len(args) > 2 else True)
                     cells = _linux_rdaccess_braille_adapter.braille_cells(
@@ -3447,12 +3454,31 @@ _LEGACY_HELPERS = '''\
                 if identity in getattr(self, "_lrd_forwarded", {}):
                     log.error("linux-rdaccess: failed to release braille modifier")
 
+    def _linux_rdaccess_offer_native_braille(self):
+        """Rate-limit semantic braille capability offers for late Windows attach."""
+        if getattr(self, "_lrd_nvda_native_braille", False):
+            return
+        transport = getattr(self, "transport", None)
+        if (transport is None or not getattr(transport, "connected", False)
+                or getattr(transport, "connection_type", None) != "slave"):
+            return
+        now = __import__("time").monotonic()
+        if now - getattr(self, "_lrd_last_native_braille_offer", 0.0) < 2.0:
+            return
+        self._lrd_last_native_braille_offer = now
+        try:
+            transport.send(
+                type="lrd_a11y_hello", version=self._LRD_NATIVE_BRAILLE_VERSION)
+        except Exception:
+            log.error("linux-rdaccess: semantic braille offer failed")
+
     def _linux_rdaccess_native_braille_capability(
             self, version=None, presentation=None, **kwargs):
         """Enable NVDA-owned braille only after the Windows peer opts in."""
         if version != self._LRD_NATIVE_BRAILLE_VERSION or presentation != "nvda":
             return
         self._lrd_nvda_native_braille = True
+        self._lrd_last_native_braille_offer = 0.0
         self._lrd_last_semantic_braille = None
 
         def refresh():
