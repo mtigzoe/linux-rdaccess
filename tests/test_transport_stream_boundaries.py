@@ -178,6 +178,25 @@ class TransportStreamBoundariesTests(unittest.TestCase):
         self.assertEqual(transport.callback_manager.calls, [("msg_first", {})])
         self.assertEqual(transport.buffer, b'{"type":"new-partial')
 
+    def test_oversized_unterminated_frame_disconnects_and_clears_partial_state(self):
+        source = remote_access._patch_legacy_transport_cleanup(UPSTREAM)
+        chunk = b"{" + (b"x" * 16383)
+        incoming = [chunk] * 65
+        transport, sock, selector = transport_from_source(source, incoming)
+        try:
+            with mock.patch("select.select", selector):
+                transport.run()
+        finally:
+            transport._disconnect()
+        self.assertFalse(transport.connected)
+        self.assertTrue(sock.closed)
+        self.assertIsNone(transport.server_sock)
+        self.assertEqual(transport.buffer, b"")
+        self.assertEqual(
+            [event for event, _ in transport.callback_manager.calls],
+            ["transport_connected", "transport_disconnected"],
+        )
+
     def test_eof_with_truncated_frame_disconnects_and_clears_partial_state(self):
         source = remote_access._patch_legacy_transport_cleanup(UPSTREAM)
         transport, sock, selector = transport_from_source(
