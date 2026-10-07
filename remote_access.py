@@ -1154,7 +1154,8 @@ LEGACY_COMPAT_MARKER_V83 = "# linux-rdaccess NVDA/Orca input compatibility v83"
 LEGACY_COMPAT_MARKER_V84 = "# linux-rdaccess NVDA/Orca input compatibility v84"
 LEGACY_COMPAT_MARKER_V85 = "# linux-rdaccess NVDA/Orca input compatibility v85"
 LEGACY_COMPAT_MARKER_V86 = "# linux-rdaccess NVDA/Orca input compatibility v86"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v87"
+LEGACY_COMPAT_MARKER_V87 = "# linux-rdaccess NVDA/Orca input compatibility v87"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v88"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -1518,7 +1519,6 @@ _LEGACY_HELPERS = '''\
                 (0x71, False, True,  False, False),  # NVDA+Ctrl+F2: display model
                 (0x63, False, False, False, False),  # VK_NUMPAD3 (NVDA: numLockNumpad3, unbound); NVDA's next-in-flow is the non-extended PageDown identity, which is never guessed
                 (0x69, False, False, False, False),  # VK_NUMPAD9 (NVDA: numLockNumpad9, unbound); previous-in-flow is the non-extended PageUp identity
-                (0x26, True,  False, False, True),   # NVDA+Shift+Up: current selection
                 (0x21, False, False, False, True),  # NVDA+PageUp: previous review page
                 (0x22, False, False, False, True),  # NVDA+PageDown: next review page
             }
@@ -1534,7 +1534,6 @@ _LEGACY_HELPERS = '''\
                 (0x22, True,  True,  False, True),
                 (0xDB, True,  False, False, False),  # Shift+NVDA+[: previous in flow
                 (0xDD, True,  False, False, False),  # Shift+NVDA+]: next in flow
-                (0x53, True,  False, False, False),  # NVDA+Shift+S: current selection
                 (0xBE, True,  True,  False, False),  # NVDA+Ctrl+Shift+.: focus shortcut
             }
         )
@@ -2181,6 +2180,30 @@ _LEGACY_HELPERS = '''\
         ):
             self._lrd_navigation_marker = (
                 "_LRD_T", {0x25: "Left", 0x26: "Up", 0x27: "Right", 0x28: "Down"}[vk_code], held)
+
+        # NVDA and Orca 42 have the same current-selection command but bind
+        # it differently by keyboard layout. Call Orca directly so CapsLock-
+        # as-NVDA and Insert-as-NVDA behave identically.
+        if pressed and self._lrd_nvda_down and not repeat:
+            shifts = any(k[0] in self._LRD_SHIFT_VKS for k in self._lrd_down)
+            other = any(
+                k[0] in self._LRD_OTHER_MOD_VKS and k[0] not in self._LRD_SHIFT_VKS
+                for k in self._lrd_down
+            )
+            selection = (
+                nvda_layout == "desktop"
+                and vk_code == 0x26 and bool(extended) and shifts and not other
+            ) or (
+                nvda_layout == "laptop"
+                and vk_code == 0x53 and not bool(extended) and shifts and not other
+            )
+            if selection:
+                self._lrd_trace_why = "translate:current_selection"
+                self._lrd_swapped.add(held)
+                self._linux_rdaccess_mark_nvda_modifier_used()
+                self._linux_rdaccess_run_main(
+                    lambda: self._linux_rdaccess_script_call("whereAmISelection"))
+                return True
 
         if (
             pressed
@@ -4881,6 +4904,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V87,
                 LEGACY_COMPAT_MARKER_V86,
                 LEGACY_COMPAT_MARKER_V85,
                 LEGACY_COMPAT_MARKER_V84,
