@@ -172,6 +172,11 @@ class Receiver:
         self.xon = False
         self.xon_count = 0  # how many XON bytes were seen; lets callers notice XOFF->XON flaps
         self.messages: list[dict] = []
+        # Parallel provenance for each queued message: (XON generation,
+        # whether the receiver was inside that active session when parsed).
+        # This lets long-lived links discard pre-XON and stale-session
+        # messages without changing the public message dictionaries.
+        self._message_sessions: list[tuple[int, bool]] = []
         self.legacy_frames = 0
         self.junk_bytes = 0
 
@@ -182,7 +187,31 @@ class Receiver:
         `index` message after every utterance). Long-running callers must drain.
         """
         out, self.messages = self.messages, []
+        self._message_sessions = []
         return out
+
+    def drain_current_session(self) -> list[dict]:
+        """Return only messages parsed in the currently active XON session.
+
+        A single DVC read can contain data from both sides of an XOFF/XON
+        boundary. Messages from before the newest XON (or from before any XON)
+        must never be replayed into the replacement client session.
+        """
+        messages, sessions = self.messages, self._message_sessions
+        self.messages = []
+        self._message_sessions = []
+        if not self.xon:
+            return []
+        generation = self.xon_count
+        return [
+            message
+            for message, (message_generation, was_active) in zip(messages, sessions)
+            if was_active and message_generation == generation
+        ]
+
+    def _queue_message(self, message: dict) -> None:
+        self.messages.append(message)
+        self._message_sessions.append((self.xon_count, self.xon))
 
     def feed(self, data: bytes) -> None:
         if data and log.isEnabledFor(logging.DEBUG):
@@ -231,7 +260,7 @@ class Receiver:
                     if not _json_nesting_within_limit(obj):
                         self.junk_bytes += len(line)
                         continue
-                    self.messages.append(obj)
+                    self._queue_message(obj)
             elif b in LEGACY_DRIVER_TYPES:
                 if len(self.buf) < 4:
                     return
@@ -258,7 +287,7 @@ class Receiver:
                     except (ValueError, UnicodeDecodeError):
                         continue
                     if not raw_value:
-                        self.messages.append(
+                        self._queue_message(
                             {
                                 "type": "attribute_request",
                                 "attribute": attribute_name,
@@ -266,7 +295,7 @@ class Receiver:
                             }
                         )
                     elif attribute_name == "timeSinceInput" and len(raw_value) == 4:
-                        self.messages.append(
+                        self._queue_message(
                             {
                                 "type": "attribute_value",
                                 "attribute": attribute_name,
