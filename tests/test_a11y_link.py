@@ -317,6 +317,28 @@ class A11yLinkTests(unittest.TestCase):
         self.assertFalse(link.ready)
         self.assertTrue(ch.closed)
 
+    def test_action_before_xon_in_same_batch_is_not_replayed_after_handshake(self):
+        self.link.poll()
+        ch = self.channels[-1]
+        ch.incoming.append(
+            b'{"type":"a11y_action","object_id":"stale","action_index":0}\n'
+            + bytes([XON])
+        )
+        self.link.poll()
+        self.assertTrue(self.link.ready)
+        self.assertEqual(self.actions, [])
+
+    def test_action_from_previous_xon_epoch_is_not_dispatched_after_reconnect(self):
+        ch = self.connect()
+        ch.incoming.append(
+            b'{"type":"a11y_action","object_id":"stale","action_index":0}\n'
+            + bytes([XOFF, XON])
+            + b'{"type":"a11y_action","object_id":"fresh","action_index":0}\n'
+        )
+        self.link.poll()
+        self.assertTrue(self.link.ready)
+        self.assertEqual(self.actions, [("fresh", 0)])
+
     def test_action_before_xon_is_ignored(self):
         self.link.poll()
         ch = self.channels[-1]
