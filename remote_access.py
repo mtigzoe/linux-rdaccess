@@ -675,10 +675,12 @@ def legacy_transport_cleanup_patch_current(text: str) -> bool:
     }
     disconnect = methods.get("_disconnect")
     run = methods.get("run")
-    if disconnect is None or run is None:
+    send_queue = methods.get("send_queue")
+    if disconnect is None or run is None or send_queue is None:
         return False
     disconnect_source = ast.get_source_segment(text, disconnect) or ""
     run_source = ast.get_source_segment(text, run) or ""
+    send_source = ast.get_source_segment(text, send_queue) or ""
     shutdown = disconnect_source.find("self.server_sock.shutdown(socket.SHUT_RDWR)")
     join = disconnect_source.find("self.queue_thread.join()")
     receive = run_source.split("self.handle_server_data()", 1)
@@ -695,6 +697,7 @@ def legacy_transport_cleanup_patch_current(text: str) -> bool:
         and "self._disconnect()" in run_source.split("except Exception:", 1)[1].split("raise", 1)[0]
         and receive_safe
         and select_safe
+        and "self.server_sock.shutdown(socket.SHUT_RDWR)" in send_source
     )
 
 
@@ -708,12 +711,15 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
     upgrading_v1 = TRANSPORT_CLEANUP_MARKER_V1 in text
     upgrading_v2 = TRANSPORT_CLEANUP_MARKER_V2 in text
     upgrading_v3 = TRANSPORT_CLEANUP_MARKER_V3 in text
+    upgrading_v4 = TRANSPORT_CLEANUP_MARKER_V4 in text
     if upgrading_v1:
         text = text.replace(TRANSPORT_CLEANUP_MARKER_V1, "", 1).rstrip("\n") + "\n"
     elif upgrading_v2:
         text = text.replace(TRANSPORT_CLEANUP_MARKER_V2, "", 1).rstrip("\n") + "\n"
     elif upgrading_v3:
         text = text.replace(TRANSPORT_CLEANUP_MARKER_V3, "", 1).rstrip("\n") + "\n"
+    elif upgrading_v4:
+        text = text.replace(TRANSPORT_CLEANUP_MARKER_V4, "", 1).rstrip("\n") + "\n"
 
     try:
         tree = ast.parse(text, feature_version=(3, 10))
@@ -735,7 +741,7 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
     if disconnect is None or run is None:
         raise ValueError("unsupported legacy TCPTransport layout")
 
-    if not (upgrading_v1 or upgrading_v2 or upgrading_v3):
+    if not (upgrading_v1 or upgrading_v2 or upgrading_v3 or upgrading_v4):
         disconnect_source = ast.get_source_segment(text, disconnect) or ""
         updated_disconnect, count = re.subn(
             r"(?m)^([ \t]*)if not self\.connected:[ \t]*$",
@@ -777,7 +783,7 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
             raise ValueError("unsupported legacy transport connection-failure path")
         text = text.replace(run_source, updated_run, 1)
 
-    if not (upgrading_v2 or upgrading_v3):
+    if not (upgrading_v2 or upgrading_v3 or upgrading_v4):
         # Shut down the socket before joining the sender. A sender blocked in
         # sendall() otherwise prevents _disconnect() and reconnect from completing.
         tree = ast.parse(text, feature_version=(3, 10))
@@ -830,7 +836,7 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
             raise ValueError("unsupported legacy transport socket close")
         text = text.replace(disconnect_source, updated_disconnect, 1)
 
-    if not upgrading_v3:
+    if not (upgrading_v3 or upgrading_v4):
         # A malformed relay frame raises JSONDecodeError/ValueError, not socket.error.
         # Treat any ordinary receive/parse exception as a broken connection so the
         # native connector loop survives and retries. BaseException still propagates.
@@ -858,31 +864,70 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
             raise ValueError("unsupported legacy transport receive-failure path")
         text = text.replace(run_source, updated_run, 1)
 
-    # Concurrent close can invalidate the descriptor between the while guard and
-    # select(). Python reports that as ValueError, not OSError/socket.error.
+    if not upgrading_v4:
+        # Concurrent close can invalidate the descriptor between the while guard and
+        # select(). Python reports that as ValueError, not OSError/socket.error.
+        tree = ast.parse(text, feature_version=(3, 10))
+        tcp = next(
+            node for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "TCPTransport"
+        )
+        run = next(
+            node for node in tcp.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "run"
+        )
+        run_source = ast.get_source_segment(text, run) or ""
+        select_pattern = (
+            r"(select\.select\([^\n]*\n(?:[^\n]*\n)*?"
+            r"([ \t]*)except )socket\.error(:)"
+        )
+        updated_run, count = re.subn(
+            select_pattern,
+            lambda match: match.group(1) + "(socket.error, ValueError)" + match.group(3),
+            run_source,
+            count=1,
+        )
+        if count != 1:
+            raise ValueError("unsupported legacy transport select-failure path")
+        text = text.replace(run_source, updated_run, 1)
+
+    # A write-side socket failure used to terminate only the sender thread,
+    # leaving the transport marked connected and future messages queued forever.
+    # Shut down the socket so run()/select wakes and the normal reconnect path runs.
     tree = ast.parse(text, feature_version=(3, 10))
     tcp = next(
         node for node in tree.body
         if isinstance(node, ast.ClassDef) and node.name == "TCPTransport"
     )
-    run = next(
+    send_queue = next(
         node for node in tcp.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "run"
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == "send_queue"
     )
-    run_source = ast.get_source_segment(text, run) or ""
-    select_pattern = (
-        r"(select\.select\([^\n]*\n(?:[^\n]*\n)*?"
-        r"([ \t]*)except )socket\.error(:)"
+    send_source = ast.get_source_segment(text, send_queue) or ""
+    send_pattern = (
+        r"(?m)^([ \t]*)except socket\.error:[ \t]*\n"
+        r"([ \t]*)return[ \t]*$"
     )
-    updated_run, count = re.subn(
-        select_pattern,
-        lambda match: match.group(1) + "(socket.error, ValueError)" + match.group(3),
-        run_source,
-        count=1,
-    )
+
+    def wake_receiver(match):
+        indent = match.group(1)
+        body = match.group(2)
+        unit = "\t" if "\t" in body else "    "
+        return (
+            indent + "except socket.error:\n"
+            + body + "try:\n"
+            + body + unit + "if self.server_sock is not None:\n"
+            + body + unit + unit + "self.server_sock.shutdown(socket.SHUT_RDWR)\n"
+            + body + "except (OSError, AttributeError):\n"
+            + body + unit + "pass\n"
+            + body + "return"
+        )
+
+    updated_send, count = re.subn(send_pattern, wake_receiver, send_source, count=1)
     if count != 1:
-        raise ValueError("unsupported legacy transport select-failure path")
-    text = text.replace(run_source, updated_run, 1)
+        raise ValueError("unsupported legacy transport send-failure path")
+    text = text.replace(send_source, updated_send, 1)
 
     text = text.rstrip("\n") + "\n\n" + TRANSPORT_CLEANUP_MARKER + "\n"
     if not legacy_transport_cleanup_patch_current(text):
@@ -1023,7 +1068,8 @@ LEGACY_TRANSPORT_RELATIVE = Path("orca-scripts/transport.py")
 TRANSPORT_CLEANUP_MARKER_V1 = "# linux-rdaccess transport cleanup v1"
 TRANSPORT_CLEANUP_MARKER_V2 = "# linux-rdaccess transport cleanup v2"
 TRANSPORT_CLEANUP_MARKER_V3 = "# linux-rdaccess transport cleanup v3"
-TRANSPORT_CLEANUP_MARKER = "# linux-rdaccess transport cleanup v4"
+TRANSPORT_CLEANUP_MARKER_V4 = "# linux-rdaccess transport cleanup v4"
+TRANSPORT_CLEANUP_MARKER = "# linux-rdaccess transport cleanup v5"
 LEGACY_COMPAT_MARKER_V1 = "# linux-rdaccess NVDA/Orca input compatibility"
 LEGACY_COMPAT_MARKER_V2 = "# linux-rdaccess NVDA/Orca input compatibility v2"
 LEGACY_COMPAT_MARKER_V3 = "# linux-rdaccess NVDA/Orca input compatibility v3"
