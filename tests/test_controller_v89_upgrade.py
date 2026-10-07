@@ -44,7 +44,6 @@ class ControllerV89UpgradeTests(unittest.TestCase):
                 previous = current.replace(
                     remote_access.LEGACY_COMPAT_MARKER,
                     marker,
-                    1,
                 )
                 path.write_text(previous)
                 self.assertFalse(remote_access.legacy_controller_patch_current(previous))
