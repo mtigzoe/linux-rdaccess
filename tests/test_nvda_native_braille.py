@@ -9,7 +9,7 @@ from unittest import mock
 import a11y_model
 import orca_adapter
 import remote_access
-from tests.test_a11y_model import FakeAccessible
+from tests.test_a11y_model import FakeAccessible, FakeAction
 
 
 class SemanticFocusPayloadTests(unittest.TestCase):
@@ -38,6 +38,41 @@ class SemanticFocusPayloadTests(unittest.TestCase):
         self.assertEqual(focus["role"], "push button")
         self.assertIn("focused", focus["states"])
         self.assertIn("focusable", focus["states"])
+
+
+    def test_semantic_focus_registry_performs_only_current_bounded_actions(self):
+        action = FakeAction(["click"])
+        app = FakeAccessible("Smoke App", "application")
+        button = FakeAccessible(
+            "Apply changes",
+            "push button",
+            app,
+            states=("focusable", "enabled"),
+            action_iface=action,
+        )
+        orca_state = types.ModuleType("orca.orca_state")
+        orca_state.locusOfFocus = button
+        orca = types.ModuleType("orca")
+        orca.orca_state = orca_state
+        with mock.patch.dict(sys.modules, {
+            "orca": orca,
+            "orca.orca_state": orca_state,
+            "linux_rdaccess_a11y_model": a11y_model,
+        }):
+            payload = orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload()
+            self.assertIsNotNone(payload)
+            focus_id = payload["focus_id"]
+            self.assertTrue(
+                orca_adapter.OrcaRuntimeAdapter.perform_semantic_action(focus_id, 0),
+            )
+            self.assertEqual(action.performed, [0])
+            self.assertFalse(
+                orca_adapter.OrcaRuntimeAdapter.perform_semantic_action(focus_id, 32),
+            )
+            orca_adapter.OrcaRuntimeAdapter.clear_semantic_focus()
+            self.assertFalse(
+                orca_adapter.OrcaRuntimeAdapter.perform_semantic_action(focus_id, 0),
+            )
 
     def test_missing_orca_focus_fails_closed(self):
         orca_state = types.ModuleType("orca.orca_state")
