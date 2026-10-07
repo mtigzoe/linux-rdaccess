@@ -397,7 +397,7 @@ class NvdaSpeechLink:
         except (ConnectionError, OSError) as exc:
             self._drop(f"read failed: {exc}")
             return
-        for msg in self._rx.drain():
+        for msg in self._rx.drain_current_session():
             if msg.get("type") not in ("index", "ping"):
                 log.debug("received a protocol message")
         if self._rx.xon_count != self._seen_xon_count:
