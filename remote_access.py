@@ -681,25 +681,31 @@ def legacy_transport_cleanup_patch_current(text: str) -> bool:
     run_source = ast.get_source_segment(text, run) or ""
     shutdown = disconnect_source.find("self.server_sock.shutdown(socket.SHUT_RDWR)")
     join = disconnect_source.find("self.queue_thread.join()")
+    receive = run_source.split("self.handle_server_data()", 1)
+    receive_safe = len(receive) == 2 and "except Exception:" in receive[1].split("self.connected = False", 1)[0]
     return (
         "if self.server_sock is None and self.queue_thread is None:" in disconnect_source
         and shutdown >= 0
         and join > shutdown
         and "except Exception:" in run_source
         and "self._disconnect()" in run_source.split("except Exception:", 1)[1].split("raise", 1)[0]
+        and receive_safe
     )
 
 
 def _patch_legacy_transport_cleanup(text: str) -> str:
-    """Fix stale socket/send-thread ownership in the verified Orca Remote transport."""
+    """Fix stale resources and receive failures in the verified Orca Remote transport."""
     if TRANSPORT_CLEANUP_MARKER in text:
         if legacy_transport_cleanup_patch_current(text):
             return text
         raise ValueError("current transport cleanup marker has an incomplete patch")
 
     upgrading_v1 = TRANSPORT_CLEANUP_MARKER_V1 in text
+    upgrading_v2 = TRANSPORT_CLEANUP_MARKER_V2 in text
     if upgrading_v1:
         text = text.replace(TRANSPORT_CLEANUP_MARKER_V1, "", 1).rstrip("\n") + "\n"
+    elif upgrading_v2:
+        text = text.replace(TRANSPORT_CLEANUP_MARKER_V2, "", 1).rstrip("\n") + "\n"
 
     try:
         tree = ast.parse(text, feature_version=(3, 10))
@@ -721,7 +727,7 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
     if disconnect is None or run is None:
         raise ValueError("unsupported legacy TCPTransport layout")
 
-    if not upgrading_v1:
+    if not (upgrading_v1 or upgrading_v2):
         disconnect_source = ast.get_source_segment(text, disconnect) or ""
         updated_disconnect, count = re.subn(
             r"(?m)^([ \t]*)if not self\.connected:[ \t]*$",
@@ -763,58 +769,85 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
             raise ValueError("unsupported legacy transport connection-failure path")
         text = text.replace(run_source, updated_run, 1)
 
-    # Shut down the socket before joining the sender. A sender blocked in
-    # sendall() otherwise prevents _disconnect() and therefore reconnect from
-    # completing. shutdown() is allowed to fail for an unconnected socket.
+    if not upgrading_v2:
+        # Shut down the socket before joining the sender. A sender blocked in
+        # sendall() otherwise prevents _disconnect() and reconnect from completing.
+        tree = ast.parse(text, feature_version=(3, 10))
+        tcp = next(
+            node for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "TCPTransport"
+        )
+        disconnect = next(
+            node for node in tcp.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "_disconnect"
+        )
+        disconnect_source = ast.get_source_segment(text, disconnect) or ""
+        queue_pattern = r"(?m)^([ \t]*)if self\.queue_thread is not None:[ \t]*$"
+
+        def add_shutdown(match):
+            indent = match.group(1)
+            unit = "\t" if "\t" in indent else "    "
+            return (
+                indent + "if self.server_sock is not None:\n"
+                + indent + unit + "try:\n"
+                + indent + unit + unit + "self.server_sock.shutdown(socket.SHUT_RDWR)\n"
+                + indent + unit + "except (OSError, AttributeError):\n"
+                + indent + unit + unit + "pass\n"
+                + indent + "if self.queue_thread is not None:"
+            )
+
+        updated_disconnect, count = re.subn(
+            queue_pattern, add_shutdown, disconnect_source, count=1)
+        if count != 1:
+            raise ValueError("unsupported legacy transport send-thread cleanup")
+
+        close_pattern = (
+            r"(?m)^([ \t]*)self\.server_sock\.close\(\)[ \t]*\n"
+            r"\1self\.server_sock = None[ \t]*$"
+        )
+
+        def guard_close(match):
+            indent = match.group(1)
+            unit = "\t" if "\t" in indent else "    "
+            return (
+                indent + "if self.server_sock is not None:\n"
+                + indent + unit + "self.server_sock.close()\n"
+                + indent + unit + "self.server_sock = None"
+            )
+
+        updated_disconnect, count = re.subn(
+            close_pattern, guard_close, updated_disconnect, count=1)
+        if count != 1:
+            raise ValueError("unsupported legacy transport socket close")
+        text = text.replace(disconnect_source, updated_disconnect, 1)
+
+    # A malformed relay frame raises JSONDecodeError/ValueError, not socket.error.
+    # Treat any ordinary receive/parse exception as a broken connection so the
+    # native connector loop survives and retries. BaseException still propagates.
     tree = ast.parse(text, feature_version=(3, 10))
     tcp = next(
         node for node in tree.body
         if isinstance(node, ast.ClassDef) and node.name == "TCPTransport"
     )
-    disconnect = next(
+    run = next(
         node for node in tcp.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.name == "_disconnect"
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "run"
     )
-    disconnect_source = ast.get_source_segment(text, disconnect) or ""
-    queue_pattern = r"(?m)^([ \t]*)if self\.queue_thread is not None:[ \t]*$"
-
-    def add_shutdown(match):
-        indent = match.group(1)
-        unit = "\t" if "\t" in indent else "    "
-        return (
-            indent + "if self.server_sock is not None:\n"
-            + indent + unit + "try:\n"
-            + indent + unit + unit + "self.server_sock.shutdown(socket.SHUT_RDWR)\n"
-            + indent + unit + "except (OSError, AttributeError):\n"
-            + indent + unit + unit + "pass\n"
-            + indent + "if self.queue_thread is not None:"
-        )
-
-    updated_disconnect, count = re.subn(
-        queue_pattern, add_shutdown, disconnect_source, count=1)
-    if count != 1:
-        raise ValueError("unsupported legacy transport send-thread cleanup")
-
-    close_pattern = (
-        r"(?m)^([ \t]*)self\.server_sock\.close\(\)[ \t]*\n"
-        r"\1self\.server_sock = None[ \t]*$"
+    run_source = ast.get_source_segment(text, run) or ""
+    receive_pattern = (
+        r"(self\.handle_server_data\(\)[ \t]*\n"
+        r"([ \t]*)except )socket\.error(:)"
     )
-
-    def guard_close(match):
-        indent = match.group(1)
-        unit = "\t" if "\t" in indent else "    "
-        return (
-            indent + "if self.server_sock is not None:\n"
-            + indent + unit + "self.server_sock.close()\n"
-            + indent + unit + "self.server_sock = None"
-        )
-
-    updated_disconnect, count = re.subn(
-        close_pattern, guard_close, updated_disconnect, count=1)
+    updated_run, count = re.subn(
+        receive_pattern,
+        lambda match: match.group(1) + "Exception" + match.group(3),
+        run_source,
+        count=1,
+    )
     if count != 1:
-        raise ValueError("unsupported legacy transport socket close")
-    text = text.replace(disconnect_source, updated_disconnect, 1)
+        raise ValueError("unsupported legacy transport receive-failure path")
+    text = text.replace(run_source, updated_run, 1)
 
     text = text.rstrip("\n") + "\n\n" + TRANSPORT_CLEANUP_MARKER + "\n"
     if not legacy_transport_cleanup_patch_current(text):
@@ -953,7 +986,8 @@ def update_legacy_orca_customizations(
 LEGACY_REMOTE_CONTROLLER_RELATIVE = Path("orca-scripts/remote_controller.py")
 LEGACY_TRANSPORT_RELATIVE = Path("orca-scripts/transport.py")
 TRANSPORT_CLEANUP_MARKER_V1 = "# linux-rdaccess transport cleanup v1"
-TRANSPORT_CLEANUP_MARKER = "# linux-rdaccess transport cleanup v2"
+TRANSPORT_CLEANUP_MARKER_V2 = "# linux-rdaccess transport cleanup v2"
+TRANSPORT_CLEANUP_MARKER = "# linux-rdaccess transport cleanup v3"
 LEGACY_COMPAT_MARKER_V1 = "# linux-rdaccess NVDA/Orca input compatibility"
 LEGACY_COMPAT_MARKER_V2 = "# linux-rdaccess NVDA/Orca input compatibility v2"
 LEGACY_COMPAT_MARKER_V3 = "# linux-rdaccess NVDA/Orca input compatibility v3"
