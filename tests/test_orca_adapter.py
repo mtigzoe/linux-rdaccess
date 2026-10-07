@@ -533,6 +533,18 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
         script.utilities.inDocumentContent.assert_called_once_with(address_bar)
         script.togglePresentationMode.assert_not_called()
 
+    def test_mode_toggle_snake_case_guard_preserves_browser_chrome_focus(self):
+        address_bar = object()
+        script = types.SimpleNamespace(
+            toggle_presentation_mode=mock.Mock(),
+            utilities=types.SimpleNamespace(
+                in_document_content=mock.Mock(return_value=False)),
+        )
+        with self._fake_orca(script, focus=address_bar, snake_state=True):
+            self.assertIs(OrcaRuntimeAdapter.toggle_presentation_mode(), False)
+        script.utilities.in_document_content.assert_called_once_with(address_bar)
+        script.toggle_presentation_mode.assert_not_called()
+
     def test_mode_toggle_preserves_unavailable_and_rejected_handler_results(self):
         with self._fake_orca(None):
             self.assertIsNone(OrcaRuntimeAdapter.toggle_presentation_mode())
@@ -643,6 +655,17 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
         script.presentTime.assert_called_once_with(None)
         script.presentDate.assert_called_once_with(None)
 
+    def test_time_and_date_support_snake_case_commands(self):
+        calls = []
+        script = types.SimpleNamespace(
+            present_time=lambda event=None: calls.append(("time", event)),
+            present_date=lambda event=None: calls.append(("date", event)),
+        )
+        with self._fake_orca(script, snake_state=True):
+            self.assertIs(OrcaRuntimeAdapter.present_time(), True)
+            self.assertIs(OrcaRuntimeAdapter.present_date(), True)
+        self.assertEqual(calls, [("time", None), ("date", None)])
+
     def test_time_and_date_distinguish_missing_and_rejected_handlers(self):
         script = types.SimpleNamespace()
         with self._fake_orca(script):
@@ -673,6 +696,22 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
         self.assertIs(script.flatReviewContext, flat_review)
         self.assertIs(script._lastCommandWasCaretNav, False)
         self.assertIs(script._lastCommandWasStructNav, True)
+
+    def test_current_line_supports_snake_case_handler_and_web_utilities(self):
+        browse_obj, focus_obj = object(), object()
+        script = types.SimpleNamespace(
+            say_line=mock.Mock(return_value=None),
+            utilities=types.SimpleNamespace(
+                get_caret_context=mock.Mock(return_value=(browse_obj, 7)),
+                in_document_content=mock.Mock(return_value=True)),
+            _lastCommandWasCaretNav=False,
+            _lastCommandWasStructNav=True,
+        )
+        with self._fake_orca(script, focus=focus_obj, snake_state=True):
+            self.assertIs(OrcaRuntimeAdapter.present_current_line(), True)
+        script.say_line.assert_called_once_with(browse_obj)
+        script.utilities.get_caret_context.assert_called_once_with()
+        script.utilities.in_document_content.assert_called_once_with(focus_obj)
 
     def test_current_line_reports_address_bar_without_consulting_cached_page_caret(self):
         address_bar, stale_page_caret = object(), object()
