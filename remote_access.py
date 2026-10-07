@@ -1151,7 +1151,8 @@ LEGACY_COMPAT_MARKER_V80 = "# linux-rdaccess NVDA/Orca input compatibility v80"
 LEGACY_COMPAT_MARKER_V81 = "# linux-rdaccess NVDA/Orca input compatibility v81"
 LEGACY_COMPAT_MARKER_V82 = "# linux-rdaccess NVDA/Orca input compatibility v82"
 LEGACY_COMPAT_MARKER_V83 = "# linux-rdaccess NVDA/Orca input compatibility v83"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v84"
+LEGACY_COMPAT_MARKER_V84 = "# linux-rdaccess NVDA/Orca input compatibility v84"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v85"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -2036,7 +2037,16 @@ _LEGACY_HELPERS = '''\
                 request["used"] = True
                 self._lrd_trace_why = "pass_next"
                 self._lrd_bypass_next = False
-                self._linux_rdaccess_flush_pending_nvda_modifiers()
+                if not self._linux_rdaccess_flush_pending_nvda_modifiers():
+                    # A failed deferred Insert must not turn Insert+key into a
+                    # plain bypassed key. Keep the bypass request available for
+                    # the next complete gesture and own this key's release.
+                    request["used"] = False
+                    if not request.get("external", False):
+                        self._lrd_bypass_next = True
+                    self._lrd_trace_why = "deferred_modifier_rejected"
+                    self._lrd_swapped.add(held)
+                    return True
                 result = self._linux_rdaccess_forward_bypass_key(
                     request, held, pressed, key_name, modifiers, vk_code, scan_code, extended)
                 if result is False:
@@ -4792,6 +4802,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V84,
                 LEGACY_COMPAT_MARKER_V83,
                 LEGACY_COMPAT_MARKER_V82,
                 LEGACY_COMPAT_MARKER_V81,
