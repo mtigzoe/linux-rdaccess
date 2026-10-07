@@ -33,6 +33,12 @@
 # Source: /usr/lib/python3/dist-packages/orca/speechdispatcherfactory.py
 
 class SpeechServer:
+    def sayAll(self, utteranceIterator, progressCallback):
+        GLib.idle_add(self._say_all, utteranceIterator, progressCallback)
+
+    def stop(self):
+        self._cancel()
+
     def _apply_acss(self, acss):
             if acss is None:
                 acss = settings.voices[settings.DEFAULT_VOICE]
@@ -221,4 +227,3 @@ class SpeechServer:
                 return command(*args, **kwargs)
             except:
                 pass
-

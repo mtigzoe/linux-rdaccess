@@ -125,6 +125,42 @@ class AnnouncerTests(unittest.TestCase):
         self.assertIsNone(second)
         self.assertIsNone(third)
 
+    def test_focus_return_after_dialog_close_is_not_an_event_duplicate(self):
+        field, dialog = Obj("Search", "text"), Obj("Confirm", "dialog")
+        self.assertIsNotNone(self.a.handle(A.FOCUS, 1, field))
+        self.clock.now += 0.05
+        self.assertIsNone(self.a.handle(A.FOCUS, 0, field))
+        self.assertIsNotNone(self.a.handle(A.FOCUS, 1, dialog))
+        self.clock.now += 0.05
+        self.assertIsNone(self.a.handle(A.FOCUS, 0, dialog))
+        restored = self.a.handle(A.FOCUS, 1, field)
+        self.assertIsNotNone(restored)
+        self.assertEqual((restored.text, restored.interrupt), ("Search, text", True))
+        # GTK's selected/active-descendant burst for the restored control
+        # still represents one presentation.
+        self.assertIsNone(self.a.handle(A.SELECTED, 1, field))
+        self.assertIsNone(self.a.handle(A.ACTIVE_DESCENDANT, 0, dialog, any_data=field))
+
+    def test_focus_loss_only_expires_the_departing_objects_dedupe(self):
+        first, second = Obj("First"), Obj("Second")
+        self.assertIsNotNone(self.a.handle(A.FOCUS, 1, first))
+        self.assertIsNotNone(self.a.handle(A.FOCUS, 1, second))
+        self.a.handle(A.FOCUS, 0, first)
+        self.assertIsNone(self.a.handle(A.FOCUS, 1, second))
+        self.assertIsNotNone(self.a.handle(A.FOCUS, 1, first))
+
+    def test_equal_descriptions_on_distinct_focused_controls_are_spoken(self):
+        first, second = Obj("First", "text"), Obj("Second", "text")
+        self.assertIsNotNone(self.a.handle(A.DESCRIPTION_CHANGED, 0, first, "Required"))
+        self.assertIsNone(self.a.handle(A.DESCRIPTION_CHANGED, 0, first, "Required"))
+        self.assertIsNotNone(self.a.handle(A.DESCRIPTION_CHANGED, 0, second, "Required"))
+
+    def test_description_can_be_repeated_after_focus_returns(self):
+        field = Obj("Search", "text")
+        self.assertIsNotNone(self.a.handle(A.DESCRIPTION_CHANGED, 0, field, "Hint"))
+        self.a.handle(A.FOCUS, 0, field)
+        self.assertIsNotNone(self.a.handle(A.DESCRIPTION_CHANGED, 0, field, "Hint"))
+
     def test_alternating_duplicates_are_suppressed(self):
         """Regression: the old single-slot dedupe let A,B,A,B through."""
         a, b = Obj("A", "push button"), Obj("B", "push button")

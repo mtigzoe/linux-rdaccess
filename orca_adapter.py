@@ -26,6 +26,7 @@ ELEMENT_LIST_TYPES = (
 )
 
 _ELEMENT_LIST_LAST_INDEX = 0
+_REMOTE_BRAILLE_DISPLAY = None
 
 
 def show_elements_list(send_structural_list: Callable[[str], Any]) -> bool | None:
@@ -154,6 +155,63 @@ class OrcaRuntimeAdapter:
             ("panBrailleRight", "pan_braille_right"),
             default_event=True,
         )
+
+    @staticmethod
+    def set_remote_braille_width(width: int, owner: Any) -> bool:
+        """Size Orca 42's native viewport for a remote display on the main loop."""
+        global _REMOTE_BRAILLE_DISPLAY
+        if type(width) is not int or not 0 <= width <= 1024:
+            return False
+        if width == 0:
+            return OrcaRuntimeAdapter.restore_remote_braille_width(owner)
+        from orca import braille
+
+        size = getattr(braille, "_displaySize", None)
+        if (not isinstance(size, list) or len(size) != 2
+                or type(size[0]) is not int or size[0] <= 0):
+            return False
+        previous = _REMOTE_BRAILLE_DISPLAY
+        original = (previous["original"]
+                    if (previous is not None and previous["module"] is braille
+                        and previous["size"] is size and size[0] == previous["width"])
+                    else size[0])
+        request = {
+            "owner": owner, "module": braille, "size": size,
+            "original": original, "width": width,
+        }
+        _REMOTE_BRAILLE_DISPLAY = request
+        if size[0] != width:
+            old_width = size[0]
+            size[0] = width
+            try:
+                braille.refresh(True)
+            except Exception:
+                # Preserve a usable geometry and its original-width owner if
+                # the current accessibility object disappears during refresh.
+                if _REMOTE_BRAILLE_DISPLAY is request:
+                    _REMOTE_BRAILLE_DISPLAY = previous
+                    if getattr(braille, "_displaySize", None) is size and size[0] == width:
+                        size[0] = old_width
+                raise
+        return True
+
+    @staticmethod
+    def restore_remote_braille_width(owner: Any) -> bool:
+        """Release only this session's override, including delayed cleanup."""
+        global _REMOTE_BRAILLE_DISPLAY
+        previous = _REMOTE_BRAILLE_DISPLAY
+        if previous is None or previous["owner"] is not owner:
+            return True
+        _REMOTE_BRAILLE_DISPLAY = None
+        braille = previous["module"]
+        size = getattr(braille, "_displaySize", None)
+        # A local BrlAPI display can reconnect independently and replace its
+        # width. Preserve that change rather than restoring an obsolete size.
+        if (size is previous["size"] and isinstance(size, list) and len(size) == 2
+                and size[0] == previous["width"] and size[0] != previous["original"]):
+            size[0] = previous["original"]
+            braille.refresh(True)
+        return True
 
     @classmethod
     def route_braille(cls, index: int) -> bool | None:

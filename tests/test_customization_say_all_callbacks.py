@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import unittest
 
 import remote_access
+from tests.test_compat_lifecycle import Harness
 
 
 class Voice(dict):
@@ -39,7 +40,7 @@ class NativeClient:
         self.queued.append((self.volume, text, kwargs))
 
 
-class SayAllCallbacksTests(unittest.TestCase):
+class SayAllCallbacksTests(Harness, unittest.TestCase):
     def native(self):
         idle = []
         constants = SimpleNamespace(PROGRESS=0, INTERRUPTED=1, COMPLETED=2)
@@ -67,6 +68,7 @@ class SayAllCallbacksTests(unittest.TestCase):
             ('rate', server._set_rate), ('average-pitch', server._set_pitch),
             ('gain', server._set_volume), ('family', server._set_family))
         server._CALLBACK_TYPE_MAP = {'BEGIN': 0, 'CANCEL': 1, 'END': 2, 'INDEX_MARK': 0}
+        server._cancel = lambda: None
         native_speak = cls._speak
         return namespace, server, native_speak, idle
 
@@ -75,6 +77,7 @@ class SayAllCallbacksTests(unittest.TestCase):
         messages = []
         namespace = {
             'SpeechServer': type(server), 'old_speak': original,
+            'old_stop': type(server).stop,
             'LINUX_RDACCESS_MUTE_LOCAL_ORCA_SPEECH': True,
             'transport': SimpleNamespace(connected=True, connection_type='slave',
                                          send=lambda **kw: messages.append(kw)),
@@ -133,7 +136,9 @@ class SayAllCallbacksTests(unittest.TestCase):
                 consumed.append(context)
                 yield context, Voice(gain=5)
 
-        server._say_all(iterator(), lambda context, kind: progress.append((context, kind)))
+        server.sayAll(iterator(), lambda context, kind: progress.append((context, kind)))
+        func, args = idle.pop(0)
+        func(*args)
         self.assertEqual(len(consumed), 1)
         self.assertEqual(idle, [])
         callback = server._client.queued[0][2]['callback']
@@ -148,11 +153,14 @@ class SayAllCallbacksTests(unittest.TestCase):
         self.assertEqual(contexts[0].currentOffset, 5)
 
     def test_native_cancel_reports_interruption_without_advancing(self):
-        _namespace, server, _original, idle, messages = self.hooked()
+        namespace, server, _original, idle, messages = self.hooked()
         context = SimpleNamespace(utterance='FIRST', startOffset=0, endOffset=5)
         progress = []
-        server._say_all(iter([(context, Voice(gain=5)), (context, Voice(gain=5))]),
+        server.sayAll(iter([(context, Voice(gain=5)), (context, Voice(gain=5))]),
                         lambda context, kind: progress.append(kind))
+        func, args = idle.pop(0)
+        func(*args)
+        namespace['old_stop'](server)
         server._client.queued[0][2]['callback']('CANCEL')
         while idle:
             func, args = idle.pop(0)
@@ -163,12 +171,219 @@ class SayAllCallbacksTests(unittest.TestCase):
     def test_native_index_mark_updates_caret_offsets(self):
         _namespace, server, _original, idle, _messages = self.hooked()
         context = SimpleNamespace(utterance='FIRST', startOffset=10, endOffset=15)
-        server._say_all(iter([(context, Voice(gain=5))]), lambda *a: None)
+        server.sayAll(iter([(context, Voice(gain=5))]), lambda *a: None)
+        func, args = idle.pop(0)
+        func(*args)
         server._client.queued[0][2]['callback']('INDEX_MARK', index_mark='1:4')
         while idle:
             func, args = idle.pop(0)
             func(*args)
         self.assertEqual((context.currentOffset, context.currentEndOffset), (11, 14))
+
+    def test_end_already_queued_before_stop_cannot_forward_the_next_chunk(self):
+        namespace, server, _original, idle, messages = self.hooked()
+        contexts = [SimpleNamespace(utterance='FIRST', startOffset=0, endOffset=5),
+                    SimpleNamespace(utterance='SECOND', startOffset=5, endOffset=11)]
+        progress = []
+        server.sayAll(iter((context, Voice(gain=5)) for context in contexts),
+                      lambda context, kind: progress.append((context, kind)))
+        func, args = idle.pop(0)
+        func(*args)
+        server._client.queued[0][2]['callback']('END')
+        namespace['old_stop'](server)
+        while idle:
+            func, args = idle.pop(0)
+            func(*args)
+        self.assertEqual([message['sequence'] for message in messages], [['FIRST']])
+        self.assertEqual(progress, [])
+
+    def test_received_ctrl_expires_end_queued_ahead_of_the_main_loop_stop(self):
+        namespace, server, _original, idle, _messages = self.hooked()
+        controller, _, _ = self._patched_controller()
+        controller._linux_rdaccess_sync_state()
+        namespace['controller'] = controller
+        namespace['transport'] = controller.transport
+        controller._linux_rdaccess_run_main = lambda func: idle.append((func, ())) or True
+        controller.local_machine.cancel_speech = lambda: namespace['old_stop'](server)
+        contexts = [SimpleNamespace(utterance='FIRST', startOffset=0, endOffset=5),
+                    SimpleNamespace(utterance='SECOND', startOffset=5, endOffset=11)]
+        progress = []
+        server.sayAll(iter((context, Voice(gain=5)) for context in contexts),
+                      lambda context, kind: progress.append((context, kind)))
+        func, args = idle.pop(0)
+        func(*args)
+        server._client.queued[0][2]['callback']('END')
+        self._key(controller, 0xA2, True)
+        self.assertEqual(controller.transport.sent, ['speak', 'cancel'])
+        while idle:
+            func, args = idle.pop(0)
+            func(*args)
+        self.assertEqual(controller.transport.sent, ['speak', 'cancel'])
+        self.assertEqual(progress, [])
+
+    def test_expired_end_cleans_native_script_state_without_restoring_old_caret(self):
+        namespace, server, _original, idle, messages = self.hooked()
+        # Orca 42 web/default textLines sets these fields before yielding;
+        # its normal generator tail and INTERRUPTED callback clear them.
+        native = {'__name__': 'orca.scripts.web.script'}
+        exec('''
+class Script:
+    def __init__(self):
+        self._inSayAll = False
+        self._sayAllContexts = []
+        self._sayAllContents = []
+        self.caret_updates = []
+
+    def textLines(self, chunks):
+        self._inSayAll = True
+        self._sayAllContexts = ["old"]
+        self._sayAllContents = ["old"]
+        yield from chunks
+        self._inSayAll = False
+        self._sayAllContexts = []
+        self._sayAllContents = []
+
+    def __sayAllProgressCallback(self, context, kind):
+        self.caret_updates.append(context)
+        if kind == 1:
+            self._inSayAll = False
+            self._sayAllContexts = []
+            self._sayAllContents = []
+''', native)
+        script = native['Script']()
+        contexts = [SimpleNamespace(utterance='FIRST', startOffset=0, endOffset=5),
+                    SimpleNamespace(utterance='SECOND', startOffset=5, endOffset=11)]
+        namespace['controller'] = SimpleNamespace(_lrd_generation=1)
+        server.sayAll(script.textLines((context, Voice(gain=5)) for context in contexts),
+                      script._Script__sayAllProgressCallback)
+        func, args = idle.pop(0)
+        func(*args)
+        self.assertTrue(script._inSayAll)
+        server._client.queued[0][2]['callback']('END')
+        namespace['controller']._lrd_generation += 1
+        while idle:
+            func, args = idle.pop(0)
+            func(*args)
+        self.assertFalse(script._inSayAll)
+        self.assertEqual(script._sayAllContexts, [])
+        self.assertEqual(script._sayAllContents, [])
+        self.assertEqual(script.caret_updates, [])
+        self.assertEqual(len(messages), 1)
+
+        # An old idle must not clear the same script's replacement Say All.
+        chunks = [(context, Voice(gain=5)) for context in contexts]
+        server.sayAll(script.textLines(iter(chunks)), script._Script__sayAllProgressCallback)
+        func, args = idle.pop(0)
+        func(*args)
+        server._client.queued[-1][2]['callback']('END')
+        server.sayAll(script.textLines(iter(chunks)), script._Script__sayAllProgressCallback)
+        while idle:
+            func, args = idle.pop(0)
+            func(*args)
+        self.assertTrue(script._inSayAll)
+        self.assertEqual(script._sayAllContexts, ['old'])
+        self.assertEqual(script.caret_updates, [])
+        self.assertEqual(len(messages), 3)
+
+    def test_reconnect_expires_completed_callback_and_next_chunk(self):
+        namespace, server, _original, idle, messages = self.hooked()
+        namespace['controller'] = SimpleNamespace(_lrd_generation=1)
+        contexts = [SimpleNamespace(utterance='FIRST', startOffset=0, endOffset=5),
+                    SimpleNamespace(utterance='SECOND', startOffset=5, endOffset=11)]
+        progress = []
+        server.sayAll(iter((context, Voice(gain=5)) for context in contexts),
+                      lambda context, kind: progress.append((context, kind)))
+        func, args = idle.pop(0)
+        func(*args)
+        server._client.queued[0][2]['callback']('END')
+        namespace['controller']._lrd_generation += 1
+        while idle:
+            func, args = idle.pop(0)
+            func(*args)
+        self.assertEqual([message['sequence'] for message in messages], [['FIRST']])
+        self.assertEqual(progress, [])
+
+    def test_stop_before_first_idle_never_starts_the_iterator(self):
+        namespace, server, _original, idle, messages = self.hooked()
+        consumed = []
+
+        def chunks():
+            consumed.append(True)
+            yield SimpleNamespace(utterance='STALE'), Voice(gain=5)
+
+        server.sayAll(chunks(), lambda *args: self.fail('stale progress'))
+        namespace['old_stop'](server)
+        while idle:
+            func, args = idle.pop(0)
+            func(*args)
+        self.assertEqual(consumed, [])
+        self.assertEqual(messages, [])
+        self.assertEqual(server._client.queued, [])
+
+    def test_disconnect_before_first_idle_does_not_speak_stale_text_locally(self):
+        namespace, server, _original, idle, messages = self.hooked()
+        context = SimpleNamespace(utterance='STALE', startOffset=0, endOffset=5)
+        server.sayAll(iter([(context, Voice(gain=5))]), lambda *args: None)
+        namespace['transport'].connected = False
+        while idle:
+            func, args = idle.pop(0)
+            func(*args)
+        self.assertEqual(messages, [])
+        self.assertEqual(server._client.queued, [])
+
+    def test_cancel_from_replaced_run_cannot_update_the_new_caret(self):
+        namespace, server, _original, idle, messages = self.hooked()
+        first = SimpleNamespace(utterance='FIRST', startOffset=0, endOffset=5)
+        second = SimpleNamespace(utterance='SECOND', startOffset=10, endOffset=16)
+        progress = []
+        server.sayAll(iter([(first, Voice(gain=5))]),
+                      lambda *args: progress.append('first'))
+        func, args = idle.pop(0)
+        func(*args)
+        namespace['old_stop'](server)
+        server.sayAll(iter([(second, Voice(gain=5))]),
+                      lambda *args: progress.append('second'))
+        func, args = idle.pop(0)
+        func(*args)
+        server._client.queued[0][2]['callback']('CANCEL')
+        server._client.queued[1][2]['callback']('INDEX_MARK', index_mark='1:4')
+        while idle:
+            func, args = idle.pop(0)
+            func(*args)
+        self.assertEqual(progress, ['second'])
+        self.assertEqual(second.currentOffset, 11)
+        self.assertEqual(len(messages), 2)
+
+    def test_lifecycle_hook_is_not_stacked_when_customization_runs_again(self):
+        namespace, server, _original, _idle, _messages = self.hooked()
+        say_all, stop = type(server).sayAll, namespace['old_stop']
+        exec(remote_access._CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK, namespace)
+        self.assertIs(type(server).sayAll, say_all)
+        self.assertIs(namespace['old_stop'], stop)
+
+    def test_v1_upgrade_is_strict_idempotent_and_preserves_getter_docstring(self):
+        source = remote_access._CUSTOMIZATION_SPEECH_FORWARD_SOURCE
+        source = remote_access._patch_legacy_customization_speech_sequence(source)
+        source += '\n' + remote_access._LOCAL_SPEECH_PREF_HOOK
+        source = remote_access._patch_legacy_customization_say_all_callbacks(source)
+        source = source.replace(remote_access._CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK,
+                                remote_access._CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V1)
+        getter = remote_access._CUSTOMIZATION_SPEECH_SERVER_SOURCE.replace(
+            '    try:', '    """café native speech server"""\n    try:')
+        source += getter
+        self.assertFalse(remote_access.legacy_customization_say_all_callback_patch_current(source))
+        upgraded = remote_access._patch_legacy_customization_say_all_callbacks(source)
+        self.assertTrue(remote_access.legacy_customization_say_all_callback_patch_current(upgraded))
+        self.assertIn('"""café native speech server"""', upgraded)
+        self.assertNotIn(remote_access.CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V1, upgraded)
+        self.assertEqual(remote_access._patch_legacy_customization_say_all_callbacks(upgraded), upgraded)
+        for changed in (source.replace('current.set_volume(-100)', 'current.set_volume(-35)'),
+                        source.replace('return speech._state.server', 'return custom_server()'),
+                        upgraded.replace('while current():', 'while True:'),
+                        upgraded + '\n_linux_rdaccess_wrap_say_all = other\n'):
+            self.assertFalse(remote_access.legacy_customization_say_all_callback_patch_current(changed))
+            with self.assertRaisesRegex(ValueError, 'incomplete|unsupported'):
+                remote_access._patch_legacy_customization_say_all_callbacks(changed)
 
     def test_backend_reset_mutes_and_restores_both_clients(self):
         _namespace, server, _original, _idle, _messages = self.hooked()

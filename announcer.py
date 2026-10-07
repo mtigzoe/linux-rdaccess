@@ -16,7 +16,8 @@ Rules:
     interrupt.
   * Repeats are dropped if the same accessible (same object, name and role) was spoken less
     than `dedupe_seconds` ago. GTK often emits focus, selected and active-descendant for one
-    keypress. Two different controls that merely share a label are never merged.
+    keypress. Losing focus expires that object's dedupe so returning from a dialog is
+    announced. Two different controls that merely share a label are never merged.
 """
 
 from __future__ import annotations
@@ -83,6 +84,14 @@ class Announcer:
         if event_type not in HANDLED:
             return None
         if event_type in _NEEDS_DETAIL1 and not detail1:
+            if event_type == FOCUS:
+                # A new focus visit must speak even inside the duplicate-event
+                # window. Use identity alone: losing focus needs no D-Bus query.
+                identity = _identity(source)
+                self._recent = {
+                    key: when for key, when in self._recent.items()
+                    if key[1] != identity
+                }
             return None
 
         if event_type == ACTIVE_DESCENDANT:
@@ -106,7 +115,7 @@ class Announcer:
             return None
         description = any_data if isinstance(any_data, str) else source.get_description()
         description = _clean(description)
-        if not description or self._is_repeat(("description", description)):
+        if not description or self._is_repeat(("description", _identity(source), description)):
             return None
         return Announcement(description, interrupt=False)
 
