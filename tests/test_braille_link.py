@@ -90,6 +90,26 @@ class BrailleLinkTests(unittest.TestCase):
         self.assertEqual(msg["type"], "display")
         self.assertEqual(msg["cells"], [1, 2, 0, 0])
 
+    def test_invalid_num_cells_values_are_ignored_and_display_stays_bounded(self):
+        self.connect_v2()
+        for value in (0, -1, 1025, 10**12, True, False, "not-a-number"):
+            with self.subTest(value=value):
+                self.channel.incoming.append(
+                    (json.dumps({
+                        "type": "attribute_value",
+                        "attribute": "numCells",
+                        "value": value,
+                    }) + "\n").encode()
+                )
+                self.link.poll()
+                self.assertEqual(self.link.num_cells, 80)
+
+        self.channel.writes.clear()
+        self.assertTrue(self.link.display([1, 2]))
+        msg = self.json_writes()[-1]
+        self.assertEqual(len(msg["cells"]), 80)
+        self.assertEqual(msg["cells"][:2], [1, 2])
+
     def test_failed_handshake_stops_batch_and_reconnects_cleanly(self):
         replacement = FakeChannel()
         channels = iter((self.channel, replacement))
