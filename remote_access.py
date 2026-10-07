@@ -3458,11 +3458,33 @@ _LEGACY_HELPERS = '''\
         def refresh():
             try:
                 from orca import braille as _braille
+                from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _adapter
+                _adapter.clear_semantic_focus()
                 _braille.refresh(True)
             except Exception:
                 log.error("linux-rdaccess: semantic braille refresh failed")
 
         self._linux_rdaccess_run_main(refresh)
+
+    def _linux_rdaccess_semantic_action(
+            self, version=None, object_id=None, action_index=None, **kwargs):
+        """Run a bounded NVDA semantic-object action on Orca's main loop."""
+        if (not getattr(self, "_lrd_nvda_native_braille", False)
+                or version != self._LRD_NATIVE_BRAILLE_VERSION):
+            return
+        if (not isinstance(object_id, str) or not object_id or len(object_id) > 256
+                or type(action_index) is not int or not 0 <= action_index < 32):
+            return
+
+        def run_action():
+            try:
+                from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _adapter
+                if not _adapter.perform_semantic_action(object_id, action_index):
+                    log.error("linux-rdaccess: semantic action rejected")
+            except Exception:
+                log.error("linux-rdaccess: semantic action failed")
+
+        self._linux_rdaccess_run_main(run_action)
 
     def _linux_rdaccess_handle_braille_info(self, num_cells):
         """Apply NVDA Remote's display width to Orca's native pan/routing state."""
