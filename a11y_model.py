@@ -26,6 +26,47 @@ def _clean(value: Any) -> str:
     return " ".join(str(value or "").split())
 
 
+def _invoke(obj, names: tuple[str, ...], *args):
+    for name in names:
+        method = getattr(obj, name, None)
+        if not callable(method):
+            continue
+        try:
+            return method(*args)
+        except Exception:
+            continue
+    return None
+
+
+def _looks_accessible(obj) -> bool:
+    return obj is not None and (
+        callable(getattr(obj, "get_name", None))
+        or callable(getattr(obj, "getName", None))
+        or hasattr(obj, "name")
+    )
+
+
+def _name(obj) -> str:
+    value = _invoke(obj, ("get_name", "getName"))
+    if value is None:
+        value = getattr(obj, "name", "")
+    return _clean(value)
+
+
+def _role_name(obj) -> str:
+    value = _invoke(obj, ("get_role_name", "getRoleName"))
+    if value is None:
+        value = getattr(obj, "roleName", "")
+    return _clean(value)
+
+
+def _description(obj) -> str:
+    value = _invoke(obj, ("get_description", "getDescription"))
+    if value is None:
+        value = getattr(obj, "description", "")
+    return _clean(value)
+
+
 def object_id(obj: object) -> str:
     """Return a stable ID for one live AT-SPI proxy within this bridge process."""
     try:
@@ -36,30 +77,33 @@ def object_id(obj: object) -> str:
 
 
 def _parent(obj):
+    parent = _invoke(obj, ("get_parent", "getParent"))
+    if parent is not None:
+        return parent
     try:
-        return obj.get_parent()
+        return getattr(obj, "parent", None)
     except Exception:
         return None
 
 
 def _children(obj) -> list:
+    count = _invoke(obj, ("get_child_count", "getChildCount"))
+    if count is None:
+        count = getattr(obj, "childCount", None)
     try:
-        count = int(obj.get_child_count())
-    except Exception:
+        count = int(count)
+    except (TypeError, ValueError):
         return []
     children = []
     for index in range(max(0, count)):
-        try:
-            child = obj.get_child_at_index(index)
-        except Exception:
-            continue
-        if child is not None and hasattr(child, "get_name"):
+        child = _invoke(obj, ("get_child_at_index", "getChildAtIndex"), index)
+        if _looks_accessible(child):
             children.append(child)
     return children
 
 
 def _state_name(state: object) -> str:
-    """Normalize a GI enum/state token into the wire-format spelling."""
+    """Normalize GI or legacy pyatspi state tokens into wire-format spelling."""
     for attr in ("value_nick", "value_name", "name"):
         raw = getattr(state, attr, None)
         if raw:
@@ -67,6 +111,19 @@ def _state_name(state: object) -> str:
             break
     else:
         text = str(state)
+
+    # Legacy pyatspi commonly exposes integer STATE_* constants. Resolve them
+    # lazily so this pure-Python module still imports where pyatspi is absent.
+    if text.strip().lstrip("-").isdigit():
+        try:
+            import pyatspi  # type: ignore
+            for attr in dir(pyatspi):
+                if attr.startswith("STATE_") and getattr(pyatspi, attr, object()) == state:
+                    text = attr
+                    break
+        except Exception:
+            pass
+
     text = text.strip().lower()
     for prefix in ("atspi_state_", "state_"):
         if text.startswith(prefix):
@@ -77,11 +134,13 @@ def _state_name(state: object) -> str:
 
 def _states(obj, *, focused: bool) -> list[str]:
     states: set[str] = set()
-    try:
-        state_set = obj.get_state_set()
-        raw_states = state_set.get_states()
-    except Exception:
+    state_set = _invoke(obj, ("get_state_set", "getState"))
+    if state_set is None:
         raw_states = ()
+    else:
+        raw_states = _invoke(state_set, ("get_states", "getStates"))
+        if raw_states is None:
+            raw_states = getattr(state_set, "states", ())
     for state in raw_states or ():
         name = _state_name(state)
         if name and name != "invalid":
@@ -94,16 +153,7 @@ def _states(obj, *, focused: bool) -> list[str]:
 
 
 def _action_iface(obj):
-    try:
-        iface = obj.get_action_iface()
-    except Exception:
-        iface = None
-    if iface is not None:
-        return iface
-    try:
-        return obj.get_action()
-    except Exception:
-        return None
+    return _invoke(obj, ("get_action_iface", "get_action", "queryAction"))
 
 
 def action_names(obj) -> list[str]:
@@ -111,14 +161,17 @@ def action_names(obj) -> list[str]:
     iface = _action_iface(obj)
     if iface is None:
         return []
+    count = _invoke(iface, ("get_n_actions", "getNActions"))
+    if count is None:
+        count = getattr(iface, "nActions", None)
     try:
-        count = min(MAX_ACTIONS, max(0, int(iface.get_n_actions())))
-    except Exception:
+        count = min(MAX_ACTIONS, max(0, int(count)))
+    except (TypeError, ValueError):
         return []
     names = []
     for index in range(count):
         try:
-            name = _clean(iface.get_action_name(index))
+            name = _clean(_invoke(iface, ("get_action_name", "getName"), index))
         except Exception:
             name = ""
         names.append(name or f"action {index + 1}")
@@ -132,32 +185,38 @@ def perform_action(obj, index: int) -> bool:
     iface = _action_iface(obj)
     if iface is None:
         return False
+    count = _invoke(iface, ("get_n_actions", "getNActions"))
+    if count is None:
+        count = getattr(iface, "nActions", None)
     try:
-        count = int(iface.get_n_actions())
-    except Exception:
+        count = int(count)
+    except (TypeError, ValueError):
         return False
     if index >= count:
         return False
-    try:
-        result = iface.do_action(index)
-    except Exception:
+    result = _invoke(iface, ("do_action", "doAction"), index)
+    if result is None and not (
+            callable(getattr(iface, "do_action", None))
+            or callable(getattr(iface, "doAction", None))):
         return False
     return result is not False
 
 
 def _text_iface(obj):
-    try:
-        return obj.get_text_iface()
-    except Exception:
-        return None
+    return _invoke(obj, ("get_text_iface", "queryText"))
 
 
 def _selection_offsets(iface) -> tuple[int, int] | None:
+    count = _invoke(iface, ("get_n_selections", "getNSelections"))
+    if count is None:
+        count = getattr(iface, "nSelections", None)
     try:
-        if int(iface.get_n_selections()) <= 0:
+        if int(count) <= 0:
             return None
-        selection = iface.get_selection(0)
-    except Exception:
+    except (TypeError, ValueError):
+        return None
+    selection = _invoke(iface, ("get_selection", "getSelection"), 0)
+    if selection is None:
         return None
 
     start = getattr(selection, "start_offset", None)
@@ -191,14 +250,17 @@ def _text_snapshot(obj, *, focused: bool) -> dict[str, Any]:
     iface = _text_iface(obj)
     if iface is None:
         return empty
+    character_count = _invoke(iface, ("get_character_count", "getCharacterCount"))
+    if character_count is None:
+        character_count = getattr(iface, "characterCount", None)
     try:
-        character_count = max(0, int(iface.get_character_count()))
-    except Exception:
+        character_count = max(0, int(character_count))
+    except (TypeError, ValueError):
         return empty
 
     end = min(character_count, MAX_FOCUS_TEXT_CHARS)
     try:
-        text = str(iface.get_text(0, end) or "")
+        text = str(_invoke(iface, ("get_text", "getText"), 0, end) or "")
     except Exception:
         return empty
     # Guard against a broken provider returning more text than requested.
@@ -206,7 +268,10 @@ def _text_snapshot(obj, *, focused: bool) -> dict[str, Any]:
     visible_length = len(text)
 
     try:
-        caret = int(iface.get_caret_offset())
+        raw_caret = _invoke(iface, ("get_caret_offset", "getCaretOffset"))
+        if raw_caret is None:
+            raw_caret = getattr(iface, "caretOffset", None)
+        caret = int(raw_caret)
     except Exception:
         caret = None
     if caret is not None and not 0 <= caret <= visible_length:
@@ -230,28 +295,18 @@ def _text_snapshot(obj, *, focused: bool) -> dict[str, Any]:
 
 
 def _value(obj) -> str:
-    """Return the human-readable AT-SPI Value text/current value when exposed."""
-    try:
-        iface = obj.get_value_iface()
-    except Exception:
-        iface = None
+    """Return the human-readable GI or pyatspi Value text/current value."""
+    iface = _invoke(obj, ("get_value_iface", "get_value", "queryValue"))
     if iface is None:
-        try:
-            iface = obj.get_value()
-        except Exception:
-            return ""
+        return ""
 
-    try:
-        text = _clean(iface.get_text())
-    except Exception:
-        text = ""
+    text = _clean(_invoke(iface, ("get_text", "getText")))
     if text:
         return text
 
-    try:
-        current = iface.get_current_value()
-    except Exception:
-        return ""
+    current = _invoke(iface, ("get_current_value", "getCurrentValue"))
+    if current is None:
+        current = getattr(iface, "currentValue", None)
     if current is None:
         return ""
     if isinstance(current, float) and current.is_integer():
@@ -331,17 +386,14 @@ def _snapshot(
     focused: bool,
     coord_type=None,
 ) -> dict[str, Any]:
-    try:
-        description = _clean(obj.get_description())
-    except Exception:
-        description = ""
+    description = _description(obj)
     text_snapshot = _text_snapshot(obj, focused=focused)
     return {
         "id": object_id(obj),
         "parent_id": parent_id,
         "child_ids": child_ids,
-        "name": _clean(obj.get_name()),
-        "role": _clean(obj.get_role_name()),
+        "name": _name(obj),
+        "role": _role_name(obj),
         "description": description,
         "value": _value(obj),
         "actions": action_names(obj),
@@ -358,7 +410,7 @@ def build_text_update(
     object_registry: dict[str, object],
 ):
     """Build a focused text/caret update for an object in the current snapshot."""
-    if event_type not in A11Y_TEXT_EVENTS or source is None or not hasattr(source, "get_name"):
+    if event_type not in A11Y_TEXT_EVENTS or not _looks_accessible(source):
         return None
     oid = object_id(source)
     if oid not in object_registry:
@@ -398,8 +450,8 @@ def build_focus_payload(
         return None
     if event_type == "object:state-changed:focused" and not detail1:
         return None
-    target = any_data if event_type == "object:active-descendant-changed" and hasattr(any_data, "get_name") else source
-    if target is None or not hasattr(target, "get_name"):
+    target = any_data if event_type == "object:active-descendant-changed" and _looks_accessible(any_data) else source
+    if not _looks_accessible(target):
         return None
     if max_objects < 1:
         return None
@@ -414,7 +466,7 @@ def build_focus_payload(
         seen.add(oid)
         chain.append(current)
         parent = _parent(current)
-        role = _clean(current.get_role_name())
+        role = _role_name(current)
         if parent is None or role == "application":
             break
         current = parent
