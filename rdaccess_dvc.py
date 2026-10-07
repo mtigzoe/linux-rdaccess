@@ -43,6 +43,25 @@ LEGACY_ATTRIBUTE_SEPARATOR = bytes((96,))
 # long-running fix: bound the buffer so a peer that never sends "\n" cannot
 # grow memory forever.
 MAX_PENDING_BYTES = 1 << 20
+MAX_JSON_NESTING = 64
+
+
+def _json_nesting_within_limit(value, limit=MAX_JSON_NESTING):
+    """Reject decoded JSON whose container depth is unsafe for consumers."""
+    stack = [(value, 0)]
+    while stack:
+        current, depth = stack.pop()
+        if isinstance(current, dict):
+            depth += 1
+            if depth > limit:
+                return False
+            stack.extend((item, depth) for item in current.values())
+        elif isinstance(current, list):
+            depth += 1
+            if depth > limit:
+                return False
+            stack.extend((item, depth) for item in current)
+    return True
 
 
 # --------------------------------------------------------------------------
@@ -209,6 +228,9 @@ class Receiver:
                     self.junk_bytes += len(line)
                     continue
                 if isinstance(obj, dict):
+                    if not _json_nesting_within_limit(obj):
+                        self.junk_bytes += len(line)
+                        continue
                     self.messages.append(obj)
             elif b in LEGACY_DRIVER_TYPES:
                 if len(self.buf) < 4:
