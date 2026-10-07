@@ -27,6 +27,7 @@ from remote_access import (
     TRANSPORT_CLEANUP_MARKER,
     TRANSPORT_CLEANUP_MARKER_V1,
     TRANSPORT_CLEANUP_MARKER_V2,
+    TRANSPORT_CLEANUP_MARKER_V3,
     DEFAULT_CONFIG,
     disable_legacy_orca_connection,
     load_config,
@@ -373,7 +374,8 @@ def patch_status(orca_config: Path) -> list[tuple[str, str]]:
         elif TRANSPORT_CLEANUP_MARKER in transport_text:
             rows.append((label, "incomplete patch - repair required"))
         elif (TRANSPORT_CLEANUP_MARKER_V1 in transport_text
-              or TRANSPORT_CLEANUP_MARKER_V2 in transport_text):
+              or TRANSPORT_CLEANUP_MARKER_V2 in transport_text
+              or TRANSPORT_CLEANUP_MARKER_V3 in transport_text):
             rows.append((label, "outdated - run: linux-rdaccess connect"))
         else:
             rows.append((label, "not patched - run: linux-rdaccess connect"))
