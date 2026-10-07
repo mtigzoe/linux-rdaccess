@@ -250,6 +250,10 @@ class LegacyText:
     def getNSelections(self):
         return self.nSelections
 
+    def setCaretOffset(self, offset):
+        self.caretOffset = offset
+        return True
+
 
 class LegacyAccessible:
     def __init__(self, name, role, parent=None, *, states=(), action=None, text=None):
@@ -342,6 +346,36 @@ class Orca42LegacyApiTests(unittest.TestCase):
         self.assertTrue(focus["text_supported"])
         self.assertEqual(focus["text"], "alpha bravo")
         self.assertEqual(focus["caret_offset"], 5)
+
+    def test_semantic_text_routing_updates_only_current_registered_object(self):
+        text = LegacyText("alpha bravo", 2)
+        app = LegacyAccessible("Editor App", "application")
+        editor = LegacyAccessible(
+            "Notes",
+            "text",
+            app,
+            states=("focusable", "editable"),
+            text=text,
+        )
+        orca_state = types.ModuleType("orca.orca_state")
+        orca_state.locusOfFocus = editor
+        orca = types.ModuleType("orca")
+        orca.orca_state = orca_state
+        with mock.patch.dict(sys.modules, {
+            "orca": orca,
+            "orca.orca_state": orca_state,
+        }):
+            payload = orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload()
+            self.assertIsNotNone(payload)
+            focus_id = payload["focus_id"]
+            self.assertTrue(
+                orca_adapter.OrcaRuntimeAdapter.set_semantic_caret(focus_id, 7))
+            self.assertEqual(text.caretOffset, 7)
+            self.assertFalse(
+                orca_adapter.OrcaRuntimeAdapter.set_semantic_caret(focus_id, 99))
+            orca_adapter.OrcaRuntimeAdapter.clear_semantic_focus()
+            self.assertFalse(
+                orca_adapter.OrcaRuntimeAdapter.set_semantic_caret(focus_id, 1))
 
     def test_legacy_action_exception_fails_closed(self):
         class BrokenAction(LegacyAction):
