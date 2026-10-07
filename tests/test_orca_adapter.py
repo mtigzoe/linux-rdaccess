@@ -282,6 +282,20 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
             self.assertIs(OrcaRuntimeAdapter.call_script("handler", "message"), True)
         handler.assert_called_once_with("message")
 
+    def test_orca42_current_selection_handler_accepts_default_event(self):
+        calls = []
+        script = types.SimpleNamespace(
+            whereAmISelection=lambda event=None: calls.append(event)
+        )
+        with self._fake_orca(script):
+            self.assertIs(
+                OrcaRuntimeAdapter.call_script(
+                    "whereAmISelection", default_event=True
+                ),
+                True,
+            )
+        self.assertEqual(calls, [None])
+
     def test_structural_list_uses_orca42_enabled_object_show_list(self):
         calls = []
         script = types.SimpleNamespace()
@@ -779,7 +793,7 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
             presentMessage=lambda message: self.fail("must not present")
         )
         with self._fake_orca(script):
-            self.assertFalse(OrcaRuntimeAdapter.present_lock_state(0x91))
+            self.assertFalse(OrcaRuntimeAdapter.present_lock_state(0x92))
         with self._fake_orca(script), mock.patch.object(
             OrcaRuntimeAdapter, "_xkb_named_lock_state", return_value=None
         ):
@@ -792,8 +806,12 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
             OrcaRuntimeAdapter, "active_script", side_effect=AssertionError("Orca API")
         ):
             self.assertIs(OrcaRuntimeAdapter.read_lock_state(0x90), False)
-            self.assertIsNone(OrcaRuntimeAdapter.read_lock_state(0x91))
-        query.assert_called_once_with("Num Lock")
+            self.assertIs(OrcaRuntimeAdapter.read_lock_state(0x91), False)
+            self.assertIsNone(OrcaRuntimeAdapter.read_lock_state(0x92))
+        self.assertEqual(
+            query.call_args_list,
+            [mock.call("Num Lock"), mock.call("Scroll Lock")],
+        )
 
     def test_lock_presentation_uses_snapshot_without_reading_later_state(self):
         calls = []
@@ -805,6 +823,18 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
             self.assertTrue(OrcaRuntimeAdapter.present_lock_state(0x90, False))
             self.assertFalse(OrcaRuntimeAdapter.present_lock_state(0x90, "off"))
         self.assertEqual(calls, ["Num Lock on", "Num Lock off"])
+
+    def test_present_scroll_lock_state(self):
+        calls = []
+        script = types.SimpleNamespace(
+            presentMessage=lambda message: calls.append(message)
+        )
+        with self._fake_orca(script), mock.patch.object(
+            OrcaRuntimeAdapter, "_xkb_named_lock_state", return_value=True
+        ) as query:
+            self.assertTrue(OrcaRuntimeAdapter.present_lock_state(0x91))
+        query.assert_called_once_with("Scroll Lock")
+        self.assertEqual(calls, ["Scroll Lock on"])
 
     def test_where_am_i_uses_orca42_basic_handler(self):
         calls = []

@@ -231,6 +231,8 @@ class KeyDispositionTests(TraceCase):
         row = self.last('key')
         self.assertEqual(row['own']['nvda'], 'Insert/ext')
         self.assertEqual(row['own']['down'], ['CapsLock', 'Insert/ext'])
+        self.assertTrue(row['own']['caps_pending'])
+        self.assertTrue(row['own']['insert_pending'])
 
     def test_nonextended_insert_is_not_labelled_as_the_keypad(self):
         self.enable()
@@ -545,8 +547,10 @@ class BrailleTraceTests(TraceCase):
         rows = self.records('braille')
         self.assertEqual([r['cls'] for r in rows],
                          ['pan_back', 'pan_forward', 'to_focus', 'route'])
-        self.assertNotIn('12', self.trace_path.read_text())
-        self.assertNotIn('routingIndex', self.trace_path.read_text())
+        for row in rows:
+            self.assertNotIn('routingIndex', row)
+            self.assertNotIn('argument', row)
+            self.assertNotIn('index', row)
 
     def test_braille_keyboard_input_is_never_recorded(self):
         self.enable()
@@ -804,6 +808,10 @@ class SummarizerTests(TraceCase):
         c.local_machine.send_key = lambda **kw: kw['pressed'] or False
         c._linux_rdaccess_script_call = lambda *a: True
         with patches:
+            # Hold an ordinary forwarded key so reset has a genuine injected
+            # key whose release can fail. Insert itself is now deferred and
+            # must not be treated as forwarded ownership.
+            self._key(c, 0x25, True, extended=True)
             self._key(c, 0x2D, True, extended=True)
             self._key(c, 0x28, True, extended=True)
             c.toggle_control()

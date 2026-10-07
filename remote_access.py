@@ -654,16 +654,301 @@ def _replace_configuration_values(text: str, replacements: dict[str, str], *, ro
     return data.decode("utf-8")
 
 
+def legacy_transport_cleanup_patch_current(text: str) -> bool:
+    """Whether the legacy transport safely cleans resources before reconnect."""
+    if TRANSPORT_CLEANUP_MARKER not in text:
+        return False
+    try:
+        tree = ast.parse(text, feature_version=(3, 10))
+    except SyntaxError:
+        return False
+    tcp = next(
+        (node for node in tree.body
+         if isinstance(node, ast.ClassDef) and node.name == "TCPTransport"),
+        None,
+    )
+    if tcp is None:
+        return False
+    methods = {
+        node.name: node for node in tcp.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    disconnect = methods.get("_disconnect")
+    run = methods.get("run")
+    send_queue = methods.get("send_queue")
+    if disconnect is None or run is None or send_queue is None:
+        return False
+    disconnect_source = ast.get_source_segment(text, disconnect) or ""
+    run_source = ast.get_source_segment(text, run) or ""
+    send_source = ast.get_source_segment(text, send_queue) or ""
+    shutdown = disconnect_source.find("self.server_sock.shutdown(socket.SHUT_RDWR)")
+    join = disconnect_source.find("self.queue_thread.join()")
+    receive = run_source.split("self.handle_server_data()", 1)
+    receive_safe = len(receive) == 2 and "except Exception:" in receive[1].split("self.connected = False", 1)[0]
+    select_safe = (
+        "except (socket.error, ValueError):" in run_source
+        or "except (OSError, ValueError):" in run_source
+    )
+    return (
+        "if self.server_sock is None and self.queue_thread is None:" in disconnect_source
+        and shutdown >= 0
+        and join > shutdown
+        and "except Exception:" in run_source
+        and "self._disconnect()" in run_source.split("except Exception:", 1)[1].split("raise", 1)[0]
+        and receive_safe
+        and select_safe
+        and "self.server_sock.shutdown(socket.SHUT_RDWR)" in send_source
+    )
+
+
+def _patch_legacy_transport_cleanup(text: str) -> str:
+    """Fix stale resources and receive failures in the verified Orca Remote transport."""
+    if TRANSPORT_CLEANUP_MARKER in text:
+        if legacy_transport_cleanup_patch_current(text):
+            return text
+        raise ValueError("current transport cleanup marker has an incomplete patch")
+
+    upgrading_v1 = TRANSPORT_CLEANUP_MARKER_V1 in text
+    upgrading_v2 = TRANSPORT_CLEANUP_MARKER_V2 in text
+    upgrading_v3 = TRANSPORT_CLEANUP_MARKER_V3 in text
+    upgrading_v4 = TRANSPORT_CLEANUP_MARKER_V4 in text
+    if upgrading_v1:
+        text = text.replace(TRANSPORT_CLEANUP_MARKER_V1, "", 1).rstrip("\n") + "\n"
+    elif upgrading_v2:
+        text = text.replace(TRANSPORT_CLEANUP_MARKER_V2, "", 1).rstrip("\n") + "\n"
+    elif upgrading_v3:
+        text = text.replace(TRANSPORT_CLEANUP_MARKER_V3, "", 1).rstrip("\n") + "\n"
+    elif upgrading_v4:
+        text = text.replace(TRANSPORT_CLEANUP_MARKER_V4, "", 1).rstrip("\n") + "\n"
+
+    try:
+        tree = ast.parse(text, feature_version=(3, 10))
+    except SyntaxError:
+        raise ValueError("legacy transport source is invalid Python") from None
+    tcp = next(
+        (node for node in tree.body
+         if isinstance(node, ast.ClassDef) and node.name == "TCPTransport"),
+        None,
+    )
+    if tcp is None:
+        return text
+    methods = {
+        node.name: node for node in tcp.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    disconnect = methods.get("_disconnect")
+    run = methods.get("run")
+    if disconnect is None or run is None:
+        raise ValueError("unsupported legacy TCPTransport layout")
+
+    if not (upgrading_v1 or upgrading_v2 or upgrading_v3 or upgrading_v4):
+        disconnect_source = ast.get_source_segment(text, disconnect) or ""
+        updated_disconnect, count = re.subn(
+            r"(?m)^([ \t]*)if not self\.connected:[ \t]*$",
+            r"\1if self.server_sock is None and self.queue_thread is None:",
+            disconnect_source,
+            count=1,
+        )
+        if count != 1:
+            raise ValueError("unsupported legacy transport disconnect guard")
+        text = text.replace(disconnect_source, updated_disconnect, 1)
+
+        # Reparse after the source edit so line/column spans remain exact.
+        tree = ast.parse(text, feature_version=(3, 10))
+        tcp = next(
+            node for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "TCPTransport"
+        )
+        run = next(
+            node for node in tcp.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "run"
+        )
+        run_source = ast.get_source_segment(text, run) or ""
+        pattern = (
+            r"(?m)^([ \t]*)except Exception:[ \t]*\n"
+            r"([ \t]*)(self\.callback_manager\.call_callbacks\("
+            r"['\"]transport_connection_failed['\"]\))"
+        )
+        updated_run, count = re.subn(
+            pattern,
+            lambda match: (
+                match.group(1) + "except Exception:\n"
+                + match.group(2) + "self._disconnect()\n"
+                + match.group(2) + match.group(3)
+            ),
+            run_source,
+            count=1,
+        )
+        if count != 1:
+            raise ValueError("unsupported legacy transport connection-failure path")
+        text = text.replace(run_source, updated_run, 1)
+
+    if not (upgrading_v2 or upgrading_v3 or upgrading_v4):
+        # Shut down the socket before joining the sender. A sender blocked in
+        # sendall() otherwise prevents _disconnect() and reconnect from completing.
+        tree = ast.parse(text, feature_version=(3, 10))
+        tcp = next(
+            node for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "TCPTransport"
+        )
+        disconnect = next(
+            node for node in tcp.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "_disconnect"
+        )
+        disconnect_source = ast.get_source_segment(text, disconnect) or ""
+        queue_pattern = r"(?m)^([ \t]*)if self\.queue_thread is not None:[ \t]*$"
+
+        def add_shutdown(match):
+            indent = match.group(1)
+            unit = "\t" if "\t" in indent else "    "
+            return (
+                indent + "if self.server_sock is not None:\n"
+                + indent + unit + "try:\n"
+                + indent + unit + unit + "self.server_sock.shutdown(socket.SHUT_RDWR)\n"
+                + indent + unit + "except (OSError, AttributeError):\n"
+                + indent + unit + unit + "pass\n"
+                + indent + "if self.queue_thread is not None:"
+            )
+
+        updated_disconnect, count = re.subn(
+            queue_pattern, add_shutdown, disconnect_source, count=1)
+        if count != 1:
+            raise ValueError("unsupported legacy transport send-thread cleanup")
+
+        close_pattern = (
+            r"(?m)^([ \t]*)self\.server_sock\.close\(\)[ \t]*\n"
+            r"\1self\.server_sock = None[ \t]*$"
+        )
+
+        def guard_close(match):
+            indent = match.group(1)
+            unit = "\t" if "\t" in indent else "    "
+            return (
+                indent + "if self.server_sock is not None:\n"
+                + indent + unit + "self.server_sock.close()\n"
+                + indent + unit + "self.server_sock = None"
+            )
+
+        updated_disconnect, count = re.subn(
+            close_pattern, guard_close, updated_disconnect, count=1)
+        if count != 1:
+            raise ValueError("unsupported legacy transport socket close")
+        text = text.replace(disconnect_source, updated_disconnect, 1)
+
+    if not (upgrading_v3 or upgrading_v4):
+        # A malformed relay frame raises JSONDecodeError/ValueError, not socket.error.
+        # Treat any ordinary receive/parse exception as a broken connection so the
+        # native connector loop survives and retries. BaseException still propagates.
+        tree = ast.parse(text, feature_version=(3, 10))
+        tcp = next(
+            node for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "TCPTransport"
+        )
+        run = next(
+            node for node in tcp.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "run"
+        )
+        run_source = ast.get_source_segment(text, run) or ""
+        receive_pattern = (
+            r"(self\.handle_server_data\(\)[ \t]*\n"
+            r"([ \t]*)except )socket\.error(:)"
+        )
+        updated_run, count = re.subn(
+            receive_pattern,
+            lambda match: match.group(1) + "Exception" + match.group(3),
+            run_source,
+            count=1,
+        )
+        if count != 1:
+            raise ValueError("unsupported legacy transport receive-failure path")
+        text = text.replace(run_source, updated_run, 1)
+
+    if not upgrading_v4:
+        # Concurrent close can invalidate the descriptor between the while guard and
+        # select(). Python reports that as ValueError, not OSError/socket.error.
+        tree = ast.parse(text, feature_version=(3, 10))
+        tcp = next(
+            node for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "TCPTransport"
+        )
+        run = next(
+            node for node in tcp.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "run"
+        )
+        run_source = ast.get_source_segment(text, run) or ""
+        select_pattern = (
+            r"(select\.select\([^\n]*\n(?:[^\n]*\n)*?"
+            r"([ \t]*)except )socket\.error(:)"
+        )
+        updated_run, count = re.subn(
+            select_pattern,
+            lambda match: match.group(1) + "(socket.error, ValueError)" + match.group(3),
+            run_source,
+            count=1,
+        )
+        if count != 1:
+            raise ValueError("unsupported legacy transport select-failure path")
+        text = text.replace(run_source, updated_run, 1)
+
+    # A write-side socket failure used to terminate only the sender thread,
+    # leaving the transport marked connected and future messages queued forever.
+    # Shut down the socket so run()/select wakes and the normal reconnect path runs.
+    tree = ast.parse(text, feature_version=(3, 10))
+    tcp = next(
+        node for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "TCPTransport"
+    )
+    send_queue = next(
+        node for node in tcp.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == "send_queue"
+    )
+    send_source = ast.get_source_segment(text, send_queue) or ""
+    send_pattern = (
+        r"(?m)^([ \t]*)except socket\.error:[ \t]*\n"
+        r"([ \t]*)return[ \t]*$"
+    )
+
+    def wake_receiver(match):
+        indent = match.group(1)
+        body = match.group(2)
+        unit = "\t" if "\t" in body else "    "
+        return (
+            indent + "except socket.error:\n"
+            + body + "try:\n"
+            + body + unit + "if self.server_sock is not None:\n"
+            + body + unit + unit + "self.server_sock.shutdown(socket.SHUT_RDWR)\n"
+            + body + "except (OSError, AttributeError):\n"
+            + body + unit + "pass\n"
+            + body + "return"
+        )
+
+    updated_send, count = re.subn(send_pattern, wake_receiver, send_source, count=1)
+    if count != 1:
+        raise ValueError("unsupported legacy transport send-failure path")
+    text = text.replace(send_source, updated_send, 1)
+
+    text = text.rstrip("\n") + "\n\n" + TRANSPORT_CLEANUP_MARKER + "\n"
+    if not legacy_transport_cleanup_patch_current(text):
+        raise ValueError("transport cleanup patch validation failed")
+    return text
+
+
 def _patch_legacy_transport_logging(path: Path) -> bool:
-    """Remove the verified legacy constructor's connection-key log."""
+    """Redact the relay key log and repair verified legacy transport cleanup."""
     text = path.read_text(encoding="utf-8")
     backup = path.with_name(path.name + ".linux-rdaccess-backup")
     if backup.exists():
         backup.chmod(0o600)
+    updated = text
     original = 'log.info("Connecting to %s channel %s" % (address, channel))'
-    if original not in text:
+    if original in updated:
+        updated = updated.replace(
+            original, 'log.info("Connecting to remote relay %s", address)')
+    updated = _patch_legacy_transport_cleanup(updated)
+    if updated == text:
         return False
-    updated = text.replace(original, 'log.info("Connecting to remote relay %s", address)')
     try:
         compile(updated, str(path), "exec")
     except SyntaxError:
@@ -729,7 +1014,7 @@ def update_legacy_orca_customizations(
             pass
     _write_private_text(path, text)
 
-    transport_path = path.parent / "orca-scripts" / "transport.py"
+    transport_path = path.parent / LEGACY_TRANSPORT_RELATIVE
     if transport_path.exists():
         try:
             _patch_legacy_transport_logging(transport_path)
@@ -779,6 +1064,12 @@ def update_legacy_orca_customizations(
 
 
 LEGACY_REMOTE_CONTROLLER_RELATIVE = Path("orca-scripts/remote_controller.py")
+LEGACY_TRANSPORT_RELATIVE = Path("orca-scripts/transport.py")
+TRANSPORT_CLEANUP_MARKER_V1 = "# linux-rdaccess transport cleanup v1"
+TRANSPORT_CLEANUP_MARKER_V2 = "# linux-rdaccess transport cleanup v2"
+TRANSPORT_CLEANUP_MARKER_V3 = "# linux-rdaccess transport cleanup v3"
+TRANSPORT_CLEANUP_MARKER_V4 = "# linux-rdaccess transport cleanup v4"
+TRANSPORT_CLEANUP_MARKER = "# linux-rdaccess transport cleanup v5"
 LEGACY_COMPAT_MARKER_V1 = "# linux-rdaccess NVDA/Orca input compatibility"
 LEGACY_COMPAT_MARKER_V2 = "# linux-rdaccess NVDA/Orca input compatibility v2"
 LEGACY_COMPAT_MARKER_V3 = "# linux-rdaccess NVDA/Orca input compatibility v3"
@@ -857,7 +1148,15 @@ LEGACY_COMPAT_MARKER_V77 = "# linux-rdaccess NVDA/Orca input compatibility v77"
 LEGACY_COMPAT_MARKER_V78 = "# linux-rdaccess NVDA/Orca input compatibility v78"
 LEGACY_COMPAT_MARKER_V79 = "# linux-rdaccess NVDA/Orca input compatibility v79"
 LEGACY_COMPAT_MARKER_V80 = "# linux-rdaccess NVDA/Orca input compatibility v80"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v81"
+LEGACY_COMPAT_MARKER_V81 = "# linux-rdaccess NVDA/Orca input compatibility v81"
+LEGACY_COMPAT_MARKER_V82 = "# linux-rdaccess NVDA/Orca input compatibility v82"
+LEGACY_COMPAT_MARKER_V83 = "# linux-rdaccess NVDA/Orca input compatibility v83"
+LEGACY_COMPAT_MARKER_V84 = "# linux-rdaccess NVDA/Orca input compatibility v84"
+LEGACY_COMPAT_MARKER_V85 = "# linux-rdaccess NVDA/Orca input compatibility v85"
+LEGACY_COMPAT_MARKER_V86 = "# linux-rdaccess NVDA/Orca input compatibility v86"
+LEGACY_COMPAT_MARKER_V87 = "# linux-rdaccess NVDA/Orca input compatibility v87"
+LEGACY_COMPAT_MARKER_V88 = "# linux-rdaccess NVDA/Orca input compatibility v88"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v89"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -866,8 +1165,8 @@ _LEGACY_HELPERS = '''\
     # dots, speech text or connection keys.
     _LRD_INPUT_LOCK = __import__("threading").RLock()
     _LRD_CTRL_VKS = (0x11, 0xA2, 0xA3)
-    _LRD_LOCK_VKS = (0x14, 0x90)  # Caps Lock, Num Lock
-    _LRD_REPEAT_TOGGLE_VKS = (0x90,)  # repeated key-down would re-toggle
+    _LRD_LOCK_VKS = (0x14, 0x90, 0x91)  # Caps Lock, Num Lock, Scroll Lock
+    _LRD_REPEAT_TOGGLE_VKS = (0x90, 0x91)  # repeated key-down would re-toggle
     _LRD_MODIFIER_VKS = (
         0x10, 0xA0, 0xA1, 0x11, 0xA2, 0xA3, 0x12, 0xA4, 0xA5,
         0x5B, 0x5C, 0x2D, 0x14,
@@ -928,6 +1227,21 @@ _LEGACY_HELPERS = '''\
     _LRD_OTHER_MOD_VKS = (
         0x10, 0xA0, 0xA1, 0x11, 0xA2, 0xA3, 0x12, 0xA4, 0xA5, 0x5B, 0x5C,
     )
+    # Low-level Windows scan codes for physical numpad navigation keys.
+    # NVDA Remote forwards KBDLLHOOKSTRUCT.scanCode verbatim, so these let us
+    # distinguish a proven numpad key from a legacy non-extended navigation VK.
+    _LRD_NUMPAD_SCAN_VKS = {
+        0x4F: 0x23,  # Numpad1 -> End
+        0x50: 0x28,  # Numpad2 -> Down
+        0x51: 0x22,  # Numpad3 -> PageDown
+        0x4B: 0x25,  # Numpad4 -> Left
+        0x4C: 0x0C,  # Numpad5 -> Clear
+        0x4D: 0x27,  # Numpad6 -> Right
+        0x47: 0x24,  # Numpad7 -> Home
+        0x48: 0x26,  # Numpad8 -> Up
+        0x49: 0x21,  # Numpad9 -> PageUp
+        0x53: 0x2E,  # NumpadDelete -> Delete
+    }
     # NVDA chord -> Orca command, checked against the Orca 42 desktop keymap.
     # Report the caret line through Orca's script rather than entering flat
     # review with KP_Up. Other review commands still retain their native keys.
@@ -998,6 +1312,7 @@ _LEGACY_HELPERS = '''\
             "fwd": sorted(label(k[0], k[1]) for k in forwarded if k[0] in held_vks),
             "nvda": label(nvda[0], nvda[1]) if nvda else None,
             "caps_pending": getattr(self, "_lrd_caps_pending", None) is not None,
+            "insert_pending": getattr(self, "_lrd_insert_pending", None) is not None,
             "other_down": sum(1 for k in down if k[0] not in held_vks),
             "other_fwd": sum(1 for k in forwarded if k[0] not in held_vks),
         }
@@ -1008,7 +1323,46 @@ _LEGACY_HELPERS = '''\
             "LINUX_RDACCESS_NVDA_LAYOUT", "desktop").strip().lower()
         return value if value in ("desktop", "laptop") else "desktop"
 
-    def _linux_rdaccess_desktop_unimplemented(self, vk_code, extended):
+    @classmethod
+    def _linux_rdaccess_proven_nvda_keypad(cls, vk_code, extended, scan_code, shift):
+        """Whether scan metadata proves an NVDA object/review numpad gesture."""
+        if bool(extended) or isinstance(scan_code, bool) or not isinstance(scan_code, int):
+            return False
+        if cls._LRD_NUMPAD_SCAN_VKS.get(scan_code) != vk_code:
+            return False
+        # NVDA 2026.2 object/review navigation uses NVDA+Numpad1..9 and
+        # NVDA+NumpadDelete. Of these, only NumpadDelete also has a Shift form.
+        return not shift or vk_code == 0x2E
+
+    def _linux_rdaccess_plain_shift_numpad_unimplemented(
+            self, vk_code, extended, scan_code=None):
+        """Whether an exact plain Shift+numpad NVDA command is unsupported."""
+        down = getattr(self, "_lrd_down", set())
+        shift = any(k[0] in self._LRD_SHIFT_VKS for k in down)
+        other = any(
+            k[0] in self._LRD_OTHER_MOD_VKS and k[0] not in self._LRD_SHIFT_VKS
+            for k in down
+        )
+        if not shift or other or self._lrd_nvda_down:
+            return False
+        # NVDA 2026.2 binds these review/focus commands with plain "kb:"
+        # gestures, so the physical numpad bindings apply in both layouts.
+        if (vk_code, scan_code) in {
+            (0x23, 0x4F),  # Shift+Numpad1: start of review line
+            (0x28, 0x50),  # Shift+Numpad2: focused-object accelerator
+            (0x22, 0x51),  # Shift+Numpad3: end of review line
+            (0x24, 0x47),  # Shift+Numpad7: top of review
+            (0x21, 0x49),  # Shift+Numpad9: bottom of review
+        } and not bool(extended):
+            return True
+        # These are unambiguous keypad VKs. Orca 42 treats Divide/Multiply as
+        # clicks, whereas NVDA uses Shift+them to toggle mouse-button lock.
+        return (
+            (vk_code == 0x6F and bool(extended))
+            or (vk_code == 0x6A and not bool(extended))
+        )
+
+    def _linux_rdaccess_desktop_unimplemented(self, vk_code, extended, scan_code=None):
         """Whether an exact NVDA desktop keypad object/review gesture is unsupported."""
         down = getattr(self, "_lrd_down", set())
         shift = any(k[0] in self._LRD_SHIFT_VKS for k in down)
@@ -1017,12 +1371,14 @@ _LEGACY_HELPERS = '''\
         if ctrl or alt_win:
             return False
         gesture = (vk_code, shift, bool(extended))
-        # Navigation-cluster VKs (Home/End/Arrows/Delete) are ambiguous when
-        # key_name and scan_code are absent: legacy payloads only leave the
-        # extended bit, and existing callers can emit non-extended navigation
-        # keys which are not proven keypad gestures. Preserve those rather than
-        # swallowing normal Linux input. Intercept only keypad commands whose
-        # VK/extended identity is unambiguous.
+        # With a matching low-level scan code, NVDA Remote has proven that a
+        # non-extended navigation VK came from the physical numpad. Consume
+        # those unsupported NVDA object/review commands instead of leaking them
+        # into the Linux application. Legacy packets without that evidence
+        # retain the previous fail-open behavior.
+        if self._linux_rdaccess_proven_nvda_keypad(
+                vk_code, extended, scan_code, shift):
+            return True
         return gesture in {
             (0x0C, False, False),  # NVDA+Numpad5 (VK_CLEAR): current navigator object
             (0x6D, False, False),  # NVDA+NumpadMinus: navigator to focus
@@ -1032,7 +1388,7 @@ _LEGACY_HELPERS = '''\
             (0x0D, False, True),   # NVDA+NumpadEnter: activate navigator object
         }
 
-    def _linux_rdaccess_laptop_unimplemented(self, vk_code, extended):
+    def _linux_rdaccess_laptop_unimplemented(self, vk_code, extended, scan_code=None):
         """Whether an exact NVDA laptop object/review gesture is known but unsupported."""
         down = getattr(self, "_lrd_down", set())
         shift = any(k[0] in self._LRD_SHIFT_VKS for k in down)
@@ -1079,6 +1435,12 @@ _LEGACY_HELPERS = '''\
             (0x6A, False, False),  # NVDA+NumpadMultiply: navigator to mouse
             (0x0D, False, True),   # NVDA+NumpadEnter: activate navigator object
         }
+        # The physical numpad object/review bindings remain active regardless
+        # of NVDA keyboard layout. Require scan-code proof so dedicated laptop
+        # navigation keys are never mistaken for numpad input.
+        if not ctrl and self._linux_rdaccess_proven_nvda_keypad(
+                vk_code, extended, scan_code, shift):
+            return True
         # Ctrl review commands are distinct from the plain/Shift gestures above.
         if ctrl:
             ctrl_gestures = {
@@ -1159,7 +1521,6 @@ _LEGACY_HELPERS = '''\
                 (0x71, False, True,  False, False),  # NVDA+Ctrl+F2: display model
                 (0x63, False, False, False, False),  # VK_NUMPAD3 (NVDA: numLockNumpad3, unbound); NVDA's next-in-flow is the non-extended PageDown identity, which is never guessed
                 (0x69, False, False, False, False),  # VK_NUMPAD9 (NVDA: numLockNumpad9, unbound); previous-in-flow is the non-extended PageUp identity
-                (0x26, True,  False, False, True),   # NVDA+Shift+Up: current selection
                 (0x21, False, False, False, True),  # NVDA+PageUp: previous review page
                 (0x22, False, False, False, True),  # NVDA+PageDown: next review page
             }
@@ -1175,7 +1536,6 @@ _LEGACY_HELPERS = '''\
                 (0x22, True,  True,  False, True),
                 (0xDB, True,  False, False, False),  # Shift+NVDA+[: previous in flow
                 (0xDD, True,  False, False, False),  # Shift+NVDA+]: next in flow
-                (0x53, True,  False, False, False),  # NVDA+Shift+S: current selection
                 (0xBE, True,  True,  False, False),  # NVDA+Ctrl+Shift+.: focus shortcut
             }
         )
@@ -1378,6 +1738,8 @@ _LEGACY_HELPERS = '''\
         self._lrd_nvda_key = None
         self._lrd_caps_pending = None
         self._lrd_caps_used = False
+        self._lrd_insert_pending = None
+        self._lrd_insert_used = False
         self._lrd_bypass_next = False
         bypass_request = getattr(self, "_lrd_bypass_request", None)
         self._lrd_bypass_request = None
@@ -1411,18 +1773,52 @@ _LEGACY_HELPERS = '''\
             _lrd_clear_navigation_markers(nvda_browse)
             nvda_browse["held"] = {}
 
+    def _linux_rdaccess_mark_nvda_modifier_used(self):
+        """Keep deferred NVDA modifiers out of Linux for a consumed command."""
+        if getattr(self, "_lrd_caps_pending", None) is not None:
+            self._lrd_caps_used = True
+        if getattr(self, "_lrd_insert_pending", None) is not None:
+            self._lrd_insert_used = True
+
     def _linux_rdaccess_flush_pending_caps(self):
-        """Forward the original deferred CapsLock press when it was not an NVDA command."""
+        """Forward deferred CapsLock; report whether ordinary input can continue."""
         pending = getattr(self, "_lrd_caps_pending", None)
         if pending is None:
-            return
+            return True
         _held, payload = pending
         self._lrd_caps_pending = None
         self._lrd_caps_used = False
         try:
-            self._linux_rdaccess_forward_key(**payload)
+            return self._linux_rdaccess_forward_key(**payload) is not False
         except Exception:
             log.error("linux-rdaccess: failed to forward deferred CapsLock")
+            return False
+
+    def _linux_rdaccess_flush_pending_insert(self):
+        """Forward deferred Insert; report whether ordinary input can continue."""
+        pending = getattr(self, "_lrd_insert_pending", None)
+        if pending is None:
+            return True
+        _held, payload = pending
+        self._lrd_insert_pending = None
+        self._lrd_insert_used = False
+        try:
+            return self._linux_rdaccess_forward_key(**payload) is not False
+        except Exception:
+            log.error("linux-rdaccess: failed to forward deferred Insert")
+            return False
+
+    def _linux_rdaccess_flush_pending_nvda_modifiers(self):
+        """Replay unused deferred modifiers; fail closed for a rejected Insert."""
+        # CapsLock is a toggle, not a held application-chord modifier. Preserve
+        # the established behavior where a failed CapsLock toggle does not eat
+        # the following typing key. Insert must succeed before Insert+key can
+        # safely be degraded to ordinary Linux input.
+        if not getattr(self, "_lrd_caps_used", False):
+            self._linux_rdaccess_flush_pending_caps()
+        if not getattr(self, "_lrd_insert_used", False):
+            return self._linux_rdaccess_flush_pending_insert()
+        return True
 
     def _linux_rdaccess_sync_state(self):
         """Initialize/change the input generation for either input channel."""
@@ -1484,6 +1880,8 @@ _LEGACY_HELPERS = '''\
             disposition = "forwarded"
         elif vk_code == 0x14:
             disposition = "caps_deferred"
+        elif vk_code == 0x2D and getattr(self, "_lrd_insert_pending", None) is not None:
+            disposition = "insert_deferred"
         elif before_swapped:
             disposition = "owned_press" if pressed else "owned_release"
         elif why == "pass_next":
@@ -1544,13 +1942,11 @@ _LEGACY_HELPERS = '''\
             # modifier; CapsLock cannot be safely released/re-pressed because
             # doing so would toggle the lock state.
             self._lrd_nvda_key = nvda_keys[0] if nvda_keys else None
-            if (
-                pressed
-                and vk_code != 0x14
-                and vk_code in self._LRD_NVDA_VKS
-                and getattr(self, "_lrd_caps_pending", None) is not None
-            ):
-                self._lrd_caps_used = True
+            if pressed and not repeat and vk_code in self._LRD_NVDA_VKS:
+                if vk_code != 0x14 and getattr(self, "_lrd_caps_pending", None) is not None:
+                    self._lrd_caps_used = True
+                if vk_code != 0x2D and getattr(self, "_lrd_insert_pending", None) is not None:
+                    self._lrd_insert_used = True
 
         # Only consecutive clock gestures count as a double press. Modifier
         # releases between taps are normal; another action starts a new count.
@@ -1559,6 +1955,39 @@ _LEGACY_HELPERS = '''\
                      and not any(k[0] in self._LRD_OTHER_MOD_VKS for k in self._lrd_down))
             if not clock:
                 self._lrd_last_clock_press = None
+
+        # Insert is also an NVDA modifier. Forwarding it immediately makes
+        # consumed NVDA commands leak a standalone Insert press into Linux
+        # applications (for example toggling overwrite mode in an editor).
+        # Defer it just like CapsLock, then replay it only for ordinary input.
+        if vk_code == 0x2D:
+            pending = getattr(self, "_lrd_insert_pending", None)
+            if pressed:
+                if not repeat:
+                    self._lrd_insert_pending = (
+                        held,
+                        {
+                            "key_name": key_name,
+                            "pressed": True,
+                            "modifiers": modifiers,
+                            "vk_code": vk_code,
+                            "scan_code": scan_code,
+                            "extended": extended,
+                        },
+                    )
+                    self._lrd_insert_used = any(
+                        k != held and k[0] in self._LRD_NVDA_VKS
+                        for k in self._lrd_down
+                    )
+                return True
+            if pending is not None and pending[0] == held:
+                used = bool(getattr(self, "_lrd_insert_used", False))
+                if used:
+                    self._lrd_insert_pending = None
+                    self._lrd_insert_used = False
+                    return True
+                self._linux_rdaccess_flush_pending_insert()
+                return False
 
         # CapsLock can be configured as the NVDA modifier. Forwarding its press
         # immediately toggles Linux Caps Lock before we know whether this is a
@@ -1672,7 +2101,16 @@ _LEGACY_HELPERS = '''\
                 request["used"] = True
                 self._lrd_trace_why = "pass_next"
                 self._lrd_bypass_next = False
-                self._linux_rdaccess_flush_pending_caps()
+                if not self._linux_rdaccess_flush_pending_nvda_modifiers():
+                    # A failed deferred Insert must not turn Insert+key into a
+                    # plain bypassed key. Keep the bypass request available for
+                    # the next complete gesture and own this key's release.
+                    request["used"] = False
+                    if not request.get("external", False):
+                        self._lrd_bypass_next = True
+                    self._lrd_trace_why = "deferred_modifier_rejected"
+                    self._lrd_swapped.add(held)
+                    return True
                 result = self._linux_rdaccess_forward_bypass_key(
                     request, held, pressed, key_name, modifiers, vk_code, scan_code, extended)
                 if result is False:
@@ -1684,6 +2122,21 @@ _LEGACY_HELPERS = '''\
                     self._lrd_bypass_keys[held] = request
                 return True
             return False
+
+        # NVDA assigns several plain Shift+numpad gestures to review
+        # boundaries, focus-accelerator reporting, and mouse-lock toggles.
+        # Orca 42 either has no exact equivalent or gives the same physical
+        # key a different meaning. Consume only scan-proven/unambiguous forms
+        # instead of leaking an unrelated click or selection into Linux.
+        if (
+            pressed
+            and not repeat
+            and self._linux_rdaccess_plain_shift_numpad_unimplemented(
+                vk_code, extended, scan_code)
+        ):
+            self._lrd_trace_why = "unsupported_shift_numpad"
+            self._lrd_swapped.add(held)
+            return True
 
         # NVDA and Orca assign different browse-mode meanings to A/M/N/O/W.
         # Mark only a remote plain/Shift letter; the Orca-side hook consumes it
@@ -1729,6 +2182,30 @@ _LEGACY_HELPERS = '''\
             self._lrd_navigation_marker = (
                 "_LRD_T", {0x25: "Left", 0x26: "Up", 0x27: "Right", 0x28: "Down"}[vk_code], held)
 
+        # NVDA and Orca 42 have the same current-selection command but bind
+        # it differently by keyboard layout. Call Orca directly so CapsLock-
+        # as-NVDA and Insert-as-NVDA behave identically.
+        if pressed and self._lrd_nvda_down and not repeat:
+            shifts = any(k[0] in self._LRD_SHIFT_VKS for k in self._lrd_down)
+            other = any(
+                k[0] in self._LRD_OTHER_MOD_VKS and k[0] not in self._LRD_SHIFT_VKS
+                for k in self._lrd_down
+            )
+            selection = (
+                nvda_layout == "desktop"
+                and vk_code == 0x26 and bool(extended) and shifts and not other
+            ) or (
+                nvda_layout == "laptop"
+                and vk_code == 0x53 and not bool(extended) and shifts and not other
+            )
+            if selection:
+                self._lrd_trace_why = "translate:current_selection"
+                self._lrd_swapped.add(held)
+                self._linux_rdaccess_mark_nvda_modifier_used()
+                self._linux_rdaccess_run_main(
+                    lambda: self._linux_rdaccess_script_call("whereAmISelection"))
+                return True
+
         if (
             pressed
             and self._lrd_nvda_down
@@ -1737,8 +2214,7 @@ _LEGACY_HELPERS = '''\
         ):
             self._lrd_trace_why = "unsupported_nvda_command"
             self._lrd_swapped.add(held)
-            if getattr(self, "_lrd_caps_pending", None) is not None:
-                self._lrd_caps_used = True
+            self._linux_rdaccess_mark_nvda_modifier_used()
             return True
 
         # NVDA table edge commands preserve the current column/row. Orca 42
@@ -1804,8 +2280,7 @@ _LEGACY_HELPERS = '''\
                 browse_action = "nativeSelection"
             if browse_action is not None:
                 self._lrd_navigation_marker = ("_LRD_NVDA_BROWSE", browse_action, held)
-                if getattr(self, "_lrd_caps_pending", None) is not None:
-                    self._lrd_caps_used = True
+                self._linux_rdaccess_mark_nvda_modifier_used()
                 return False
 
         # Some NVDA commands have no proven Orca-42 equivalent but collide
@@ -1835,8 +2310,7 @@ _LEGACY_HELPERS = '''\
             if collision:
                 self._lrd_trace_why = "nvda_orca_collision"
                 self._lrd_swapped.add(held)
-                if getattr(self, "_lrd_caps_pending", None) is not None:
-                    self._lrd_caps_used = True
+                self._linux_rdaccess_mark_nvda_modifier_used()
                 return True
 
         if (
@@ -1844,12 +2318,11 @@ _LEGACY_HELPERS = '''\
             and self._lrd_nvda_down
             and not repeat
             and nvda_layout == "desktop"
-            and self._linux_rdaccess_desktop_unimplemented(vk_code, extended)
+            and self._linux_rdaccess_desktop_unimplemented(vk_code, extended, scan_code)
         ):
             self._lrd_trace_why = "unsupported_object_review"
             self._lrd_swapped.add(held)
-            if getattr(self, "_lrd_caps_pending", None) is not None:
-                self._lrd_caps_used = True
+            self._linux_rdaccess_mark_nvda_modifier_used()
             return True
 
         if (
@@ -1857,12 +2330,11 @@ _LEGACY_HELPERS = '''\
             and self._lrd_nvda_down
             and not repeat
             and nvda_layout == "laptop"
-            and self._linux_rdaccess_laptop_unimplemented(vk_code, extended)
+            and self._linux_rdaccess_laptop_unimplemented(vk_code, extended, scan_code)
         ):
             self._lrd_trace_why = "unsupported_object_review"
             self._lrd_swapped.add(held)
-            if getattr(self, "_lrd_caps_pending", None) is not None:
-                self._lrd_caps_used = True
+            self._linux_rdaccess_mark_nvda_modifier_used()
             return True
 
         # NVDA's desktop and laptop layouts reuse several physical gestures
@@ -1897,8 +2369,7 @@ _LEGACY_HELPERS = '''\
                     "unsupported_object_review" if action == "unsupported_review"
                     else "translate:" + action)
                 self._lrd_swapped.add(held)
-                if getattr(self, "_lrd_caps_pending", None) is not None:
-                    self._lrd_caps_used = True
+                self._linux_rdaccess_mark_nvda_modifier_used()
                 if action != "unsupported_review":
                     self._linux_rdaccess_run_main(
                         lambda action=action: self._linux_rdaccess_script_call(action))
@@ -1919,8 +2390,7 @@ _LEGACY_HELPERS = '''\
         ):
             self._lrd_trace_why = "translate:sayAll"
             self._lrd_swapped.add(held)
-            if getattr(self, "_lrd_caps_pending", None) is not None:
-                self._lrd_caps_used = True
+            self._linux_rdaccess_mark_nvda_modifier_used()
             self._linux_rdaccess_run_main(
                 lambda: self._linux_rdaccess_script_call("sayAll"))
             return True
@@ -1943,8 +2413,7 @@ _LEGACY_HELPERS = '''\
         ):
             self._lrd_trace_why = "unsupported_exit_embedded"
             self._lrd_swapped.add(held)
-            if getattr(self, "_lrd_caps_pending", None) is not None:
-                self._lrd_caps_used = True
+            self._linux_rdaccess_mark_nvda_modifier_used()
             return True
 
         # NVDA+Space and NVDA+Shift+Space have exact Orca APIs. Calling
@@ -1960,8 +2429,7 @@ _LEGACY_HELPERS = '''\
                     "translate:toggleStructuralNavigation" if shifts
                     else "translate:togglePresentationMode")
                 self._lrd_swapped.add(held)
-                if getattr(self, "_lrd_caps_pending", None) is not None:
-                    self._lrd_caps_used = True
+                self._linux_rdaccess_mark_nvda_modifier_used()
                 if shifts:
                     self._linux_rdaccess_run_main(
                         lambda: self._linux_rdaccess_script_call(
@@ -1984,8 +2452,7 @@ _LEGACY_HELPERS = '''\
             ):
                 self._lrd_trace_why = "translate:" + action
                 self._lrd_swapped.add(held)
-                if getattr(self, "_lrd_caps_pending", None) is not None:
-                    self._lrd_caps_used = True
+                self._linux_rdaccess_mark_nvda_modifier_used()
                 if action == "input_help":
                     self._linux_rdaccess_run_main(
                         lambda: self._linux_rdaccess_script_call("toggleInputHelp"))
@@ -2046,9 +2513,18 @@ _LEGACY_HELPERS = '''\
                 if (
                     not repeat
                     and vk_code not in self._LRD_MODIFIER_VKS
-                    and getattr(self, "_lrd_caps_pending", None) is not None
+                    and (
+                        getattr(self, "_lrd_caps_pending", None) is not None
+                        or getattr(self, "_lrd_insert_pending", None) is not None
+                    )
+                    and not self._linux_rdaccess_flush_pending_nvda_modifiers()
                 ):
-                    self._linux_rdaccess_flush_pending_caps()
+                    # Do not execute the application key without the modifier
+                    # the user physically held. Own its release so a rejected
+                    # deferred press cannot degrade Insert+key into plain key.
+                    self._lrd_trace_why = "deferred_modifier_rejected"
+                    self._lrd_swapped.add(held)
+                    return True
                 return False
             need_ext, name, target_vk, drop, count, drop_shift = chord
             nvda = self._lrd_nvda_key
@@ -2056,8 +2532,7 @@ _LEGACY_HELPERS = '''\
                 # Re-pressing CapsLock would toggle the lock state.
                 return False
             self._lrd_swapped.add(held)
-            if getattr(self, "_lrd_caps_pending", None) is not None:
-                self._lrd_caps_used = True
+            self._linux_rdaccess_mark_nvda_modifier_used()
             send = self.local_machine.send_key
             if drop:
                 send(key_name=None, pressed=False, modifiers=modifiers,
@@ -3827,7 +4302,8 @@ LOCAL_MACHINE_MARKER_V7 = LOCAL_MACHINE_MARKER_V1 + " v7"
 LOCAL_MACHINE_MARKER_V8 = LOCAL_MACHINE_MARKER_V1 + " v8"
 LOCAL_MACHINE_MARKER_V9 = LOCAL_MACHINE_MARKER_V1 + " v9"
 LOCAL_MACHINE_MARKER_V10 = LOCAL_MACHINE_MARKER_V1 + " v10"
-LOCAL_MACHINE_MARKER = LOCAL_MACHINE_MARKER_V1 + " v11"
+LOCAL_MACHINE_MARKER_V11 = LOCAL_MACHINE_MARKER_V1 + " v11"
+LOCAL_MACHINE_MARKER = LOCAL_MACHINE_MARKER_V1 + " v12"
 LEGACY_LOCAL_MACHINE_RELATIVE = Path("orca-scripts/local_machine.py")
 
 # Upstream writes every key name (including typed passwords) to a debug log,
@@ -3902,7 +4378,7 @@ _LRD_KEYPAD_NAMES = {
     0x2D: "KP_Insert", 0x2E: "KP_Delete",
 }
 _LRD_LOCK_KEY_NAMES = {
-    0x14: "Caps_Lock", 0x90: "Num_Lock",
+    0x14: "Caps_Lock", 0x90: "Num_Lock", 0x91: "Scroll_Lock",
 }
 
 # Upstream starts one `xdotool` process per key event (~38 ms each, measured),
@@ -4001,7 +4477,7 @@ class _LrdXTest:
                 else:
                     self._down_codes.pop(name, None)
                 self._x11.XFlush(self._dpy)
-                if name in ("Caps_Lock", "Num_Lock"):
+                if name in ("Caps_Lock", "Num_Lock", "Scroll_Lock"):
                     # Make the resulting XKB state authoritative before the
                     # controller schedules lock-state presentation.
                     self._x11.XSync(self._dpy, 0)
@@ -4429,6 +4905,14 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V88,
+                LEGACY_COMPAT_MARKER_V87,
+                LEGACY_COMPAT_MARKER_V86,
+                LEGACY_COMPAT_MARKER_V85,
+                LEGACY_COMPAT_MARKER_V84,
+                LEGACY_COMPAT_MARKER_V83,
+                LEGACY_COMPAT_MARKER_V82,
+                LEGACY_COMPAT_MARKER_V81,
                 LEGACY_COMPAT_MARKER_V80,
                 LEGACY_COMPAT_MARKER_V79,
                 LEGACY_COMPAT_MARKER_V78,

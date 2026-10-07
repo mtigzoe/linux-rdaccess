@@ -21,8 +21,14 @@ from remote_access import (
     LEGACY_COMPAT_MARKER_V1,
     LEGACY_LOCAL_MACHINE_RELATIVE,
     LEGACY_REMOTE_CONTROLLER_RELATIVE,
+    LEGACY_TRANSPORT_RELATIVE,
     LOCAL_MACHINE_MARKER,
     LOCAL_MACHINE_MARKER_V1,
+    TRANSPORT_CLEANUP_MARKER,
+    TRANSPORT_CLEANUP_MARKER_V1,
+    TRANSPORT_CLEANUP_MARKER_V2,
+    TRANSPORT_CLEANUP_MARKER_V3,
+    TRANSPORT_CLEANUP_MARKER_V4,
     DEFAULT_CONFIG,
     disable_legacy_orca_connection,
     load_config,
@@ -32,6 +38,7 @@ from remote_access import (
     legacy_customization_speech_sequence_patch_current,
     legacy_customization_say_all_callback_patch_current,
     legacy_local_machine_patch_current,
+    legacy_transport_cleanup_patch_current,
     print_status,
     update_legacy_orca_customizations,
 )
@@ -355,6 +362,26 @@ def patch_status(orca_config: Path) -> list[tuple[str, str]]:
             rows.append((label, "outdated - run: linux-rdaccess connect"))
         else:
             rows.append((label, "not patched - run: linux-rdaccess connect"))
+
+    label = "relay transport cleanup (transport.py)"
+    transport_path = base / LEGACY_TRANSPORT_RELATIVE
+    try:
+        transport_text = transport_path.read_text(encoding="utf-8")
+    except OSError:
+        rows.append((label, "missing"))
+    else:
+        if legacy_transport_cleanup_patch_current(transport_text):
+            rows.append((label, "current"))
+        elif TRANSPORT_CLEANUP_MARKER in transport_text:
+            rows.append((label, "incomplete patch - repair required"))
+        elif (TRANSPORT_CLEANUP_MARKER_V1 in transport_text
+              or TRANSPORT_CLEANUP_MARKER_V2 in transport_text
+              or TRANSPORT_CLEANUP_MARKER_V3 in transport_text
+              or TRANSPORT_CLEANUP_MARKER_V4 in transport_text):
+            rows.append((label, "outdated - run: linux-rdaccess connect"))
+        else:
+            rows.append((label, "not patched - run: linux-rdaccess connect"))
+
     label = "Orca API adapter (linux_rdaccess_orca_adapter.py)"
     try:
         installed = (base / "orca-scripts/linux_rdaccess_orca_adapter.py").read_text(encoding="utf-8")

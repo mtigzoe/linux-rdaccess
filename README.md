@@ -155,6 +155,8 @@ only with the NVDA key held and no Shift/Ctrl/Alt/Win unless noted):
     NVDA+Tab   Where am I
     NVDA+T     Window title
     NVDA+End   Status bar
+    NVDA+Shift+Up (desktop) / NVDA+Shift+S (laptop)
+               Report current selection through Orca's native selection command
     NVDA+F12   Time; press twice quickly for date
 
 The clock uses Orca's configured format and Linux time zone. NVDA+F12 is consumed
@@ -199,15 +201,20 @@ Orca's native table coordinates so they preserve the current column or row.
 NVDA's row/column reading commands remain unsupported because Orca 42 has no
 non-moving full-row/full-column presentation primitive.
 
-Desktop keypad object-navigation interception is deliberately limited to
-unambiguous keypad VKs (for example Numpad5, Minus, Divide, Multiply, and
-extended NumpadEnter). Legacy payloads containing only non-extended
-Home/End/Arrow/Delete VKs are not sufficient proof of a physical keypad key,
-so those ambiguous gestures remain a live-test gap rather than risking normal
-Linux navigation input.
-layout and pass through unchanged. CapsLock presses are deferred so translated
-NVDA commands can call Orca directly without toggling Caps Lock. A standalone
-CapsLock press is forwarded as one complete press/release.
+Desktop keypad object-navigation interception uses unambiguous keypad VKs
+(for example Numpad5, Minus, Divide, Multiply, and extended NumpadEnter) and,
+for Numpad1-9/Delete, the low-level Windows scan code forwarded by NVDA Remote.
+This distinguishes physical numpad navigation keys from dedicated navigation
+keys that share the same VK. Legacy payloads without matching scan-code evidence
+still pass through rather than being guessed as keypad input. NVDA's
+Shift+Numpad1/2/3/7/9 review commands and Shift+NumpadDivide/Multiply mouse-lock
+commands are also consumed when their keypad identity is proven, because Orca
+42 either has no exact equivalent or assigns the physical gesture a conflicting
+meaning; they are not falsely presented as implemented. These physical keypad
+bindings apply in both NVDA keyboard layouts.
+CapsLock and Insert presses used as NVDA modifiers are deferred so translated
+or consumed NVDA commands do not leak those modifier presses into Linux. A
+standalone CapsLock or Insert press is replayed as one complete press/release.
 
 ### Linux GUI and file manager
 
@@ -272,8 +279,8 @@ Set `LINUX_RDACCESS_TRACE=1` in Orca's environment to write a metadata-only trac
 to `~/.local/share/orca/orca-remote-input-trace.log` (mode 0600, rotated at
 256 KiB). It records, per remote key, whether the controller forwarded,
 translated or suppressed it, the modifier ownership (received versus injected,
-left/right distinguished, NVDA modifier, pending Caps Lock), the control
-generation, XKB Caps/Num Lock transitions, held-key release failures after a
+left/right distinguished, NVDA modifier, pending Caps Lock/Insert), the control
+generation, XKB Caps/Num/Scroll Lock transitions, held-key release failures after a
 reconnect, speech-cancel and stale main-loop events, braille command classes, and
 the Orca-side browse/table decisions with a Firefox context class. A character
 key is never identified, braille keyboard input, speech, clipboard data,
@@ -310,14 +317,28 @@ network thread (GTK is not thread-safe). Run `linux-rdaccess doctor` to check th
 patches are active; set `LINUX_RDACCESS_DEBUG=1` to log key-handling stalls
 (duration only, never which key) to `~/.local/share/orca/orca-remote-slow-events.log`.
 
-Caps Lock and Num Lock feedback reads the actual named XKB indicator after a
+Orca Remote's legacy transport is also patched so failed initial connections,
+socket/select disconnects, and malformed relay frames cleanly tear down before
+the native reconnect worker starts another attempt. The socket is shut down
+before joining the sender thread so a blocked `sendall()` cannot stall cleanup.
+Upstream clears `connected` before one cleanup path, while its original
+`_disconnect()` returned immediately when `connected` was false; it also lets
+JSON decode errors escape a receive loop that catches only `socket.error`.
+A concurrent close can additionally make `select()` raise `ValueError` for an
+invalid descriptor. A write-side `sendall()` failure can otherwise kill only
+the sender thread while the transport still reports connected. v5 treats the
+former as a disconnect and shuts down the socket on the latter so the receive
+loop wakes and the reconnect worker stays alive. `doctor` reports the relay
+transport cleanup separately.
+
+Caps Lock, Num Lock, and Scroll Lock feedback reads the actual named XKB indicator after a
 successful key release, when X11 has completed the toggle. The state is captured
 before queuing the Orca announcement, so quick consecutive toggles retain their
-individual on/off results. Num Lock auto-repeat produces one toggle and one
+individual on/off results. Num Lock and Scroll Lock auto-repeat produce one toggle and one
 announcement per press. CapsLock used for a translated NVDA command produces
 neither a lock toggle nor a lock announcement.
 
-The current patches are controller **v81** and local-machine **v11**. Update the
+The current patches are controller **v89**, local-machine **v12**, and transport cleanup **v5**. Update the
 installed command from the repository with `python3 linux_rdaccess.py install`,
 then run `linux-rdaccess connect` to update the Orca-side files and restart Orca.
 `doctor` verifies the connected patch hooks, valid Python, and the installed

@@ -1,5 +1,6 @@
 import json
 import unittest
+from unittest import mock
 
 from braille_link import NvdaBrailleLink
 from rdaccess_dvc import LEGACY_GENERIC_ATTRIBUTE, XON
@@ -88,6 +89,59 @@ class BrailleLinkTests(unittest.TestCase):
         msg = self.json_writes()[-1]
         self.assertEqual(msg["type"], "display")
         self.assertEqual(msg["cells"], [1, 2, 0, 0])
+
+    def test_failed_handshake_stops_batch_and_reconnects_cleanly(self):
+        replacement = FakeChannel()
+        channels = iter((self.channel, replacement))
+        now = [0.0]
+        link = NvdaBrailleLink(lambda: next(channels), clock=lambda: now[0])
+        link.poll()
+        self.channel.incoming.append(
+            bytes([XON])
+            + b'{"type":"protocol_version","version":2}\n'
+            + b'{"type":"attribute_value","attribute":"numCells","value":128}\n'
+        )
+        with mock.patch.object(
+            self.channel, "write", side_effect=ConnectionError("channel lost")
+        ) as write:
+            link.poll()
+        self.assertEqual(write.call_count, 1)
+        self.assertTrue(self.channel.closed)
+        self.assertIsNone(link._channel)
+        self.assertFalse(link.ready)
+        self.assertEqual(link.num_cells, 80)
+
+        now[0] = 2.0
+        link.poll()
+        self.assertIsNone(link._channel)
+        now[0] = 3.0
+        link.poll()
+        self.assertIs(link._channel, replacement)
+        replacement.incoming.append(
+            bytes([XON])
+            + b'{"type":"protocol_version","version":2}\n'
+            + b'{"type":"attribute_value","attribute":"numCells","value":4}\n'
+        )
+        link.poll()
+        self.assertTrue(link.ready)
+        self.assertEqual(link.num_cells, 4)
+
+    def test_failed_attribute_reply_stops_remaining_drained_messages(self):
+        self.connect_v2()
+        self.channel.incoming.append(
+            b'{"type":"attribute_request","attribute":"protocolVersion"}\n'
+            + b'{"type":"protocol_version","version":2}\n'
+            + b'{"type":"attribute_value","attribute":"numCells","value":128}\n'
+        )
+        with mock.patch.object(
+            self.channel, "write", side_effect=ConnectionError("channel lost")
+        ) as write:
+            self.link.poll()
+        self.assertEqual(write.call_count, 1)
+        self.assertTrue(self.channel.closed)
+        self.assertIsNone(self.link._channel)
+        self.assertFalse(self.link.ready)
+        self.assertEqual(self.link.num_cells, 80)
 
 
 if __name__ == "__main__":

@@ -477,13 +477,13 @@ class OrcaRuntimeAdapter:
     @classmethod
     def read_lock_state(cls, vk_code: int) -> bool | None:
         """Snapshot an XKB lock using a private Xlib display and no Orca API."""
-        name = {0x14: "Caps Lock", 0x90: "Num Lock"}.get(vk_code)
+        name = {0x14: "Caps Lock", 0x90: "Num Lock", 0x91: "Scroll Lock"}.get(vk_code)
         return cls._xkb_named_lock_state(name) if name is not None else None
 
     @classmethod
     def present_lock_state(cls, vk_code: int, enabled: bool | None = None) -> bool | None:
         """Present a completed gesture's snapshot through Orca speech/braille."""
-        name = {0x14: "Caps Lock", 0x90: "Num Lock"}.get(vk_code)
+        name = {0x14: "Caps Lock", 0x90: "Num Lock", 0x91: "Scroll Lock"}.get(vk_code)
         if name is None:
             return False
         if enabled is None:
