@@ -282,6 +282,20 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
             self.assertIs(OrcaRuntimeAdapter.call_script("handler", "message"), True)
         handler.assert_called_once_with("message")
 
+    def test_orca42_current_selection_handler_accepts_default_event(self):
+        calls = []
+        script = types.SimpleNamespace(
+            whereAmISelection=lambda event=None: calls.append(event)
+        )
+        with self._fake_orca(script):
+            self.assertIs(
+                OrcaRuntimeAdapter.call_script(
+                    "whereAmISelection", default_event=True
+                ),
+                True,
+            )
+        self.assertEqual(calls, [None])
+
     def test_structural_list_uses_orca42_enabled_object_show_list(self):
         calls = []
         script = types.SimpleNamespace()
