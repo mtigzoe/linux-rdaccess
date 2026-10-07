@@ -4,7 +4,9 @@ Fixture: serrebidev/orca-remote d47a085945576d8e973f9c686587bdfc90ae061c,
 orca-scripts/transport.py. Tests use fake sockets and native sender threads.
 """
 
+import ast
 import json
+import textwrap
 import re
 from pathlib import Path
 import sys
@@ -263,11 +265,23 @@ class TransportStreamBoundariesTests(unittest.TestCase):
 
     def test_v6_cleanup_patch_upgrades_to_v7(self):
         current = remote_access._patch_legacy_transport_cleanup(UPSTREAM)
-        v6 = current.replace(
-            remote_access._TRANSPORT_RECEIVER_V7,
-            remote_access._TRANSPORT_RECEIVER_V6,
-            1,
+        tree = ast.parse(current)
+        tcp = next(
+            node for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "TCPTransport"
         )
+        receiver = next(
+            node for node in tcp.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "handle_server_data"
+        )
+        current_receiver = ast.get_source_segment(current, receiver)
+        indent = "\t"
+        v6_receiver = textwrap.indent(
+            remote_access._TRANSPORT_RECEIVER_V6.strip("\n"),
+            indent,
+        )
+        v6 = current.replace(current_receiver, v6_receiver, 1)
         self.assertNotEqual(v6, current)
         v6 = v6.replace(
             remote_access.TRANSPORT_CLEANUP_MARKER,
