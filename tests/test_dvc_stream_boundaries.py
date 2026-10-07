@@ -36,6 +36,21 @@ class ReceiverBoundaryTests(unittest.TestCase):
         self.assertEqual(receiver.drain(), [{"type": "ping"}])
         self.assertGreater(receiver.junk_bytes, 0)
 
+    def test_current_session_drain_excludes_pre_xon_and_previous_session_messages(self):
+        receiver = Receiver()
+        receiver.feed(
+            message(type="before")
+            + bytes([XON])
+            + message(type="old")
+            + bytes([XOFF, XON])
+            + message(type="current")
+        )
+        self.assertEqual(
+            receiver.drain_current_session(),
+            [{"type": "current"}],
+        )
+        self.assertEqual(receiver.drain(), [])
+
     def test_truncated_json_cannot_swallow_disconnect_and_reconnect(self):
         receiver = Receiver()
         receiver.feed(bytes([XON]) + b'{"type":"index","index":')
