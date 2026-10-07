@@ -1757,7 +1757,6 @@ _LEGACY_HELPERS = '''\
             (0x43, False, False, False, False),  # NVDA+C: clipboard report
             (0x52, False, False, False, False),  # NVDA+R: OCR
             (0x58, False, False, False, False),  # NVDA+X: repeat last speech
-            (0x58, False, True,  False, False),  # NVDA+Ctrl+X: copy last speech
             (0x78, False, False, False, False),  # NVDA+F9: review mark
             (0x78, True,  False, False, False),  # NVDA+Shift+F9
             (0x79, False, False, False, False),  # NVDA+F10: select/copy review
