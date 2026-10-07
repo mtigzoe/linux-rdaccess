@@ -1393,7 +1393,7 @@ class RemoteController:
             self._key(c, 0x28, True, extended=True)    # auto-repeat consumed
             self._key(c, 0x28, False, extended=True)
         self.assertEqual(calls, [("sayAll", None)])
-        self.assertEqual(self._names(c), [(0x2D, True)])
+        self.assertEqual(self._names(c), [])
 
     def test_laptop_layout_uses_exact_caret_reading_aliases(self):
         import os
@@ -3611,7 +3611,7 @@ class LocalMachine:
             self._key(c, 0xA0, True)
             self._key(c, 0x20, True)
         self.assertEqual(calls, [("structural", None)])
-        self.assertEqual(self._names(c), [(0x2D, True), (0xA0, True)])
+        self.assertEqual(self._names(c), [(0xA0, True)])
 
     def test_nvda_shift_space_repeat_and_release_are_consumed(self):
         c, _, _ = self._patched_controller()
@@ -3635,7 +3635,7 @@ class LocalMachine:
             self._key(c, 0xA1, True)
             self._key(c, 0x20, True)
         self.assertEqual(calls, [("structural", None)])
-        self.assertEqual(self._names(c), [(0x2D, True), (0xA0, True), (0xA1, True)])
+        self.assertEqual(self._names(c), [(0xA0, True), (0xA1, True)])
 
     def test_shift_space_without_nvda_key_types_normally(self):
         c, _, _ = self._patched_controller()
@@ -3662,7 +3662,7 @@ class LocalMachine:
             self._key(c, 0x2D, True, extended=True)
             self._key(c, 0x20, True)
         self.assertEqual(calls, [("presentation", SimpleNamespace(type='keyboard', event_string='space'))])
-        self.assertEqual(self._names(c), [(0x2D, True)])
+        self.assertEqual(self._names(c), [])
 
     def test_shift_released_before_space_does_not_confuse_the_release(self):
         import os
