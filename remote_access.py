@@ -1346,7 +1346,8 @@ LEGACY_COMPAT_MARKER_V87 = "# linux-rdaccess NVDA/Orca input compatibility v87"
 LEGACY_COMPAT_MARKER_V88 = "# linux-rdaccess NVDA/Orca input compatibility v88"
 LEGACY_COMPAT_MARKER_V89 = "# linux-rdaccess NVDA/Orca input compatibility v89"
 LEGACY_COMPAT_MARKER_V90 = "# linux-rdaccess NVDA/Orca input compatibility v90"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v91"
+LEGACY_COMPAT_MARKER_V91 = "# linux-rdaccess NVDA/Orca input compatibility v91"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v92"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -1417,19 +1418,6 @@ _LEGACY_HELPERS = '''\
     _LRD_OTHER_MOD_VKS = (
         0x10, 0xA0, 0xA1, 0x11, 0xA2, 0xA3, 0x12, 0xA4, 0xA5, 0x5B, 0x5C,
     )
-    # Fixed non-character X key names accepted alongside a Windows VK.
-    # A contradictory known name must not make LocalMachine inject a different
-    # key from the VK identity owned by the controller.
-    _LRD_REMOTE_KEY_NAME_VKS = {
-        "Tab": 0x09, "Return": 0x0D, "Escape": 0x1B, "BackSpace": 0x08,
-        "Caps_Lock": 0x14, "Insert": 0x2D, "Delete": 0x2E,
-        "Home": 0x24, "End": 0x23, "Prior": 0x21, "Next": 0x22,
-        "Left": 0x25, "Up": 0x26, "Right": 0x27, "Down": 0x28,
-        "Shift_L": 0xA0, "Shift_R": 0xA1,
-        "Control_L": 0xA2, "Control_R": 0xA3,
-        "Alt_L": 0xA4, "Alt_R": 0xA5,
-        "Super_L": 0x5B, "Super_R": 0x5C,
-    }
     # Low-level Windows scan codes for physical numpad navigation keys.
     # NVDA Remote forwards KBDLLHOOKSTRUCT.scanCode verbatim, so these let us
     # distinguish a proven numpad key from a legacy non-extended navigation VK.
@@ -2057,13 +2045,6 @@ _LEGACY_HELPERS = '''\
                 or (vk_code is None
                     and (not isinstance(key_name, str) or not key_name))):
             return True
-        # A Windows VK is the authoritative identity for NVDA Remote, while
-        # matching names (for example Caps_Lock) remain useful to the legacy
-        # backend. Strip only a known contradictory non-character name.
-        if vk_code is not None and key_name:
-            named_vk = self._LRD_REMOTE_KEY_NAME_VKS.get(key_name)
-            if named_vk is not None and named_vk != vk_code:
-                key_name = None
         if not self._linux_rdaccess_trace_enabled():
             return self._linux_rdaccess_filter_key_impl(
                 pressed, vk_code, extended, modifiers, key_name, scan_code)
@@ -5174,6 +5155,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V91,
                 LEGACY_COMPAT_MARKER_V90,
                 LEGACY_COMPAT_MARKER_V89,
                 LEGACY_COMPAT_MARKER_V88,
