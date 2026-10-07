@@ -104,7 +104,7 @@ class NvdaA11yLink:
                 self._handshake()
                 if self._channel is not channel or self._rx is not receiver:
                     return
-        for msg in self._rx.drain():
+        for msg in self._rx.drain_current_session():
             if msg.get("type") != "ping":
                 log.debug("received an A11Y protocol message")
             pong_nonce = decode_pong(msg)
