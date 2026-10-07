@@ -20,10 +20,18 @@ MAX_FOCUS_SEARCH_NODES = 4096
 MAX_FOCUS_SEARCH_DEPTH = 32
 MAX_ACTIONS = 32
 MAX_FOCUS_TEXT_CHARS = 8192
+MAX_NAME_CHARS = 4096
+MAX_DESCRIPTION_CHARS = 8192
+MAX_VALUE_CHARS = 8192
+MAX_ROLE_CHARS = 128
+MAX_STATE_CHARS = 64
+MAX_STATES = 64
+MAX_ACTION_NAME_CHARS = 256
 
 
-def _clean(value: Any) -> str:
-    return " ".join(str(value or "").split())
+def _clean(value: Any, limit: int | None = None) -> str:
+    text = " ".join(str(value or "").split())
+    return text if limit is None else text[:limit]
 
 
 def _invoke(obj, names: tuple[str, ...], *args):
@@ -50,21 +58,21 @@ def _name(obj) -> str:
     value = _invoke(obj, ("get_name", "getName"))
     if value is None:
         value = getattr(obj, "name", "")
-    return _clean(value)
+    return _clean(value, MAX_NAME_CHARS)
 
 
 def _role_name(obj) -> str:
     value = _invoke(obj, ("get_role_name", "getRoleName"))
     if value is None:
         value = getattr(obj, "roleName", "")
-    return _clean(value)
+    return _clean(value, MAX_ROLE_CHARS)
 
 
 def _description(obj) -> str:
     value = _invoke(obj, ("get_description", "getDescription"))
     if value is None:
         value = getattr(obj, "description", "")
-    return _clean(value)
+    return _clean(value, MAX_DESCRIPTION_CHARS)
 
 
 def object_id(obj: object) -> str:
@@ -142,9 +150,11 @@ def _states(obj, *, focused: bool) -> list[str]:
         if raw_states is None:
             raw_states = getattr(state_set, "states", ())
     for state in raw_states or ():
-        name = _state_name(state)
+        name = _state_name(state)[:MAX_STATE_CHARS]
         if name and name != "invalid":
             states.add(name)
+            if len(states) >= MAX_STATES:
+                break
     # The event itself is authoritative for the focus target and covers
     # toolkits that lag when their state set is queried during notification.
     if focused:
@@ -174,7 +184,7 @@ def action_names(obj) -> list[str]:
             name = _clean(_invoke(iface, ("get_action_name", "getName"), index))
         except Exception:
             name = ""
-        names.append(name or f"action {index + 1}")
+        names.append((name or f"action {index + 1}")[:MAX_ACTION_NAME_CHARS])
     return names
 
 
@@ -305,7 +315,7 @@ def _value(obj) -> str:
 
     text = _clean(_invoke(iface, ("get_text", "getText")))
     if text:
-        return text
+        return text[:MAX_VALUE_CHARS]
 
     current = _invoke(iface, ("get_current_value", "getCurrentValue"))
     if current is None:
@@ -314,7 +324,7 @@ def _value(obj) -> str:
         return ""
     if isinstance(current, float) and current.is_integer():
         return str(int(current))
-    return _clean(current)
+    return _clean(current, MAX_VALUE_CHARS)
 
 
 def _bounds(obj, coord_type) -> list[int] | None:
