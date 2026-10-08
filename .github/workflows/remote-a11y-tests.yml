@@ -67,7 +67,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq xvfb libxtst6
-          xvfb-run -a python -m unittest -v tests.test_xtest_injection tests.integration.x11.test_live_x11
+          xvfb-run -a python -m unittest -v tests.integration.x11.test_xtest_injection tests.integration.x11.test_live_x11
 
       - name: Run full repository test suite and compile check
         run: |
