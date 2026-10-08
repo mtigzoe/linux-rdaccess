@@ -99,9 +99,10 @@ call-site migration, installation checks and Linux/Windows smoke tests.
 ### Installation and connection modules
 
 - `linux_rdaccess_core/installation/files.py` implements validated runtime
-  file copying and launcher creation; the root `linux_rdaccess.py` delegates
-  to it while retaining the same `install` command. Autostart and Orca
-  integration logic remain at the root pending further compatibility testing.
+  file copying and launcher creation. `installation/autostart.py` manages the
+  XFCE desktop autostart entry. The root `linux_rdaccess.py` retains its
+  existing public CLI functions and delegates to those modules. Orca
+  integration logic remains at the root pending further compatibility testing.
 - `linux_rdaccess_core/connection/nvda_remote_check.py` implements the
   redacted NVDA Remote/Orca connection readiness diagnostic. The root
   `nvda_remote_check.py` remains as an executable compatibility entry point
