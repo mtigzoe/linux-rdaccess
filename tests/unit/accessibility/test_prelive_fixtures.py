@@ -10,7 +10,7 @@ import sys
 import unittest
 
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[3]
 BROWSER_FIXTURE = ROOT / "tests" / "fixtures" / "browser-control-patterns.html"
 SMOKE_APP = ROOT / "tests" / "apps" / "accessibility_smoke_app.py"
 

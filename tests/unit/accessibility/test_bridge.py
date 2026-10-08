@@ -18,7 +18,7 @@ try:
 except (ImportError, ValueError) as exc:  # pragma: no cover
     raise unittest.SkipTest(f"Atspi not available: {exc}")
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[3]
 
 
 class FakeAccessible:
