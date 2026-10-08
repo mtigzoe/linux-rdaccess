@@ -60,3 +60,21 @@ checks Linux producer behavior and the rdAccess semantic contract.
 Keep `__init__.py` in each importable test package and update cross-test
 imports, relative fixture paths, and CI references when moving tests.
 See [repository organization](../docs/repository-organization.md).
+
+## Installed Linux command acceptance (no live connection)
+
+GitHub Actions runs a focused acceptance test against a temporary copy of the
+installed runtime. It checks `status`, `doctor`, `connect --no-restart`,
+and `disconnect --no-restart` with deliberately missing configuration. These
+checks verify safe failure paths without starting Orca, changing the user's
+configuration, or using an NVDA Remote relay.
+
+Run the same test locally from the repository root:
+
+```bash
+python3 -m unittest -v tests.unit.transport.test_installed_runtime_acceptance
+```
+
+The real Linux Mint installation and connected Windows NVDA/braille acceptance
+still require a live desktop and hardware. Passing this suite alone does not
+establish that Remote Access speech and braille work end to end.
