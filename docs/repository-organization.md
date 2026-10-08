@@ -98,9 +98,10 @@ call-site migration, installation checks and Linux/Windows smoke tests.
 
 ### Installation and connection modules
 
-- `linux_rdaccess_core/installation/` is reserved for installer logic once
-  the Linux CLI file-copy and autostart contracts can be migrated safely.
-  The executable `linux_rdaccess.py` intentionally remains in the root.
+- `linux_rdaccess_core/installation/files.py` implements validated runtime
+  file copying and launcher creation; the root `linux_rdaccess.py` delegates
+  to it while retaining the same `install` command. Autostart and Orca
+  integration logic remain at the root pending further compatibility testing.
 - `linux_rdaccess_core/connection/nvda_remote_check.py` implements the
   redacted NVDA Remote/Orca connection readiness diagnostic. The root
   `nvda_remote_check.py` remains as an executable compatibility entry point
