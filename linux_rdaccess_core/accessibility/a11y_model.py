@@ -261,6 +261,23 @@ def perform_action(obj, index: int) -> bool:
     return False
 
 
+def _gi_atspi_method(iface, interface_name: str, method_name: str, *args):
+    """Call an AT-SPI interface explicitly when GI Accessible aliases shadow it.
+
+    Newer libatspi versions expose Accessible.get_text/get_selection aliases
+    with different signatures. Do not use those aliases for Text/Value methods.
+    None means this is not a real GI Accessible, so use pyatspi/fake dispatch.
+    """
+    try:
+        from gi.repository import Atspi
+    except (ImportError, ValueError):
+        return None
+    if not isinstance(iface, Atspi.Accessible):
+        return None
+    interface = getattr(Atspi, interface_name)
+    return getattr(interface, method_name)(iface, *args)
+
+
 def _text_iface(obj):
     return _invoke(obj, ("get_text_iface", "queryText"))
 
@@ -305,7 +322,9 @@ def _selection_offsets(iface) -> tuple[int, int] | None:
             return None
     except (TypeError, ValueError):
         return None
-    selection = _invoke(iface, ("get_selection", "getSelection"), 0)
+    selection = _gi_atspi_method(iface, "Text", "get_selection", 0)
+    if selection is None:
+        selection = _invoke(iface, ("get_selection", "getSelection"), 0)
     if selection is None:
         return None
 
@@ -350,7 +369,10 @@ def _text_snapshot(obj, *, focused: bool) -> dict[str, Any]:
 
     end = min(character_count, MAX_FOCUS_TEXT_CHARS)
     try:
-        text = str(_invoke(iface, ("get_text", "getText"), 0, end) or "")
+        raw_text = _gi_atspi_method(iface, "Text", "get_text", 0, end)
+        if raw_text is None:
+            raw_text = _invoke(iface, ("get_text", "getText"), 0, end)
+        text = str(raw_text or "")
     except Exception:
         return empty
     # Guard against a broken provider returning more text than requested.
@@ -390,11 +412,20 @@ def _value(obj) -> str:
     if iface is None:
         return ""
 
-    text = _clean(_invoke(iface, ("get_text", "getText")))
+    # GI Accessible.get_text is a Text alias, not a Value description.
+    # Never call it without offsets for a real GI Value interface.
+    try:
+        from gi.repository import Atspi
+        is_gi_accessible = isinstance(iface, Atspi.Accessible)
+    except (ImportError, ValueError):
+        is_gi_accessible = False
+    text = "" if is_gi_accessible else _clean(_invoke(iface, ("get_text", "getText")))
     if text:
         return text[:MAX_VALUE_CHARS]
 
-    current = _invoke(iface, ("get_current_value", "getCurrentValue"))
+    current = _gi_atspi_method(iface, "Value", "get_current_value")
+    if current is None:
+        current = _invoke(iface, ("get_current_value", "getCurrentValue"))
     if current is None:
         current = getattr(iface, "currentValue", None)
     if current is None:
