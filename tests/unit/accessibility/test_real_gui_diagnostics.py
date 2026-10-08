@@ -1,5 +1,6 @@
 """Isolation and traversal regressions for the real-application GUI runner."""
 from pathlib import Path
+from types import SimpleNamespace
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -76,6 +77,41 @@ class RealGuiDiagnosticTests(unittest.TestCase):
                 self.assertEqual(Path(env[key]).parent, Path(directory))
                 self.assertEqual(Path(env[key]).stat().st_mode & 0o777, 0o700)
         self.assertEqual(inherited["AT_SPI_BUS_ADDRESS"], "unix:path=/active-atspi")
+
+    def test_focus_waits_for_a_mapped_realized_component_before_grabbing_focus(self):
+        ready = {"showing": False, "focused": False}
+        extents = SimpleNamespace(width=0, height=24, x=30, y=40)
+        grabbed = []
+
+        def grab_focus():
+            grabbed.append((ready["showing"], extents.width))
+            self.assertTrue(ready["showing"], "native focus must not target an unmapped widget")
+            self.assertGreater(extents.width, 0, "native focus must wait for realized geometry")
+            ready["focused"] = True
+            return True
+
+        component = SimpleNamespace(get_extents=lambda _coordinates: extents, grab_focus=grab_focus)
+        node = SimpleNamespace(get_component_iface=lambda: component)
+        session = smoke.Session.__new__(smoke.Session)
+        session.Atspi = SimpleNamespace(CoordType=SimpleNamespace(SCREEN=0))
+        session.state = lambda _node, state: ready["focused"] if state == "FOCUSED" else ready["showing"]
+        session.showing = lambda _node: ready["showing"]
+
+        def wait_until_ready(predicate, label):
+            for _attempt in range(3):
+                result = predicate()
+                if result:
+                    return result
+                if not ready["showing"]:
+                    ready["showing"] = True
+                else:
+                    extents.width = 100
+            self.fail("readiness never established: " + label)
+
+        session.wait = wait_until_ready
+        session.focus(node)
+        self.assertEqual(grabbed, [(True, 100)])
+        self.assertTrue(ready["focused"])
 
     def test_desktop_code_uses_owned_native_executable_instead_of_detached_cli(self):
         with tempfile.TemporaryDirectory() as directory:

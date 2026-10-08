@@ -41,6 +41,10 @@ VS Code Remote CLI state before loading AT-SPI. Traversal distinguishes
 equally named controls by proxy identity. Applications are required by default;
 explicit `--skip` options are reported and do not count as passing coverage.
 The GUI workflow supplies all seven desktop applications.
+The first Ubuntu GUI run found an unrealized GTK Search control receiving a
+focus request before its window could accept keys. The runner now requires
+showing/visible controls with realized component geometry before grabbing
+focus; the navigation assertions remain unchanged.
 
 | Application | Behavior asserted |
 | --- | --- |
@@ -104,11 +108,11 @@ with explicit authorization before injecting input into the user's desktop.
 
 | Check | Result |
 | --- | --- |
-| Full Python 3.10 suite, headless | 1,183 tests run; 18 expected private-X11 skips; passed. |
-| Full Python 3.10 suite, private Xvfb | 1,183 tests passed; no skips. |
+| Full Python 3.10 suite, headless | 1,184 tests run; 18 expected private-X11 skips; passed. |
+| Full Python 3.10 suite, private Xvfb | 1,184 tests passed; no skips. |
 | GTK gallery | 38 accessibility/keyboard checks passed. |
 | All seven real applications, private Xvfb/D-Bus | 43 checks passed; 220 AT-SPI events; no skips. |
-| GUI runner isolation and traversal | Seven regression tests passed. |
+| GUI runner isolation, traversal and mapped focus | Eight regression tests passed. |
 | Loopback protocol and braille hook reload regressions | 15 tests passed. |
 | Compileall, Python 3.10 grammar, shell syntax, diff whitespace | Passed; 132 Python files checked. |
 

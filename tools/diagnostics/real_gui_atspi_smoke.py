@@ -217,8 +217,19 @@ class Session:
                 focused = node
         return focused
 
+    def showing(self, node):
+        return self.state(node, "SHOWING") and self.state(node, "VISIBLE")
+
     def focus(self, node):
-        if not node.get_component_iface().grab_focus():
+        # GTK can publish hidden or unrealized accessibles before a window
+        # is ready. Native focus requires mapped geometry so the following
+        # keyboard event reaches a visible widget.
+        self.wait(lambda: self.showing(node), "mapped accessible control before focus")
+        component = node.get_component_iface()
+        self.wait(lambda: (extents := component.get_extents(self.Atspi.CoordType.SCREEN)).width > 0
+                  and extents.height > 0 and extents.x > -(1 << 30) and extents.y > -(1 << 30),
+                  "realized accessible component before focus")
+        if not component.grab_focus():
             raise AssertionError(f"Cannot focus {node.get_role_name()} {node.get_name()!r}")
         self.wait(lambda: self.state(node, "FOCUSED"), "AT-SPI focus")
 
@@ -304,7 +315,7 @@ def settings_check(session):
     session.launch("settings", [BINARIES["settings"]])
     app = session.application("xfce4-settings-manager")
     session.activate(app)
-    search = session.wait(lambda: session.find(app, {"text", "entry"}, "Search"), "settings Search")
+    search = session.wait(lambda: session.find(app, {"text", "entry"}, "Search", session.showing), "showing settings Search")
     session.tab_round_trip(app, search)
     session.text_edit(search, "keyboard", "Settings search")
     session.key("ctrl+a", "BackSpace")
