@@ -1139,7 +1139,8 @@ Additional tools:
 ## Tests
 
     python3 -m unittest discover -s tests -t .
-    python3 -m py_compile *.py diagnostics/*.py tests/*.py
+    python3 -m compileall -q linux_rdaccess_core diagnostics tools tests
+    python3 -m py_compile linux_rdaccess.py linux_rdaccess_windows.py remote_access.py
     bash -n run_braille_bridge.sh
 
 ## Legacy speech-only xrdp bridge
