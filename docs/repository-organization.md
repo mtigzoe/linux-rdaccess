@@ -37,10 +37,12 @@ directly run the relocated tests. Keep `tests/__init__.py` and package
 discovery depends on importable packages.
 
 The migration has grouped 65 test modules under `unit/` and `integration/`.
-Two root-level modules remain because they export shared test fixtures:
-`tests/test_remote_access.py` and `tests/test_compat_lifecycle.py`.
-Move them only after updating every importing test and checking that they
-are not accidentally imported and discovered twice.
+The two remaining test modules have moved to `tests/shared/`:
+`test_remote_access.py` and `test_compat_lifecycle.py`. Existing imports
+of their old names are temporarily supported by module aliases in
+`tests/__init__.py`. Once all cross-test imports have moved to
+`tests.shared`, remove the temporary aliases. `unittest` discovery must
+load their tests only once.
 
 The production `linux_rdaccess_windows.py` entry point is unchanged.
 The Windows test's source path was updated, and moved tests with fixture paths
