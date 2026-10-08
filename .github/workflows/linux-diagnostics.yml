@@ -5,12 +5,14 @@ on:
     branches: [main]
     paths:
       - 'diagnostics/**'
+      - 'tools/diagnostics/**'
       - 'tests/**'
       - '.github/workflows/linux-diagnostics.yml'
   push:
     branches: [refactor/repository-structure]
     paths:
       - 'diagnostics/**'
+      - 'tools/diagnostics/**'
       - 'tests/**'
       - '.github/workflows/linux-diagnostics.yml'
   workflow_dispatch:
