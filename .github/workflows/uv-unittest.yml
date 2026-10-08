@@ -1,0 +1,35 @@
+name: Full unittest suite with uv
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [refactor/repository-structure]
+  workflow_dispatch:
+
+jobs:
+  uv-unittest:
+    name: uv unittest (Python 3.10 / Linux Xvfb)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install Linux test display dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb xauth libx11-6 libxtst6
+      - name: Run repository tests via uv and save output
+        shell: bash
+        run: |
+          set -o pipefail
+          xvfb-run -a uv run --no-project --python 3.10 python -m unittest discover -s tests -t . -v 2>&1 | tee unittest-uv.log
+      - name: Upload unittest output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uv-unittest-log
+          path: unittest-uv.log
+          if-no-files-found: warn
