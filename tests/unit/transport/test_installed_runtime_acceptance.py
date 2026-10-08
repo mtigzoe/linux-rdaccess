@@ -11,6 +11,7 @@ import tempfile
 import unittest
 
 import linux_rdaccess
+from remote_access import RemoteAccessConfig, save_config
 
 
 class InstalledRuntimeAcceptanceTests(unittest.TestCase):
@@ -50,6 +51,27 @@ class InstalledRuntimeAcceptanceTests(unittest.TestCase):
             self.assertEqual(disconnect.returncode, 1, disconnect.stdout + disconnect.stderr)
             self.assertIn("config not found", disconnect.stdout)
             self.assertFalse(config.exists())
+            self.assertFalse(orca.exists())
+
+            # Exercise benign commands and the ready status with a synthetic
+            # configuration held entirely under the disposable test directory.
+            for command, expected in (
+                ("compatibility", "Firefox"),
+                ("shortcuts", "Insert+Alt+Tab"),
+            ):
+                result = invoke(command)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn(expected, result.stdout)
+            save_config(
+                RemoteAccessConfig(host="example.invalid", port=6837,
+                                   role="host", key="synthetic-test-only"),
+                config,
+            )
+            ready = invoke("status")
+            self.assertEqual(ready.returncode, 0, ready.stdout + ready.stderr)
+            self.assertIn("ready: True", ready.stdout)
+            self.assertIn("orca_remote_config_found: False", ready.stdout)
+            self.assertNotIn("synthetic-test-only", ready.stdout)
             self.assertFalse(orca.exists())
 
 
