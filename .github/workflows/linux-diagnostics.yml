@@ -25,7 +25,7 @@ jobs:
       - name: Install test desktop dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq xvfb xauth libx11-6 libxtst6 python3-gi gir1.2-atspi-2.0
+          sudo apt-get install -y -qq xvfb xauth libx11-6 libxtst6 python3-gi gir1.2-atspi-2.0 gir1.2-gtk-3.0 libatk-adaptor at-spi2-core dbus-x11 xfwm4 xdotool
       - name: Check all diagnostic scripts compile
         run: |
           python3 -m compileall -q diagnostics
@@ -39,6 +39,10 @@ jobs:
       - name: Check X11 diagnostic in isolated display
         run: |
           xvfb-run -a sh -c 'python3 diagnostics/x11/live_x11.py --display "$DISPLAY"'
+      - name: Verify real GTK controls and AT-SPI focus events
+        run: |
+          timeout 150s python3 tools/diagnostics/gtk_atspi_smoke.py
+
       - name: Run existing diagnostics-related regression tests
         run: |
           xvfb-run -a python3 -m unittest -v \
