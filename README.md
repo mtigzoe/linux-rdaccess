@@ -511,7 +511,7 @@ controlled Firefox page and the first Windows input, speech and braille checks.
 ## Live X11 + AT-SPI diagnostics
 
 For live testing on the existing Linux Mint XFCE/X11 desktop, use the bounded
-diagnostic driver in `diagnostics/live_x11.py`. It inspects the real X11 and
+diagnostic driver in `diagnostics/x11/live_x11.py`. It inspects the real X11 and
 AT-SPI state that Orca uses, while keeping accessible names redacted in terminal
 output by default.
 
@@ -521,12 +521,12 @@ Install the diagnostic dependencies on Linux Mint:
 
 Inspect the detected `:0` desktop and XKB lock indicators:
 
-    python3 diagnostics/live_x11.py --display :0
+    python3 diagnostics/x11/live_x11.py --display :0
 
 Watch Num Lock, Caps Lock, and Scroll Lock state changes without listening for
 ordinary typed keys:
 
-    python3 diagnostics/live_x11.py --display :0 --watch-locks 30
+    python3 diagnostics/x11/live_x11.py --display :0 --watch-locks 30
 
 This is useful for end-to-end NVDA Remote testing: start the lock watcher, press
 Num Lock from Windows NVDA, and compare the before/after XKB state. A successful
@@ -535,14 +535,14 @@ rather than failed key injection.
 
 Inspect visible Thunar or Firefox windows:
 
-    python3 diagnostics/live_x11.py --display :0 --target thunar
-    python3 diagnostics/live_x11.py --display :0 --target firefox
+    python3 diagnostics/x11/live_x11.py --display :0 --target thunar
+    python3 diagnostics/x11/live_x11.py --display :0 --target firefox
 
 If more than one matching window is found, choose the reported numeric window
 ID explicitly. To activate one Thunar window and exercise a bounded local
 Tab/Shift+Tab focus test:
 
-    python3 diagnostics/live_x11.py --display :0 --target thunar --window 12345 --activate --key Tab --key Shift+Tab
+    python3 diagnostics/x11/live_x11.py --display :0 --target thunar --window 12345 --activate --key Tab --key Shift+Tab
 
 The local key mode reuses the production XTest injection path and refuses
 arbitrary text input. It is useful for isolating Linux/X11/AT-SPI behavior, but
@@ -557,7 +557,7 @@ speech text, or the Remote Access key.
 Optional screenshots are explicit and private because they may contain visible
 user content:
 
-    python3 diagnostics/live_x11.py --display :0 --target firefox --window 12345 --screenshot /private/path/debug.png
+    python3 diagnostics/x11/live_x11.py --display :0 --target firefox --window 12345 --screenshot /private/path/debug.png
 
 See [docs/live-x11-diagnostics.md](docs/live-x11-diagnostics.md) for the complete
 safety model, supported keys, Num Lock investigation notes, and Xvfb verification
@@ -574,11 +574,11 @@ connection.
 
 On Linux, start the receiver:
 
-    python3 diagnostics/nvda_speech_probe.py
+    python3 diagnostics/nvda/nvda_speech_probe.py
 
 To let Codex verify the exact announcement during a controlled test:
 
-    python3 diagnostics/nvda_speech_probe.py --show-text
+    python3 diagnostics/nvda/nvda_speech_probe.py --show-text
 
 Install the Windows diagnostic add-on from a Windows checkout or copy of this
 repository:
@@ -1085,7 +1085,7 @@ For best results, start the launcher immediately after logging in to xrdp, befor
 
 When Tab does not produce speech or braille:
 
-    DISPLAY=:10 python3 diagnostics/tab_trace.py
+    DISPLAY=:10 python3 diagnostics/x11/tab_trace.py
 
 - No `Tab #n` line: the key never reached the Linux session.
 - `Tab #n -> NO AT-SPI focus event`: Linux received the key but the application reported no focus change.
@@ -1093,8 +1093,8 @@ When Tab does not produce speech or braille:
 
 Additional tools:
 
-    DISPLAY=:10 python3 diagnostics/atspi_event_probe.py --all
-    DISPLAY=:10 python3 diagnostics/atspi_probe.py
+    DISPLAY=:10 python3 diagnostics/atspi/atspi_event_probe.py --all
+    DISPLAY=:10 python3 diagnostics/atspi/atspi_probe.py
 
 ## Known limits
 
