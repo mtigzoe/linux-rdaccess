@@ -339,7 +339,7 @@ class DoctorTests(unittest.TestCase):
 
     def test_speech_status_checks_wire_shape_and_native_callback_helper(self):
         import remote_access
-        from tests.test_customization_reconnect import CustomizationReconnectTests
+        from tests.unit.transport.test_customization_reconnect import CustomizationReconnectTests
         cfg = self._orca()
         labels = ("NVDA speech sequence (orca-customizations.py)",
                   "native Say All callbacks (orca-customizations.py)")
