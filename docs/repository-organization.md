@@ -48,3 +48,15 @@ The production `linux_rdaccess_windows.py` entry point is unchanged.
 The Windows test's source path was updated, and moved tests with fixture paths
 were adjusted to continue using `tests/fixtures/`. Do not merge without
 passing CI and the Mint/Orca integration checks.
+
+## Production source layout
+
+`linux_rdaccess_core/` holds internal pure-Python implementation modules,
+starting with the announcement engine. The root `announcer.py` is retained as
+a compatibility import so existing bridges and tests continue to work.
+
+Keep executable entry points and installer-managed source files at the root
+until the installation and Orca script-copy contracts can be migrated together.
+In particular, `linux_rdaccess.py`, `remote_access.py`, `orca_adapter.py`, and
+`a11y_model.py` have root-relative installation dependencies. Do not remove
+those root paths as part of cosmetic cleanup.
