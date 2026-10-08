@@ -52,7 +52,9 @@ passing CI and the Mint/Orca integration checks.
 ## Production source layout
 
 `linux_rdaccess_core/` holds internal pure-Python implementation modules,
-starting with the announcement engine. The root `announcer.py` is retained as
+currently containing the announcement engine, accessibility object-channel link,
+and braille transport link. The root `announcer.py`, `a11y_link.py`, and
+`braille_link.py` files are compatibility imports for existing callers. The root `announcer.py` is retained as
 a compatibility import so existing bridges and tests continue to work.
 
 Keep executable entry points and installer-managed source files at the root
