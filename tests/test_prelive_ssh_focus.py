@@ -10,7 +10,7 @@ from a11y_model import build_focus_payload, find_focused_object_ex
 from tests.bridge_stubs import GLibError, import_braille_bridge
 from tests.unit.accessibility.test_a11y_model import FakeAccessible, FakeValue
 from tests.unit.accessibility.test_a11y_model_bounds import Node
-from tests.test_bridge_focus_resync import FakeA11yLink, SpeechLink
+from tests.unit.accessibility.test_bridge_focus_resync import FakeA11yLink, SpeechLink
 
 
 bridge = import_braille_bridge()
