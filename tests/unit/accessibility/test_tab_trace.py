@@ -1,6 +1,6 @@
 import unittest
 
-from diagnostics.tab_trace import (
+from diagnostics.x11.tab_trace import (
     TabCorrelator,
     parse_xi2_key_presses,
     tab_keycodes_from_xmodmap,
