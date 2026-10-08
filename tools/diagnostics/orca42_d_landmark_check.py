@@ -17,7 +17,7 @@ Expected: remote D/Shift+D -> next/previous landmark (and their releases);
 focus mode, local D and Ctrl+D untouched; hw_code always restored.
 """
 import os, pathlib, shutil, sys, tempfile
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 import remote_access
 
 _tmp = pathlib.Path(tempfile.mkdtemp()) / "remote_controller.py"

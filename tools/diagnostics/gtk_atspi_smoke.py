@@ -16,7 +16,7 @@ import sys
 import tempfile
 import time
 
-root = Path(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).resolve().parent.parent).resolve()
+root = Path(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]).resolve()
 sys.path.insert(0, str(root))
 from a11y_model import build_focus_payload, build_text_update, find_focused_object_ex, object_id
 

@@ -326,7 +326,7 @@ so NVDA+Space toggling is followed immediately. Focus mode, edit fields, the
 address bar, Ctrl/Alt+D, NVDA+D and any D from the Linux keyboard are never
 translated. Set `LINUX_RDACCESS_NVDA_D_LANDMARK=0` in Orca's environment to turn
 it off. The other single-letter keys (H K F B E X C R L I T G P Q S O, 1-6)
-already match Orca 42 and are untouched. `tools/orca42_d_landmark_check.py` runs
+already match Orca 42 and are untouched. `tools/diagnostics/orca42_d_landmark_check.py` runs
 the hook through real Orca 42 key matching.
 
 Also translated (verified against Orca 42 key matching, which needs the modifier
@@ -429,7 +429,7 @@ the Orca-side browse/table decisions with a Firefox context class. A character
 key is never identified, braille keyboard input, speech, clipboard data,
 passwords and connection keys are never recorded, and every value is reduced to a
 number, a boolean or a short fixed token before it is written. Summarize a run
-with `python3 tools/summarize_input_trace.py --timeline`. See
+with `python3 tools/diagnostics/summarize_input_trace.py --timeline`. See
 [live-trace-diagnostics.md](docs/live-trace-diagnostics.md).
 
 ### Responsiveness
@@ -500,7 +500,7 @@ records Orca 42 speech cancellation, stale browser actions, remote braille displ
 width and gesture ownership, focus restoration fixes, and the remaining live checks.
 The [October 8 pre-live audit](docs/compatibility-audit-2026-10-08.md) records
 Insert recovery, raw braille fallback, relay cancellation, SSH session discovery,
-and actual Mint GTK focus checks. Run `python3 tools/gtk_atspi_smoke.py` on Linux
+and actual Mint GTK focus checks. Run `python3 tools/diagnostics/gtk_atspi_smoke.py` on Linux
 for its isolated GTK/AT-SPI regression smoke test.
 The [follow-up audit](docs/compatibility-audit-2026-10-06-followup.md) records
 current-line context, modal focus, pass-next ordering and speech/Say All repairs,
