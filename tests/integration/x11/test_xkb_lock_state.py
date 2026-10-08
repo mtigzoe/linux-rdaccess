@@ -2,7 +2,7 @@ import importlib.util
 import pathlib
 import unittest
 
-_PATH = pathlib.Path(__file__).resolve().parent.parent / "tools" / "xkb_lock_state.py"
+_PATH = pathlib.Path(__file__).resolve().parents[3] / "tools" / "xkb_lock_state.py"
 _spec = importlib.util.spec_from_file_location("xkb_lock_state", _PATH)
 xkb = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(xkb)
