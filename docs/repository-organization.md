@@ -36,9 +36,13 @@ directly run the relocated tests. Keep `tests/__init__.py` and package
 `__init__.py` files in every new nested test directory because unittest
 discovery depends on importable packages.
 
-The first migration batches group 24 test modules under `unit/` and `integration/` while preserving remaining root-level tests pending fixture/path audits. They keep the root
-`linux_rdaccess_windows.py` entry point unchanged, adjusting the test's
-source path. Future batches must also audit imports such as
-`from tests.test_a11y_model import ...` and the relative `__file__`
-references before moving files. Do not merge without passing CI and the
-Mint/Orca integration checks.
+The migration has grouped 65 test modules under `unit/` and `integration/`.
+Two root-level modules remain because they export shared test fixtures:
+`tests/test_remote_access.py` and `tests/test_compat_lifecycle.py`.
+Move them only after updating every importing test and checking that they
+are not accidentally imported and discovered twice.
+
+The production `linux_rdaccess_windows.py` entry point is unchanged.
+The Windows test's source path was updated, and moved tests with fixture paths
+were adjusted to continue using `tests/fixtures/`. Do not merge without
+passing CI and the Mint/Orca integration checks.
