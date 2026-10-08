@@ -594,7 +594,8 @@ def _patch_legacy_customization_reconnect(text: str) -> str:
 
 CUSTOMIZATION_BRAILLE_CELLS_MARKER_V1 = "# linux-rdaccess native Orca braille cells v1"
 CUSTOMIZATION_BRAILLE_CELLS_MARKER_V2 = "# linux-rdaccess native Orca braille cells v2"
-CUSTOMIZATION_BRAILLE_CELLS_MARKER = "# linux-rdaccess native Orca braille cells v3"
+CUSTOMIZATION_BRAILLE_CELLS_MARKER_V3 = "# linux-rdaccess native Orca braille cells v3"
+CUSTOMIZATION_BRAILLE_CELLS_MARKER = "# linux-rdaccess native Orca braille cells v4"
 _LEGACY_CUSTOMIZATION_BRAILLE_SOURCE = '''
 try:
     import orca.braille as _remote_braille
@@ -718,8 +719,8 @@ except Exception:
     _dbg("Could not install braille forwarding hook")
 '''
 
-_CUSTOMIZATION_BRAILLE_CELLS_HOOK = _CUSTOMIZATION_BRAILLE_CELLS_HOOK_V2.replace(
-    CUSTOMIZATION_BRAILLE_CELLS_MARKER_V2, CUSTOMIZATION_BRAILLE_CELLS_MARKER,
+_CUSTOMIZATION_BRAILLE_CELLS_HOOK_V3 = _CUSTOMIZATION_BRAILLE_CELLS_HOOK_V2.replace(
+    CUSTOMIZATION_BRAILLE_CELLS_MARKER_V2, CUSTOMIZATION_BRAILLE_CELLS_MARKER_V3,
 ).replace(
     "                    controller._linux_rdaccess_offer_native_braille()\n",
     "                    # Semantic support is optional; raw cells must still work\n"
@@ -730,6 +731,24 @@ _CUSTOMIZATION_BRAILLE_CELLS_HOOK = _CUSTOMIZATION_BRAILLE_CELLS_HOOK_V2.replace
     "                            offer()\n"
     "                        except Exception:\n"
     "                            pass\n",
+)
+
+_CUSTOMIZATION_BRAILLE_CELLS_HOOK = _CUSTOMIZATION_BRAILLE_CELLS_HOOK_V3.replace(
+    CUSTOMIZATION_BRAILLE_CELLS_MARKER_V3, CUSTOMIZATION_BRAILLE_CELLS_MARKER,
+).replace(
+    "    _old_braille_refresh = _remote_braille.refresh\n",
+    "    # Reloading customizations must retain the native refresh callable.\n"
+    "    # Recognize the previous hook as well when upgrading a running Orca.\n"
+    "    _old_braille_refresh = getattr(_remote_braille.refresh, \"__dict__\", {}).get(\n"
+    "        \"_linux_rdaccess_original\",\n"
+    "        (getattr(_remote_braille.refresh, \"__globals__\", {}).get(\n"
+    "            \"_old_braille_refresh\", _remote_braille.refresh)\n"
+    "         if getattr(_remote_braille.refresh, \"__name__\", None) == \"_patched_braille_refresh\"\n"
+    "         else _remote_braille.refresh))\n",
+).replace(
+    "    _remote_braille.refresh = _patched_braille_refresh\n",
+    "    _patched_braille_refresh._linux_rdaccess_original = _old_braille_refresh\n"
+    "    _remote_braille.refresh = _patched_braille_refresh\n",
 )
 
 
@@ -770,7 +789,8 @@ def _patch_legacy_customization_braille_cells(text: str) -> str:
         return text
     for marker, hook in (
             (CUSTOMIZATION_BRAILLE_CELLS_MARKER_V1, _CUSTOMIZATION_BRAILLE_CELLS_HOOK_V1),
-            (CUSTOMIZATION_BRAILLE_CELLS_MARKER_V2, _CUSTOMIZATION_BRAILLE_CELLS_HOOK_V2)):
+            (CUSTOMIZATION_BRAILLE_CELLS_MARKER_V2, _CUSTOMIZATION_BRAILLE_CELLS_HOOK_V2),
+            (CUSTOMIZATION_BRAILLE_CELLS_MARKER_V3, _CUSTOMIZATION_BRAILLE_CELLS_HOOK_V3)):
         if marker in text:
             if text.count(marker) != 1 or hook not in text:
                 raise ValueError("incomplete legacy native Orca braille cells patch")

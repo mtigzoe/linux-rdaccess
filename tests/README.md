@@ -10,6 +10,7 @@ Run test commands from the **repository root**, not from inside `tests/`.
 - `unit/transport/` — bridge transport, controller lifecycle, and configuration
 - `unit/windows/` — Windows controller and VS Code settings
 - `integration/x11/` — X11 keyboard and desktop integration
+- `integration/test_nvda_remote_loopback.py` — NVDA Remote messages and lifecycle over a disposable loopback relay
 - `shared/` — reusable test harnesses (`test_remote_access.py`, `test_compat_lifecycle.py`)
 - `fixtures/` — reusable test data
 - `apps/` — accessibility smoke-test applications
@@ -99,18 +100,40 @@ env -u DISPLAY -u WAYLAND_DISPLAY python3 -m unittest discover -s tests -t .
 ## Real Linux GUI accessibility tests in GitHub Actions
 
 The dedicated `.github/workflows/linux-gui-accessibility.yml` workflow starts
-a disposable Ubuntu Xvfb display and D-Bus session. It runs the existing GTK
-controls/event smoke test plus a real-application AT-SPI smoke test for Thunar
-and Mousepad. The test checks that application windows appear in the AT-SPI
-tree; it does not need SSH, an active Linux Mint session, or NVDA credentials.
+a disposable Ubuntu Xvfb display and D-Bus session. It runs the GTK gallery
+and real applications: XFCE Settings Manager, Thunar, Mousepad, XFCE Terminal,
+the XFCE clock/calendar, Firefox, and desktop VS Code. Assertions cover
+keyboard focus and events, text/caret changes, file selection, dialogs,
+menus, and focus restoration. No SSH session or NVDA credentials are needed.
 
 Run locally on Linux with the workflow dependencies installed:
 
 ```bash
 timeout 180s python3 tools/diagnostics/gtk_atspi_smoke.py
-timeout 100s dbus-run-session -- xvfb-run -a python3 tools/diagnostics/real_gui_atspi_smoke.py
+timeout 300s dbus-run-session -- xvfb-run -a python3 tools/diagnostics/real_gui_atspi_smoke.py
 ```
 
-These tests **do not** verify Windows NVDA speech, remote keyboard command
-translation, or a physical braille display. Those still require a separate
-NVDA Remote integration harness and live acceptance testing.
+The real-application runner also creates its own isolated display and bus when
+called directly. An unavailable application fails by default. Use an explicit
+`--skip vscode` locally when only VS Code's Remote SSH CLI is installed; that
+CLI cannot be used as the Linux desktop editor. CI requires every application.
+An explicit skip is reported in the result and is not accessibility evidence.
+
+## Isolated NVDA Remote protocol integration
+
+```bash
+python3 -m unittest -v tests.integration.test_nvda_remote_loopback
+```
+
+This suite is included in standard discovery. It runs the production-patched
+Orca Remote transport against a disposable TCP peer bound to `127.0.0.1` with
+an ephemeral port and a test-only channel. It checks handshakes, framing,
+keyboard/modifier delivery, ordered speech and cancellation, raw and semantic
+braille messages, focus/action contracts, reconnects, errors, and cleanup.
+The test replaces TLS with a local socket and uses doubles for Orca services.
+It never reads the user's relay configuration.
+
+GUI and protocol tests **do not** establish audible Windows NVDA speech or
+physical braille display behavior. Live acceptance must verify remote control
+toggle, actual NVDA command consumption, speech pacing, device translation,
+panning/routing, and focus/caret synchronization using the real Windows peer.

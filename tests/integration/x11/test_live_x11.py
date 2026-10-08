@@ -4,6 +4,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import tempfile
 import types
 import unittest
@@ -13,6 +14,126 @@ from diagnostics.x11 import live_x11 as live
 
 
 class LiveDiagnosticTests(unittest.TestCase):
+    @staticmethod
+    def focus_tree():
+        focus = object.__new__(live.Focus)
+        roles = types.SimpleNamespace(APPLICATION=object(), PASSWORD_TEXT=object())
+        focused, active = (types.SimpleNamespace(value_nick=name) for name in ('focused', 'active'))
+        focus.atspi = types.SimpleNamespace(Role=roles,
+            StateType=types.SimpleNamespace(FOCUSED=focused, ACTIVE=active))
+
+        def node(role, states=(), children=(), pid=10):
+            obj = mock.Mock()
+            obj.get_role.return_value = roles.APPLICATION if role == 'application' else types.SimpleNamespace(value_nick=role)
+            obj.get_process_id.return_value = pid
+            obj.get_name.return_value = 'private focus name'
+            state_set = obj.get_state_set.return_value
+            state_set.contains.side_effect = lambda state: state.value_nick in states
+            state_set.get_states.return_value = [types.SimpleNamespace(value_nick=state) for state in states]
+            obj.get_child_count.return_value = len(children)
+            obj.get_child_at_index.side_effect = lambda index: children[index]
+            return obj
+
+        return focus, node
+
+    def test_focused_descendant_wins_over_focused_window_and_panel(self):
+        focus, node = self.focus_tree()
+        target = node('check-box', ('focused',))
+        panel = node('panel', ('focused',), [target])
+        frame = node('frame', ('active', 'focused'), [panel])
+        desktop = node('desktop', children=[node('application', children=[frame])])
+        focus.atspi.get_desktop = lambda _: desktop
+        self.assertIs(focus.read(10)['object'], target)
+        frame.get_name.assert_not_called()
+        panel.get_name.assert_not_called()
+
+    def test_active_window_focus_wins_over_an_inactive_windows_stale_focus(self):
+        focus, node = self.focus_tree()
+        active = node('frame', ('active', 'focused'))
+        stale = node('entry', ('focused',))
+        inactive = node('frame', children=[stale])
+        desktop = node('desktop', children=[node('application', children=[active, inactive])])
+        focus.atspi.get_desktop = lambda _: desktop
+        self.assertIs(focus.read(10)['object'], active)
+        stale.get_name.assert_not_called()
+
+    def test_target_application_filter_excludes_another_process(self):
+        focus, node = self.focus_tree()
+        target = node('entry', ('focused',))
+        other = node('entry', ('focused', 'active'))
+        desktop = node('desktop', children=[
+            node('application', children=[node('frame', children=[target])], pid=10),
+            node('application', children=[node('frame', children=[other])], pid=20)])
+        focus.atspi.get_desktop = lambda _: desktop
+        self.assertIs(focus.read(10)['object'], target)
+        other.get_state_set.assert_not_called()
+        other.get_name.assert_not_called()
+
+    def test_cyclic_provider_tree_does_not_loop(self):
+        focus, node = self.focus_tree()
+        target = node('entry', ('focused',))
+        desktop = node('desktop', children=[node('application', children=[target])])
+        target.get_child_count.return_value = 1
+        target.get_child_at_index.side_effect = lambda _: desktop
+        focus.atspi.get_desktop = lambda _: desktop
+        self.assertIs(focus.read()['object'], target)
+        desktop.get_child_count.assert_called_once()
+        target.get_child_count.assert_called_once()
+
+    def test_disappearing_focus_provider_returns_unavailable(self):
+        for method in ('get_name', 'get_states'):
+            with self.subTest(method=method):
+                focus, node = self.focus_tree()
+                target = node('entry', ('focused',))
+                desktop = node('desktop', children=[node('application', children=[target])])
+                focus.atspi.get_desktop = lambda _: desktop
+                provider = target if method == 'get_name' else target.get_state_set.return_value
+                getattr(provider, method).side_effect = RuntimeError('provider disappeared')
+                self.assertIsNone(focus.read())
+
+    def test_default_display_uses_discovered_graphical_session(self):
+        output = io.StringIO()
+        environment = {'DISPLAY': ':1', 'XDG_SESSION_TYPE': 'x11'}
+        with mock.patch('linux_rdaccess_core.cli.graphical_session_env', return_value=environment), \
+             mock.patch.object(live, 'Xkb') as xkb, \
+             mock.patch.dict(os.environ), contextlib.redirect_stdout(output):
+            xkb.return_value.snapshot.return_value = {}
+            self.assertEqual(live.main([]), 0)
+        xkb.assert_called_once_with(':1')
+        self.assertEqual(json.loads(output.getvalue())['display'], ':1')
+
+    def test_explicit_display_mismatch_never_opens_x11(self):
+        output = io.StringIO()
+        with mock.patch('linux_rdaccess_core.cli.graphical_session_env', return_value={'DISPLAY': ':1'}), \
+             mock.patch.object(live, 'Xkb') as xkb, contextlib.redirect_stdout(output):
+            self.assertEqual(live.main(['--display', ':0']), 1)
+        xkb.assert_not_called()
+        self.assertEqual(json.loads(output.getvalue())['error'],
+                         'Requested X11 session does not match detected session')
+
+    def test_selected_session_removes_stale_graphical_variables_before_x11_opens(self):
+        output = io.StringIO()
+        environment = {'DISPLAY': ':1', 'XDG_SESSION_TYPE': 'x11'}
+        stale = {'AT_SPI_BUS_ADDRESS': 'unix:path=/ssh/a11y',
+                 'XAUTHORITY': '/tmp/ssh-authority', 'WAYLAND_DISPLAY': 'wayland-0',
+                 'DBUS_SESSION_BUS_ADDRESS': 'unix:path=/ssh/bus',
+                 'XDG_RUNTIME_DIR': '/tmp/ssh-runtime', 'LRD_TEST_UNRELATED': 'preserve'}
+
+        def opened(display):
+            self.assertEqual(display, ':1')
+            for key in stale:
+                if key != 'LRD_TEST_UNRELATED':
+                    self.assertNotIn(key, os.environ)
+            self.assertEqual(os.environ['LRD_TEST_UNRELATED'], 'preserve')
+            instance = mock.Mock()
+            instance.snapshot.return_value = {}
+            return instance
+
+        with mock.patch('linux_rdaccess_core.cli.graphical_session_env', return_value=environment), \
+             mock.patch.object(live, 'Xkb', side_effect=opened), \
+             mock.patch.dict(os.environ, stale), contextlib.redirect_stdout(output):
+            self.assertEqual(live.main([]), 0)
+
     def test_password_field_name_is_never_queried(self):
         focus = object.__new__(live.Focus)
         password_role = types.SimpleNamespace(value_nick='password-text')
@@ -122,8 +243,30 @@ class LiveDiagnosticTests(unittest.TestCase):
             self.assertEqual(destination.stat().st_mode & 0o777, 0o600)
 
 
-@unittest.skipUnless(os.environ.get('DISPLAY') and os.environ['DISPLAY'].split('.')[0] != ':0',
-                     'needs an isolated X server (run under xvfb-run)')
+def _isolated_xvfb():
+    display = re.fullmatch(r':(\d+)(?:\.\d+)?', os.environ.get('DISPLAY', ''))
+    if not display:
+        return False
+    try:
+        pid = int(Path(f'/tmp/.X{display[1]}-lock').read_text().strip())
+        return Path(f'/proc/{pid}/comm').read_text().strip() == 'Xvfb'
+    except (OSError, ValueError):
+        return False
+
+
+class LiveXkbDisplaySafetyTests(unittest.TestCase):
+    def test_desktop_at_nonzero_display_is_rejected(self):
+        with mock.patch.dict(os.environ, DISPLAY=':1'), \
+             mock.patch.object(Path, 'read_text', side_effect=['123', 'Xorg\n']):
+            self.assertFalse(_isolated_xvfb())
+
+    def test_unverifiable_display_is_rejected(self):
+        with mock.patch.dict(os.environ, DISPLAY=':99'), \
+             mock.patch.object(Path, 'read_text', side_effect=FileNotFoundError):
+            self.assertFalse(_isolated_xvfb())
+
+
+@unittest.skipUnless(_isolated_xvfb(), 'needs a private Xvfb server (run under xvfb-run)')
 class LiveXkbIntegrationTests(unittest.TestCase):
     def test_held_modifier_is_refused_and_remains_held(self):
         backend = live.injection_backend()

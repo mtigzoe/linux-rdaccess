@@ -7,6 +7,7 @@ on:
       - '.github/workflows/linux-gui-accessibility.yml'
       - 'tools/diagnostics/**'
       - 'tests/apps/**'
+      - 'tests/unit/accessibility/test_real_gui_diagnostics.py'
       - 'linux_rdaccess_core/**'
       - 'a11y_model.py'
   push:
@@ -15,6 +16,7 @@ on:
       - '.github/workflows/linux-gui-accessibility.yml'
       - 'tools/diagnostics/**'
       - 'tests/apps/**'
+      - 'tests/unit/accessibility/test_real_gui_diagnostics.py'
       - 'linux_rdaccess_core/**'
       - 'a11y_model.py'
   workflow_dispatch:
@@ -26,7 +28,7 @@ jobs:
   gtk-and-xfce:
     name: Real Linux GUI / AT-SPI (Ubuntu Xvfb)
     runs-on: ubuntu-22.04
-    timeout-minutes: 12
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Install isolated XFCE/AT-SPI testing dependencies
@@ -35,13 +37,39 @@ jobs:
           sudo apt-get install -y -qq \
             xvfb xauth dbus-x11 xfwm4 xdotool \
             python3-gi gir1.2-atspi-2.0 gir1.2-gtk-3.0 \
-            at-spi2-core libatk-adaptor thunar mousepad
+            at-spi2-core libatk-adaptor thunar mousepad \
+            xfce4-settings xfce4-terminal xfce4-panel \
+            curl xz-utils libdbus-glib-1-2 libasound2 libnss3 fonts-liberation
+      - name: Install actual Firefox and VS Code desktop binaries
+        run: |
+          # Ubuntu 22.04's firefox package launches Snap; use Mozilla's
+          # official archive so it works with the private D-Bus/Xvfb session.
+          curl -fL --retry 3 'https://download.mozilla.org/?product=firefox-latest-ssl&os=linux64&lang=en-US' \
+            -o "$RUNNER_TEMP/firefox.tar"
+          tar -xf "$RUNNER_TEMP/firefox.tar" -C "$RUNNER_TEMP"
+          sudo ln -sf "$RUNNER_TEMP/firefox/firefox" /usr/local/bin/firefox
+          curl -fL --retry 3 'https://update.code.visualstudio.com/latest/linux-deb-x64/stable' \
+            -o "$RUNNER_TEMP/code.deb"
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "$RUNNER_TEMP/code.deb"
+          firefox --version
+          code --version
       - name: Compile GUI tests
         run: |
           python3 -m py_compile tools/diagnostics/gtk_atspi_smoke.py tools/diagnostics/real_gui_atspi_smoke.py
+          python3 -m unittest tests.unit.accessibility.test_real_gui_diagnostics -v
       - name: Run GTK controls and AT-SPI semantic event checks
         run: |
           timeout 180s python3 tools/diagnostics/gtk_atspi_smoke.py
-      - name: Run Thunar and Mousepad GUI AT-SPI checks
+      - name: Run all seven real application keyboard and AT-SPI checks
+        shell: bash
         run: |
-          timeout 100s dbus-run-session -- xvfb-run -a python3 tools/diagnostics/real_gui_atspi_smoke.py
+          # Missing desktop dependencies fail CI; --skip is reserved for
+          # explicit local exclusions such as VS Code Remote SSH CLI.
+          timeout 300s python3 tools/diagnostics/real_gui_atspi_smoke.py 2>&1 | tee real-gui-atspi.log
+      - name: Preserve real application accessibility results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-gui-atspi-results
+          path: real-gui-atspi.log
+          if-no-files-found: ignore
