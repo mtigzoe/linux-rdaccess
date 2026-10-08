@@ -76,15 +76,32 @@ launcher and test-isolation fixes.
 SSH to `cyber.local` succeeded. Cyber runs Mint 21.3, Python 3.10.12, Orca 42 and
 an XFCE session. Read-only checks of its existing installation found saved
 configuration ready, autostart enabled, required applications available and its
-existing patch checks current. These describe the existing installation; they
-do not prove a live relay connection. The migrated installation was validated
+existing patch checks current. The migrated installation was validated
 separately using synthetic settings and a private temporary home.
 Neither its existing source checkout nor its installed runtime was replaced.
 
-Desktop Commander reported both devices offline. NVDA was not running on the
-available Windows machine. An accessible recovery method was requested and was
-not confirmed, so no live application keystrokes, Orca restart, Remote Access
-disconnection or desktop changes were performed.
+Initial checks found both Desktop Commander devices offline and no running
+NVDA process on the available Windows machine. In the follow-up session, the
+user confirmed that Desktop Commander was open and NVDA was running, supplied
+`ssh miriam@cyber.local`, and identified Insert+Alt+Tab as the remote-control
+switch. Read-only checks then confirmed:
+
+- Windows Desktop Commander was online and responded to a ping; its Cyber
+  device still reported offline, while direct SSH worked.
+- NVDA was running and had one established TCP connection on the relay port.
+- The existing Orca process also had one established TCP connection on the
+  relay port. These socket checks do not establish that both clients joined
+  the same channel or that input, speech or braille reached the other endpoint.
+- Mint's live accessibility bus exposed 24 applications. A redacted focus
+  query found an active, focused menu. A 45-second focus/window event listener
+  registered successfully but received no events during its observation.
+
+This chat exposes terminal and file tools, but no Windows keyboard-control
+tool or the `node_repl` runtime required by the Computer Use skill. No
+Insert+Alt+Tab or application keystrokes were sent. The user was asked to press
+Insert+Alt+Tab followed by NVDA+Tab and report the announcement; the result is
+pending. No Orca restart, Remote Access disconnection or desktop changes were
+performed, and no relay keys, focus labels or window titles were recorded.
 
 Automatic approval review rejected both a broad source upload and a narrower
 transfer of modified Python source/tests to Cyber, citing possible disclosure
