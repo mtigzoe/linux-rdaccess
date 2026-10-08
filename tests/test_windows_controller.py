@@ -44,7 +44,7 @@ class WindowsControllerTests(unittest.TestCase):
     def test_allowlisted_commands_only(self):
         config = {"host": "linux-pc.local", "username": "linuxuser", "port": 22}
         args = controller.ssh_arguments(config, "status")
-        self.assertEqual(args[-2:], ["linuxuser@linux-pc.local", "linux-rdaccess status"])
+        self.assertEqual(args[-2:], ["linuxuser@linux-pc.local", "~/.local/bin/linux-rdaccess status"])
         with self.assertRaises(ValueError):
             controller.ssh_arguments(config, "status; rm -rf ~")
 
@@ -56,7 +56,7 @@ class WindowsControllerTests(unittest.TestCase):
             run.return_value.returncode = 0
             self.assertEqual(controller.execute("doctor"), 0)
             self.assertEqual(run.call_args.kwargs, {"check": False})
-            self.assertEqual(run.call_args.args[0][-1], "linux-rdaccess doctor")
+            self.assertEqual(run.call_args.args[0][-1], "~/.local/bin/linux-rdaccess doctor")
 
 
 if __name__ == "__main__":
