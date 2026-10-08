@@ -53,8 +53,8 @@ jobs:
             tests.unit.accessibility.test_a11y_model \
             tests.unit.transport.test_nvda_remote_check \
             tests.test_remote_access \
-            tests.test_linux_rdaccess
-          python -m py_compile nvda_remote_check.py remote_access.py linux_rdaccess.py tests/unit/transport/test_nvda_remote_check.py tests/test_remote_access.py tests/test_linux_rdaccess.py
+            tests.unit.transport.test_linux_rdaccess
+          python -m py_compile nvda_remote_check.py remote_access.py linux_rdaccess.py tests/unit/transport/test_nvda_remote_check.py tests/test_remote_access.py tests/unit/transport/test_linux_rdaccess.py
       - name: Run pre-live compatibility smoke contracts
         run: |
           python -m unittest -v \
