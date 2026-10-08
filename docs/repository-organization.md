@@ -107,6 +107,10 @@ call-site migration, installation checks and Linux/Windows smoke tests.
   redacted NVDA Remote/Orca connection readiness diagnostic. The root
   `nvda_remote_check.py` remains as an executable compatibility entry point
   for the installer, tests and existing documented commands.
+- `linux_rdaccess_core/connection/session.py` coordinates `connect` and
+  `disconnect` while `linux_rdaccess.py` keeps its public CLI functions.
+  Its dependencies are injected so existing Orca patching and restart behavior
+  remain unchanged.
 
 Do not treat the new packages as independently installed yet: the current
 user-level installation still copies its designated root-level source files.
