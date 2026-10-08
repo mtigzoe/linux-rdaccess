@@ -57,6 +57,56 @@ uv run --no-project python .\linux_rdaccess_windows.py compatibility
 uv run --no-project python .\linux_rdaccess_windows.py disconnect
 ```
 
+### Verify connection and start the Linux bridge
+
+After configuring SSH once, check that the Linux command is installed and
+the Remote Access configuration is ready:
+
+```powershell
+uv run --no-project python .\linux_rdaccess_windows.py status
+```
+
+Example (the relay address and port depend on your own Linux configuration):
+
+```text
+host: <configured relay address>
+port: <configured relay port>
+role: host
+orca_connection_type: slave
+key_configured: True
+mute_local_orca_speech: True
+ready: True
+autostart_enabled: True
+command_installed: True
+orca_remote_config_found: True
+```
+
+A `ready: True` status means the Linux-side saved configuration is ready; it
+does **not** confirm that Windows NVDA is connected or that speech/braille
+events have been verified. The `host` and `port` lines describe the Remote
+Access relay, **not** the SSH host and SSH port set during Windows
+`configure`.
+
+Apply the saved Linux configuration and start or restart Orca:
+
+```powershell
+uv run --no-project python .\linux_rdaccess_windows.py connect
+```
+
+Expected output when configuration succeeds:
+
+```text
+Configured <configured relay address>:<configured relay port> as role host.
+Remote Access key remains hidden.
+```
+
+The Windows controller runs the installed Linux command through
+`~/.local/bin/linux-rdaccess`, so it works even if non-interactive SSH
+sessions omit `~/.local/bin` from PATH. `connect` returning successfully
+means the Linux command completed, not that the Windows NVDA Remote Access
+add-on connected. Establish the NVDA Remote Access connection separately.
+
+
 To run the Windows controller unit tests:
 
 ```powershell
