@@ -19,11 +19,14 @@ package without changing its working directory. Tools and CI use the new paths.
 | Check | Environment | Result |
 | --- | --- | --- |
 | Current `main` baseline | Cyber, Mint 21.3, Python 3.10.12, temporary public clone | 1,141 tests; pass; 18 skipped without a display |
+| Published cleanup suite without a display | Cyber temporary clone, Mint 21.3, Python 3.10.12 | 1,148 tests; pass; 18 display tests skipped |
+| Published cleanup suite under private Xvfb | Cyber temporary clone, Mint 21.3, Python 3.10.12 | 1,148 tests; pass; no skips |
+| Installed runtime, standalone Orca layout and package imports | Published cleanup code on Cyber; private configurations | 13 tests; pass |
 | Full updated suite without a display | Local Ubuntu WSL, Python 3.10.12 | 1,148 tests; pass; 18 display tests skipped |
 | Full updated suite under private Xvfb | Local Ubuntu WSL, Python 3.10.12, system accessibility libraries | 1,148 tests; pass; no skips |
 | Windows controller, settings, public imports, standalone Orca layout | Native Windows, Python 3.14 | 23 tests; pass |
 | Real GTK/AT-SPI controls and keyboard/caret/dialog smoke | Updated code, local WSL, private Xvfb/session bus/settings directories | 33 checks; pass; 44 events recorded |
-| Existing public GTK/AT-SPI smoke | Cyber temporary public `main` clone, private Xvfb | 33 checks; pass |
+| Real GTK/AT-SPI smoke on published cleanup | Cyber temporary public clone, private Xvfb | 33 checks; pass; 44 events recorded |
 | Semantic fixture contract against local sibling `rdAccess` checkout | Windows; six newly generated JSON fixtures | 7 tests; pass |
 | Package/tools/diagnostics/tests compilation | Local WSL, Python 3.10.12 | Pass |
 | Linux/Windows/configuration root entry-point compilation | Local WSL | Pass |
@@ -74,7 +77,8 @@ SSH to `cyber.local` succeeded. Cyber runs Mint 21.3, Python 3.10.12, Orca 42 an
 an XFCE session. Read-only checks of its existing installation found saved
 configuration ready, autostart enabled, required applications available and its
 existing patch checks current. These describe the existing installation; they
-do not prove a live relay connection or validate the migrated installation.
+do not prove a live relay connection. The migrated installation was validated
+separately using synthetic settings and a private temporary home.
 Neither its existing source checkout nor its installed runtime was replaced.
 
 Desktop Commander reported both devices offline. NVDA was not running on the
@@ -84,9 +88,11 @@ disconnection or desktop changes were performed.
 
 Automatic approval review rejected both a broad source upload and a narrower
 transfer of modified Python source/tests to Cyber, citing possible disclosure
-of unpublished code. Explicit approval for the specified transfer was requested;
-the modified code was tested locally in WSL instead. Current `main` checks on
-Cyber used a public clone created on that machine.
+of unpublished code. The requested commit and push subsequently published
+implementation revision `5dcb9c9` in the verified public repository. Downloading
+that public revision into Cyber's temporary clone was then approved. Both full
+suites, isolated installation acceptance and actual GTK/AT-SPI smoke checks
+passed on Mint. No unpublished local files were uploaded.
 
 | Application | Availability on Cyber | Keyboard and focus | NVDA speech | Physical braille | Live defects |
 | --- | --- | --- | --- | --- | --- |
@@ -115,3 +121,8 @@ installed-runtime acceptance, legacy/package bridge entry points, Windows
 controller/import checks and the Linux-to-rdAccess semantic protocol contract.
 CI and isolated GTK tests cannot establish live NVDA speech or physical braille
 compatibility. Live verification remains required before claiming that coverage.
+
+The implementation revision's pull-request runs passed:
+[full uv/Windows suite](https://github.com/mtigzoe/linux-rdaccess/actions/runs/37810983170),
+[Linux accessibility diagnostics](https://github.com/mtigzoe/linux-rdaccess/actions/runs/37810983001),
+and [remote semantic contracts on Python 3.10/3.12](https://github.com/mtigzoe/linux-rdaccess/actions/runs/37810983124).
