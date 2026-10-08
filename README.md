@@ -73,6 +73,43 @@ so the virtual environment is not committed.
 For requirements, architecture, and troubleshooting, see
 [Windows controller documentation](docs/windows-controller.md).
 
+### PowerShell session helpers
+
+From PowerShell in the Windows repository directory, run:
+
+```powershell
+.\start-windows-session.ps1
+```
+
+This creates `.venv` with `uv venv` if needed, prompts for SSH configuration
+if none is saved, runs `linux-rdaccess connect` on Linux, and checks its status.
+To change the SSH target:
+
+```powershell
+.\start-windows-session.ps1 -Configure
+```
+
+To skip the status check after connecting:
+
+```powershell
+.\start-windows-session.ps1 -SkipStatus
+```
+
+To disable the Linux-side Orca Remote auto-connection:
+
+```powershell
+.\stop-windows-session.ps1
+```
+
+These scripts are Windows-side counterparts to the Linux session helper, but
+they do **not** launch or connect the NVDA Remote Access add-on: NVDA must be
+running and its Remote Access connection must be handled separately. They also
+do not replace `start-orca-session.sh` when the Linux desktop requires
+explicit Orca session startup. No personal hostname or username is embedded
+in the scripts. If PowerShell blocks locally downloaded scripts, inspect
+them and use a process-scoped execution policy if permitted by your system
+administrator.
+
 ## Install once, then use simple commands
 
 From a clone of this repository on Linux Mint:
