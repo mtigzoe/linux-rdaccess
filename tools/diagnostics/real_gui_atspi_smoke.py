@@ -501,7 +501,24 @@ user_pref("browser.tabs.warnOnClose", false);
     session.launch("firefox", ["firefox", "--no-remote", "--profile", str(profile), page.as_uri()])
     app = session.application("firefox")
     session.activate(app)
-    session.wait(lambda: session.find(app, {"document web"}), "Firefox document accessibility", seconds=60)
+    # New Firefox profiles may show a first-run Terms of Use welcome dialog
+    # even when about:welcome is disabled. It is part of this disposable
+    # profile, so dismiss it through the accessible UI before testing HTML.
+    def browser_document():
+        document = session.find(app, {"document web"})
+        if document is not None:
+            return document
+        welcome = session.find(app, {"dialog"}, predicate=lambda node:
+                               "Welcome to Firefox" in node.get_name())
+        if welcome is not None:
+            buttons = [node for node in walk(welcome) if node.get_role_name() == "push button"]
+            for button in buttons:
+                if any(word in button.get_name().casefold() for word in
+                       ("continue", "accept", "start browsing", "get started")):
+                    button.get_action_iface().do_action(0)
+                    break
+        return None
+    session.wait(browser_document, "Firefox document accessibility after welcome", seconds=35)
     entry = session.wait(lambda: session.find(app, {"entry", "text"}, "Smoke input"), "Firefox labelled input")
     session.text_edit(entry, "lrd browser text", "Firefox input")
     session.key("Tab")
