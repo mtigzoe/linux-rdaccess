@@ -168,34 +168,10 @@ def install_user_files(
     share_dir: Path = DEFAULT_SHARE_DIR,
     bin_path: Path = DEFAULT_BIN,
 ) -> None:
-    names = ("linux_rdaccess.py", "remote_access.py", "nvda_remote_check.py", "orca_adapter.py", "a11y_model.py")
-    # Check the whole runtime bundle before replacing any installed member.
-    for name in names:
-        if not (source_dir / name).is_file():
-            raise FileNotFoundError(source_dir / name)
-    package = source_dir / "linux_rdaccess_core"
-    if not (package / "connection" / "nvda_remote_check.py").is_file():
-        raise FileNotFoundError(package / "connection" / "nvda_remote_check.py")
-    share_dir.mkdir(parents=True, exist_ok=True)
-    bin_path.parent.mkdir(parents=True, exist_ok=True)
+    """Install the runtime bundle using the internal installation module."""
+    from linux_rdaccess_core.installation.files import install_runtime_files
 
-    for name in names:
-        if (source_dir / name).resolve() != (share_dir / name).resolve():
-            shutil.copy2(source_dir / name, share_dir / name)
-
-    # The root nvda_remote_check.py entry point imports the internal package.
-    # Ship the package with the installed CLI so doctor and direct checks work.
-    target = share_dir / "linux_rdaccess_core"
-    if package.resolve() != target.resolve():
-        shutil.copytree(package, target, dirs_exist_ok=True,
-                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-
-    wrapper = (
-        "#!/bin/sh\n"
-        f'exec "{sys.executable}" "{share_dir / "linux_rdaccess.py"}" "$@"\n'
-    )
-    bin_path.write_text(wrapper, encoding="utf-8")
-    bin_path.chmod(0o755)
+    install_runtime_files(source_dir, share_dir=share_dir, bin_path=bin_path)
 
 
 def write_autostart(
