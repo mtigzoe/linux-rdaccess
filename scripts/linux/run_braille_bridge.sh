@@ -70,4 +70,5 @@ if [[ "$check_only" == 1 ]]; then
 fi
 
 script_dir="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
-exec python3 "$script_dir/../../atspi_nvda_braille_bridge.py" "${args[@]}"
+repo_root="$(cd "$script_dir/../.." && pwd)"
+exec python3 "$repo_root/atspi_nvda_braille_bridge.py" "${args[@]}"
