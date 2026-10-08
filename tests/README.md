@@ -67,7 +67,10 @@ GitHub Actions runs a focused acceptance test against a temporary copy of the
 installed runtime. It checks `status`, `doctor`, `connect --no-restart`,
 and `disconnect --no-restart` with deliberately missing configuration. These
 checks verify safe failure paths without starting Orca, changing the user's
-configuration, or using an NVDA Remote relay.
+configuration, or using an NVDA Remote relay. A second acceptance case uses
+synthetic credentials and a disposable Orca customization file to test
+successful `connect --no-restart` and `disconnect --no-restart`, including
+secret redaction and preserving the saved private config.
 
 Run the same test locally from the repository root:
 
