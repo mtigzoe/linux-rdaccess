@@ -145,8 +145,8 @@ cleanup does not close the reconnect or held-modifier acceptance checks.
 Keep each observed interval bounded to 30–60 seconds. Read-only local commands:
 
 ```sh
-/usr/bin/python3 diagnostics/live_x11.py --display :0 --target firefox
-/usr/bin/python3 diagnostics/live_x11.py --display :0 --watch-locks 30
+/usr/bin/python3 diagnostics/x11/live_x11.py --display :0 --target firefox
+/usr/bin/python3 diagnostics/x11/live_x11.py --display :0 --watch-locks 30
 ```
 
 `live_x11.py` reports sanitized focus role/state and actual lock indicators.

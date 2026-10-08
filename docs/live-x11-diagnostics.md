@@ -1,6 +1,6 @@
 # Local X11 live diagnostics
 
-`diagnostics/live_x11.py` operates on the existing XFCE X11 session. It detects
+`diagnostics/x11/live_x11.py` operates on the existing XFCE X11 session. It detects
 the user's graphical-session environment and requires it to match `--display`
 (default `:0`). It does not start a desktop, xrdp session, application, Orca,
 relay, or remote-control server.
@@ -14,10 +14,10 @@ not proof that an application has no accessibility support.
 ## Read-only inspection
 
 ```sh
-python3 diagnostics/live_x11.py --display :0
-python3 diagnostics/live_x11.py --display :0 --watch-locks 30
-python3 diagnostics/live_x11.py --display :0 --target firefox
-python3 diagnostics/live_x11.py --display :0 --target thunar
+python3 diagnostics/x11/live_x11.py --display :0
+python3 diagnostics/x11/live_x11.py --display :0 --watch-locks 30
+python3 diagnostics/x11/live_x11.py --display :0 --target firefox
+python3 diagnostics/x11/live_x11.py --display :0 --target thunar
 ```
 
 Lock queries use `XkbGetIndicatorState` and `XkbGetNamedIndicator`, reading the
@@ -33,7 +33,7 @@ visible Thunar/Firefox windows belonging to the current Unix user are eligible.
 If multiple windows match, select one with `--window ID`. Activation is explicit:
 
 ```sh
-python3 diagnostics/live_x11.py --target thunar --window 12345 --activate
+python3 diagnostics/x11/live_x11.py --target thunar --window 12345 --activate
 ```
 
 The focus reader inspects AT-SPI focus, name, role, and states within the target
@@ -45,7 +45,7 @@ speech output, or connection configuration.
 ## Controlled navigation
 
 ```sh
-python3 diagnostics/live_x11.py --target thunar --activate --key Tab --key Shift+Tab
+python3 diagnostics/x11/live_x11.py --target thunar --activate --key Tab --key Shift+Tab
 ```
 
 The allowed inputs are Tab, Shift+Tab, Left/Right/Up/Down, Home/End, Prior/Next
@@ -73,7 +73,7 @@ activity can affect a live run, so run during an idle interval.
 ## Optional screenshot
 
 ```sh
-python3 diagnostics/live_x11.py --target firefox --screenshot /private/directory/debug.png
+python3 diagnostics/x11/live_x11.py --target firefox --screenshot /private/directory/debug.png
 ```
 
 This explicitly captures only the selected window to a PNG with permissions

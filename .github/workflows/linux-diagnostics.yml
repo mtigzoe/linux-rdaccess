@@ -1,0 +1,54 @@
+name: Linux diagnostics smoke checks
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'diagnostics/**'
+      - 'tools/diagnostics/**'
+      - 'tests/**'
+      - '.github/workflows/linux-diagnostics.yml'
+  push:
+    branches: [refactor/repository-structure]
+    paths:
+      - 'diagnostics/**'
+      - 'tools/diagnostics/**'
+      - 'tests/**'
+      - '.github/workflows/linux-diagnostics.yml'
+  workflow_dispatch:
+
+jobs:
+  diagnostic-smoke:
+    name: Linux diagnostic scripts (Python 3 / Xvfb)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install test desktop dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb xauth libx11-6 libxtst6 python3-gi gir1.2-atspi-2.0 gir1.2-gtk-3.0 libatk-adaptor at-spi2-core dbus-x11 xfwm4 xdotool
+      - name: Check all diagnostic scripts compile
+        run: |
+          python3 -m compileall -q diagnostics
+      - name: Validate diagnostic CLI help without starting listeners
+        run: |
+          python3 diagnostics/atspi/atspi_probe.py --help
+          python3 diagnostics/atspi/atspi_event_probe.py --help
+          python3 diagnostics/x11/live_x11.py --help
+          python3 diagnostics/x11/tab_trace.py --help
+          python3 diagnostics/nvda/nvda_speech_probe.py --help
+      - name: Check X11 diagnostic in isolated display
+        run: |
+          xvfb-run -a sh -c 'python3 diagnostics/x11/live_x11.py --display "$DISPLAY"'
+      - name: Verify real GTK controls and AT-SPI focus events
+        run: |
+          timeout 150s python3 tools/diagnostics/gtk_atspi_smoke.py
+
+      - name: Run existing diagnostics-related regression tests
+        run: |
+          xvfb-run -a python3 -m unittest -v \
+            tests.integration.x11.test_live_x11 \
+            tests.integration.x11.test_xkb_lock_state \
+            tests.unit.accessibility.test_tab_trace \
+            tests.unit.accessibility.test_nvda_speech_probe

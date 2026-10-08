@@ -168,24 +168,10 @@ def install_user_files(
     share_dir: Path = DEFAULT_SHARE_DIR,
     bin_path: Path = DEFAULT_BIN,
 ) -> None:
-    names = ("linux_rdaccess.py", "remote_access.py", "nvda_remote_check.py", "orca_adapter.py", "a11y_model.py")
-    # Check the whole runtime bundle before replacing any installed member.
-    for name in names:
-        if not (source_dir / name).is_file():
-            raise FileNotFoundError(source_dir / name)
-    share_dir.mkdir(parents=True, exist_ok=True)
-    bin_path.parent.mkdir(parents=True, exist_ok=True)
+    """Install the runtime bundle using the internal installation module."""
+    from linux_rdaccess_core.installation.files import install_runtime_files
 
-    for name in names:
-        if (source_dir / name).resolve() != (share_dir / name).resolve():
-            shutil.copy2(source_dir / name, share_dir / name)
-
-    wrapper = (
-        "#!/bin/sh\n"
-        f'exec "{sys.executable}" "{share_dir / "linux_rdaccess.py"}" "$@"\n'
-    )
-    bin_path.write_text(wrapper, encoding="utf-8")
-    bin_path.chmod(0o755)
+    install_runtime_files(source_dir, share_dir=share_dir, bin_path=bin_path)
 
 
 def write_autostart(
@@ -193,23 +179,15 @@ def write_autostart(
     autostart_path: Path = DEFAULT_AUTOSTART,
     bin_path: Path = DEFAULT_BIN,
 ) -> None:
-    autostart_path.parent.mkdir(parents=True, exist_ok=True)
-    content = f"""[Desktop Entry]
-Type=Application
-Name=linux-rdaccess
-Comment=Connect Orca Remote for Windows NVDA accessibility
-Exec={bin_path} connect --quiet
-Terminal=false
-X-GNOME-Autostart-enabled=true
-"""
-    autostart_path.write_text(content, encoding="utf-8")
+    from linux_rdaccess_core.installation.autostart import write_autostart_file
+
+    write_autostart_file(autostart_path=autostart_path, bin_path=bin_path)
 
 
 def remove_autostart(path: Path = DEFAULT_AUTOSTART) -> None:
-    try:
-        path.unlink()
-    except FileNotFoundError:
-        pass
+    from linux_rdaccess_core.installation.autostart import remove_autostart_file
+
+    remove_autostart_file(path)
 
 
 def connect(
@@ -219,38 +197,24 @@ def connect(
     restart: bool = True,
     quiet: bool = False,
 ) -> int:
-    config = load_config(config_path)
-    if not config.ready:
-        if not quiet:
-            print("Remote Access configuration is incomplete.")
-            print("Run: linux-rdaccess configure --role host --generate-key")
-        return 1
-    if not orca_config.exists():
-        if not quiet:
-            print(f"Orca Remote legacy config not found: {orca_config}")
-        return 1
+    from linux_rdaccess_core.connection.session import connect_session
 
-    update_legacy_orca_customizations(config, orca_config)
-    if not quiet:
-        print(f"Configured {config.host}:{config.port} as role {config.role}.")
-        print("Remote Access key remains hidden.")
-    if restart:
-        return restart_orca()
-    return 0
+    return connect_session(
+        config_path=config_path, orca_config=orca_config,
+        restart=restart, quiet=quiet, load_config=load_config,
+        update_customizations=update_legacy_orca_customizations,
+        restart_orca=restart_orca,
+    )
 
 
 def disconnect(*, orca_config: Path, restart: bool = True, quiet: bool = False) -> int:
-    if not orca_config.exists():
-        if not quiet:
-            print(f"Orca Remote legacy config not found: {orca_config}")
-        return 1
-    disable_legacy_orca_connection(orca_config)
-    if not quiet:
-        print("Disabled Orca Remote auto-connect. Saved linux-rdaccess settings were kept.")
-    if restart:
-        return restart_orca()
-    return 0
+    from linux_rdaccess_core.connection.session import disconnect_session
 
+    return disconnect_session(
+        orca_config=orca_config, restart=restart, quiet=quiet,
+        disable_connection=disable_legacy_orca_connection,
+        restart_orca=restart_orca,
+    )
 
 
 DEFAULT_VSCODE_SETTINGS = Path("~/.config/Code/User/settings.json").expanduser()

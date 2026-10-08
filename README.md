@@ -27,6 +27,32 @@ This path does not require Windows App or Remote Desktop Connection for accessib
 
 See [docs/nvda-remote.md](docs/nvda-remote.md) for the current tested design and known compatibility work.
 
+## Optional Desktop Commander for live accessibility testing
+
+Desktop Commander is an optional computer-access tool for an authorized AI
+coding assistant. During **live** testing of `linux-rdaccess`, it can inspect
+logs, run terminal commands, and help drive the Windows computer while NVDA
+Remote controls the Linux Mint desktop. This is useful for checking real Orca
+speech, braille, keyboard focus, and navigation behavior that automated unit
+tests cannot fully validate.
+
+On Windows, use the NVDA Remote Access add-on to connect to the Linux host;
+`NVDA+Alt+Tab` (usually `Insert+Alt+Tab`) switches remote control when that
+gesture is configured. Desktop Commander itself is **not** part of the
+NVDA-to-Orca bridge, does not replace NVDA Remote, and is not required to
+install or run this project. It must be explicitly connected and authorized
+before an assistant can interact with the computer.
+
+For an optional local Desktop Commander remote session, run:
+
+```powershell
+npx @wonderwhy-er/desktop-commander@latest remote
+```
+
+Use this only when you intend to grant a trusted assistant access to the
+computer. Do not commit remote access secrets, session keys, or logs containing
+private speech or braille content.
+
 ## Windows controller with uv (PowerShell)
 
 The optional Windows controller lets you run the installed Linux `linux-rdaccess`
@@ -128,7 +154,7 @@ For requirements, architecture, and troubleshooting, see
 From PowerShell in the Windows repository directory, run:
 
 ```powershell
-.\start-windows-session.ps1
+.\scripts\windows\start-windows-session.ps1
 ```
 
 This creates `.venv` with `uv venv` if needed, prompts for SSH configuration
@@ -136,19 +162,19 @@ if none is saved, runs `linux-rdaccess connect` on Linux, and checks its status.
 To change the SSH target:
 
 ```powershell
-.\start-windows-session.ps1 -Configure
+.\scripts\windows\start-windows-session.ps1 -Configure
 ```
 
 To skip the status check after connecting:
 
 ```powershell
-.\start-windows-session.ps1 -SkipStatus
+.\scripts\windows\start-windows-session.ps1 -SkipStatus
 ```
 
 To disable the Linux-side Orca Remote auto-connection:
 
 ```powershell
-.\stop-windows-session.ps1
+.\scripts\windows\stop-windows-session.ps1
 ```
 
 These scripts are Windows-side counterparts to the Linux session helper, but
@@ -159,6 +185,16 @@ explicit Orca session startup. No personal hostname or username is embedded
 in the scripts. If PowerShell blocks locally downloaded scripts, inspect
 them and use a process-scoped execution policy if permitted by your system
 administrator.
+
+### Run the test suite with uv
+
+From the repository root, run all tests discovered under `tests/`:
+
+```powershell
+uv run --no-project python -m unittest discover -s tests -t .
+```
+
+This command discovers all tests, but the complete suite targets Linux (including X11, Orca, and POSIX file permissions), so it is **not expected to pass on native Windows**. GitHub Actions runs the Linux suite with uv and publishes the results. On Windows, run only the controller tests:\n\n```powershell\nuv run --no-project python -m unittest tests.unit.windows.test_windows_controller\n```\n\nFor Linux CI results, see [Full unittest suite with uv](https://github.com/mtigzoe/linux-rdaccess/actions/workflows/uv-unittest.yml). The workflow retains a downloadable unittest log even when tests fail.
 
 ## Install once, then use simple commands
 
@@ -316,7 +352,7 @@ so NVDA+Space toggling is followed immediately. Focus mode, edit fields, the
 address bar, Ctrl/Alt+D, NVDA+D and any D from the Linux keyboard are never
 translated. Set `LINUX_RDACCESS_NVDA_D_LANDMARK=0` in Orca's environment to turn
 it off. The other single-letter keys (H K F B E X C R L I T G P Q S O, 1-6)
-already match Orca 42 and are untouched. `tools/orca42_d_landmark_check.py` runs
+already match Orca 42 and are untouched. `tools/diagnostics/orca42_d_landmark_check.py` runs
 the hook through real Orca 42 key matching.
 
 Also translated (verified against Orca 42 key matching, which needs the modifier
@@ -419,7 +455,7 @@ the Orca-side browse/table decisions with a Firefox context class. A character
 key is never identified, braille keyboard input, speech, clipboard data,
 passwords and connection keys are never recorded, and every value is reduced to a
 number, a boolean or a short fixed token before it is written. Summarize a run
-with `python3 tools/summarize_input_trace.py --timeline`. See
+with `python3 tools/diagnostics/summarize_input_trace.py --timeline`. See
 [live-trace-diagnostics.md](docs/live-trace-diagnostics.md).
 
 ### Responsiveness
@@ -490,7 +526,7 @@ records Orca 42 speech cancellation, stale browser actions, remote braille displ
 width and gesture ownership, focus restoration fixes, and the remaining live checks.
 The [October 8 pre-live audit](docs/compatibility-audit-2026-10-08.md) records
 Insert recovery, raw braille fallback, relay cancellation, SSH session discovery,
-and actual Mint GTK focus checks. Run `python3 tools/gtk_atspi_smoke.py` on Linux
+and actual Mint GTK focus checks. Run `python3 tools/diagnostics/gtk_atspi_smoke.py` on Linux
 for its isolated GTK/AT-SPI regression smoke test.
 The [follow-up audit](docs/compatibility-audit-2026-10-06-followup.md) records
 current-line context, modal focus, pass-next ordering and speech/Say All repairs,
@@ -501,7 +537,7 @@ controlled Firefox page and the first Windows input, speech and braille checks.
 ## Live X11 + AT-SPI diagnostics
 
 For live testing on the existing Linux Mint XFCE/X11 desktop, use the bounded
-diagnostic driver in `diagnostics/live_x11.py`. It inspects the real X11 and
+diagnostic driver in `diagnostics/x11/live_x11.py`. It inspects the real X11 and
 AT-SPI state that Orca uses, while keeping accessible names redacted in terminal
 output by default.
 
@@ -511,12 +547,12 @@ Install the diagnostic dependencies on Linux Mint:
 
 Inspect the detected `:0` desktop and XKB lock indicators:
 
-    python3 diagnostics/live_x11.py --display :0
+    python3 diagnostics/x11/live_x11.py --display :0
 
 Watch Num Lock, Caps Lock, and Scroll Lock state changes without listening for
 ordinary typed keys:
 
-    python3 diagnostics/live_x11.py --display :0 --watch-locks 30
+    python3 diagnostics/x11/live_x11.py --display :0 --watch-locks 30
 
 This is useful for end-to-end NVDA Remote testing: start the lock watcher, press
 Num Lock from Windows NVDA, and compare the before/after XKB state. A successful
@@ -525,14 +561,14 @@ rather than failed key injection.
 
 Inspect visible Thunar or Firefox windows:
 
-    python3 diagnostics/live_x11.py --display :0 --target thunar
-    python3 diagnostics/live_x11.py --display :0 --target firefox
+    python3 diagnostics/x11/live_x11.py --display :0 --target thunar
+    python3 diagnostics/x11/live_x11.py --display :0 --target firefox
 
 If more than one matching window is found, choose the reported numeric window
 ID explicitly. To activate one Thunar window and exercise a bounded local
 Tab/Shift+Tab focus test:
 
-    python3 diagnostics/live_x11.py --display :0 --target thunar --window 12345 --activate --key Tab --key Shift+Tab
+    python3 diagnostics/x11/live_x11.py --display :0 --target thunar --window 12345 --activate --key Tab --key Shift+Tab
 
 The local key mode reuses the production XTest injection path and refuses
 arbitrary text input. It is useful for isolating Linux/X11/AT-SPI behavior, but
@@ -547,7 +583,7 @@ speech text, or the Remote Access key.
 Optional screenshots are explicit and private because they may contain visible
 user content:
 
-    python3 diagnostics/live_x11.py --display :0 --target firefox --window 12345 --screenshot /private/path/debug.png
+    python3 diagnostics/x11/live_x11.py --display :0 --target firefox --window 12345 --screenshot /private/path/debug.png
 
 See [docs/live-x11-diagnostics.md](docs/live-x11-diagnostics.md) for the complete
 safety model, supported keys, Num Lock investigation notes, and Xvfb verification
@@ -564,20 +600,20 @@ connection.
 
 On Linux, start the receiver:
 
-    python3 diagnostics/nvda_speech_probe.py
+    python3 diagnostics/nvda/nvda_speech_probe.py
 
 To let Codex verify the exact announcement during a controlled test:
 
-    python3 diagnostics/nvda_speech_probe.py --show-text
+    python3 diagnostics/nvda/nvda_speech_probe.py --show-text
 
 Install the Windows diagnostic add-on from a Windows checkout or copy of this
 repository:
 
-    powershell -ExecutionPolicy Bypass -File .\tools\install_nvda_speech_probe.ps1
+    powershell -ExecutionPolicy Bypass -File .\tools\nvda\install_nvda_speech_probe.ps1
 
 To remove the diagnostic add-on later:
 
-    powershell -ExecutionPolicy Bypass -File .\tools\install_nvda_speech_probe.ps1 -Uninstall
+    powershell -ExecutionPolicy Bypass -File .\tools\nvda\install_nvda_speech_probe.ps1 -Uninstall
 
 After installing or uninstalling, restart NVDA. When installed, press
 NVDA+Ctrl+Shift+F12 to enable the probe and press it
@@ -1075,7 +1111,7 @@ For best results, start the launcher immediately after logging in to xrdp, befor
 
 When Tab does not produce speech or braille:
 
-    DISPLAY=:10 python3 diagnostics/tab_trace.py
+    DISPLAY=:10 python3 diagnostics/x11/tab_trace.py
 
 - No `Tab #n` line: the key never reached the Linux session.
 - `Tab #n -> NO AT-SPI focus event`: Linux received the key but the application reported no focus change.
@@ -1083,8 +1119,8 @@ When Tab does not produce speech or braille:
 
 Additional tools:
 
-    DISPLAY=:10 python3 diagnostics/atspi_event_probe.py --all
-    DISPLAY=:10 python3 diagnostics/atspi_probe.py
+    DISPLAY=:10 python3 diagnostics/atspi/atspi_event_probe.py --all
+    DISPLAY=:10 python3 diagnostics/atspi/atspi_probe.py
 
 ## Known limits
 
@@ -1103,7 +1139,8 @@ Additional tools:
 ## Tests
 
     python3 -m unittest discover -s tests -t .
-    python3 -m py_compile *.py diagnostics/*.py tests/*.py
+    python3 -m compileall -q linux_rdaccess_core diagnostics tools tests
+    python3 -m py_compile linux_rdaccess.py linux_rdaccess_windows.py remote_access.py
     bash -n run_braille_bridge.sh
 
 ## Legacy speech-only xrdp bridge

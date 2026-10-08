@@ -31,7 +31,7 @@ inside SSH to 127.0.0.1:8765 on Linux.
 
 From a Windows checkout or copy of this repository:
 
-    powershell -ExecutionPolicy Bypass -File .\tools\install_nvda_speech_probe.ps1
+    powershell -ExecutionPolicy Bypass -File .\tools\nvda\install_nvda_speech_probe.ps1
 
 Restart NVDA.
 
@@ -45,15 +45,15 @@ or xrdp.
 
 Metadata only:
 
-    python3 diagnostics/nvda_speech_probe.py
+    python3 diagnostics/nvda/nvda_speech_probe.py
 
 For a controlled test where Codex needs to verify the actual announcement:
 
-    python3 diagnostics/nvda_speech_probe.py --show-text
+    python3 diagnostics/nvda/nvda_speech_probe.py --show-text
 
 A one-event test is also available:
 
-    python3 diagnostics/nvda_speech_probe.py --show-text --once
+    python3 diagnostics/nvda/nvda_speech_probe.py --show-text --once
 
 No output file is created.
 
@@ -100,6 +100,6 @@ missing SSH tunnel cannot block NVDA speech.
 
 Uninstall from the same Windows checkout:
 
-    powershell -ExecutionPolicy Bypass -File .\tools\install_nvda_speech_probe.ps1 -Uninstall
+    powershell -ExecutionPolicy Bypass -File .\tools\nvda\install_nvda_speech_probe.ps1 -Uninstall
 
 Restart NVDA afterward.

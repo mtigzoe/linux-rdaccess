@@ -16,16 +16,16 @@ on:
     paths:
       - "*.py"
       - "*.sh"
-      - "diagnostics/*.py"
+      - "diagnostics/**/*.py"
       - "tests/**"
       - "a11y_link.py"
       - "a11y_model.py"
       - "atspi_nvda_braille_bridge.py"
-      - "tests/test_a11y_link.py"
-      - "tests/test_a11y_model.py"
-      - "tools/generate_remote_a11y_fixture.py"
-      - "tools/generate_remote_a11y_role_matrix.py"
-      - "tools/generate_remote_a11y_state_matrix.py"
+      - "tests/unit/accessibility/test_a11y_link.py"
+      - "tests/unit/accessibility/test_a11y_model.py"
+      - "tools/a11y/generate_remote_a11y_fixture.py"
+      - "tools/a11y/generate_remote_a11y_role_matrix.py"
+      - "tools/a11y/generate_remote_a11y_state_matrix.py"
       - ".github/workflows/remote-a11y-tests.yml"
 
 jobs:
@@ -49,17 +49,17 @@ jobs:
       - name: Run Linux remote A11Y unit tests
         run: |
           python -m unittest -v \
-            tests.test_a11y_link \
-            tests.test_a11y_model \
-            tests.test_nvda_remote_check \
+            tests.unit.accessibility.test_a11y_link \
+            tests.unit.accessibility.test_a11y_model \
+            tests.unit.transport.test_nvda_remote_check \
             tests.test_remote_access \
-            tests.test_linux_rdaccess
-          python -m py_compile nvda_remote_check.py remote_access.py linux_rdaccess.py tests/test_nvda_remote_check.py tests/test_remote_access.py tests/test_linux_rdaccess.py
+            tests.unit.transport.test_linux_rdaccess
+          python -m py_compile nvda_remote_check.py remote_access.py linux_rdaccess.py tests/unit/transport/test_nvda_remote_check.py tests/shared/test_remote_access.py tests/unit/transport/test_linux_rdaccess.py
       - name: Run pre-live compatibility smoke contracts
         run: |
           python -m unittest -v \
-            tests.test_control_pattern_contracts \
-            tests.test_prelive_fixtures
+            tests.unit.accessibility.test_control_pattern_contracts \
+            tests.unit.accessibility.test_prelive_fixtures
           python tests/apps/accessibility_smoke_app.py --list-controls > prelive-control-matrix.json
           python -m json.tool prelive-control-matrix.json > /dev/null
 
@@ -67,7 +67,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq xvfb libxtst6
-          xvfb-run -a python -m unittest -v tests.test_xtest_injection tests.test_live_x11
+          xvfb-run -a python -m unittest -v tests.integration.x11.test_xtest_injection tests.integration.x11.test_live_x11
 
       - name: Run full repository test suite and compile check
         run: |
@@ -78,12 +78,12 @@ jobs:
 
       - name: Generate Linux semantic fixtures
         run: |
-          python tools/generate_remote_a11y_fixture.py > linux-a11y-fixture.json
-          python tools/generate_remote_a11y_role_matrix.py > linux-a11y-role-matrix.json
-          python tools/generate_remote_a11y_state_matrix.py > linux-a11y-state-matrix.json
-          python tools/generate_remote_a11y_navigation_fixture.py > linux-a11y-navigation.json
-          python tools/generate_remote_a11y_action_fixture.py > linux-a11y-action.json
-          python tools/generate_remote_a11y_text_fixture.py > linux-a11y-text.json
+          python tools/a11y/generate_remote_a11y_fixture.py > linux-a11y-fixture.json
+          python tools/a11y/generate_remote_a11y_role_matrix.py > linux-a11y-role-matrix.json
+          python tools/a11y/generate_remote_a11y_state_matrix.py > linux-a11y-state-matrix.json
+          python tools/a11y/generate_remote_a11y_navigation_fixture.py > linux-a11y-navigation.json
+          python tools/a11y/generate_remote_a11y_action_fixture.py > linux-a11y-action.json
+          python tools/a11y/generate_remote_a11y_text_fixture.py > linux-a11y-text.json
       - name: Verify Linux to rdAccess semantic contract
         run: |
           python rdAccess/tests/remote_a11y_contract.py linux-a11y-fixture.json linux-a11y-role-matrix.json linux-a11y-state-matrix.json linux-a11y-navigation.json linux-a11y-action.json linux-a11y-text.json
@@ -96,7 +96,7 @@ jobs:
           import sys
           sys.stdout.buffer.write(encodeActionRequest("remote-button", 1))
           PY
-          python tools/decode_remote_a11y_action.py < rdaccess-action.json > decoded-action.json
+          python tools/a11y/decode_remote_a11y_action.py < rdaccess-action.json > decoded-action.json
           python - <<'PY'
           import json
           with open("decoded-action.json", encoding="utf-8") as f:
