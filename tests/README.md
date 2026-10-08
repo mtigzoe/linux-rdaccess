@@ -49,7 +49,7 @@ and AT-SPI/Orca bindings. Check the GitHub Actions workflow for the CI environme
 ## GitHub Actions
 
 [Full unittest suite with uv](../.github/workflows/uv-unittest.yml) runs the suite on
-Linux with Xvfb, uploads a test log even when it fails, and can be started
+Linux both headless and with Xvfb, checks Windows entry points, uploads a test log even when it fails, and can be started
 manually from the GitHub Actions page.
 
 [Remote A11Y prototype tests](../.github/workflows/remote-a11y-tests.yml) also
@@ -81,6 +81,19 @@ python3 -m unittest -v tests.unit.transport.test_installed_runtime_acceptance
 The real Linux Mint installation and connected Windows NVDA/braille acceptance
 still require a live desktop and hardware. Passing this suite alone does not
 establish that Remote Access speech and braille work end to end.
+
+Acceptance also invokes the actual `install` command in a private home,
+reinstalls from the installed bundle, forwards `configure` options, verifies
+private file modes and key redaction, and checks launcher paths containing
+quotes and dollar signs. Package import tests run without root compatibility
+files. Orca fixture tests load only the renamed standalone adapter and model.
+
+Run keyboard injection tests under Xvfb; they refuse a regular desktop display.
+For a headless run on a host that exports a desktop display, use:
+
+```bash
+env -u DISPLAY -u WAYLAND_DISPLAY python3 -m unittest discover -s tests -t .
+```
 
 
 ## Real Linux GUI accessibility tests in GitHub Actions

@@ -6,6 +6,14 @@ root. Keep their public classes and functions identical to the package ones.
 from __future__ import annotations
 
 import unittest
+import importlib
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+from unittest import mock
 
 import announcer
 import a11y_link
@@ -24,6 +32,43 @@ from linux_rdaccess_core.transport import rdaccess_dvc as transport_rdaccess_dvc
 
 
 class RootImportCompatibilityTests(unittest.TestCase):
+    def test_moved_modules_keep_identity_and_private_helpers(self):
+        for legacy, package in (
+            ("linux_rdaccess", "linux_rdaccess_core.cli"),
+            ("linux_rdaccess_windows", "linux_rdaccess_core.connection.windows_controller"),
+            ("remote_access", "linux_rdaccess_core.connection.remote_access"),
+            ("orca_adapter", "linux_rdaccess_core.accessibility.orca_adapter"),
+            ("a11y_model", "linux_rdaccess_core.accessibility.a11y_model"),
+        ):
+            with self.subTest(module=legacy):
+                self.assertIs(importlib.import_module(legacy), importlib.import_module(package))
+        adapter = importlib.import_module("orca_adapter")
+        with mock.patch.object(adapter, "_REMOTE_SEMANTIC_OBJECTS", {"stale": object()}):
+            adapter.OrcaRuntimeAdapter.clear_semantic_focus()
+            self.assertEqual(adapter._REMOTE_SEMANTIC_OBJECTS, {})
+
+    def test_package_imports_without_root_compatibility_files(self):
+        source = Path(__file__).resolve().parents[3] / "linux_rdaccess_core"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            shutil.copytree(source, root / "linux_rdaccess_core", ignore=shutil.ignore_patterns("__pycache__"))
+            result = subprocess.run(
+                [sys.executable, "-c", '''
+from linux_rdaccess_core import cli
+from linux_rdaccess_core.connection import remote_access, windows_controller
+from linux_rdaccess_core.accessibility import orca_adapter, a11y_model
+from linux_rdaccess_core.transport import a11y_link, braille_link, rdaccess_dvc
+assert orca_adapter._a11y_model() is a11y_model
+assert not remote_access.RemoteAccessConfig().ready
+assert cli.build_parser().parse_args(["status"]).command == "status"
+import sys
+assert not any(name in sys.modules for name in (
+    "remote_access", "a11y_model", "orca_adapter", "announcer", "rdaccess_dvc", "a11y_link", "braille_link"))
+'''], cwd=root, env=dict(os.environ, PYTHONPATH=""),
+                text=True, capture_output=True, timeout=25,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_implementations_are_in_named_subpackages(self):
         self.assertIs(core_announcer.Announcer, accessibility_announcer.Announcer)
         self.assertIs(core_a11y_link.NvdaA11yLink, transport_a11y_link.NvdaA11yLink)

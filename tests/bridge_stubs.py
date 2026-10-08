@@ -61,4 +61,5 @@ def _stub_modules():
 def import_braille_bridge():
     with mock.patch.dict(sys.modules, _stub_modules()):
         sys.modules.pop("atspi_nvda_braille_bridge", None)
+        sys.modules.pop("linux_rdaccess_core.accessibility.atspi_nvda_braille_bridge", None)
         return importlib.import_module("atspi_nvda_braille_bridge")

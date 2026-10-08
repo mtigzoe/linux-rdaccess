@@ -106,7 +106,11 @@ class LauncherTests(unittest.TestCase):
 
     def test_bridge_process_receives_the_live_address(self):
         """End to end through the exec: the bridge must see the live address, whatever was inherited."""
-        (self.tmp / "atspi_nvda_braille_bridge.py").write_text(
+        package = self.tmp / "linux_rdaccess_core" / "accessibility"
+        package.mkdir(parents=True)
+        (package.parent / "__init__.py").write_text("")
+        (package / "__init__.py").write_text("")
+        (package / "atspi_nvda_braille_bridge.py").write_text(
             "import os\nprint('BRIDGE_SAW', os.environ.get('AT_SPI_BUS_ADDRESS'))\n"
         )
         env = {
@@ -119,7 +123,7 @@ class LauncherTests(unittest.TestCase):
             "AT_SPI_BUS_ADDRESS": STALE,
         }
         # Reproduce the installed source layout: legacy root wrapper, relocated
-        # implementation and Python bridge in the repository root.
+        # implementation and Python bridge package.
         script = self.tmp / "run_braille_bridge.sh"
         implementation = self.tmp / "scripts" / "linux" / "run_braille_bridge.sh"
         implementation.parent.mkdir(parents=True)
@@ -152,7 +156,8 @@ class LauncherTests(unittest.TestCase):
         fake_python.write_text(
             "#!/bin/sh\n"
             'if [ "$1" = "-c" ]; then exec "$REAL_PYTHON" "$@"; fi\n'
-            'echo "$1" > "$FAKE_PY_ARGV"\n'
+            'printf "%s\\n" "$@" > "$FAKE_PY_ARGV"\n'
+            'printf "%s\\n" "$PYTHONPATH" > "$FAKE_PY_ARGV.path"\n'
         )
         fake_python.chmod(fake_python.stat().st_mode | stat.S_IEXEC)
         argv = self.tmp / "argv"
@@ -172,7 +177,8 @@ class LauncherTests(unittest.TestCase):
             ["bash", str(SCRIPT)], env=env, cwd=elsewhere, capture_output=True, text=True, timeout=20
         )
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(argv.read_text().strip(), str(ROOT / "atspi_nvda_braille_bridge.py"))
+        self.assertEqual(argv.read_text().splitlines(), ["-m", "linux_rdaccess_core.accessibility.atspi_nvda_braille_bridge"])
+        self.assertEqual(Path(str(argv) + ".path").read_text().strip(), str(ROOT))
 
 
 if __name__ == "__main__":

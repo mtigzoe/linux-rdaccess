@@ -24,7 +24,7 @@ DISPLAY=:10 ./scripts/linux/run_braille_bridge.sh --check
 
 The original root commands remain executable compatibility wrappers. They
 forward all arguments to the corresponding scripts in `scripts/linux/`.
-The braille bridge script resolves `atspi_nvda_braille_bridge.py` relative to
+The braille bridge script resolves the `linux_rdaccess_core.accessibility` package relative to
 the repository root, even if called from a different working directory.
 CI checks syntax using `bash -n scripts/linux/*.sh` and validates the wrappers.
 

@@ -1,116 +1,92 @@
 # Repository organization
 
-The reorganization is deliberately incremental. Production entry points and Linux
-installer paths remain at the repository root until their import, install and
-runtime contracts can be validated.
+Production implementations live in `linux_rdaccess_core`. The twelve root Python
+files preserve published commands and import paths. They contain compatibility
+imports or executable forwarding; internal modules import the package directly.
 
-## Test layout
+## Runtime modules and compatibility paths
 
-- `tests/unit/windows/`: Windows SSH controller and VS Code settings tests
-- `tests/unit/accessibility/`: accessibility links, Orca adapter and browser/speech tests
-- `tests/unit/braille/`: braille link, bridge and protocol unit tests
-- `tests/unit/input/`: keyboard validation and compatibility hardening tests
-- `tests/unit/transport/`: sockets, DVC, polling, receivers and state tests
-- `tests/integration/x11/`: live X11 tests; additional integration groups are planned
-- `tests/apps/` and `tests/fixtures/`: existing reusable applications and data
+| Root path retained | Implementation | Role and callers |
+| --- | --- | --- |
+| `linux_rdaccess.py` | `linux_rdaccess_core/cli.py` | User installer and CLI; Linux launcher and Windows SSH controller |
+| `linux_rdaccess_windows.py` | `connection/windows_controller.py` | Windows menu and SSH CLI; PowerShell session helpers |
+| `remote_access.py` | `connection/remote_access.py` | Configuration CLI and legacy Orca patching; installer and input regressions |
+| `nvda_remote_check.py` | `connection/nvda_remote_check.py` | Redacted connection diagnostic and public CLI |
+| `orca_adapter.py` | `accessibility/orca_adapter.py` | In-process Orca commands, semantic focus, native braille; copied into Orca scripts |
+| `a11y_model.py` | `accessibility/a11y_model.py` | AT-SPI semantic objects, text, actions and caret routing; bridges and fixtures |
+| `atspi_nvda_bridge.py` | `accessibility/atspi_nvda_bridge.py` | Optional xrdp speech bridge CLI |
+| `atspi_nvda_braille_bridge.py` | `accessibility/atspi_nvda_braille_bridge.py` | Optional xrdp speech, semantic objects and braille bridge CLI |
+| `announcer.py` | `accessibility/announcer.py` | AT-SPI announcement filtering; both xrdp bridges |
+| `a11y_link.py` | `transport/a11y_link.py` | Semantic object-channel protocol |
+| `braille_link.py` | `transport/braille_link.py` | Braille transport, replay and commands |
+| `rdaccess_dvc.py` | `transport/rdaccess_dvc.py` | xrdp DVC and speech transport |
 
-Test moves must be made in batches. Each batch must preserve package import
-paths, relative source/fixture lookups, commands in documentation and CI,
-and total test discovery counts.
+Implementation paths in the table are relative to `linux_rdaccess_core/`, except
+the explicitly qualified CLI path. The earlier `linux_rdaccess_core.announcer`,
+`.a11y_link`, `.braille_link` and `.rdaccess_dvc` imports also remain supported.
 
-From the repository root:
+Moved module wrappers alias the implementation module in `sys.modules`. This
+preserves private helpers, shared state and patching through historical imports,
+including Orca's braille display and semantic object registries. Wrapper imports
+resolve through `importlib`, so an old package attribute cannot revive a removed
+or stubbed module.
+
+## Installation contracts
+
+`installation/files.py` validates every required compatibility file and package
+module before updating an installation. The user bundle includes the complete
+package and compatibility files; installed commands work outside the checkout
+and can reinstall themselves. The shell launcher quotes interpreter and source
+paths, including spaces, quotes and literal dollar signs.
+
+Orca loads two standalone implementations from its `orca-scripts/` directory:
+`linux_rdaccess_orca_adapter.py` and `linux_rdaccess_a11y_model.py`. Connection
+updates copy these from `accessibility/`, rather than copying the root wrappers.
+The installed adapter imports the renamed model beside it without requiring the
+source checkout or the installed CLI package. `doctor` compares those same
+implementation files. Preserve their standalone imports when changing them.
+
+`installation/autostart.py` manages the desktop autostart file and
+`connection/session.py` coordinates connection changes. Tests use private
+temporary homes/configurations, synthetic keys and `--no-restart`; they never
+connect to a relay or restart the user's Orca.
+
+## Scripts and tools
+
+Linux implementations live in `scripts/linux/`; root shell wrappers preserve
+existing commands. The braille launcher locates the package with `PYTHONPATH`
+and invokes `python3 -m linux_rdaccess_core.accessibility.atspi_nvda_braille_bridge`
+without changing the caller's directory. `.gitattributes` keeps shell scripts
+in LF format in Windows checkouts as well as Linux checkouts.
+
+Windows PowerShell helpers in `scripts/windows/` locate the repository root
+before launching the Windows compatibility entry point. `tools/a11y/` generates
+the semantic protocol fixtures and `tools/diagnostics/` holds isolated smoke
+checks. `diagnostics/` contains live read-only probes; `examples/xrdp/` contains
+experimental xrdp examples. The recommended backend remains Orca Remote.
+
+## Test layout and checks
+
+Unit tests are grouped under `tests/unit/{windows,accessibility,braille,input,transport}`.
+Shared legacy patch harnesses live in `tests/shared/`; fixtures and applications
+live in `tests/fixtures/` and `tests/apps/`. Temporary historical aliases in
+`tests/__init__.py` still support cross-test imports without duplicate discovery.
 
 ```sh
-python3 -m unittest discover -s tests -t .
+python3 -m compileall -q linux_rdaccess_core diagnostics tools tests
+python3 -m py_compile linux_rdaccess.py linux_rdaccess_windows.py remote_access.py
+for script in scripts/linux/*.sh ./*.sh; do bash -n "$script"; done
+env -u DISPLAY -u WAYLAND_DISPLAY python3 -m unittest discover -s tests -t .
 xvfb-run -a python3 -m unittest discover -s tests -t .
+python3 tools/diagnostics/gtk_atspi_smoke.py
 ```
 
-On Windows, the focused controller tests can also be run with:
+Keyboard injection integration tests require a private Xvfb display. Native
+Windows runs controller, public import and standalone Orca fixture tests; the
+complete suite targets Linux. System Python with GTK/AT-SPI/liblouis exercises
+accessibility integrations that a standalone Python interpreter may skip.
 
-```powershell
-uv run --no-project python -m unittest discover -s tests -p "test_windows_controller.py" -t .
-```
-
-Use `python3 -m unittest tests.unit.windows.test_windows_controller` to
-directly run the relocated tests. Keep `tests/__init__.py` and package
-`__init__.py` files in every new nested test directory because unittest
-discovery depends on importable packages.
-
-The migration has grouped 65 test modules under `unit/` and `integration/`.
-The two remaining test modules have moved to `tests/shared/`:
-`test_remote_access.py` and `test_compat_lifecycle.py`. Existing imports
-of their old names are temporarily supported by module aliases in
-`tests/__init__.py`. Once all cross-test imports have moved to
-`tests.shared`, remove the temporary aliases. `unittest` discovery must
-load their tests only once.
-
-The production `linux_rdaccess_windows.py` entry point is unchanged.
-The Windows test's source path was updated, and moved tests with fixture paths
-were adjusted to continue using `tests/fixtures/`. Do not merge without
-passing CI and the Mint/Orca integration checks.
-
-## Production source layout
-
-`linux_rdaccess_core/` holds internal pure-Python implementation modules,
-currently containing the announcement engine, accessibility object-channel link,
-braille transport link, and xrdp dynamic virtual channel (DVC) protocol helpers. The root `announcer.py`, `a11y_link.py`, `braille_link.py`, and
-`rdaccess_dvc.py` files are compatibility imports for existing callers. The root `announcer.py` is retained as
-a compatibility import so existing bridges and tests continue to work.
-
-Keep executable entry points and installer-managed source files at the root
-until the installation and Orca script-copy contracts can be migrated together.
-In particular, `linux_rdaccess.py`, `remote_access.py`, `orca_adapter.py`, and
-`a11y_model.py` have root-relative installation dependencies. Do not remove
-those root paths as part of cosmetic cleanup.
-
-## Optional launch scripts and examples
-
-- `scripts/windows/start-windows-session.ps1` and
-  `scripts/windows/stop-windows-session.ps1` are optional Windows PowerShell
-  session helpers. Run them from the repository root as
-  `.\\scripts\\windows\\start-windows-session.ps1` and
-  `.\\scripts\\windows\\stop-windows-session.ps1`. They resolve the
-  repository root before launching `linux_rdaccess_windows.py`.
-- `examples/xrdp/rdaccess_speak_test.py` is an experimental manual xrdp
-  speech diagnostic, not part of the recommended Orca Remote backend.
-
-The root directory still contains Python modules that are used by installer
-copy operations, compatibility imports, and standalone Linux entry points.
-Do not move those files without an installer and integration migration.
-
-### Internal package grouping
-
-The implementation is now grouped by responsibility:
-
-```text
-linux_rdaccess_core/
-  accessibility/announcer.py
-  transport/a11y_link.py
-  transport/braille_link.py
-  transport/rdaccess_dvc.py
-```
-
-The earlier `linux_rdaccess_core.<module>` import paths and top-level
-`<module>.py` compatibility imports are intentionally retained. This avoids
-breaking the existing Linux xrdp prototypes, scripts, and test imports during
-restructuring. The remaining top-level files should only be deleted after
-call-site migration, installation checks and Linux/Windows smoke tests.
-
-### Installation and connection modules
-
-- `linux_rdaccess_core/installation/files.py` implements validated runtime
-  file copying and launcher creation. `installation/autostart.py` manages the
-  XFCE desktop autostart entry. The root `linux_rdaccess.py` retains its
-  existing public CLI functions and delegates to those modules. Orca
-  integration logic remains at the root pending further compatibility testing.
-- `linux_rdaccess_core/connection/nvda_remote_check.py` implements the
-  redacted NVDA Remote/Orca connection readiness diagnostic. The root
-  `nvda_remote_check.py` remains as an executable compatibility entry point
-  for the installer, tests and existing documented commands.
-- `linux_rdaccess_core/connection/session.py` coordinates `connect` and
-  `disconnect` while `linux_rdaccess.py` keeps its public CLI functions.
-  Its dependencies are injected so existing Orca patching and restart behavior
-  remain unchanged.
-
-Do not treat the new packages as independently installed yet: the current
-user-level installation still copies its designated root-level source files.
+CI includes installation acceptance, headless and Xvfb suites, package/legacy
+bridge CLI smoke checks, Windows entry points, and the rdAccess semantic protocol
+contract. Physical braille and connected NVDA keyboard/speech still require
+live verification. See [cleanup validation](root-python-cleanup-validation-2026-10-08.md).
