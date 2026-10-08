@@ -77,3 +77,21 @@ those root paths as part of cosmetic cleanup.
 The root directory still contains Python modules that are used by installer
 copy operations, compatibility imports, and standalone Linux entry points.
 Do not move those files without an installer and integration migration.
+
+### Internal package grouping
+
+The implementation is now grouped by responsibility:
+
+```text
+linux_rdaccess_core/
+  accessibility/announcer.py
+  transport/a11y_link.py
+  transport/braille_link.py
+  transport/rdaccess_dvc.py
+```
+
+The earlier `linux_rdaccess_core.<module>` import paths and top-level
+`<module>.py` compatibility imports are intentionally retained. This avoids
+breaking the existing Linux xrdp prototypes, scripts, and test imports during
+restructuring. The remaining top-level files should only be deleted after
+call-site migration, installation checks and Linux/Windows smoke tests.
