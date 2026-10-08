@@ -17,7 +17,7 @@ from unittest import mock
 
 import orca_adapter
 import remote_access
-from diagnostics.live_x11 import Xkb
+from diagnostics.x11.live_x11 import Xkb
 from tests import test_remote_access as fixtures
 from tests.integration.x11.test_xtest_injection import UPSTREAM
 
