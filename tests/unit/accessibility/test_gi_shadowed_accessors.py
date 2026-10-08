@@ -11,6 +11,7 @@ class ShadowedAccessible:
     def __init__(self):
         self.text = "hello world"
         self.current = 42.0
+        self.value_text = ""
 
     def get_text_iface(self):
         return self
@@ -50,6 +51,10 @@ class TextInterface:
 
 class ValueInterface:
     @staticmethod
+    def get_text(obj):
+        return obj.value_text
+
+    @staticmethod
     def get_current_value(obj):
         return obj.current
 
@@ -79,6 +84,34 @@ class ShadowedAccessorTests(unittest.TestCase):
 
     def test_value_uses_value_interface_instead_of_accessible_alias(self):
         self.assertEqual(a11y_model._value(ShadowedAccessible()), "42")
+
+    def test_value_interface_text_takes_precedence(self):
+        obj = ShadowedAccessible()
+        obj.value_text = "Loud"
+        obj.current = 3.0
+        self.assertEqual(a11y_model._value(obj), "Loud")
+
+    def test_empty_text_is_not_truncated(self):
+        obj = ShadowedAccessible()
+        obj.text = ""
+        result = a11y_model._text_snapshot(obj, focused=True)
+        self.assertEqual(result["text"], "")
+        self.assertFalse(result["text_truncated"])
+
+    def test_non_gi_value_object_repr_is_not_reported(self):
+        class FakeValue:
+            def get_text(self):
+                return object()
+
+            def get_current_value(self):
+                return 7.0
+
+        class FakeAccessible:
+            def get_value_iface(self):
+                return FakeValue()
+
+        self.assertEqual(a11y_model._value(FakeAccessible()), "7")
+
 
 
 if __name__ == "__main__":
