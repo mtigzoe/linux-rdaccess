@@ -16,7 +16,7 @@ on:
     paths:
       - "*.py"
       - "*.sh"
-      - "diagnostics/*.py"
+      - "diagnostics/**/*.py"
       - "tests/**"
       - "a11y_link.py"
       - "a11y_model.py"
