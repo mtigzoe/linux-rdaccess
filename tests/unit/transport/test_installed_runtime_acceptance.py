@@ -75,5 +75,45 @@ class InstalledRuntimeAcceptanceTests(unittest.TestCase):
             self.assertFalse(orca.exists())
 
 
+    def test_installed_connect_disconnect_cycle_without_orca_restart(self):
+        source = Path(__file__).resolve().parents[3]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            executable = root / "bin" / "linux-rdaccess"
+            config = root / "remote.json"
+            orca = root / "orca-customizations.py"
+            linux_rdaccess.install_user_files(
+                source, share_dir=root / "share", bin_path=executable,
+            )
+            secret = "synthetic-connection-test-only"
+            save_config(RemoteAccessConfig(host="example.invalid", port=6837,
+                                           role="host", key=secret), config)
+            orca.write_text(
+                'YOUR_NVDAREMOTE_SERVER_ADDRESS = "host"\\n'
+                'YOUR_NVDAREMOTE_SERVER_PORT = 6837\\n'
+                'YOUR_NVDAREMOTE_KEY = "key"\\n'
+                'connection_type="slave"\\n',
+                encoding="utf-8",
+            )
+            env = dict(os.environ, HOME=str(root), PYTHONPATH="",
+                       PYTHONDONTWRITEBYTECODE="1")
+            def invoke(action):
+                return subprocess.run(
+                    [str(executable), "--config", str(config),
+                     "--orca-config", str(orca), action, "--no-restart"],
+                    cwd=root, env=env, text=True, capture_output=True, timeout=25,
+                )
+
+            connected = invoke("connect")
+            self.assertEqual(connected.returncode, 0, connected.stdout + connected.stderr)
+            self.assertNotIn(secret, connected.stdout + connected.stderr)
+            self.assertIn(secret, orca.read_text(encoding="utf-8"))
+            disconnected = invoke("disconnect")
+            self.assertEqual(disconnected.returncode, 0, disconnected.stdout + disconnected.stderr)
+            self.assertNotIn(secret, disconnected.stdout + disconnected.stderr)
+            self.assertNotIn(secret, orca.read_text(encoding="utf-8"))
+            self.assertIn(secret, config.read_text(encoding="utf-8"))
+
+
 if __name__ == "__main__":
     unittest.main()
