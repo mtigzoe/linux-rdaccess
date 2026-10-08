@@ -53,8 +53,8 @@ passing CI and the Mint/Orca integration checks.
 
 `linux_rdaccess_core/` holds internal pure-Python implementation modules,
 currently containing the announcement engine, accessibility object-channel link,
-and braille transport link. The root `announcer.py`, `a11y_link.py`, and
-`braille_link.py` files are compatibility imports for existing callers. The root `announcer.py` is retained as
+braille transport link, and xrdp dynamic virtual channel (DVC) protocol helpers. The root `announcer.py`, `a11y_link.py`, `braille_link.py`, and
+`rdaccess_dvc.py` files are compatibility imports for existing callers. The root `announcer.py` is retained as
 a compatibility import so existing bridges and tests continue to work.
 
 Keep executable entry points and installer-managed source files at the root
