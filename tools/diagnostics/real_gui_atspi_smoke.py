@@ -109,8 +109,8 @@ def main() -> int:
                     )) else None
                 roles = wait_for(semantic_controls, f"{name} interactive AT-SPI controls")
                 print(f"PASS {name}: application, window and interactive roles {sorted(roles)}", flush=True)
-            # Verify an actual keyboard event reaches a live XFCE application.
-            # F10 is GTK's standard menu-bar focus key in Mousepad.
+            # Ctrl+O produces an observable GTK file chooser dialog in
+            # Mousepad. It is more stable than theme-dependent F10 menu focus.
             windows = subprocess.check_output(
                 ["xdotool", "search", "--onlyvisible", "--class", "mousepad"],
                 text=True, env=env,
@@ -122,23 +122,22 @@ def main() -> int:
                 env=env, check=True, timeout=5,
             )
             subprocess.run(
-                ["xdotool", "key", "--clearmodifiers", "F10"],
+                ["xdotool", "key", "--clearmodifiers", "ctrl+o"],
                 env=env, check=True, timeout=5,
             )
-            def mousepad_menu_focus():
+            def mousepad_open_dialog():
                 desktop = Atspi.get_desktop(0)
                 for node in walk(desktop):
                     try:
-                        states = node.get_state_set()
-                        if states.contains(Atspi.StateType.FOCUSED) and node.get_role_name() in (
-                            "menu", "menu item", "menu bar",
+                        if node.get_role_name() in ("file chooser", "dialog") and (
+                            "open" in node.get_name().casefold()
                         ):
-                            return node.get_role_name()
+                            return node
                     except Exception:
                         continue
                 return None
-            role = wait_for(mousepad_menu_focus, "Mousepad F10 menu keyboard focus")
-            print(f"PASS Mousepad: F10 keyboard moves AT-SPI focus to {role}", flush=True)
+            wait_for(mousepad_open_dialog, "Mousepad Ctrl+O open dialog")
+            print("PASS Mousepad: Ctrl+O opens accessible GTK dialog", flush=True)
             return 0
         except Exception:
             for log in sorted(root.glob("*.log")):
