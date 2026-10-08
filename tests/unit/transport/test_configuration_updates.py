@@ -137,7 +137,7 @@ def private_fallback(text):
             rows = dict(linux_rdaccess.patch_status(path))
             label = 'Orca API adapter (linux_rdaccess_orca_adapter.py)'
             self.assertEqual(rows.get(label), 'outdated - run: linux-rdaccess connect')
-            adapter.write_text((Path(linux_rdaccess.__file__).parent / 'orca_adapter.py').read_text())
+            adapter.write_text((Path(linux_rdaccess.__file__).parent / 'accessibility/orca_adapter.py').read_text())
             self.assertEqual(dict(linux_rdaccess.patch_status(path)).get(label), 'current')
 
     def test_doctor_reports_the_installed_semantic_model(self):
@@ -151,7 +151,7 @@ def private_fallback(text):
             model.write_text('# stale model\n')
             self.assertEqual(
                 dict(linux_rdaccess.patch_status(path)).get(label), 'outdated - run: linux-rdaccess connect')
-            model.write_text((Path(linux_rdaccess.__file__).parent / 'a11y_model.py').read_text())
+            model.write_text((Path(linux_rdaccess.__file__).parent / 'accessibility/a11y_model.py').read_text())
             self.assertEqual(dict(linux_rdaccess.patch_status(path)).get(label), 'current')
 
     def test_connection_update_removes_transport_constructor_channel_log(self):
@@ -303,12 +303,7 @@ def old_speakCharacter(*args, **kwargs):
     def test_install_can_run_from_installed_runtime_directory(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            for name in ('linux_rdaccess.py', 'remote_access.py', 'nvda_remote_check.py', 'orca_adapter.py', 'a11y_model.py'):
-                (root / name).write_text('# fixture\n')
-            package = root / 'linux_rdaccess_core' / 'connection'
-            package.mkdir(parents=True)
-            (root / 'linux_rdaccess_core' / '__init__.py').write_text('')
-            (package / '__init__.py').write_text('')
-            (package / 'nvda_remote_check.py').write_text('# fixture\n')
+            source = Path(__file__).resolve().parents[3]
+            linux_rdaccess.install_user_files(source, share_dir=root, bin_path=root / 'bin' / 'linux-rdaccess')
             linux_rdaccess.install_user_files(root, share_dir=root, bin_path=root / 'bin' / 'linux-rdaccess')
             self.assertTrue((root / 'bin' / 'linux-rdaccess').exists())

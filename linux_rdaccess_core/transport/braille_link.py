@@ -3,7 +3,7 @@
 import logging
 import time
 
-from rdaccess_dvc import (
+from .rdaccess_dvc import (
     LEGACY_DRIVER_TYPES,
     PROTOCOL_VERSION,
     Receiver,

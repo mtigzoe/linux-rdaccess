@@ -1,15 +1,11 @@
 """Unit tests for the Windows-side controller; no SSH server required."""
 
-import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
 
-SCRIPT = Path(__file__).resolve().parents[3] / "linux_rdaccess_windows.py"
-spec = importlib.util.spec_from_file_location("linux_rdaccess_windows", SCRIPT)
-controller = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(controller)
+from linux_rdaccess_core.connection import windows_controller as controller
 
 
 class WindowsControllerTests(unittest.TestCase):

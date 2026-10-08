@@ -12,6 +12,7 @@ from unittest import mock
 
 import linux_rdaccess
 from remote_access import RemoteAccessConfig, save_config
+from linux_rdaccess_core.installation.files import RUNTIME_FILES, RUNTIME_PACKAGE_FILES
 
 
 class InstallTests(unittest.TestCase):
@@ -22,14 +23,12 @@ class InstallTests(unittest.TestCase):
             share = root / "share"
             bin_path = root / "bin" / "linux-rdaccess"
             source.mkdir()
-            for name in ("linux_rdaccess.py", "remote_access.py", "nvda_remote_check.py", "orca_adapter.py", "a11y_model.py"):
+            for name in RUNTIME_FILES:
                 (source / name).write_text("# test\n", encoding="utf-8")
-
-            connection = source / "linux_rdaccess_core" / "connection"
-            connection.mkdir(parents=True)
-            (connection / "__init__.py").write_text("", encoding="utf-8")
-            (connection / "nvda_remote_check.py").write_text("# installed module\n", encoding="utf-8")
-            (source / "linux_rdaccess_core" / "__init__.py").write_text("", encoding="utf-8")
+            for name in RUNTIME_PACKAGE_FILES:
+                file = source / "linux_rdaccess_core" / name
+                file.parent.mkdir(parents=True, exist_ok=True)
+                file.write_text("# installed module\n", encoding="utf-8")
 
             linux_rdaccess.install_user_files(source, share_dir=share, bin_path=bin_path)
 
@@ -47,8 +46,7 @@ class InstallTests(unittest.TestCase):
             share = root / "share"
             bin_path = root / "bin" / "linux-rdaccess"
             source.mkdir()
-            for name in ("linux_rdaccess.py", "remote_access.py", "nvda_remote_check.py",
-                         "orca_adapter.py", "a11y_model.py"):
+            for name in RUNTIME_FILES:
                 (source / name).write_text("# fixture\n", encoding="utf-8")
             with self.assertRaises(FileNotFoundError):
                 linux_rdaccess.install_user_files(source, share_dir=share, bin_path=bin_path)
@@ -84,6 +82,32 @@ class InstallTests(unittest.TestCase):
             linux_rdaccess.remove_autostart(path)
             self.assertFalse(path.exists())
             linux_rdaccess.remove_autostart(path)
+
+    def test_missing_implementation_cannot_overwrite_an_existing_install(self):
+        source = Path(__file__).resolve().parents[3]
+        import shutil
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            bundle, installed = root / "source", root / "share"
+            shutil.copytree(source / "linux_rdaccess_core", bundle / "linux_rdaccess_core",
+                            ignore=shutil.ignore_patterns("__pycache__"))
+            for name in RUNTIME_FILES:
+                shutil.copy2(source / name, bundle / name)
+            installed.mkdir()
+            sentinel = installed / "remote_access.py"
+            sentinel.write_text("# existing installation\n")
+            for name in RUNTIME_PACKAGE_FILES:
+                with self.subTest(module=name):
+                    module = bundle / "linux_rdaccess_core" / name
+                    original = module.read_bytes()
+                    module.unlink()
+                    try:
+                        with self.assertRaises(FileNotFoundError):
+                            linux_rdaccess.install_user_files(bundle, share_dir=installed, bin_path=root / "bin/tool")
+                        self.assertEqual(sentinel.read_text(), "# existing installation\n")
+                        self.assertFalse((root / "bin/tool").exists())
+                    finally:
+                        module.write_bytes(original)
 
     def test_autostart_executes_connect_quietly(self):
         with tempfile.TemporaryDirectory() as temp:

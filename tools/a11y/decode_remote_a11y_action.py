@@ -11,7 +11,7 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from a11y_link import decode_action_request
+from linux_rdaccess_core.transport.a11y_link import decode_action_request
 
 raw = json.load(sys.stdin)
 decoded = decode_action_request(raw)

@@ -2301,7 +2301,7 @@ class RemoteController:
             scripts.mkdir()
             controller = scripts / "remote_controller.py"
             controller.write_text(self.UPSTREAM_CONTROLLER, encoding="utf-8")
-            adapter_source = Path(remote_access.__file__).with_name("orca_adapter.py")
+            adapter_source = remote_access.orca_runtime_sources()["orca_adapter"]
             self.assertTrue(adapter_source.exists())
 
             config = remote_access.RemoteAccessConfig(

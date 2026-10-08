@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [refactor/repository-structure]
+    branches: [main, refactor/root-python-cleanup, refactor/repository-structure]
   workflow_dispatch:
 
 jobs:
@@ -23,8 +23,9 @@ jobs:
           sudo apt-get install -y -qq xvfb xauth libx11-6 libxtst6
       - name: Validate Linux shell script syntax
         run: |
-          bash -n scripts/linux/*.sh
-          bash -n run_braille_bridge.sh start-orca-remote.sh start-orca-session.sh
+          for script in scripts/linux/*.sh run_braille_bridge.sh start-orca-remote.sh start-orca-session.sh; do
+            bash -n "$script"
+          done
       - name: Compile Python packages and entry points
         run: |
           python3 -m compileall -q linux_rdaccess_core diagnostics tools tests
@@ -32,6 +33,8 @@ jobs:
       - name: Installed Linux CLI acceptance checks (isolated environment)
         run: |
           uv run --no-project --python 3.10 python -m unittest -v tests.unit.transport.test_installed_runtime_acceptance
+      - name: Run tests without an X display
+        run: uv run --no-project --python 3.10 python -m unittest discover -s tests -t .
       - name: Run repository tests via uv and save output
         shell: bash
         run: |
@@ -44,3 +47,17 @@ jobs:
           name: uv-unittest-log
           path: unittest-uv.log
           if-no-files-found: warn
+
+  windows-entry-points:
+    name: Windows controller and compatibility imports
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check Windows entry point and package imports
+        run: |
+          python linux_rdaccess_windows.py --help
+          python -m unittest -v tests.unit.windows.test_windows_controller tests.unit.windows.test_vscode_settings_edge_cases tests.unit.transport.test_core_import_compatibility tests.unit.transport.test_installed_layout
