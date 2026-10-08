@@ -27,6 +27,52 @@ This path does not require Windows App or Remote Desktop Connection for accessib
 
 See [docs/nvda-remote.md](docs/nvda-remote.md) for the current tested design and known compatibility work.
 
+## Windows controller with uv (PowerShell)
+
+The optional Windows controller lets you run the installed Linux `linux-rdaccess`
+commands over SSH using a keyboard-accessible numbered menu. It requires
+[uv](https://docs.astral.sh/uv/), the Windows OpenSSH client, and SSH access
+to a Linux machine with `linux-rdaccess` installed.
+
+In PowerShell, from a Windows clone of this repository:
+
+```powershell
+uv venv
+uv run --no-project python .\linux_rdaccess_windows.py configure
+uv run --no-project python .\linux_rdaccess_windows.py
+```
+
+The first command creates a local `.venv` directory. The `--no-project`
+option lets uv use the environment without requiring a `pyproject.toml` or
+trying to install the Linux-specific project dependencies. The Windows
+controller uses only the Python standard library.
+
+You can also run an individual command directly:
+
+```powershell
+uv run --no-project python .\linux_rdaccess_windows.py connect
+uv run --no-project python .\linux_rdaccess_windows.py status
+uv run --no-project python .\linux_rdaccess_windows.py doctor
+uv run --no-project python .\linux_rdaccess_windows.py compatibility
+uv run --no-project python .\linux_rdaccess_windows.py disconnect
+```
+
+To run the Windows controller unit tests:
+
+```powershell
+uv run --no-project python -m unittest discover -s tests -p "test_windows_controller.py"
+```
+
+The controller prompts for the Linux hostname, SSH username, and port during
+`configure`, and stores them under
+`%APPDATA%\linux-rdaccess\windows-config.json` — **outside the repository**.
+It does not save passwords or SSH private keys. Verify the SSH host-key
+fingerprint on first use. The repository's `.gitignore` excludes `.venv/`
+so the virtual environment is not committed.
+
+For requirements, architecture, and troubleshooting, see
+[Windows controller documentation](docs/windows-controller.md).
+
 ## Install once, then use simple commands
 
 From a clone of this repository on Linux Mint:
