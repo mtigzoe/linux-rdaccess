@@ -38,6 +38,21 @@ class InstallTests(unittest.TestCase):
             self.assertTrue((share / "linux_rdaccess_core" / "connection" / "nvda_remote_check.py").is_file())
             self.assertIn("linux_rdaccess.py", bin_path.read_text(encoding="utf-8"))
 
+    def test_install_rejects_missing_package_before_writing_runtime(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "source"
+            share = root / "share"
+            bin_path = root / "bin" / "linux-rdaccess"
+            source.mkdir()
+            for name in ("linux_rdaccess.py", "remote_access.py", "nvda_remote_check.py",
+                         "orca_adapter.py", "a11y_model.py"):
+                (source / name).write_text("# fixture\n", encoding="utf-8")
+            with self.assertRaises(FileNotFoundError):
+                linux_rdaccess.install_user_files(source, share_dir=share, bin_path=bin_path)
+            self.assertFalse(share.exists())
+            self.assertFalse(bin_path.exists())
+
     def test_autostart_executes_connect_quietly(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "linux-rdaccess.desktop"
