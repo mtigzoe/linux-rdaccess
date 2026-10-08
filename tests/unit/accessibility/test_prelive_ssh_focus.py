@@ -64,6 +64,45 @@ class GraphicalSessionTests(unittest.TestCase):
         self.assertNotIn("DISPLAY", env)
         self.assertEqual(env["XDG_SESSION_TYPE"], "wayland")
 
+    def test_complete_ssh_environment_still_discovers_the_local_desktop(self):
+        for display in ("localhost:10.0", "127.0.0.1:11", "[::1]:12.0"):
+            with self.subTest(display=display), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                self.session(root, {"DISPLAY": ":0", "DBUS_SESSION_BUS_ADDRESS": "unix:path=/desktop/bus",
+                                    "XDG_RUNTIME_DIR": "/run/user/1000", "XDG_SESSION_TYPE": "x11"})
+                env = linux_rdaccess.graphical_session_env(
+                    proc_root=root,
+                    base_env={"PATH": "/usr/bin", "DISPLAY": display,
+                              "DBUS_SESSION_BUS_ADDRESS": "unix:path=/ssh/bus",
+                              "XDG_RUNTIME_DIR": "/run/user/1000", "XDG_SESSION_TYPE": "tty",
+                              "XAUTHORITY": "/tmp/ssh-auth", "AT_SPI_BUS_ADDRESS": "unix:path=/ssh/a11y"},
+                    uid=1000,
+                )
+                self.assertEqual(env["DISPLAY"], ":0")
+                self.assertEqual(env["DBUS_SESSION_BUS_ADDRESS"], "unix:path=/desktop/bus")
+                self.assertEqual(env["XDG_SESSION_TYPE"], "x11")
+                self.assertNotIn("XAUTHORITY", env)
+                self.assertNotIn("AT_SPI_BUS_ADDRESS", env)
+                self.assertEqual(env["PATH"], "/usr/bin")
+
+    def test_discovery_uses_the_selected_desktops_accessibility_bus(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.session(root, {"DISPLAY": ":0", "DBUS_SESSION_BUS_ADDRESS": "unix:path=/desktop/bus",
+                                "XDG_RUNTIME_DIR": "/run/user/1000",
+                                "AT_SPI_BUS_ADDRESS": "unix:path=/desktop/a11y"})
+            env = linux_rdaccess.graphical_session_env(
+                proc_root=root, base_env={"AT_SPI_BUS_ADDRESS": "unix:path=/ssh/a11y"}, uid=1000,
+            )
+        self.assertEqual(env["AT_SPI_BUS_ADDRESS"], "unix:path=/desktop/a11y")
+
+    def test_unavailable_local_desktop_preserves_forwarded_environment(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = {"DISPLAY": "localhost:10.0", "DBUS_SESSION_BUS_ADDRESS": "unix:path=/ssh/bus",
+                    "XDG_RUNTIME_DIR": "/run/user/1000", "AT_SPI_BUS_ADDRESS": "unix:path=/ssh/a11y"}
+            env = linux_rdaccess.graphical_session_env(proc_root=Path(temp), base_env=base, uid=1000)
+        self.assertEqual(env, base)
+
 
 class FocusQueryFailureTests(unittest.TestCase):
     def test_failed_child_count_does_not_mean_nothing_is_focused(self):

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check actual GTK controls and semantic snapshots in a disposable Xvfb session.
 
-Run ``python3 tools/gtk_atspi_smoke.py`` on Linux with GTK3/AT-SPI, Xvfb,
+Run ``python3 tools/diagnostics/gtk_atspi_smoke.py`` on Linux with GTK3/AT-SPI, Xvfb,
 dbus-run-session, xfwm4 and xdotool installed. The runner creates a private
 display, session bus and settings directories; it does not use the desktop.
 The optional first argument selects another source checkout to test.
@@ -181,6 +181,11 @@ try:
     wait(lambda: any(kind == "object:state-changed:focused" and detail and name == "Enable notifications"
                      for kind, detail, name in events), "focused AT-SPI event")
     check("AT-SPI focus event follows keyboard Tab")
+    key("shift+Tab")
+    wait(lambda: focused(primary), "Shift+Tab returns to button")
+    check("keyboard Shift+Tab restores the previous focus target")
+    key("Tab")
+    wait(lambda: focused(checkbox), "Tab returns to checkbox")
     check("checkbox initially checked", checkbox.get_state_set().contains(Atspi.StateType.CHECKED))
     key("space")
     wait(lambda: not checkbox.get_state_set().contains(Atspi.StateType.CHECKED), "checkbox toggle")
@@ -211,6 +216,35 @@ try:
     wait(lambda: any(kind == "object:text-caret-moved" and name == "Account name"
                      for kind, _detail, name in events), "caret AT-SPI event")
     check("AT-SPI text/caret events are emitted")
+
+    # A populated table must expose selection changes, not just its role.
+    page = wait(lambda: named("List", "page tab"), "list notebook page")
+    selection = controls["settings-tabs"].get_selection_iface()
+    if not selection.select_child(1):
+        raise AssertionError("List notebook page refused selection")
+    wait(lambda: page.get_state_set().contains(Atspi.StateType.SELECTED), "list notebook page selected")
+    file_list = controls["items-list"]
+    focus(file_list)
+    key("ctrl+Home")
+    table = file_list.get_table_iface()
+    wait(lambda: list(table.get_selected_rows()) == [0], "first file row selected")
+    key("Down")
+    wait(lambda: list(table.get_selected_rows()) == [1], "next file row selected")
+    cell = table.get_accessible_at(1, 0)
+    check("Down changes the selected table row and preserves its accessible name",
+          cell.get_name() == "Pictures" and cell.get_role_name() == "table cell")
+    key("Up")
+    wait(lambda: list(table.get_selected_rows()) == [0], "previous file row selected")
+    check("Up restores the previous table selection")
+
+    focus(primary)
+    key("alt+f")
+    close_item = wait(lambda: named("Close", "menu item"), "File menu item")
+    wait(lambda: close_item.get_state_set().contains(Atspi.StateType.SHOWING), "File menu visible")
+    check("Alt+F opens an accessible menu with a named menu item")
+    key("Escape")
+    wait(lambda: focused(primary), "menu focus restored")
+    check("Escape dismisses the menu and restores the previous control focus")
 
     dialog_button = controls["dialog-button"]
     focus(dialog_button)

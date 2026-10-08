@@ -123,36 +123,58 @@ class Focus:
         use public() for output. Password names are never queried.
         """
         desktop = self.atspi.get_desktop(0)
-        queue = [desktop]
+        queue = [(desktop, 0, False)]
         visited = 0
+        seen = {}
+        candidate = None
         deadline = time.monotonic() + 1.5
-        def children(obj, limit):
+        def children(obj, limit, depth, active):
+            if depth >= 32:
+                return
             for index in range(min(obj.get_child_count(), limit)):
                 if time.monotonic() >= deadline:
                     break
                 child = obj.get_child_at_index(index)
                 if child is not None:
-                    queue.append(child)
+                    queue.append((child, depth + 1, active))
         while queue and visited < 2000 and time.monotonic() < deadline:
-            obj = queue.pop()
+            obj, depth, active = queue.pop()
+            if id(obj) in seen:
+                continue
+            # Retain proxies so Python cannot recycle an id during the walk.
+            seen[id(obj)] = obj
             visited += 1
             try:
                 if obj == desktop:
-                    children(obj, 100)
+                    children(obj, 100, depth, active)
                     continue
-                if obj.get_role() == self.atspi.Role.APPLICATION and pid is not None:
+                role = obj.get_role()
+                if role == self.atspi.Role.APPLICATION and pid is not None:
                     if obj.get_process_id() != pid:
                         continue
                 states = obj.get_state_set()
+                active_state = getattr(self.atspi.StateType, "ACTIVE", None)
+                active = active or bool(active_state is not None and states.contains(active_state))
                 if states.contains(self.atspi.StateType.FOCUSED):
-                    role = obj.get_role()
-                    name = None if role == self.atspi.Role.PASSWORD_TEXT else obj.get_name()
-                    return {"object": obj, "name": name, "role": role.value_nick,
-                            "states": sorted(state.value_nick for state in states.get_states())}
-                children(obj, 200)
+                    # Toolkits can mark frames and panels focused alongside
+                    # the actual keyboard target. Inspect their descendants;
+                    # active windows take priority over stale inactive focus.
+                    rank = (active, depth)
+                    if candidate is None or rank > candidate[0]:
+                        candidate = (rank, obj, role, states)
+                children(obj, 200, depth, active)
             except Exception:
                 continue
-        return None
+        if candidate is None:
+            return None
+        _rank, obj, role, states = candidate
+        try:
+            name = None if role == self.atspi.Role.PASSWORD_TEXT else obj.get_name()
+            return {"object": obj, "name": name, "role": role.value_nick,
+                    "states": sorted(state.value_nick for state in states.get_states())}
+        except Exception:
+            # A focused provider may disappear between traversal and snapshot.
+            return None
 
     @staticmethod
     def public(snapshot):
@@ -174,7 +196,7 @@ class Focus:
 
 def injection_backend():
     """Reuse production XTest and transactional ownership, without Orca hooks."""
-    import remote_access
+    from linux_rdaccess_core.connection import remote_access
     tree = ast.parse(remote_access._XTEST_HELPER)
     nodes = [node for node in tree.body if isinstance(node, (ast.ClassDef, ast.FunctionDef))
              and node.name in ("_LrdXTest", "_lrd_wrap_local_key_results")]
@@ -312,7 +334,7 @@ class PrivateParser(argparse.ArgumentParser):
 def main(argv=None) -> int:
     try:
         parser = PrivateParser(description=__doc__.splitlines()[0])
-        parser.add_argument("--display", default=":0")
+        parser.add_argument("--display", help="X11 display (defaults to the discovered graphical session)")
         parser.add_argument("--target", choices=tuple(TARGETS))
         parser.add_argument("--window", type=int)
         parser.add_argument("--activate", action="store_true")
@@ -325,14 +347,22 @@ def main(argv=None) -> int:
                 or len(args.key) > 20 or any(key not in KEYS for key in args.key)
                 or ((args.activate or args.key or args.screenshot or args.window) and not args.target)):
             raise DiagnosticError("Invalid diagnostic arguments")
-        from linux_rdaccess import graphical_session_env
+        from linux_rdaccess_core.cli import graphical_session_env
         environment = graphical_session_env()
-        if environment.get("DISPLAY") != args.display or environment.get("XDG_SESSION_TYPE") == "wayland":
+        display = args.display or environment.get("DISPLAY")
+        if (not display or environment.get("DISPLAY") != display
+                or environment.get("XDG_SESSION_TYPE") == "wayland"):
             raise DiagnosticError("Requested X11 session does not match detected session")
+        # Session discovery can intentionally remove inherited SSH/X11 bus
+        # and authorization variables. update() alone would retain those keys.
+        for key in ("DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS",
+                    "AT_SPI_BUS_ADDRESS", "XDG_RUNTIME_DIR", "XDG_SESSION_TYPE"):
+            if key not in environment:
+                os.environ.pop(key, None)
         os.environ.update(environment)
-        xkb = Xkb(args.display)
+        xkb = Xkb(display)
         try:
-            result = {"display": args.display, "xkb_before": xkb.snapshot()}
+            result = {"display": display, "xkb_before": xkb.snapshot()}
             if args.watch_locks:
                 print(json.dumps(result), flush=True)
                 previous = result["xkb_before"]

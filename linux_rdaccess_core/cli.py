@@ -79,7 +79,13 @@ def graphical_session_env(
     has_display = bool(env.get("DISPLAY") or env.get("WAYLAND_DISPLAY"))
     has_session_bus = bool(env.get("DBUS_SESSION_BUS_ADDRESS"))
     has_runtime = bool(env.get("XDG_RUNTIME_DIR"))
-    if has_display and has_session_bus and has_runtime:
+    forwarded_display = bool(re.fullmatch(
+        r"(?:localhost|127\.0\.0\.1|\[::1\]):\d+(?:\.\d+)?", env.get("DISPLAY", "")
+    )) and not env.get("WAYLAND_DISPLAY")
+    # SSH can inherit the user's systemd bus and runtime directory while
+    # forwarding X11 to the client. Those three variables still do not make
+    # the forwarded display the local desktop.
+    if has_display and has_session_bus and has_runtime and not forwarded_display:
         return env
 
     target_uid = os.getuid() if uid is None else uid
@@ -88,6 +94,7 @@ def graphical_session_env(
         "WAYLAND_DISPLAY",
         "XAUTHORITY",
         "DBUS_SESSION_BUS_ADDRESS",
+        "AT_SPI_BUS_ADDRESS",
         "XDG_RUNTIME_DIR",
         "XDG_SESSION_TYPE",
     }

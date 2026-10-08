@@ -541,6 +541,9 @@ The [October 8 pre-live audit](docs/compatibility-audit-2026-10-08.md) records
 Insert recovery, raw braille fallback, relay cancellation, SSH session discovery,
 and actual Mint GTK focus checks. Run `python3 tools/diagnostics/gtk_atspi_smoke.py` on Linux
 for its isolated GTK/AT-SPI regression smoke test.
+The [Remote SSH follow-up audit](docs/compatibility-followup-2026-10-08.md)
+records graphical-session discovery and braille hook reload fixes, stronger
+real-application keyboard checks, and the isolated NVDA Remote protocol harness.
 The [follow-up audit](docs/compatibility-audit-2026-10-06-followup.md) records
 current-line context, modal focus, pass-next ordering and speech/Say All repairs,
 with the remaining eighteen acceptance areas.
