@@ -583,11 +583,11 @@ To let Codex verify the exact announcement during a controlled test:
 Install the Windows diagnostic add-on from a Windows checkout or copy of this
 repository:
 
-    powershell -ExecutionPolicy Bypass -File .\tools\install_nvda_speech_probe.ps1
+    powershell -ExecutionPolicy Bypass -File .\tools\nvda\install_nvda_speech_probe.ps1
 
 To remove the diagnostic add-on later:
 
-    powershell -ExecutionPolicy Bypass -File .\tools\install_nvda_speech_probe.ps1 -Uninstall
+    powershell -ExecutionPolicy Bypass -File .\tools\nvda\install_nvda_speech_probe.ps1 -Uninstall
 
 After installing or uninstalling, restart NVDA. When installed, press
 NVDA+Ctrl+Shift+F12 to enable the probe and press it
