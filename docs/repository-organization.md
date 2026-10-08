@@ -90,3 +90,29 @@ CI includes installation acceptance, headless and Xvfb suites, package/legacy
 bridge CLI smoke checks, Windows entry points, and the rdAccess semantic protocol
 contract. Physical braille and connected NVDA keyboard/speech still require
 live verification. See [cleanup validation](root-python-cleanup-validation-2026-10-08.md).
+
+
+## Root shell launcher cleanup policy
+
+The three root shell scripts (`run_braille_bridge.sh`,
+`start-orca-remote.sh`, and `start-orca-session.sh`) are compatibility
+entry points, **not duplicate implementations**. They resolve the checkout
+relative to their own path and `exec` their corresponding
+`scripts/linux/` implementation with the original argument vector. Existing
+README commands and historical launchers continue to use these paths.
+
+Keep these entry points until all installed commands, external callers, and
+upgrade paths are explicitly migrated. Removing them solely to clean the root
+would break those callers without simplifying runtime behavior.
+
+Run the delegation contract tests without touching Orca or the active display:
+
+```sh
+python3 -m unittest -v tests.unit.transport.test_root_launcher_compatibility
+python3 -m unittest -v tests.unit.transport.test_orca_start_scripts
+```
+
+The first suite uses a disposable directory and stub implementations to verify
+exact argument forwarding, subprocess exit status, executable wrappers, and
+paths with whitespace, quotes, and dollar signs. The second suite tests launcher
+session-environment selection using fake `pgrep`, `orca`, and `/proc`.
