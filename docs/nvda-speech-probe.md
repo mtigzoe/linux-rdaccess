@@ -31,7 +31,7 @@ inside SSH to 127.0.0.1:8765 on Linux.
 
 From a Windows checkout or copy of this repository:
 
-    powershell -ExecutionPolicy Bypass -File .\tools\install_nvda_speech_probe.ps1
+    powershell -ExecutionPolicy Bypass -File .\tools\nvda\install_nvda_speech_probe.ps1
 
 Restart NVDA.
 
@@ -100,6 +100,6 @@ missing SSH tunnel cannot block NVDA speech.
 
 Uninstall from the same Windows checkout:
 
-    powershell -ExecutionPolicy Bypass -File .\tools\install_nvda_speech_probe.ps1 -Uninstall
+    powershell -ExecutionPolicy Bypass -File .\tools\nvda\install_nvda_speech_probe.ps1 -Uninstall
 
 Restart NVDA afterward.
