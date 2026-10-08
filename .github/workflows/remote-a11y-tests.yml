@@ -58,8 +58,8 @@ jobs:
       - name: Run pre-live compatibility smoke contracts
         run: |
           python -m unittest -v \
-            tests.test_control_pattern_contracts \
-            tests.test_prelive_fixtures
+            tests.unit.accessibility.test_control_pattern_contracts \
+            tests.unit.accessibility.test_prelive_fixtures
           python tests/apps/accessibility_smoke_app.py --list-controls > prelive-control-matrix.json
           python -m json.tool prelive-control-matrix.json > /dev/null
 
