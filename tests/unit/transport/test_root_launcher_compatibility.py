@@ -47,7 +47,7 @@ class RootLauncherCompatibilityTests(unittest.TestCase):
                     target = scripts / name
                     target.write_text(
                         '#!/usr/bin/env bash\n'
-                        'printf "%s\\\\0" "$@" > "$LRD_LAUNCHER_RECORD"\n'
+                        'printf "%s\\0" "$@" > "$LRD_LAUNCHER_RECORD"\n'
                         'exit 37\n'
                     )
                     target.chmod(0o755)
