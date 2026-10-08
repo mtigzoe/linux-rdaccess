@@ -160,6 +160,16 @@ in the scripts. If PowerShell blocks locally downloaded scripts, inspect
 them and use a process-scoped execution policy if permitted by your system
 administrator.
 
+### Run the test suite with uv
+
+From the repository root, run all tests discovered under `tests/`:
+
+```powershell
+uv run --no-project python -m unittest discover -s tests -t .
+```
+
+This command works with the organized test subdirectories. Some Linux-specific tests require Linux dependencies or an X11 display; use the Linux/Xvfb instructions for full integration coverage.
+
 ## Install once, then use simple commands
 
 From a clone of this repository on Linux Mint:
