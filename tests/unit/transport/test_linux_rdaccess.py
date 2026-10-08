@@ -3,6 +3,8 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import subprocess
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -52,6 +54,26 @@ class InstallTests(unittest.TestCase):
                 linux_rdaccess.install_user_files(source, share_dir=share, bin_path=bin_path)
             self.assertFalse(share.exists())
             self.assertFalse(bin_path.exists())
+
+    def test_real_installed_cli_and_connection_probe_start(self):
+        # Exercise the installed bundle rather than only validating copied filenames.
+        source = Path(__file__).resolve().parents[3]
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            share = root / "share"
+            bin_path = root / "bin" / "linux-rdaccess"
+            linux_rdaccess.install_user_files(source, share_dir=share, bin_path=bin_path)
+            for command in (
+                [str(bin_path), "--help"],
+                [sys.executable, str(share / "nvda_remote_check.py"), "--help"],
+            ):
+                with self.subTest(command=command[-2:]):
+                    result = subprocess.run(
+                        command, cwd=root, capture_output=True, text=True,
+                        timeout=15,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn("usage:", result.stdout.lower())
 
     def test_autostart_executes_connect_quietly(self):
         with tempfile.TemporaryDirectory() as temp:
