@@ -8,6 +8,20 @@ The tools are grouped by purpose; run commands from the **repository root**.
 `decode_remote_a11y_action.py`. These are used by the Linux ↔ rdAccess
 semantic contract in GitHub Actions.
 
+Run the individual generators from the repository root:
+
+```bash
+python3 tools/a11y/generate_remote_a11y_fixture.py
+python3 tools/a11y/generate_remote_a11y_role_matrix.py
+python3 tools/a11y/generate_remote_a11y_state_matrix.py
+python3 tools/a11y/generate_remote_a11y_navigation_fixture.py
+python3 tools/a11y/generate_remote_a11y_action_fixture.py
+python3 tools/a11y/generate_remote_a11y_text_fixture.py
+```
+
+The decoder `tools/a11y/decode_remote_a11y_action.py` accepts an encoded
+action request on standard input. GitHub Actions runs this contract check.
+
 ## Diagnostics and manual smoke checks
 
 ```sh
