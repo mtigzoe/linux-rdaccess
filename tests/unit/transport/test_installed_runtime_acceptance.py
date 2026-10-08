@@ -89,10 +89,10 @@ class InstalledRuntimeAcceptanceTests(unittest.TestCase):
             save_config(RemoteAccessConfig(host="example.invalid", port=6837,
                                            role="host", key=secret), config)
             orca.write_text(
-                'YOUR_NVDAREMOTE_SERVER_ADDRESS = "host"\\n'
-                'YOUR_NVDAREMOTE_SERVER_PORT = 6837\\n'
-                'YOUR_NVDAREMOTE_KEY = "key"\\n'
-                'connection_type="slave"\\n',
+                'YOUR_NVDAREMOTE_SERVER_ADDRESS = "host"\n'
+                'YOUR_NVDAREMOTE_SERVER_PORT = 6837\n'
+                'YOUR_NVDAREMOTE_KEY = "key"\n'
+                'connection_type="slave"\n',
                 encoding="utf-8",
             )
             env = dict(os.environ, HOME=str(root), PYTHONPATH="",
