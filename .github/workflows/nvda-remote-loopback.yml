@@ -1,0 +1,56 @@
+name: NVDA Remote loopback integration
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/nvda-remote-loopback.yml'
+      - 'linux_rdaccess_core/**'
+      - 'tests/integration/nvda_remote_harness.py'
+      - 'tests/integration/test_nvda_remote_loopback.py'
+      - 'tests/unit/braille/**'
+      - 'tests/unit/input/**'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/nvda-remote-loopback.yml'
+      - 'linux_rdaccess_core/**'
+      - 'tests/integration/nvda_remote_harness.py'
+      - 'tests/integration/test_nvda_remote_loopback.py'
+      - 'tests/unit/braille/**'
+      - 'tests/unit/input/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  loopback:
+    name: Isolated relay / speech / braille / keyboard (Python ${{ matrix.python }})
+    runs-on: ubuntu-22.04
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Check test harness syntax
+        run: |
+          python -m py_compile tests/integration/nvda_remote_harness.py tests/integration/test_nvda_remote_loopback.py
+      - name: Run NVDA Remote disposable loopback protocol integration
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m unittest -v tests.integration.test_nvda_remote_loopback 2>&1 | tee nvda-remote-loopback.log
+      - name: Preserve loopback results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nvda-remote-loopback-py${{ matrix.python }}
+          path: nvda-remote-loopback.log
+          if-no-files-found: ignore
+          retention-days: 14

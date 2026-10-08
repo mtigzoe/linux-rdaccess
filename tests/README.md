@@ -137,3 +137,23 @@ GUI and protocol tests **do not** establish audible Windows NVDA speech or
 physical braille display behavior. Live acceptance must verify remote control
 toggle, actual NVDA command consumption, speech pacing, device translation,
 panning/routing, and focus/caret synchronization using the real Windows peer.
+
+
+## Dedicated NVDA Remote loopback CI
+
+The [NVDA Remote loopback workflow](../.github/workflows/nvda-remote-loopback.yml)
+executes the existing disposable TCP relay integration suite independently on
+Python 3.10 and 3.12. It exercises fragmented messages, modifier release,
+reconnection, speech cancellation and ordering, native semantic/raw braille,
+routing/panning messages, and controller cleanup. Logs are saved as CI artifacts.
+
+Run the same suite locally without accessing the active desktop or relay:
+
+```bash
+python3 -m unittest -v tests.integration.test_nvda_remote_loopback
+```
+
+This is **not** a Windows NVDA session test or a physical braille-display test.
+The harness uses synthetic credentials and loopback sockets only; live NVDA
+speech/braille acceptance remains necessary. Do not connect CI to the user's
+production relay or running Orca instance.
