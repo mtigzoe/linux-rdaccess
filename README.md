@@ -168,7 +168,7 @@ From the repository root, run all tests discovered under `tests/`:
 uv run --no-project python -m unittest discover -s tests -t .
 ```
 
-This command works with the organized test subdirectories. Some Linux-specific tests require Linux dependencies or an X11 display; use the Linux/Xvfb instructions for full integration coverage.
+This command discovers all tests, but the complete suite targets Linux (including X11, Orca, and POSIX file permissions), so it is **not expected to pass on native Windows**. GitHub Actions runs the Linux suite with uv and publishes the results. On Windows, run only the controller tests:\n\n```powershell\nuv run --no-project python -m unittest tests.unit.windows.test_windows_controller\n```\n\nFor Linux CI results, see [Full unittest suite with uv](https://github.com/mtigzoe/linux-rdaccess/actions/workflows/uv-unittest.yml). The workflow retains a downloadable unittest log even when tests fail.
 
 ## Install once, then use simple commands
 
