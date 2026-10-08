@@ -305,5 +305,10 @@ def old_speakCharacter(*args, **kwargs):
             root = Path(temp)
             for name in ('linux_rdaccess.py', 'remote_access.py', 'nvda_remote_check.py', 'orca_adapter.py', 'a11y_model.py'):
                 (root / name).write_text('# fixture\n')
+            package = root / 'linux_rdaccess_core' / 'connection'
+            package.mkdir(parents=True)
+            (root / 'linux_rdaccess_core' / '__init__.py').write_text('')
+            (package / '__init__.py').write_text('')
+            (package / 'nvda_remote_check.py').write_text('# fixture\n')
             linux_rdaccess.install_user_files(root, share_dir=root, bin_path=root / 'bin' / 'linux-rdaccess')
             self.assertTrue((root / 'bin' / 'linux-rdaccess').exists())
