@@ -38,7 +38,7 @@ class NativeBrailleAlignmentTests(unittest.TestCase):
                 getTextLineAtCaret=lambda *a, **kw: (text, cursor, 0),
                 utilities=types.SimpleNamespace(setCaretOffset=lambda obj, off: routes.append((obj, off))))),
         })
-        fixture = Path(__file__).parent / "fixtures/orca42-braille-methods.py"
+        fixture = Path(__file__).resolve().parents[2] / "fixtures/orca42-braille-methods.py"
         exec(compile(fixture.read_text(), str(fixture), "exec"), braille.__dict__)
         region = braille.Text(target)
         line = braille.Line(region)

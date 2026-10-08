@@ -6,7 +6,7 @@ import unittest
 import remote_access
 
 
-FIXTURES = Path(__file__).parent / "fixtures" / "legacy-patches"
+FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "legacy-patches"
 
 
 class ControllerV89UpgradeTests(unittest.TestCase):

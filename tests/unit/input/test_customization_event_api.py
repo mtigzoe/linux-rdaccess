@@ -10,7 +10,7 @@ import remote_access
 from tests import test_remote_access as fixtures
 
 
-UPSTREAM = (Path(__file__).parent / 'fixtures/legacy-patches/customization-keyboard-hook.txt').read_text()
+UPSTREAM = (Path(__file__).resolve().parents[2] / 'fixtures/legacy-patches/customization-keyboard-hook.txt').read_text()
 
 
 class CustomizationEventApiTests(unittest.TestCase):

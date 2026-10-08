@@ -55,7 +55,7 @@ class SayAllCallbacksTests(Harness, unittest.TestCase):
             'speechd': SimpleNamespace(SSIPCommunicationError=CommunicationError),
             'GLib': SimpleNamespace(idle_add=lambda func, *args: idle.append((func, args)) or 1),
         }
-        fixture = Path(__file__).parent / 'fixtures/orca42-speechdispatcher-methods.py'
+        fixture = Path(__file__).resolve().parents[2] / 'fixtures/orca42-speechdispatcher-methods.py'
         exec(compile(fixture.read_text(), str(fixture), 'exec'), namespace)
         cls = namespace['SpeechServer']
         cls._SpeechServer__addVerbalizedPunctuation = lambda self, text: text

@@ -14,7 +14,7 @@ class NativeListLifetimeTests(unittest.TestCase):
         namespace = {
             "debug": types.SimpleNamespace(LEVEL_INFO=1, println=lambda *args: None),
         }
-        fixture = Path(__file__).parent / "fixtures" / "orca42-navlist-methods.py"
+        fixture = Path(__file__).resolve().parents[2] / "fixtures" / "orca42-navlist-methods.py"
         exec(compile(fixture.read_text(), str(fixture), "exec"), namespace)
         native = namespace["OrcaNavListGUI"]
         self.document = object()
