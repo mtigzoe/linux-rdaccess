@@ -16,6 +16,7 @@ import unittest
 from unittest import mock
 
 import remote_access
+from tests.test_compat_lifecycle import Harness
 
 UPSTREAM = '''import os, time
 def _dbg(msg):
@@ -32,7 +33,7 @@ class LocalMachine:
 
     @staticmethod
     def _resolve_key(key_name, vk_code, extended):
-        return key_name or {0x28: "Down"}.get(vk_code)
+        return key_name or {0x28: "Down", 0x2D: "Insert", 0x59: "y", 0x4A: "j"}.get(vk_code)
 '''
 
 
@@ -50,7 +51,7 @@ def _x_available() -> bool:
 
 
 @unittest.skipUnless(_x_available(), "needs an X server (run under xvfb-run)")
-class XTestInjectionTests(unittest.TestCase):
+class XTestInjectionTests(Harness, unittest.TestCase):
     def setUp(self):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
@@ -91,6 +92,50 @@ class XTestInjectionTests(unittest.TestCase):
         time.sleep(0.02)
         self.assertFalse(self._is_down('Down'))
         self.assertNotIn('Down', helper._down_codes)
+
+    def test_controller_retries_failed_insert_before_next_chord_key(self):
+        controller, _, _ = self._patched_controller()
+        controller.local_machine = self.machine
+        self.machine.cancel_speech = lambda: None
+        original_send = self.machine.send_key
+        observations = []
+        helper = self.module._LRD_XTEST
+
+        def send(**payload):
+            if payload['vk_code'] == 0x4A and payload['pressed']:
+                helper._x11.XSync(helper._dpy, 0)
+                observations.append(self._is_down('Insert'))
+            return original_send(**{
+                field: payload.get(field)
+                for field in ('key_name', 'pressed', 'vk_code', 'extended')
+            })
+
+        self.machine.send_key = send
+        self.addCleanup(controller._linux_rdaccess_reset_keys)
+        self._key(controller, 0x2D, True, extended=True)
+        # Open the real backend, then reject one native press. The fixture's
+        # fallback raises, reproducing a complete unsuccessful Insert replay.
+        helper._open()
+        with mock.patch.object(helper._xt, 'XTestFakeKeyEvent', return_value=0):
+            self._key(controller, 0x59, True)
+            self._key(controller, 0x59, False)
+        helper._x11.XSync(helper._dpy, 0)
+        self.assertFalse(self._is_down('Insert'))
+        self.assertFalse(self._is_down('y'))
+        self.assertEqual(controller._lrd_forwarded, {})
+
+        self._key(controller, 0x4A, True)
+        helper._x11.XSync(helper._dpy, 0)
+        self.assertEqual(observations, [True])
+        self.assertTrue(self._is_down('j'))
+        self.assertEqual(set(controller._lrd_forwarded), {(0x2D, True), (0x4A, False)})
+        self._key(controller, 0x4A, False)
+        self._key(controller, 0x2D, False, extended=True)
+        helper._x11.XSync(helper._dpy, 0)
+        self.assertFalse(self._is_down('Insert'))
+        self.assertFalse(self._is_down('j'))
+        self.assertEqual(helper._down_codes, {})
+        self.assertEqual(controller._lrd_forwarded, {})
 
     def test_keys_really_reach_the_server_without_a_subprocess(self):
         for name in ("Down", "KP_Add", "KP_Enter", "KP_End", "KP_Down",

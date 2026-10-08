@@ -591,7 +591,8 @@ def _patch_legacy_customization_reconnect(text: str) -> str:
 
 
 CUSTOMIZATION_BRAILLE_CELLS_MARKER_V1 = "# linux-rdaccess native Orca braille cells v1"
-CUSTOMIZATION_BRAILLE_CELLS_MARKER = "# linux-rdaccess native Orca braille cells v2"
+CUSTOMIZATION_BRAILLE_CELLS_MARKER_V2 = "# linux-rdaccess native Orca braille cells v2"
+CUSTOMIZATION_BRAILLE_CELLS_MARKER = "# linux-rdaccess native Orca braille cells v3"
 _LEGACY_CUSTOMIZATION_BRAILLE_SOURCE = '''
 try:
     import orca.braille as _remote_braille
@@ -667,7 +668,7 @@ except Exception:
     _dbg("Could not install braille forwarding hook")
 '''
 
-_CUSTOMIZATION_BRAILLE_CELLS_HOOK = CUSTOMIZATION_BRAILLE_CELLS_MARKER + '''
+_CUSTOMIZATION_BRAILLE_CELLS_HOOK_V2 = CUSTOMIZATION_BRAILLE_CELLS_MARKER_V2 + '''
 try:
     import json as _remote_json
     import orca.braille as _remote_braille
@@ -715,6 +716,20 @@ except Exception:
     _dbg("Could not install braille forwarding hook")
 '''
 
+_CUSTOMIZATION_BRAILLE_CELLS_HOOK = _CUSTOMIZATION_BRAILLE_CELLS_HOOK_V2.replace(
+    CUSTOMIZATION_BRAILLE_CELLS_MARKER_V2, CUSTOMIZATION_BRAILLE_CELLS_MARKER,
+).replace(
+    "                    controller._linux_rdaccess_offer_native_braille()\n",
+    "                    # Semantic support is optional; raw cells must still work\n"
+    "                    # with an older controller or failed capability offer.\n"
+    "                    offer = getattr(controller, \"_linux_rdaccess_offer_native_braille\", None)\n"
+    "                    if callable(offer):\n"
+    "                        try:\n"
+    "                            offer()\n"
+    "                        except Exception:\n"
+    "                            pass\n",
+)
+
 
 def _customization_braille_blocks(tree):
     return [node for node in tree.body if isinstance(node, ast.Try)
@@ -751,18 +766,16 @@ def _patch_legacy_customization_braille_cells(text: str) -> str:
         if not legacy_customization_braille_cells_patch_current(text):
             raise ValueError("incomplete native Orca braille cells patch")
         return text
-    if CUSTOMIZATION_BRAILLE_CELLS_MARKER_V1 in text:
-        if (text.count(CUSTOMIZATION_BRAILLE_CELLS_MARKER_V1) != 1
-                or _CUSTOMIZATION_BRAILLE_CELLS_HOOK_V1 not in text):
-            raise ValueError("incomplete legacy native Orca braille cells patch")
-        upgraded = text.replace(
-            _CUSTOMIZATION_BRAILLE_CELLS_HOOK_V1,
-            _CUSTOMIZATION_BRAILLE_CELLS_HOOK,
-            1,
-        )
-        if not legacy_customization_braille_cells_patch_current(upgraded):
-            raise ValueError("updated native Orca braille cells patch is incomplete")
-        return upgraded
+    for marker, hook in (
+            (CUSTOMIZATION_BRAILLE_CELLS_MARKER_V1, _CUSTOMIZATION_BRAILLE_CELLS_HOOK_V1),
+            (CUSTOMIZATION_BRAILLE_CELLS_MARKER_V2, _CUSTOMIZATION_BRAILLE_CELLS_HOOK_V2)):
+        if marker in text:
+            if text.count(marker) != 1 or hook not in text:
+                raise ValueError("incomplete legacy native Orca braille cells patch")
+            upgraded = text.replace(hook, _CUSTOMIZATION_BRAILLE_CELLS_HOOK, 1)
+            if not legacy_customization_braille_cells_patch_current(upgraded):
+                raise ValueError("updated native Orca braille cells patch is incomplete")
+            return upgraded
     tree = ast.parse(text, feature_version=(3, 10))
     blocks = _customization_braille_blocks(tree)
     if not blocks:
@@ -1082,7 +1095,149 @@ _TRANSPORT_RECEIVER_V7 = _TRANSPORT_RECEIVER_V6.replace(
 )
 
 
-def legacy_transport_cleanup_patch_current(text: str) -> bool:
+TRANSPORT_PENDING_CONNECT_MARKER = "# linux-rdaccess pending relay connection ownership v1"
+_TRANSPORT_PENDING_CONNECT_HOOK = TRANSPORT_PENDING_CONNECT_MARKER + '''
+import threading as _linux_rdaccess_transport_threading
+
+_linux_rdaccess_transport_init = TCPTransport.__init__
+def _linux_rdaccess_transport_owned_init(self, *args, **kwargs):
+    self._linux_rdaccess_connection_lock = _linux_rdaccess_transport_threading.RLock()
+    self._linux_rdaccess_connection_epoch = 0
+    return _linux_rdaccess_transport_init(self, *args, **kwargs)
+TCPTransport.__init__ = _linux_rdaccess_transport_owned_init
+
+if hasattr(TCPTransport, "close"):
+    _linux_rdaccess_transport_close = TCPTransport.close
+    def _linux_rdaccess_transport_owned_close(self, *args, **kwargs):
+        with self._linux_rdaccess_connection_lock:
+            self._linux_rdaccess_connection_epoch += 1
+            return _linux_rdaccess_transport_close(self, *args, **kwargs)
+    TCPTransport.close = _linux_rdaccess_transport_owned_close
+'''
+
+
+def _transport_pending_connect_run(source: str, *, reverse: bool = False) -> str:
+    """Add/remove only the recognized run() connection-publication guards."""
+    match = re.search(r"(?m)^([ \t]*)current_socket = None$", source)
+    if match is None:
+        raise ValueError("unsupported legacy transport provisional connection scope")
+    indent = match.group(1)
+    unit = "\t" if "\t" in indent else "    "
+    body, nested = indent + unit, indent + unit + unit
+    closed_flag = ((body if reverse else indent) + "self.closed = False\n") in source
+    old_prefix = ((indent + "self.closed = False\n") if closed_flag else "")
+    old_prefix += indent + "current_socket = None\n"
+    new_prefix = (
+        indent + "current_socket = None\n"
+        + indent + "with self._linux_rdaccess_connection_lock:\n"
+        + body + "worker = _linux_rdaccess_transport_threading.current_thread()\n"
+        + body + 'connector = globals().get("ConnectorThread")\n'
+        + body + "if (connector is not None and isinstance(worker, connector)\n"
+        + body + "        and (worker is not self.reconnector_thread or not worker.running)):\n"
+        + nested + "return\n"
+        + body + "connect_epoch = self._linux_rdaccess_connection_epoch\n"
+        + ((body + "self.closed = False\n") if closed_flag else ""))
+    old_create = (
+        body + "self.server_sock = self.create_outbound_socket(self.address)\n"
+        + body + "current_socket = self.server_sock\n")
+    new_create = (
+        body + "current_socket = self.create_outbound_socket(self.address)\n"
+        + body + "with self._linux_rdaccess_connection_lock:\n"
+        + nested + "if connect_epoch != self._linux_rdaccess_connection_epoch:\n"
+        + nested + unit + "current_socket.close()\n"
+        + nested + unit + "return\n"
+        + nested + "self.server_sock = current_socket\n")
+    failed_call = re.search(
+        r"self\.callback_manager\.call_callbacks\((['\"])transport_connection_failed\1\)", source)
+    if failed_call is None:
+        raise ValueError("unsupported legacy transport connection-failure notification")
+    old_except = (
+        indent + "except Exception:\n"
+        + body + "if self.server_sock is not None and self.server_sock is not current_socket:\n"
+        + nested + "return\n"
+        + body + "self._disconnect()\n"
+        + body + failed_call.group(0) + "\n"
+        + body + "raise\n")
+    new_except = (
+        indent + "except Exception:\n"
+        + body + "with self._linux_rdaccess_connection_lock:\n"
+        + nested + "if connect_epoch != self._linux_rdaccess_connection_epoch:\n"
+        + nested + unit + "return\n"
+        + "".join(unit + line for line in old_except.splitlines(keepends=True)[1:]))
+    connected = ("self.transport_connected()" if "self.transport_connected()" in source
+                 else "self.connected = True")
+    old_transition = (
+        indent + "if self.server_sock is not current_socket:\n"
+        + body + "return\n"
+        + indent + connected + "\n"
+        + indent + "if self.server_sock is not current_socket:\n"
+        + body + "return\n")
+    if "self.queue_thread = threading.Thread(target=self.send_queue)" in source:
+        old_transition += (
+            indent + "self.queue_thread = threading.Thread(target=self.send_queue)\n"
+            + indent + "self.queue_thread.daemon = True\n"
+            + indent + "self.queue_thread.start()\n")
+    new_transition = (indent + "with self._linux_rdaccess_connection_lock:\n"
+                      + "".join(unit + line for line in old_transition.splitlines(keepends=True)))
+    new_transition = new_transition.replace(
+        "if self.server_sock is not current_socket:",
+        "if (self.server_sock is not current_socket\n"
+        + body + "        or connect_epoch != self._linux_rdaccess_connection_epoch):")
+    disconnected_call = re.search(
+        r"self\.callback_manager\.call_callbacks\((['\"])transport_disconnected\1\)", source)
+    if disconnected_call is None:
+        raise ValueError("unsupported legacy transport disconnected notification")
+    old_teardown = (
+        indent + "if self.server_sock is not None and self.server_sock is not current_socket:\n"
+        + body + "return\n"
+        + indent + "self.connected = False\n"
+        + indent + disconnected_call.group(0) + "\n"
+        + indent + "if self.server_sock is not None and self.server_sock is not current_socket:\n"
+        + body + "return\n"
+        + indent + "self._disconnect()")
+    new_teardown = (indent + "with self._linux_rdaccess_connection_lock:\n"
+                    + "".join(unit + line for line in old_teardown.splitlines(keepends=True)))
+    for old, new in ((old_prefix, new_prefix), (old_create, new_create),
+                     (old_except, new_except), (old_transition, new_transition),
+                     (old_teardown, new_teardown)):
+        before, after = (new, old) if reverse else (old, new)
+        if len(re.findall("^" + re.escape(before), source, re.MULTILINE)) != 1:
+            raise ValueError("incomplete pending relay connection ownership patch")
+        source = source.replace(before, after, 1)
+    return source
+
+
+def _strip_transport_pending_connect(text: str) -> str:
+    if TRANSPORT_PENDING_CONNECT_MARKER not in text:
+        return text
+    if (text.count(TRANSPORT_PENDING_CONNECT_MARKER) != 1
+            or not text.endswith(_TRANSPORT_PENDING_CONNECT_HOOK)):
+        raise ValueError("incomplete pending relay connection ownership patch")
+    stripped = text[:-len(_TRANSPORT_PENDING_CONNECT_HOOK)].rstrip("\n") + "\n"
+    tree = ast.parse(stripped, feature_version=(3, 10))
+    tcp = _unique_class(tree, "TCPTransport")
+    run = _unique_method(tcp, "run") if tcp is not None else None
+    if run is None:
+        raise ValueError("unsupported legacy transport provisional connection scope")
+    source = ast.get_source_segment(stripped, run)
+    return stripped.replace(source, _transport_pending_connect_run(source, reverse=True), 1)
+
+
+def _patch_transport_pending_connect(text: str) -> str:
+    if TRANSPORT_PENDING_CONNECT_MARKER in text:
+        _strip_transport_pending_connect(text)
+        return text
+    tree = ast.parse(text, feature_version=(3, 10))
+    tcp = _unique_class(tree, "TCPTransport")
+    run = _unique_method(tcp, "run") if tcp is not None else None
+    if run is None:
+        raise ValueError("unsupported legacy transport provisional connection scope")
+    source = ast.get_source_segment(text, run)
+    updated = text.replace(source, _transport_pending_connect_run(source), 1)
+    return updated.rstrip("\n") + "\n\n" + _TRANSPORT_PENDING_CONNECT_HOOK
+
+
+def _legacy_transport_cleanup_v7_current(text: str) -> bool:
     """Whether the legacy transport safely cleans resources before reconnect."""
     if TRANSPORT_CLEANUP_MARKER not in text:
         return False
@@ -1144,11 +1299,20 @@ def legacy_transport_cleanup_patch_current(text: str) -> bool:
     )
 
 
+def legacy_transport_cleanup_patch_current(text: str) -> bool:
+    try:
+        return (TRANSPORT_PENDING_CONNECT_MARKER in text
+                and _legacy_transport_cleanup_v7_current(_strip_transport_pending_connect(text)))
+    except (SyntaxError, ValueError):
+        return False
+
+
 def _patch_legacy_transport_cleanup(text: str) -> str:
     """Fix stale resources and receive failures in the verified Orca Remote transport."""
+    text = _strip_transport_pending_connect(text)
     if TRANSPORT_CLEANUP_MARKER in text:
-        if legacy_transport_cleanup_patch_current(text):
-            return text
+        if _legacy_transport_cleanup_v7_current(text):
+            return _patch_transport_pending_connect(text)
         raise ValueError("current transport cleanup marker has an incomplete patch")
 
     upgrading_v1 = TRANSPORT_CLEANUP_MARKER_V1 in text
@@ -1503,6 +1667,7 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
     # finish the marker upgrade directly.
     if upgrading_v6:
         text = text.rstrip("\n") + "\n\n" + TRANSPORT_CLEANUP_MARKER + "\n"
+        text = _patch_transport_pending_connect(text)
         if not legacy_transport_cleanup_patch_current(text):
             raise ValueError("transport cleanup patch validation failed")
         return text
@@ -1599,6 +1764,7 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
     text = text.replace(run_source, updated_run, 1)
 
     text = text.rstrip("\n") + "\n\n" + TRANSPORT_CLEANUP_MARKER + "\n"
+    text = _patch_transport_pending_connect(text)
     if not legacy_transport_cleanup_patch_current(text):
         raise ValueError("transport cleanup patch validation failed")
     return text
@@ -1841,7 +2007,8 @@ LEGACY_COMPAT_MARKER_V94 = "# linux-rdaccess NVDA/Orca input compatibility v94"
 LEGACY_COMPAT_MARKER_V95 = "# linux-rdaccess NVDA/Orca input compatibility v95"
 LEGACY_COMPAT_MARKER_V96 = "# linux-rdaccess NVDA/Orca input compatibility v96"
 LEGACY_COMPAT_MARKER_V97 = "# linux-rdaccess NVDA/Orca input compatibility v97"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v98"
+LEGACY_COMPAT_MARKER_V98 = "# linux-rdaccess NVDA/Orca input compatibility v98"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v99"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -2438,6 +2605,7 @@ _LEGACY_HELPERS = '''\
         self._lrd_caps_used = False
         self._lrd_insert_pending = None
         self._lrd_insert_used = False
+        self._lrd_insert_failed = False
         self._lrd_bypass_next = False
         bypass_request = getattr(self, "_lrd_bypass_request", None)
         self._lrd_bypass_request = None
@@ -2499,14 +2667,27 @@ _LEGACY_HELPERS = '''\
         pending = getattr(self, "_lrd_insert_pending", None)
         if pending is None:
             return True
-        _held, payload = pending
+        held, payload = pending
+        generation = getattr(self, "_lrd_generation", 0)
         self._lrd_insert_pending = None
         self._lrd_insert_used = False
         try:
-            return self._linux_rdaccess_forward_key(**payload) is not False
+            accepted = self._linux_rdaccess_forward_key(**payload) is not False
         except Exception:
             log.error("linux-rdaccess: failed to forward deferred Insert")
-            return False
+            accepted = False
+        if (not accepted and held in getattr(self, "_lrd_down", set())
+                and generation == getattr(self, "_lrd_generation", 0)
+                and getattr(self, "_lrd_insert_pending", None) is None):
+            # Keep an undelivered, physically held Insert for the next chord
+            # key. Otherwise a backend failure on the first key lets later
+            # keys through as plain input. A physical release or handoff must
+            # not retain this retry for unrelated subsequent typing.
+            self._lrd_insert_pending = pending
+            self._lrd_insert_failed = True
+        elif accepted:
+            self._lrd_insert_failed = False
+        return accepted
 
     def _linux_rdaccess_flush_pending_nvda_modifiers(self):
         """Replay unused deferred modifiers; fail closed for a rejected Insert."""
@@ -2685,6 +2866,7 @@ _LEGACY_HELPERS = '''\
                     self._lrd_swapped.add(held)
                     return True
                 if not repeat:
+                    self._lrd_insert_failed = False
                     self._lrd_insert_pending = (
                         held,
                         {
@@ -2702,10 +2884,12 @@ _LEGACY_HELPERS = '''\
                     )
                 return True
             if pending is not None and pending[0] == held:
-                used = bool(getattr(self, "_lrd_insert_used", False))
+                used = (bool(getattr(self, "_lrd_insert_used", False))
+                        or bool(getattr(self, "_lrd_insert_failed", False)))
                 if used:
                     self._lrd_insert_pending = None
                     self._lrd_insert_used = False
+                    self._lrd_insert_failed = False
                     return True
                 self._linux_rdaccess_flush_pending_insert()
                 return False
@@ -5978,6 +6162,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V98,
                 LEGACY_COMPAT_MARKER_V97,
                 LEGACY_COMPAT_MARKER_V96,
                 LEGACY_COMPAT_MARKER_V95,

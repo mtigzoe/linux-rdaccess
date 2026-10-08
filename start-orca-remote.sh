@@ -9,7 +9,9 @@ if [[ -z "$session_pid" ]]; then
   exit 1
 fi
 
-while IFS= read -r -d '' entry; do
+# Do not mix SSH forwarding or stale shell variables into the desktop session.
+unset DISPLAY WAYLAND_DISPLAY XAUTHORITY DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR XDG_SESSION_TYPE
+while IFS= read -r -d '' entry || [[ -n "$entry" ]]; do
   case "$entry" in
     DISPLAY=*|XAUTHORITY=*|DBUS_SESSION_BUS_ADDRESS=*|XDG_RUNTIME_DIR=*|XDG_SESSION_TYPE=*|WAYLAND_DISPLAY=*)
       export "$entry"

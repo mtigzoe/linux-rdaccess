@@ -33,7 +33,7 @@ MAX_ACTION_NAME_CHARS = 256
 
 
 def _clean(value: Any, limit: int | None = None) -> str:
-    text = " ".join(str(value or "").split())
+    text = " ".join(str("" if value is None else value).split())
     return text if limit is None else text[:limit]
 
 
@@ -98,7 +98,7 @@ def _parent(obj):
 
 
 def _children_info(obj, *, limit: int = MAX_CHILDREN, around=None) -> tuple[list, bool]:
-    """Return at most `limit` children and whether more exist.
+    """Return at most `limit` children and whether enumeration is incomplete.
 
     When the object has more children than `limit`, the window is centred on
     `around` (a child, normally the one on the path to the focus) so the focused
@@ -110,7 +110,9 @@ def _children_info(obj, *, limit: int = MAX_CHILDREN, around=None) -> tuple[list
     try:
         count = int(count)
     except (TypeError, ValueError):
-        return [], False
+        # A failed provider query is not evidence of an empty subtree. Focus
+        # resync must keep its cache when the live tree cannot be inspected.
+        return [], True
     count = max(0, count)
     limit = max(1, limit)
     truncated = count > limit
@@ -128,6 +130,8 @@ def _children_info(obj, *, limit: int = MAX_CHILDREN, around=None) -> tuple[list
         child = _invoke(obj, ("get_child_at_index", "getChildAtIndex"), index)
         if _looks_accessible(child):
             children.append(child)
+        else:
+            truncated = True
     if truncated and around is not None and object_id(around) not in {object_id(c) for c in children}:
         # No usable index in parent: never lose the child the caller needs.
         children = [around] + children[: limit - 1]
@@ -178,15 +182,19 @@ def _state_name(state: object) -> str:
     return text.replace("-", " ").replace("_", " ")
 
 
-def _states(obj, *, focused: bool) -> list[str]:
+def _states(obj, *, focused: bool, query_complete: list[bool] | None = None) -> list[str]:
     states: set[str] = set()
     state_set = _invoke(obj, ("get_state_set", "getState"))
     if state_set is None:
         raw_states = ()
+        if query_complete is not None:
+            query_complete[0] = False
     else:
         raw_states = _invoke(state_set, ("get_states", "getStates"))
         if raw_states is None:
-            raw_states = getattr(state_set, "states", ())
+            raw_states = getattr(state_set, "states", None)
+            if raw_states is None and query_complete is not None:
+                query_complete[0] = False
     for state in raw_states or ():
         name = _state_name(state)[:MAX_STATE_CHARS]
         if name and name != "invalid":
@@ -435,7 +443,7 @@ def find_focused_object_ex(
     complete = [True]
 
     def has_state(obj, wanted: str) -> bool:
-        return wanted in _states(obj, focused=False)
+        return wanted in _states(obj, focused=False, query_complete=complete)
 
     def kids(obj):
         children, truncated = _children_info(obj)
@@ -448,22 +456,33 @@ def find_focused_object_ex(
             complete[0] = False
             return None
         budget[0] -= 1
-        if has_state(obj, "focused"):
-            return obj
+        candidate = obj if has_state(obj, "focused") else None
         for child in kids(obj):
             found = search(child, depth + 1)
             if found is not None:
                 return found
-        return None
+        # Some toolkits mark a container as focused alongside its actual
+        # keyboard target. Keep the container only if no descendant is focused.
+        return candidate
 
     windows = []
     for application in kids(desktop):
         windows.extend(kids(application))
     active = [window for window in windows if has_state(window, "active")]
-    for window in active + [w for w in windows if w not in active]:
-        found = search(window, 0)
-        if found is not None:
-            return found, True
+    for group in (active, [w for w in windows if w not in active]):
+        fallback = None
+        for window in group:
+            found = search(window, 0)
+            if found is not None:
+                if object_id(found) != object_id(window):
+                    return found, True
+                # XFWM exposes an active, focused top-level window of its own.
+                # Prefer the focused control in another active application;
+                # inactive windows still remain below this group's fallback.
+                if fallback is None:
+                    fallback = found
+        if fallback is not None:
+            return fallback, True
     return None, complete[0]
 
 

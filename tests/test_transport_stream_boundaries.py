@@ -78,6 +78,243 @@ def transport_from_source(source, incoming):
 
 
 class TransportStreamBoundariesTests(unittest.TestCase):
+    def test_failed_connect_cleanup_cannot_close_replacement_after_handoff(self):
+        source = remote_access._patch_legacy_transport_cleanup(UPSTREAM)
+        transport, obsolete, _selector = transport_from_source(source, [])
+        replacement = StreamSocket([])
+        entered, release = threading.Event(), threading.Event()
+        close_attempted, close_done = threading.Event(), threading.Event()
+        failures = []
+        original_disconnect = transport._disconnect
+        obsolete.connect = mock.Mock(side_effect=OSError("connect failed"))
+
+        def disconnect():
+            if threading.current_thread() is worker:
+                entered.set()
+                if not release.wait(2):
+                    raise AssertionError("failed connection cleanup never released")
+            original_disconnect()
+
+        def run():
+            try:
+                transport.run()
+            except BaseException as error:
+                failures.append(error)
+
+        def close_and_replace():
+            close_attempted.set()
+            transport.close()
+            # Model a replacement connection after the old session closes.
+            with transport._linux_rdaccess_connection_lock:
+                transport.server_sock = replacement
+                transport.connected = True
+                transport.buffer = b'{"type":"new-partial'
+            close_done.set()
+
+        transport._disconnect = disconnect
+        worker = threading.Thread(target=run)
+        closer = threading.Thread(target=close_and_replace)
+        worker.start()
+        try:
+            self.assertTrue(entered.wait(2))
+            closer.start()
+            self.assertTrue(close_attempted.wait(2))
+            closed_before_cleanup = close_done.wait(0.05)
+        finally:
+            release.set()
+            worker.join(2)
+            if closer.ident is not None:
+                closer.join(2)
+            self.addCleanup(transport.close)
+        self.assertFalse(worker.is_alive())
+        self.assertFalse(closer.is_alive())
+        self.assertEqual([type(error) for error in failures], [OSError])
+        self.assertFalse(closed_before_cleanup)
+        self.assertTrue(obsolete.closed)
+        self.assertFalse(replacement.closed)
+        self.assertIs(transport.server_sock, replacement)
+        self.assertTrue(transport.connected)
+        self.assertEqual(transport.buffer, b'{"type":"new-partial')
+        events = [event for event, _ in transport.callback_manager.calls]
+        self.assertLess(events.index("transport_connection_failed"), events.index("transport_closing"))
+
+    def test_close_serializes_connected_transition_and_sender_creation(self):
+        source = remote_access._patch_legacy_transport_cleanup(UPSTREAM)
+        transport, sock, _selector = transport_from_source(source, [])
+        entered, release = threading.Event(), threading.Event()
+        close_attempted, close_done = threading.Event(), threading.Event()
+        failures = []
+        original_connected = transport.transport_connected
+
+        def connected():
+            entered.set()
+            if not release.wait(2):
+                raise AssertionError("connected transition never released")
+            original_connected()
+
+        def run():
+            try:
+                transport.run()
+            except BaseException as error:
+                failures.append(error)
+
+        def close():
+            close_attempted.set()
+            try:
+                transport.close()
+            except BaseException as error:
+                failures.append(error)
+            finally:
+                close_done.set()
+
+        def selector(readers, writers, errors):
+            if not close_done.wait(2):
+                raise AssertionError("transport close never completed")
+            return readers, [], []
+
+        transport.transport_connected = connected
+        worker, closer = threading.Thread(target=run), threading.Thread(target=close)
+        with mock.patch("select.select", side_effect=selector):
+            worker.start()
+            try:
+                self.assertTrue(entered.wait(2))
+                closer.start()
+                self.assertTrue(close_attempted.wait(2))
+                closed_before_transition = close_done.wait(0.05)
+            finally:
+                release.set()
+                worker.join(2)
+                if closer.ident is not None:
+                    closer.join(2)
+        self.assertFalse(worker.is_alive())
+        self.assertFalse(closer.is_alive())
+        self.assertEqual(failures, [])
+        self.assertFalse(closed_before_transition)
+        self.assertTrue(transport.closed)
+        self.assertFalse(transport.connected)
+        self.assertTrue(sock.closed)
+        self.assertIsNone(transport.server_sock)
+        self.assertTrue(transport.queue_thread is None or not transport.queue_thread.is_alive())
+        events = [event for event, _ in transport.callback_manager.calls]
+        self.assertLess(events.index("transport_connected"), events.index("transport_closing"))
+
+    def test_close_during_socket_creation_never_connects_obsolete_attempt(self):
+        source = remote_access._patch_legacy_transport_cleanup(UPSTREAM)
+        transport, sock, _selector = transport_from_source(source, [])
+        entered, release = threading.Event(), threading.Event()
+        failures = []
+        sock.connect = mock.Mock()
+
+        def factory(address):
+            entered.set()
+            if not release.wait(2):
+                raise AssertionError("socket creation never released")
+            return sock
+
+        def run():
+            try:
+                transport.run()
+            except BaseException as error:
+                failures.append(error)
+
+        transport.create_outbound_socket = factory
+        worker = threading.Thread(target=run)
+        with mock.patch("select.select", side_effect=lambda r, w, e: (r, [], [])):
+            worker.start()
+            try:
+                self.assertTrue(entered.wait(2))
+                transport.close()
+            finally:
+                release.set()
+                worker.join(2)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(failures, [])
+        sock.connect.assert_not_called()
+        self.assertTrue(sock.closed)
+        self.assertFalse(transport.connected)
+        self.assertTrue(transport.closed)
+        self.assertIsNone(transport.server_sock)
+        self.assertIsNone(transport.queue_thread)
+        self.assertEqual(transport.callback_manager.calls, [("transport_closing", {})])
+
+    def test_canceled_socket_creation_cannot_overwrite_replacement_connection(self):
+        source = remote_access._patch_legacy_transport_cleanup(UPSTREAM)
+        transport, obsolete, _selector = transport_from_source(source, [])
+        replacement = StreamSocket([])
+        obsolete.connect = mock.Mock()
+
+        def factory(address):
+            transport.close()
+            # Model a new connection published while the old DNS/TLS call returns.
+            transport.server_sock = replacement
+            transport.connected = True
+            transport.buffer = b'{"type":"new-partial'
+            return obsolete
+
+        transport.create_outbound_socket = factory
+        with mock.patch("select.select", side_effect=lambda r, w, e: (r, [], [])):
+            transport.run()
+        obsolete.connect.assert_not_called()
+        self.assertTrue(obsolete.closed)
+        self.assertFalse(replacement.closed)
+        self.assertIs(transport.server_sock, replacement)
+        self.assertTrue(transport.connected)
+        self.assertEqual(transport.buffer, b'{"type":"new-partial')
+        transport.close()
+
+    def test_failure_of_canceled_socket_creation_does_not_report_connection_failure(self):
+        source = remote_access._patch_legacy_transport_cleanup(UPSTREAM)
+        transport, _sock, _selector = transport_from_source(source, [])
+
+        def factory(address):
+            transport.close()
+            raise OSError("obsolete TLS connection failed")
+
+        transport.create_outbound_socket = factory
+        transport.run()
+        self.assertEqual(transport.callback_manager.calls, [("transport_closing", {})])
+        self.assertFalse(transport.connected)
+        self.assertTrue(transport.closed)
+
+    def test_obsolete_native_connector_cannot_begin_another_attempt(self):
+        source = remote_access._patch_legacy_transport_cleanup(UPSTREAM)
+        transport, _sock, _selector = transport_from_source(source, [])
+        obsolete = transport.reconnector_thread
+        transport.close()
+        transport.create_outbound_socket = mock.Mock(return_value=_sock)
+        with mock.patch("threading.current_thread", return_value=obsolete), mock.patch(
+                "select.select", side_effect=lambda r, w, e: (r, [], [])):
+            transport.run()
+        transport.create_outbound_socket.assert_not_called()
+        self.assertTrue(transport.closed)
+
+    def test_genuine_v7_gains_pending_connection_ownership_without_changing_backup(self):
+        import tempfile
+        historical = remote_access._strip_transport_pending_connect(
+            remote_access._patch_legacy_transport_cleanup(UPSTREAM))
+        self.assertTrue(remote_access._legacy_transport_cleanup_v7_current(historical))
+        self.assertFalse(remote_access.legacy_transport_cleanup_patch_current(historical))
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "transport.py"
+            path.write_text(historical)
+            backup = path.with_name(path.name + ".linux-rdaccess-backup")
+            backup.write_text(UPSTREAM)
+            self.assertTrue(remote_access._patch_legacy_transport_logging(path))
+            updated = path.read_text()
+            self.assertTrue(remote_access.legacy_transport_cleanup_patch_current(updated))
+            self.assertEqual(backup.read_text(), UPSTREAM)
+            self.assertFalse(remote_access._patch_legacy_transport_logging(path))
+            self.assertEqual(path.read_text(), updated)
+
+    def test_pending_connection_ownership_tampering_is_rejected(self):
+        source = remote_access._patch_legacy_transport_cleanup(UPSTREAM)
+        tampered = source.replace(
+            "if connect_epoch != self._linux_rdaccess_connection_epoch:",
+            "if False:", 1)
+        self.assertFalse(remote_access.legacy_transport_cleanup_patch_current(tampered))
+        with self.assertRaisesRegex(ValueError, "incomplete"):
+            remote_access._patch_legacy_transport_cleanup(tampered)
+
     def test_native_reconnect_cannot_make_old_run_select_new_session(self):
         source = remote_access._patch_legacy_transport_cleanup(UPSTREAM)
         callback_module = types.ModuleType("callback_manager")

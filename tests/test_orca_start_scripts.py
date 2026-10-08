@@ -129,6 +129,34 @@ class OrcaStartScriptTests(unittest.TestCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn("No graphical display", r.stderr)
 
+    def test_scripts_do_not_mix_ssh_authority_with_the_desktop_display(self):
+        self.environ(b"DISPLAY=:10\0DBUS_SESSION_BUS_ADDRESS=unix:path=/desktop/bus\0")
+        for script in (SESSION, REMOTE):
+            with self.subTest(script=script.name):
+                r = self.run_script(script, DISPLAY="localhost:10.0", XAUTHORITY="/tmp/ssh-auth",
+                                    WAYLAND_DISPLAY="stale-wayland", XDG_SESSION_TYPE="tty")
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                seen = self.orca_env()
+                self.assertEqual(seen["DISPLAY"], ":10")
+                self.assertNotIn("XAUTHORITY", seen)
+                self.assertNotIn("WAYLAND_DISPLAY", seen)
+                self.assertNotIn("XDG_SESSION_TYPE", seen)
+
+    def test_scripts_reject_a_session_without_a_display_even_with_ssh_forwarding(self):
+        self.environ(b"XDG_RUNTIME_DIR=/run/user/1\0")
+        for script in (SESSION, REMOTE):
+            with self.subTest(script=script.name):
+                r = self.run_script(script, DISPLAY="localhost:10.0")
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertIn("No graphical display", r.stdout + r.stderr)
+                self.assertFalse((self.tmp / "orca.env").exists())
+
+    def test_remote_script_keeps_a_final_entry_without_a_terminator(self):
+        self.environ(b"XDG_RUNTIME_DIR=/run/user/1\0DISPLAY=:10")
+        r = self.run_script(REMOTE)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.orca_env()["DISPLAY"], ":10")
+
 
 if __name__ == "__main__":
     unittest.main()

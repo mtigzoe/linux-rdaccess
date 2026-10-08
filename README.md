@@ -488,6 +488,10 @@ and the clock shortcut conflict, plus automatic relay retries.
 The [state and timing audit](docs/compatibility-audit-2026-10-07-live-edgecases.md)
 records Orca 42 speech cancellation, stale browser actions, remote braille display
 width and gesture ownership, focus restoration fixes, and the remaining live checks.
+The [October 8 pre-live audit](docs/compatibility-audit-2026-10-08.md) records
+Insert recovery, raw braille fallback, relay cancellation, SSH session discovery,
+and actual Mint GTK focus checks. Run `python3 tools/gtk_atspi_smoke.py` on Linux
+for its isolated GTK/AT-SPI regression smoke test.
 The [follow-up audit](docs/compatibility-audit-2026-10-06-followup.md) records
 current-line context, modal focus, pass-next ordering and speech/Say All repairs,
 with the remaining eighteen acceptance areas.
