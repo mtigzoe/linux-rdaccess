@@ -34,11 +34,12 @@ from a11y_model import (
     A11Y_TEXT_EVENTS,
     build_focus_payload,
     build_text_update,
-    find_focused_object,
+    find_focused_object_ex,
+    object_id,
     perform_action,
 )
 from braille_link import NvdaBrailleLink
-from rdaccess_dvc import CHANNEL, DvcChannel, NvdaSpeechLink, load_xrdpapi
+from rdaccess_dvc import CHANNEL, DvcChannel, NvdaSpeechLink, load_xrdpapi, poll_links
 
 log = logging.getLogger("bridge")
 
@@ -116,7 +117,15 @@ class Bridge:
         try:
             any_data = getattr(event, "any_data", None)
             if is_text_event:
-                if self.a11y_link is not None and is_focused(event.source):
+                # Text events arrive from every application (a busy terminal emits
+                # them constantly).  Only the focused object's snapshot can use one,
+                # and build_text_update() ignores sources outside the current
+                # snapshot anyway, so check that first: it costs no D-Bus call.
+                if (
+                    self.a11y_link is not None
+                    and object_id(event.source) in self._a11y_objects
+                    and is_focused(event.source)
+                ):
                     update = build_text_update(
                         event.type,
                         event.source,
@@ -155,18 +164,36 @@ class Bridge:
             cells = text_to_braille_cells(announcement.text, self.braille_link.num_cells)
             self.braille_link.display(cells)
 
+    def _find_focus_target(self):
+        """Return ``(object_or_None, complete)`` for the live AT-SPI focus.
+
+        The previously reported focus object is checked first: one state query
+        instead of a bounded walk of the whole desktop.  ``complete`` is False
+        when the walk hit a limit, so "not found" is not evidence of lost focus.
+        """
+        focus_id = self.a11y_link.last_focus_id if self.a11y_link is not None else None
+        previous = self._a11y_objects.get(focus_id) if focus_id is not None else None
+        if previous is not None:
+            try:
+                if is_focused(previous):
+                    return previous, True
+            except GLib.Error:
+                pass  # proxy died with its application: fall back to a search
+        return find_focused_object_ex(Atspi.get_desktop(0))
+
     def resync_focus(self) -> None:
         """Re-read the live AT-SPI focus for a newly (re)connected NVDA-A11Y channel.
 
         Focus events that happened before the channel was usable are gone, and
         AT-SPI will not repeat them.  Query the current focus instead and hand
-        it to the link, which delivers it as part of its handshake.  A failed
-        query leaves the link's cached state alone so it can still replay it.
+        it to the link, which delivers it as part of its handshake.  A failed or
+        incomplete query leaves the link's cached state alone so it can still
+        replay it.
         """
         if self.a11y_link is None:
             return
         try:
-            target = find_focused_object(Atspi.get_desktop(0))
+            target, complete = self._find_focus_target()
             payload = None
             if target is not None:
                 payload = build_focus_payload(
@@ -178,6 +205,9 @@ class Bridge:
                 )
         except GLib.Error as exc:
             log.debug("focus resync failed")
+            return
+        if target is None and not complete:
+            log.debug("focus resync: search limit reached; keeping cached focus")
             return
         if payload is None:
             self._a11y_objects.clear()
@@ -196,6 +226,33 @@ class Bridge:
             log.debug("performed remote A11Y action")
         else:
             log.warning("remote A11Y action failed")
+
+    def replay_focus(self, *, speak: bool = True) -> None:
+        """Announce the live focus to a newly (re)connected speech/braille client.
+
+        AT-SPI does not repeat focus events, so after login or a reconnect NVDA
+        stays silent (and braille stays on the ready text) until focus moves.
+        Speech does not interrupt the ready message that precedes it.
+        """
+        try:
+            target, _complete = self._find_focus_target()
+            text = self.announcer.describe_focus(target) if target is not None else None
+        except GLib.Error:
+            log.debug("focus replay failed")
+            return
+        if not text:
+            return
+        if speak:
+            self.link.speak(text, interrupt=False)
+        if self.braille_link is not None:
+            self.braille_link.display(text_to_braille_cells(text, self.braille_link.num_cells))
+
+    def on_speech_ready(self) -> None:
+        self.say_ready()
+        self.replay_focus()
+
+    def on_braille_ready(self) -> None:
+        self.replay_focus(speak=False)
 
     def say_ready(self) -> None:
         self.link.speak(READY_TEXT)
@@ -238,10 +295,11 @@ def main() -> int:
         lib = load_xrdpapi()
         link = NvdaSpeechLink(
             lambda: DvcChannel(lib, CHANNEL, attempts=1),
-            on_ready=lambda: bridge.say_ready(),
+            on_ready=lambda: bridge.on_speech_ready(),
         )
         braille_link = NvdaBrailleLink(
             lambda: DvcChannel(lib, BRAILLE_CHANNEL, attempts=1),
+            on_ready=lambda: bridge.on_braille_ready(),
         )
         a11y_link = NvdaA11yLink(
             lambda: DvcChannel(lib, A11Y_CHANNEL, attempts=1),
@@ -262,11 +320,7 @@ def main() -> int:
     install_signal_handlers(loop)
 
     def tick() -> bool:
-        link.poll()
-        if braille_link is not None:
-            braille_link.poll()
-        if a11y_link is not None:
-            a11y_link.poll()
+        poll_links((("speech", link), ("braille", braille_link), ("a11y", a11y_link)), log)
         return GLib.SOURCE_CONTINUE
 
     try:

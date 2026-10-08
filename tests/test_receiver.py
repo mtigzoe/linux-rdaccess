@@ -43,7 +43,7 @@ class ReceiverTests(unittest.TestCase):
     def test_legacy_frame_is_skipped_not_parsed(self):
         rx = Receiver()
         payload = b"\x80\x04 pretend pickle"  # must never be unpickled
-        frame = b"S" + b"A" + len(payload).to_bytes(2, "little") + payload
+        frame = b"S" + b"S" + len(payload).to_bytes(2, "little") + payload
         rx.feed(frame[:3])
         self.assertEqual(rx.legacy_frames, 0)
         rx.feed(frame[3:] + line(type="ping"))

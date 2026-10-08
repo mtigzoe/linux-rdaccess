@@ -77,7 +77,7 @@ class ReceiverBoundaryTests(unittest.TestCase):
 
     def test_binary_control_bytes_remain_inside_legacy_payload(self):
         receiver = Receiver()
-        receiver.feed(bytes([XON]) + b"SA\x02\x00" + bytes([XOFF, XON]))
+        receiver.feed(bytes([XON]) + b"SS\x02\x00" + bytes([XOFF, XON]))
         self.assertEqual(receiver.legacy_frames, 1)
         self.assertTrue(receiver.xon)
         self.assertEqual(receiver.xon_count, 1)

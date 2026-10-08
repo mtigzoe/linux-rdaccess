@@ -19,8 +19,23 @@ class NvdaBrailleLink:
     CHANNEL = "NVDA-BRAILLE"
     DRIVER_TYPE = ord("B")
 
-    def __init__(self, open_channel, *, retry_interval=3.0, clock=time.monotonic, default_cells=80):
+    def __init__(
+        self,
+        open_channel,
+        *,
+        retry_interval=3.0,
+        clock=time.monotonic,
+        default_cells=80,
+        on_ready=None,
+    ):
         self._open_channel = open_channel
+        # Called when the JSON session becomes ready and again whenever the remote
+        # display width changes, so the owner can re-render what braille should show.
+        self._on_ready = on_ready
+        # Newest content offered while the link was not ready.  Braille has no
+        # AT-SPI event to repeat, so without this an announcement made before the
+        # handshake finished (for example the bridge's ready text) is lost.
+        self._pending_cells = None
         self._retry_interval = retry_interval
         self._clock = clock
         self._channel = None
@@ -64,7 +79,9 @@ class NvdaBrailleLink:
 
     def display(self, cells):
         if not self.ready:
+            self._pending_cells = [int(cell) & 0xFF for cell in list(cells)[:MAX_BRAILLE_CELLS]]
             return False
+        self._pending_cells = None
         width = max(1, self.num_cells)
         cells = [int(cell) & 0xFF for cell in cells[:width]]
         cells += [0] * (width - len(cells))
@@ -129,12 +146,16 @@ class NvdaBrailleLink:
                             version=PROTOCOL_VERSION,
                             channel=self.CHANNEL,
                         )
+                    became_ready = not self._json_ready
                     self._json_ready = True
                     if not self._requested_cells:
                         send_json(self._channel, "attribute_request", attribute="numCells")
                         self._requested_cells = True
                 except (ConnectionError, TimeoutError, OSError) as exc:
                     self._drop(f"protocol negotiation failed: {exc}")
+                else:
+                    if became_ready:
+                        self._notify_ready()
             return
 
         if kind == "attribute_request" and attribute in ("timeSinceInput", "protocolVersion"):
@@ -164,8 +185,21 @@ class NvdaBrailleLink:
             except (TypeError, ValueError, OverflowError):
                 value = 0
             if type(raw_value) is not bool and 0 < value <= MAX_BRAILLE_CELLS:
+                changed = value != self.num_cells
                 self.num_cells = value
                 log.info("remote braille display has %d cells", value)
+                if changed and self.ready:
+                    self._notify_ready()
+
+    def _notify_ready(self):
+        """Let the owner render current content, then flush anything still queued."""
+        if self._on_ready is not None:
+            try:
+                self._on_ready()
+            except Exception as exc:
+                log.error("braille on_ready callback failed (%s)", type(exc).__name__)
+        if self._pending_cells is not None and self.ready:
+            self.display(self._pending_cells)
 
     def _drop(self, reason, quiet=False):
         if self._channel is not None:

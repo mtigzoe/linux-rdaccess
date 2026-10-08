@@ -38,6 +38,11 @@ XON = 0x11
 XOFF = 0x13
 LEGACY_DRIVER_TYPES = (ord("S"), ord("B"))
 LEGACY_GENERIC_ATTRIBUTE = ord("@")
+# Every command byte rdAccess's legacy (v1) protocol defines: generic attribute,
+# speech SPEAK/CANCEL/PAUSE/INDEX_REACHED/BEEP/PLAY_WAVE_FILE, braille
+# DISPLAY/EXECUTE_GESTURE.  A leading "S"/"B" followed by anything else is
+# stray junk, not a frame header.
+LEGACY_COMMANDS = frozenset(ord(c) for c in "@SCPxBWDG")
 LEGACY_ATTRIBUTE_SEPARATOR = bytes((96,))
 
 # long-running fix: bound the buffer so a peer that never sends "\n" cannot
@@ -267,6 +272,14 @@ class Receiver:
                         continue
                     self._queue_message(obj)
             elif b in LEGACY_DRIVER_TYPES:
+                if len(self.buf) >= 2 and self.buf[1] not in LEGACY_COMMANDS:
+                    # Not a real legacy header (e.g. the tail of a JSON line cut
+                    # by a flow-control byte contains an "S" or "B"). Treating it
+                    # as one would wait for up to 64 KiB and swallow the next
+                    # valid messages.
+                    del self.buf[0]
+                    self.junk_bytes += 1
+                    continue
                 if len(self.buf) < 4:
                     return
                 driver_type = b
@@ -350,6 +363,23 @@ def pump(ch, rx: Receiver, seconds: float, until=lambda: False) -> None:
     end = time.monotonic() + seconds
     while time.monotonic() < end and not until():
         rx.feed(ch.read(200))
+
+
+def poll_links(links, logger=log) -> None:
+    """Poll each (name, link) pair; one link failing must not stop the others.
+
+    GLib removes a timeout source whose callback raises, which would silently end
+    all polling (no reconnect, handshake or heartbeat) while the AT-SPI listener
+    keeps running.  Only the exception type is logged: messages can carry
+    application text.  None entries are skipped.
+    """
+    for name, link in links:
+        if link is None:
+            continue
+        try:
+            link.poll()
+        except Exception as exc:
+            logger.error("%s poll failed (%s)", name, type(exc).__name__)
 
 
 # --------------------------------------------------------------------------

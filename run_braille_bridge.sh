@@ -69,4 +69,5 @@ if [[ "$check_only" == 1 ]]; then
   exit 0
 fi
 
-exec python3 atspi_nvda_braille_bridge.py "${args[@]}"
+script_dir="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+exec python3 "$script_dir/atspi_nvda_braille_bridge.py" "${args[@]}"

@@ -118,8 +118,11 @@ class LauncherTests(unittest.TestCase):
             "FAKE_ROOT_PROP": str(self.prop),
             "AT_SPI_BUS_ADDRESS": STALE,
         }
+        # The launcher runs the bridge that sits next to it, so run a copy beside the fake bridge.
+        script = self.tmp / "run_braille_bridge.sh"
+        shutil.copy(SCRIPT, script)
         r = subprocess.run(
-            ["bash", str(SCRIPT)], env=env, cwd=self.tmp, capture_output=True, text=True, timeout=20
+            ["bash", str(script)], env=env, cwd=self.tmp, capture_output=True, text=True, timeout=20
         )
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn(f"BRIDGE_SAW {LIVE}", r.stdout)
@@ -137,6 +140,35 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(r.returncode, 5)
         self.assertIn("no X11 window manager", r.stderr)
         self.assertIn("PointerRoot", r.stderr)
+
+
+    def test_bridge_is_found_next_to_the_script_from_any_working_directory(self):
+        """Regression: the script exec'd a relative path, so it only worked from the repo directory."""
+        fake_python = self.tmp / "python3"
+        fake_python.write_text(
+            "#!/bin/sh\n"
+            'if [ "$1" = "-c" ]; then exec "$REAL_PYTHON" "$@"; fi\n'
+            'echo "$1" > "$FAKE_PY_ARGV"\n'
+        )
+        fake_python.chmod(fake_python.stat().st_mode | stat.S_IEXEC)
+        argv = self.tmp / "argv"
+        elsewhere = self.tmp / "elsewhere"
+        elsewhere.mkdir()
+        env = {
+            "PATH": f"{self.tmp}:{os.environ['PATH']}",
+            "HOME": str(self.tmp),
+            "DISPLAY": ":10",
+            "DBUS_SESSION_BUS_ADDRESS": "unix:path=/tmp/session-bus",
+            "FAKE_LIVE_ADDRESS": LIVE,
+            "FAKE_ROOT_PROP": str(self.prop),
+            "REAL_PYTHON": __import__("sys").executable,
+            "FAKE_PY_ARGV": str(argv),
+        }
+        r = subprocess.run(
+            ["bash", str(SCRIPT)], env=env, cwd=elsewhere, capture_output=True, text=True, timeout=20
+        )
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(argv.read_text().strip(), str(ROOT / "atspi_nvda_braille_bridge.py"))
 
 
 if __name__ == "__main__":

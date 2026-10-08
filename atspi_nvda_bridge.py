@@ -29,7 +29,7 @@ gi.require_version("Atspi", "2.0")
 from gi.repository import Atspi, GLib
 
 from announcer import HANDLED, Announcer
-from rdaccess_dvc import CHANNEL, DvcChannel, NvdaSpeechLink, load_xrdpapi
+from rdaccess_dvc import CHANNEL, DvcChannel, NvdaSpeechLink, load_xrdpapi, poll_links
 
 log = logging.getLogger("bridge")
 
@@ -144,7 +144,7 @@ def main() -> int:
     install_signal_handlers(loop)
 
     def tick() -> bool:
-        link.poll()
+        poll_links((("speech", link),), log)
         return GLib.SOURCE_CONTINUE
 
     try:

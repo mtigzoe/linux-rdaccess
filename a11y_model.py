@@ -18,6 +18,9 @@ A11Y_TEXT_EVENTS = frozenset({
 DEFAULT_MAX_OBJECTS = 64
 MAX_FOCUS_SEARCH_NODES = 4096
 MAX_FOCUS_SEARCH_DEPTH = 32
+# Each child costs a synchronous D-Bus round trip on the GLib main loop, so one
+# enumeration is bounded no matter how many items a list, tree or document has.
+MAX_CHILDREN = 128
 MAX_ACTIONS = 32
 MAX_FOCUS_TEXT_CHARS = 8192
 MAX_NAME_CHARS = 4096
@@ -94,19 +97,54 @@ def _parent(obj):
         return None
 
 
-def _children(obj) -> list:
+def _children_info(obj, *, limit: int = MAX_CHILDREN, around=None) -> tuple[list, bool]:
+    """Return at most `limit` children and whether more exist.
+
+    When the object has more children than `limit`, the window is centred on
+    `around` (a child, normally the one on the path to the focus) so the focused
+    item's neighbours are the ones returned, not the first items of the list.
+    """
     count = _invoke(obj, ("get_child_count", "getChildCount"))
     if count is None:
         count = getattr(obj, "childCount", None)
     try:
         count = int(count)
     except (TypeError, ValueError):
-        return []
+        return [], False
+    count = max(0, count)
+    limit = max(1, limit)
+    truncated = count > limit
+    start = 0
+    if truncated and around is not None:
+        index = _invoke(around, ("get_index_in_parent", "getIndexInParent"))
+        try:
+            index = int(index)
+        except (TypeError, ValueError):
+            index = -1
+        if 0 <= index < count:
+            start = min(max(0, index - limit // 2), count - limit)
     children = []
-    for index in range(max(0, count)):
+    for index in range(start, min(count, start + limit)):
         child = _invoke(obj, ("get_child_at_index", "getChildAtIndex"), index)
         if _looks_accessible(child):
             children.append(child)
+    if truncated and around is not None and object_id(around) not in {object_id(c) for c in children}:
+        # No usable index in parent: never lose the child the caller needs.
+        children = [around] + children[: limit - 1]
+    return children, truncated
+
+
+def _children(obj, *, limit: int = MAX_CHILDREN, around=None) -> list:
+    return _children_info(obj, limit=limit, around=around)[0]
+
+
+def _nearest_first(children: list, anchor) -> list:
+    """Order siblings by distance from `anchor` (ties keep document order)."""
+    anchor_id = object_id(anchor)
+    for position, child in enumerate(children):
+        if object_id(child) == anchor_id:
+            order = sorted(range(len(children)), key=lambda i: abs(i - position))
+            return [children[i] for i in order]
     return children
 
 
@@ -380,46 +418,71 @@ def _bounds(obj, coord_type) -> list[int] | None:
     return values
 
 
-def find_focused_object(
+def find_focused_object_ex(
     desktop,
     *,
     max_nodes: int = MAX_FOCUS_SEARCH_NODES,
     max_depth: int = MAX_FOCUS_SEARCH_DEPTH,
 ):
-    """Find the AT-SPI object that currently has keyboard focus.
+    """Find the focused AT-SPI object; return ``(object_or_None, complete)``.
 
-    Used when no focus event is available to react to: the bridge started
-    after the desktop took focus, or the NVDA-A11Y channel (re)connected later
-    than the last focus change.  Windows in the "active" state are searched
-    first; the walk is bounded in nodes and depth so a huge tree cannot stall
-    the GLib main loop.
+    ``complete`` is False when the node budget, the depth limit or a child cap
+    cut the walk short.  ``(None, True)`` therefore means "nothing is focused",
+    while ``(None, False)`` means "not found within the bounds": callers must not
+    treat the latter as a loss of focus.
     """
     budget = [max(1, max_nodes)]
+    complete = [True]
 
     def has_state(obj, wanted: str) -> bool:
         return wanted in _states(obj, focused=False)
 
+    def kids(obj):
+        children, truncated = _children_info(obj)
+        if truncated:
+            complete[0] = False
+        return children
+
     def search(obj, depth: int):
         if budget[0] <= 0 or depth > max_depth:
+            complete[0] = False
             return None
         budget[0] -= 1
         if has_state(obj, "focused"):
             return obj
-        for child in _children(obj):
+        for child in kids(obj):
             found = search(child, depth + 1)
             if found is not None:
                 return found
         return None
 
     windows = []
-    for application in _children(desktop):
-        windows.extend(_children(application))
+    for application in kids(desktop):
+        windows.extend(kids(application))
     active = [window for window in windows if has_state(window, "active")]
     for window in active + [w for w in windows if w not in active]:
         found = search(window, 0)
         if found is not None:
-            return found
-    return None
+            return found, True
+    return None, complete[0]
+
+
+def find_focused_object(
+    desktop,
+    *,
+    max_nodes: int = MAX_FOCUS_SEARCH_NODES,
+    max_depth: int = MAX_FOCUS_SEARCH_DEPTH,
+):
+    """Find the AT-SPI object that currently has keyboard focus, or None.
+
+    Used when no focus event is available to react to: the bridge started
+    after the desktop took focus, or a channel (re)connected later than the last
+    focus change.  Windows in the "active" state are searched first; the walk is
+    bounded in nodes, depth and children per node so a huge tree cannot stall the
+    GLib main loop.  See find_focused_object_ex() to tell "nothing focused" from
+    "search limit reached".
+    """
+    return find_focused_object_ex(desktop, max_nodes=max_nodes, max_depth=max_depth)[0]
 
 
 def _snapshot(
@@ -521,11 +584,18 @@ def build_focus_payload(
 
     # Target first gives its direct children priority; then each ancestor gives
     # us the target's siblings and sibling groups higher in the hierarchy.
-    for parent in chain:
+    for position, parent in enumerate(chain):
         parent_oid = object_id(parent)
-        children = _children(parent)
+        # Window the children around the chain member below `parent` so a focused
+        # item in a very long list keeps its neighbours in the snapshot.
+        anchor = chain[position - 1] if position else None
+        children = _children(parent, around=anchor)
         children_cache[parent_oid] = children
-        for child in children:
+        candidates = children
+        if anchor is not None and len(selected) + len(children) > max_objects:
+            # Not everything fits: keep the siblings closest to the focus.
+            candidates = _nearest_first(children, anchor)
+        for child in candidates:
             if len(selected) >= max_objects:
                 break
             child_oid = object_id(child)
@@ -536,12 +606,14 @@ def build_focus_payload(
         if len(selected) >= max_objects:
             break
 
-    # Cache child order for any selected object not already visited above. This
-    # is mainly useful for siblings that happen to be containers; references to
-    # non-serialized children are filtered out below.
+    # Only path members can have selected children (selected = path + the path's
+    # children), so enumerating any other object's children is wasted D-Bus work.
+    # Path members the object cap kept us from enumerating still link to the path
+    # member below them.
+    for position, member in enumerate(chain):
+        children_cache.setdefault(object_id(member), [chain[position - 1]] if position else [])
     for obj in selected:
-        oid = object_id(obj)
-        children_cache.setdefault(oid, _children(obj))
+        children_cache.setdefault(object_id(obj), [])
 
     focus_id = object_id(target)
     objects = []

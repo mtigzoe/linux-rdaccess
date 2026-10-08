@@ -81,6 +81,11 @@ class NvdaA11yLink:
     def ready(self) -> bool:
         return self._channel is not None and self._rx.xon
 
+    @property
+    def last_focus_id(self) -> str | None:
+        """ID of the newest focus snapshot's target, delivered or not."""
+        return self._last_focus[0] if self._last_focus is not None else None
+
     def poll(self) -> None:
         if self._channel is None:
             self._try_open()

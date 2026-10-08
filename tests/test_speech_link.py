@@ -126,7 +126,7 @@ class SpeechLinkTests(unittest.TestCase):
 
     def test_split_reads_and_legacy_frames_do_not_break_polling(self):
         ch = self.connect()
-        ch.incoming += [b"SA\x03", b"\x00abc", b'{"type":"ind', b'ex","index":0}\n']
+        ch.incoming += [b"SS\x03", b"\x00abc", b'{"type":"ind', b'ex","index":0}\n']
         for _ in range(4):
             self.link.poll()
         self.assertEqual(self.link._rx.legacy_frames, 1)

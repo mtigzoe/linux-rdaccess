@@ -119,6 +119,18 @@ class Announcer:
             return None
         return Announcement(description, interrupt=False)
 
+    def describe_focus(self, obj) -> Optional[str]:
+        """Text for `obj` as if it had just taken focus, without dedupe bookkeeping.
+
+        For replaying the current focus to a newly connected client: the same
+        object may legitimately be spoken again, and one replay must not use up
+        the repeat window of another (speech and braille replay independently).
+        """
+        name = _clean(obj.get_name())
+        role = _clean(obj.get_role_name())
+        parts = [p for p in (name, role) if p]
+        return ", ".join(parts) if parts else None
+
     def _counts_as_focused(self, obj) -> bool:
         if self._is_focused(obj):
             return True
