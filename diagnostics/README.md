@@ -80,6 +80,28 @@ See [NVDA speech probe setup](../docs/nvda-speech-probe.md) for the
 Windows installation and connection instructions. The receiver uses
 loopback and does not save speech to disk.
 
+## Real GTK / AT-SPI end-to-end smoke test
+
+The repository includes a real GTK3 control gallery at
+`tests/apps/accessibility_smoke_app.py` and an isolated test runner at
+`tools/diagnostics/gtk_atspi_smoke.py`. Unlike a CLI/import test, the runner
+launches GTK under its **own Xvfb display and D-Bus session**, checks widget
+roles, drives Tab/Space and text editing, and verifies AT-SPI focus, checked,
+and caret events. It also checks a modal dialog and semantic focus payloads.
+
+From the repository root on Linux with GTK3, AT-SPI, Xvfb, dbus-run-session,
+xfwm4, and xdotool installed:
+
+```bash
+python3 tools/diagnostics/gtk_atspi_smoke.py
+```
+
+This test is also run by
+[Linux diagnostics smoke checks](../.github/workflows/linux-diagnostics.yml)
+in GitHub Actions. It tests the Linux accessibility stack but does **not**
+establish that Windows NVDA Remote, speech, or a physical braille display
+work end-to-end; those still require live acceptance testing.
+
 ## Related developer tools
 
 Other developer utilities are grouped under `tools/diagnostics/`, including
