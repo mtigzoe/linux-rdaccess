@@ -142,7 +142,18 @@ try:
     primary = wait(lambda: named("Apply changes", "push button"), "GTK AT-SPI application startup")
     title = "linux-rdaccess accessibility smoke test"
     window_ids = subprocess.check_output(["xdotool", "search", "--name", title], text=True).splitlines()
-    subprocess.run(["xdotool", "windowactivate", "--sync", window_ids[-1]], check=True)
+    # xfwm4 can still be claiming the session when the GTK window first appears.
+    # Retry activation instead of treating that transient X11 race as a failure.
+    def activate_window():
+        result = subprocess.run(
+            ["xdotool", "windowactivate", "--sync", window_ids[-1]],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            timeout=3, check=False,
+        )
+        return result.returncode == 0
+
+    wait(activate_window, "GTK window activation by window manager", timeout=15)
+    check("GTK window activation")
     controls = {}
     roles = {}
     for declared in smoke.CONTROL_SPECS:
