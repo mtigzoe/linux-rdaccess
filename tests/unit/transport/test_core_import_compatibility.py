@@ -15,9 +15,19 @@ from linux_rdaccess_core import announcer as core_announcer
 from linux_rdaccess_core import a11y_link as core_a11y_link
 from linux_rdaccess_core import braille_link as core_braille_link
 from linux_rdaccess_core import rdaccess_dvc as core_rdaccess_dvc
+from linux_rdaccess_core.accessibility import announcer as accessibility_announcer
+from linux_rdaccess_core.transport import a11y_link as transport_a11y_link
+from linux_rdaccess_core.transport import braille_link as transport_braille_link
+from linux_rdaccess_core.transport import rdaccess_dvc as transport_rdaccess_dvc
 
 
 class RootImportCompatibilityTests(unittest.TestCase):
+    def test_implementations_are_in_named_subpackages(self):
+        self.assertIs(core_announcer.Announcer, accessibility_announcer.Announcer)
+        self.assertIs(core_a11y_link.NvdaA11yLink, transport_a11y_link.NvdaA11yLink)
+        self.assertIs(core_braille_link.NvdaBrailleLink, transport_braille_link.NvdaBrailleLink)
+        self.assertIs(core_rdaccess_dvc.DvcChannel, transport_rdaccess_dvc.DvcChannel)
+
     def test_announcer_remains_same_class_and_constants(self):
         self.assertIs(announcer.Announcer, core_announcer.Announcer)
         self.assertIs(announcer.HANDLED, core_announcer.HANDLED)
