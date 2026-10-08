@@ -27,6 +27,32 @@ This path does not require Windows App or Remote Desktop Connection for accessib
 
 See [docs/nvda-remote.md](docs/nvda-remote.md) for the current tested design and known compatibility work.
 
+## Optional Desktop Commander for live accessibility testing
+
+Desktop Commander is an optional computer-access tool for an authorized AI
+coding assistant. During **live** testing of `linux-rdaccess`, it can inspect
+logs, run terminal commands, and help drive the Windows computer while NVDA
+Remote controls the Linux Mint desktop. This is useful for checking real Orca
+speech, braille, keyboard focus, and navigation behavior that automated unit
+tests cannot fully validate.
+
+On Windows, use the NVDA Remote Access add-on to connect to the Linux host;
+`NVDA+Alt+Tab` (usually `Insert+Alt+Tab`) switches remote control when that
+gesture is configured. Desktop Commander itself is **not** part of the
+NVDA-to-Orca bridge, does not replace NVDA Remote, and is not required to
+install or run this project. It must be explicitly connected and authorized
+before an assistant can interact with the computer.
+
+For an optional local Desktop Commander remote session, run:
+
+```powershell
+npx @wonderwhy-er/desktop-commander@latest remote
+```
+
+Use this only when you intend to grant a trusted assistant access to the
+computer. Do not commit remote access secrets, session keys, or logs containing
+private speech or braille content.
+
 ## Windows controller with uv (PowerShell)
 
 The optional Windows controller lets you run the installed Linux `linux-rdaccess`
