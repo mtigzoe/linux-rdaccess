@@ -81,3 +81,23 @@ python3 -m unittest -v tests.unit.transport.test_installed_runtime_acceptance
 The real Linux Mint installation and connected Windows NVDA/braille acceptance
 still require a live desktop and hardware. Passing this suite alone does not
 establish that Remote Access speech and braille work end to end.
+
+
+## Real Linux GUI accessibility tests in GitHub Actions
+
+The dedicated `.github/workflows/linux-gui-accessibility.yml` workflow starts
+a disposable Ubuntu Xvfb display and D-Bus session. It runs the existing GTK
+controls/event smoke test plus a real-application AT-SPI smoke test for Thunar
+and Mousepad. The test checks that application windows appear in the AT-SPI
+tree; it does not need SSH, an active Linux Mint session, or NVDA credentials.
+
+Run locally on Linux with the workflow dependencies installed:
+
+```bash
+timeout 180s python3 tools/diagnostics/gtk_atspi_smoke.py
+timeout 100s dbus-run-session -- xvfb-run -a python3 tools/diagnostics/real_gui_atspi_smoke.py
+```
+
+These tests **do not** verify Windows NVDA speech, remote keyboard command
+translation, or a physical braille display. Those still require a separate
+NVDA Remote integration harness and live acceptance testing.
