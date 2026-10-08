@@ -17,7 +17,7 @@ from unittest import mock
 import remote_access
 
 
-UPSTREAM = (Path(__file__).parent / "fixtures/legacy-patches/transport-upstream.txt").read_text()
+UPSTREAM = (Path(__file__).resolve().parents[2] / "fixtures/legacy-patches/transport-upstream.txt").read_text()
 
 
 class Callbacks:
@@ -558,7 +558,7 @@ class TransportStreamBoundariesTests(unittest.TestCase):
 
     def test_genuine_v5_upgrade_preserves_original_backup_and_is_idempotent(self):
         import tempfile
-        fixture = Path(__file__).parent / "fixtures/legacy-patches/transport-v5.txt"
+        fixture = Path(__file__).resolve().parents[2] / "fixtures/legacy-patches/transport-v5.txt"
         historical = fixture.read_text()
         self.assertFalse(remote_access.legacy_transport_cleanup_patch_current(historical))
         with tempfile.TemporaryDirectory() as folder:

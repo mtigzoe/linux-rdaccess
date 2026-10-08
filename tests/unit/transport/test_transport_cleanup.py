@@ -84,7 +84,7 @@ class TCPTransport:
 
 # Frozen output of starting-main a917df5's transport patcher. Later versions
 # add ownership guards, so renaming current output is not an old patch fixture.
-HISTORICAL_V5 = (Path(__file__).parent / "fixtures/legacy-patches/transport-minimal-v5.txt").read_text()
+HISTORICAL_V5 = (Path(__file__).resolve().parents[2] / "fixtures/legacy-patches/transport-minimal-v5.txt").read_text()
 
 
 class FakeSocket:

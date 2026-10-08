@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "run_braille_bridge.sh"
 LIVE = "unix:path=/run/user/1000/at-spi/bus_0,guid=LIVELIVELIVE"
 STALE = "unix:path=/run/user/1000/at-spi/bus_0,guid=STALESTALE"

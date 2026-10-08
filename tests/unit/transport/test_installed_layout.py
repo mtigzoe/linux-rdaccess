@@ -12,7 +12,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[3]
 
 # Runs in a clean interpreter whose only importable project files are the installed ones.
 PROBE = r'''
