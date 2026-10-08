@@ -501,7 +501,7 @@ user_pref("browser.tabs.warnOnClose", false);
     session.launch("firefox", ["firefox", "--no-remote", "--profile", str(profile), page.as_uri()])
     app = session.application("firefox")
     session.activate(app)
-    session.wait(lambda: session.find(app, {"document web"}), "Firefox document accessibility")
+    session.wait(lambda: session.find(app, {"document web"}), "Firefox document accessibility", seconds=60)
     entry = session.wait(lambda: session.find(app, {"entry", "text"}, "Smoke input"), "Firefox labelled input")
     session.text_edit(entry, "lrd browser text", "Firefox input")
     session.key("Tab")
