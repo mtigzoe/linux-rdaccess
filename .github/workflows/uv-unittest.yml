@@ -21,6 +21,10 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq xvfb xauth libx11-6 libxtst6
+      - name: Validate Linux shell script syntax
+        run: |
+          bash -n scripts/linux/*.sh
+          bash -n run_braille_bridge.sh start-orca-remote.sh start-orca-session.sh
       - name: Compile Python packages and entry points
         run: |
           python3 -m compileall -q linux_rdaccess_core diagnostics tools tests
