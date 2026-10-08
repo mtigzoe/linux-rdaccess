@@ -65,8 +65,8 @@ def main() -> int:
             "GSETTINGS_BACKEND": "memory",
             "GDK_BACKEND": "x11",
             "GTK_MODULES": "gail:atk-bridge",
-            "NO_AT_BRIDGE": "",
         })
+        env.pop("NO_AT_BRIDGE", None)
         for key in ("config", "data", "cache", "runtime"):
             (root / key).mkdir(mode=0o700)
         import gi
@@ -78,8 +78,9 @@ def main() -> int:
         try:
             for name, command in (
                 ("xfwm4", ["xfwm4", "--replace", "--compositor=off"]),
-                ("thunar", ["thunar", "--new-window", str(root)]),
-                ("mousepad", ["mousepad", "--disable-server"]),
+                ("atspi", ["/usr/libexec/at-spi-bus-launcher", "--launch-immediately"]),
+                ("thunar", ["thunar", str(root)]),
+                ("mousepad", ["mousepad"]),
             ):
                 log_file = (root / f"{name}.log").open("w")
                 log_files.append(log_file)
@@ -100,6 +101,11 @@ def main() -> int:
                 wait_for(has_window, f"{name} accessible top-level window")
                 print(f"PASS {name}: application and window exposed through AT-SPI", flush=True)
             return 0
+        except Exception:
+            for log in sorted(root.glob("*.log")):
+                print(f"--- {log.name} ---", file=sys.stderr)
+                print(log.read_text(errors="replace")[-3500:], file=sys.stderr)
+            raise
         finally:
             for proc in reversed(processes):
                 if proc.poll() is None:
