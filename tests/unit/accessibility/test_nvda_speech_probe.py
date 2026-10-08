@@ -22,7 +22,7 @@ def load_module(name: str, path: Path):
 probe = load_module("nvda_speech_probe", ROOT / "diagnostics" / "nvda_speech_probe.py")
 shared = load_module(
 	"nvda_speech_probe_shared",
-	ROOT / "tools" / "nvda_speech_probe" / "globalPlugins" / "linuxRdaccessSpeechProbe" / "shared.py",
+	ROOT / "tools" / "nvda" / "nvda_speech_probe" / "globalPlugins" / "linuxRdaccessSpeechProbe" / "shared.py",
 )
 
 
