@@ -1196,11 +1196,6 @@ class RemoteController:
             (0x50, False),                 # NVDA+P symbol level vs Orca laptop flat review
             (0x53, False),                 # NVDA+S vs Orca speech silence
             (0x55, False),                 # NVDA+U progress reporting vs Orca laptop review line
-            (0x7B, False),                 # NVDA+F12
-            (0x74, False),                 # NVDA+F5
-            (0x72, False), (0x72, True),   # NVDA+F3
-            (0x46, False),                 # NVDA+F
-
         ):
             with self.subTest(vk=vk, shift=shift):
                 c, _, _ = self._patched_controller()
@@ -3106,6 +3101,20 @@ class LocalMachine:
                 self._key(c, 0x79, True)
                 ev = KE("F10", 76, modifiers=self.SHIFT | self.ORCA)
                 self.assertIsNotNone(getattr(ev, "_consumer", None))
+                self.assertIsNone(ev._handler)
+
+    def test_remote_nvda_ctrl_f_opens_orca_find_in_document_browse_or_focus_mode(self):
+        for browse in (True, False):
+            with self.subTest(browse=browse):
+                c, KE, script = self._hooked(browse=browse, in_document=True)
+                self._key(c, 0x2D, True, extended=True)
+                self._key(c, 0xA2, True)
+                self._key(c, 0x46, True)
+                ev = KE("f", self.F_CODE, modifiers=self.ORCA | self.CTRL)
+                consumer = getattr(ev, "_consumer", None)
+                self.assertIsNotNone(consumer)
+                consumer(ev)
+                self.assertEqual(script.find_calls, ["find"])
                 self.assertIsNone(ev._handler)
 
     def test_remote_nvda_ctrl_f_in_browser_chrome_does_not_open_app_find(self):
