@@ -131,6 +131,7 @@ class SpeechProbeSharedTests(unittest.TestCase):
 		path = (
 			ROOT
 			/ "tools"
+			/ "nvda"
 			/ "nvda_speech_probe"
 			/ "globalPlugins"
 			/ "linuxRdaccessSpeechProbe"
