@@ -118,9 +118,13 @@ class LauncherTests(unittest.TestCase):
             "FAKE_ROOT_PROP": str(self.prop),
             "AT_SPI_BUS_ADDRESS": STALE,
         }
-        # The launcher runs the bridge that sits next to it, so run a copy beside the fake bridge.
+        # Reproduce the installed source layout: legacy root wrapper, relocated
+        # implementation and Python bridge in the repository root.
         script = self.tmp / "run_braille_bridge.sh"
+        implementation = self.tmp / "scripts" / "linux" / "run_braille_bridge.sh"
+        implementation.parent.mkdir(parents=True)
         shutil.copy(SCRIPT, script)
+        shutil.copy(ROOT / "scripts" / "linux" / "run_braille_bridge.sh", implementation)
         r = subprocess.run(
             ["bash", str(script)], env=env, cwd=self.tmp, capture_output=True, text=True, timeout=20
         )
