@@ -180,6 +180,16 @@ def install_user_files(
         if (source_dir / name).resolve() != (share_dir / name).resolve():
             shutil.copy2(source_dir / name, share_dir / name)
 
+    # The root nvda_remote_check.py entry point imports the internal package.
+    # Ship the package with the installed CLI so doctor and direct checks work.
+    package = source_dir / "linux_rdaccess_core"
+    if not (package / "connection" / "nvda_remote_check.py").is_file():
+        raise FileNotFoundError(package / "connection" / "nvda_remote_check.py")
+    target = share_dir / "linux_rdaccess_core"
+    if package.resolve() != target.resolve():
+        shutil.copytree(package, target, dirs_exist_ok=True,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+
     wrapper = (
         "#!/bin/sh\n"
         f'exec "{sys.executable}" "{share_dir / "linux_rdaccess.py"}" "$@"\n'
