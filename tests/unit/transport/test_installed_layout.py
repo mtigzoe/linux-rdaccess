@@ -54,8 +54,8 @@ class InstalledLayoutTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             scripts = Path(directory)
             # Exactly the two files update_legacy_orca_customizations installs.
-            shutil.copy2(ROOT / "orca_adapter.py", scripts / "linux_rdaccess_orca_adapter.py")
-            shutil.copy2(ROOT / "a11y_model.py", scripts / "linux_rdaccess_a11y_model.py")
+            shutil.copy2(ROOT / "linux_rdaccess_core/accessibility/orca_adapter.py", scripts / "linux_rdaccess_orca_adapter.py")
+            shutil.copy2(ROOT / "linux_rdaccess_core/accessibility/a11y_model.py", scripts / "linux_rdaccess_a11y_model.py")
             result = subprocess.run(
                 [sys.executable, "-c", PROBE],
                 cwd=scripts, capture_output=True, text=True, timeout=30,

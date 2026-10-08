@@ -18,7 +18,7 @@ focus mode, local D and Ctrl+D untouched; hw_code always restored.
 """
 import os, pathlib, shutil, sys, tempfile
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
-import remote_access
+from linux_rdaccess_core.connection import remote_access
 
 _tmp = pathlib.Path(tempfile.mkdtemp()) / "remote_controller.py"
 sys.path.insert(0, os.path.dirname(os.path.abspath(os.environ["UPSTREAM_REMOTE_CONTROLLER"])))  # upstream siblings

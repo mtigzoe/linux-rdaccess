@@ -57,8 +57,10 @@ class GenuineUpgradeTests(unittest.TestCase):
                     self.assertEqual(path.read_text(), historical)
 
     def test_repository_target_code_accepts_python310_grammar(self):
-        root = Path(remote_access.__file__).parent
-        files = list(root.glob('*.py')) + list((root / 'diagnostics').glob('*.py'))
+        root = Path(__file__).resolve().parents[3]
+        files = list(root.glob('*.py'))
+        for directory in ('linux_rdaccess_core', 'diagnostics', 'tools'):
+            files.extend((root / directory).rglob('*.py'))
         for path in files:
             with self.subTest(path=path.name):
                 ast.parse(path.read_text(), feature_version=(3, 10))

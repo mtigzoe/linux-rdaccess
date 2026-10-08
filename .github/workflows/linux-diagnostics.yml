@@ -7,13 +7,19 @@ on:
       - 'diagnostics/**'
       - 'tools/diagnostics/**'
       - 'tests/**'
+      - 'linux_rdaccess_core/**'
+      - '*.py'
+      - 'scripts/linux/**'
       - '.github/workflows/linux-diagnostics.yml'
   push:
-    branches: [refactor/repository-structure]
+    branches: [main, refactor/root-python-cleanup, refactor/repository-structure]
     paths:
       - 'diagnostics/**'
       - 'tools/diagnostics/**'
       - 'tests/**'
+      - 'linux_rdaccess_core/**'
+      - '*.py'
+      - 'scripts/linux/**'
       - '.github/workflows/linux-diagnostics.yml'
   workflow_dispatch:
 
@@ -27,7 +33,7 @@ jobs:
       - name: Install test desktop dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq xvfb xauth libx11-6 libxtst6 python3-gi gir1.2-atspi-2.0 gir1.2-gtk-3.0 libatk-adaptor at-spi2-core dbus-x11 xfwm4 xdotool
+          sudo apt-get install -y -qq xvfb xauth libx11-6 libxtst6 python3-gi python3-louis orca gir1.2-atspi-2.0 gir1.2-gtk-3.0 libatk-adaptor at-spi2-core dbus-x11 xfwm4 xdotool
       - name: Check all diagnostic scripts compile
         run: |
           python3 -m compileall -q diagnostics
@@ -45,6 +51,14 @@ jobs:
         run: |
           timeout 150s python3 tools/diagnostics/gtk_atspi_smoke.py
 
+      - name: Check package and legacy bridge entry points with system AT-SPI
+        run: |
+          python3 -m linux_rdaccess_core.accessibility.atspi_nvda_bridge --help
+          python3 -m linux_rdaccess_core.accessibility.atspi_nvda_braille_bridge --help
+          python3 atspi_nvda_bridge.py --help
+          python3 atspi_nvda_braille_bridge.py --help
+      - name: Full suite with Linux accessibility libraries
+        run: xvfb-run -a python3 -m unittest discover -s tests -t .
       - name: Run existing diagnostics-related regression tests
         run: |
           xvfb-run -a python3 -m unittest -v \

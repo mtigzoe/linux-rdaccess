@@ -6,7 +6,7 @@ import logging
 import time
 from typing import Callable
 
-from rdaccess_dvc import PROTOCOL_VERSION, Receiver, send_json
+from .rdaccess_dvc import PROTOCOL_VERSION, Receiver, send_json
 
 log = logging.getLogger("a11yLink")
 A11Y_CHANNEL = "NVDA-A11Y"

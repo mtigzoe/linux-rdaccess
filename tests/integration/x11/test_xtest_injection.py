@@ -1,6 +1,6 @@
 """Integration test for low-latency key injection; needs a real X server.
 
-Skipped unless DISPLAY is set and libX11/libXtst load. CI runs it under
+Skipped unless DISPLAY points to a private Xvfb server and libX11/libXtst load. CI runs it under
 ``xvfb-run``.
 """
 from __future__ import annotations
@@ -8,6 +8,7 @@ from __future__ import annotations
 import ctypes
 import ctypes.util
 import os
+import re
 from pathlib import Path
 import tempfile
 import time
@@ -38,19 +39,39 @@ class LocalMachine:
 
 
 def _x_available() -> bool:
-    if not os.environ.get("DISPLAY"):
+    display = re.fullmatch(r":(\d+)(?:\.\d+)?", os.environ.get("DISPLAY", ""))
+    if not display:
         return False
     try:
+        pid = int(Path(f"/tmp/.X{display[1]}-lock").read_text().strip())
+        if Path(f"/proc/{pid}/comm").read_text().strip() != "Xvfb":
+            return False
         x11 = ctypes.CDLL(ctypes.util.find_library("X11") or "libX11.so.6")
         ctypes.CDLL(ctypes.util.find_library("Xtst") or "libXtst.so.6")
         x11.XOpenDisplay.restype = ctypes.c_void_p
         x11.XOpenDisplay.argtypes = [ctypes.c_char_p]
         return bool(x11.XOpenDisplay(None))
-    except OSError:
+    except (OSError, ValueError):
         return False
 
 
-@unittest.skipUnless(_x_available(), "needs an X server (run under xvfb-run)")
+class XTestDisplaySafetyTests(unittest.TestCase):
+    def test_regular_desktop_is_rejected_before_loading_x11(self):
+        with mock.patch.dict(os.environ, DISPLAY=":42"), \
+             mock.patch.object(Path, "read_text", side_effect=["123", "Xorg\n"]), \
+             mock.patch.object(ctypes, "CDLL") as load:
+            self.assertFalse(_x_available())
+            load.assert_not_called()
+
+    def test_unverifiable_display_is_rejected_before_loading_x11(self):
+        with mock.patch.dict(os.environ, DISPLAY=":42"), \
+             mock.patch.object(Path, "read_text", side_effect=FileNotFoundError), \
+             mock.patch.object(ctypes, "CDLL") as load:
+            self.assertFalse(_x_available())
+            load.assert_not_called()
+
+
+@unittest.skipUnless(_x_available(), "needs a private Xvfb server (run under xvfb-run)")
 class XTestInjectionTests(Harness, unittest.TestCase):
     def setUp(self):
         temp = tempfile.TemporaryDirectory()

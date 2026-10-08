@@ -71,4 +71,5 @@ fi
 
 script_dir="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 repo_root="$(cd "$script_dir/../.." && pwd)"
-exec python3 "$repo_root/atspi_nvda_braille_bridge.py" "${args[@]}"
+export PYTHONPATH="$repo_root${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 -m linux_rdaccess_core.accessibility.atspi_nvda_braille_bridge "${args[@]}"
