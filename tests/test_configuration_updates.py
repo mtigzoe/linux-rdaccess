@@ -140,6 +140,20 @@ def private_fallback(text):
             adapter.write_text((Path(linux_rdaccess.__file__).parent / 'orca_adapter.py').read_text())
             self.assertEqual(dict(linux_rdaccess.patch_status(path)).get(label), 'current')
 
+    def test_doctor_reports_the_installed_semantic_model(self):
+        """The installed adapter imports the model; a missing one silently disables semantic braille."""
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'orca-customizations.py'
+            model = path.parent / 'orca-scripts/linux_rdaccess_a11y_model.py'
+            label = 'AT-SPI semantic model (linux_rdaccess_a11y_model.py)'
+            self.assertEqual(dict(linux_rdaccess.patch_status(path)).get(label), 'missing')
+            model.parent.mkdir()
+            model.write_text('# stale model\n')
+            self.assertEqual(
+                dict(linux_rdaccess.patch_status(path)).get(label), 'outdated - run: linux-rdaccess connect')
+            model.write_text((Path(linux_rdaccess.__file__).parent / 'a11y_model.py').read_text())
+            self.assertEqual(dict(linux_rdaccess.patch_status(path)).get(label), 'current')
+
     def test_connection_update_removes_transport_constructor_channel_log(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

@@ -17,6 +17,20 @@ from typing import Any, Callable, Iterable
 
 
 
+def _a11y_model():
+    """Import the AT-SPI model under either of its installed names.
+
+    The repository and ``~/.local/share/linux-rdaccess`` use ``a11y_model``; the
+    Orca scripts directory gets it as ``linux_rdaccess_a11y_model`` (see
+    update_legacy_orca_customizations), beside this file's installed copy.
+    """
+    try:
+        import a11y_model
+    except ImportError:
+        import linux_rdaccess_a11y_model as a11y_model
+    return a11y_model
+
+
 ELEMENT_LIST_TYPES = (
     ("Links", "k"),
     ("Headings", "h"),
@@ -302,7 +316,7 @@ class OrcaRuntimeAdapter:
         _REMOTE_SEMANTIC_OBJECTS = {}
         try:
             from orca import orca_state
-            from a11y_model import build_focus_payload
+            build_focus_payload = _a11y_model().build_focus_payload
         except Exception:
             return None
 
@@ -354,7 +368,7 @@ class OrcaRuntimeAdapter:
         if obj is None:
             return False
         try:
-            from a11y_model import perform_action
+            perform_action = _a11y_model().perform_action
             return bool(perform_action(obj, action_index))
         except Exception:
             return False
@@ -371,7 +385,7 @@ class OrcaRuntimeAdapter:
         if obj is None:
             return False
         try:
-            from a11y_model import set_caret_offset
+            set_caret_offset = _a11y_model().set_caret_offset
             return bool(set_caret_offset(obj, offset))
         except Exception:
             return False

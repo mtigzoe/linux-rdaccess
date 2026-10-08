@@ -279,14 +279,65 @@ def _strip_jsonc(text: str) -> str:
     return re.sub(r",(\s*[}\]])", r"\1", "".join(out))
 
 
+def _mask_jsonc_comments(text: str) -> str:
+    """Return `text` with // and /* */ comments blanked out, same length and offsets."""
+    out = list(text)
+    i, n, in_str = 0, len(text), False
+    while i < n:
+        ch = text[i]
+        if in_str:
+            if ch == "\\":
+                i += 1
+            elif ch == '"':
+                in_str = False
+        elif ch == '"':
+            in_str = True
+        elif text.startswith("//", i) or text.startswith("/*", i):
+            end = text.find("\n", i) if text.startswith("//", i) else text.find("*/", i + 2)
+            stop = n if end == -1 else (end if text.startswith("//", i) else end + 2)
+            for k in range(i, stop):
+                if out[k] != "\n":
+                    out[k] = " "
+            i = stop
+            continue
+        i += 1
+    return "".join(out)
+
+
+def _jsonc_depth(masked: str, position: int) -> int:
+    """Brace/bracket nesting depth at `position` of comment-masked text."""
+    depth, in_str, i = 0, False, 0
+    while i < position:
+        ch = masked[i]
+        if in_str:
+            if ch == "\\":
+                i += 1
+            elif ch == '"':
+                in_str = False
+        elif ch == '"':
+            in_str = True
+        elif ch in "{[":
+            depth += 1
+        elif ch in "}]":
+            depth -= 1
+        i += 1
+    return depth
+
+
+_JSONC_SCALAR = r'"(?:[^"\\]|\\.)*"|-?[0-9][0-9.eE+-]*|true|false|null'
+
+
 def configure_vscode_accessibility(path: Path = DEFAULT_VSCODE_SETTINGS) -> None:
     """Enable VS Code screen-reader accessibility without replacing other settings.
 
     settings.json is JSONC, so comments and formatting are preserved by editing
     the text in place rather than re-serialising it. A one-time backup is kept.
+    Keys and braces are located outside comments, so a commented-out setting or a
+    brace in a header comment is never mistaken for the real thing.
     """
     path = path.expanduser()
-    text = path.read_text(encoding="utf-8") if path.exists() else "{\n}\n"
+    # utf-8-sig: editors on Windows may add a BOM, which json.loads rejects.
+    text = path.read_text(encoding="utf-8-sig") if path.exists() else "{\n}\n"
     try:
         data = json.loads(_strip_jsonc(text) or "{}")
     except json.JSONDecodeError as exc:
@@ -299,19 +350,37 @@ def configure_vscode_accessibility(path: Path = DEFAULT_VSCODE_SETTINGS) -> None
         wanted["window.titleBarStyle"] = "custom"
     for key, value in wanted.items():
         line = f'"{key}": {json.dumps(value)}'
-        existing = re.search(rf'"{re.escape(key)}"\s*:\s*"[^"]*"', text)
+        masked = _mask_jsonc_comments(text)
+        existing = next(
+            (
+                match
+                for match in re.finditer(rf'"{re.escape(key)}"\s*:\s*({_JSONC_SCALAR})', masked)
+                if _jsonc_depth(masked, match.start()) == 1
+            ),
+            None,
+        )
         if existing:
             text = text[:existing.start()] + line + text[existing.end():]
             continue
-        brace = text.index("{")
+        if key in data:
+            raise ValueError(f"cannot edit {key} in place (its value is not a plain value): {path}")
+        brace = next(
+            (m.start() for m in re.finditer(r"\{", masked) if _jsonc_depth(masked, m.start()) == 0),
+            None,
+        )
+        if brace is None:
+            raise ValueError(f"VS Code settings must contain a JSON object: {path}")
         rest = _strip_jsonc(text[brace + 1:]).strip()
         sep = "" if rest.startswith("}") else ","
         text = f"{text[:brace + 1]}\n    {line}{sep}{text[brace + 1:]}"
-    json.loads(_strip_jsonc(text))  # never write something we cannot parse
+    try:
+        json.loads(_strip_jsonc(text))  # never write something we cannot parse
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"edited VS Code settings would not be valid JSON; nothing written: {path}") from exc
     path.parent.mkdir(parents=True, exist_ok=True)
     backup = path.with_name(path.name + ".linux-rdaccess-backup")
     if path.exists() and not backup.exists():
-        backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+        backup.write_bytes(path.read_bytes())
     tmp = path.with_name(path.name + ".linux-rdaccess-tmp")
     tmp.write_text(text, encoding="utf-8")
     os.replace(tmp, path)
@@ -396,6 +465,21 @@ def patch_status(orca_config: Path) -> list[tuple[str, str]]:
             expected = (Path(__file__).parent / "orca_adapter.py").read_text(encoding="utf-8")
         except OSError:
             rows.append((label, "unknown - CLI adapter source missing"))
+        else:
+            rows.append((label, "current" if installed == expected else "outdated - run: linux-rdaccess connect"))
+
+    # The adapter imports this for NVDA-native braille; without it that feature
+    # silently falls back to raw cells, so report it like the adapter.
+    label = "AT-SPI semantic model (linux_rdaccess_a11y_model.py)"
+    try:
+        installed = (base / "orca-scripts/linux_rdaccess_a11y_model.py").read_text(encoding="utf-8")
+    except OSError:
+        rows.append((label, "missing"))
+    else:
+        try:
+            expected = (Path(__file__).parent / "a11y_model.py").read_text(encoding="utf-8")
+        except OSError:
+            rows.append((label, "unknown - CLI model source missing"))
         else:
             rows.append((label, "current" if installed == expected else "outdated - run: linux-rdaccess connect"))
     return rows
@@ -604,7 +688,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "vscode-setup":
-        configure_vscode_accessibility(args.settings)
+        try:
+            configure_vscode_accessibility(args.settings)
+        except ValueError as exc:
+            print(exc)
+            return 1
         print(f"Enabled VS Code screen-reader accessibility in: {args.settings.expanduser()}")
         print("If Orca is still silent, launch VS Code with: ACCESSIBILITY_ENABLED=1 code")
         return 0

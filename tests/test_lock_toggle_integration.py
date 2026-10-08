@@ -184,6 +184,28 @@ class LockToggleIntegrationTests(unittest.TestCase):
                 self.assertFalse(self.local._LRD_XTEST._down_codes)
                 self.assertFalse(self.controller._lrd_forwarded)
 
+    def test_lock_keys_toggle_every_gesture_when_the_extended_flag_differs_between_down_and_up(self):
+        """Windows reports the extended flag of lock keys inconsistently (Num Lock vs Pause).
+
+        Regression: key-down and key-up were paired by (vk, extended), so a mismatching
+        key-up was dropped. Num Lock then turned on once and never off; Caps Lock never toggled.
+        """
+        for vk, key, name in self.LOCKS:
+            for down_extended, up_extended in ((True, False), (False, True)):
+                with self.subTest(key=key, down=down_extended, up=up_extended):
+                    self.messages.clear()
+                    seen = []
+                    for _ in range(4):
+                        self._key(vk, True, extended=down_extended)
+                        self._key(vk, False, extended=up_extended)
+                        self._drain()
+                        seen.append(self._state(name))
+                    self.assertEqual(seen, [True, False, True, False])
+                    self.assertEqual(self.messages, [f"{name} {s}" for s in ("on", "off", "on", "off")])
+                    self.assertFalse(self.local._LRD_XTEST._down_codes)
+                    self.assertFalse(self.controller._lrd_forwarded)
+                    self.assertFalse(self.controller._lrd_down)
+
     def test_queued_rapid_toggles_present_each_completed_gestures_snapshot(self):
         for vk, key, name in self.LOCKS:
             with self.subTest(key=key):

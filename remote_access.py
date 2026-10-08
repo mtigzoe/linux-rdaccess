@@ -1840,7 +1840,8 @@ LEGACY_COMPAT_MARKER_V93 = "# linux-rdaccess NVDA/Orca input compatibility v93"
 LEGACY_COMPAT_MARKER_V94 = "# linux-rdaccess NVDA/Orca input compatibility v94"
 LEGACY_COMPAT_MARKER_V95 = "# linux-rdaccess NVDA/Orca input compatibility v95"
 LEGACY_COMPAT_MARKER_V96 = "# linux-rdaccess NVDA/Orca input compatibility v96"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v97"
+LEGACY_COMPAT_MARKER_V97 = "# linux-rdaccess NVDA/Orca input compatibility v97"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v98"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -2290,6 +2291,13 @@ _LEGACY_HELPERS = '''\
 
     @staticmethod
     def _linux_rdaccess_key_identity(vk_code, extended, key_name=None):
+        # The lock keys have a single physical key each, but Windows does not
+        # report their extended flag consistently (Num Lock shares scan code 0x45
+        # with Pause), so a key-up can disagree with its key-down. Pairing them
+        # by the flag then loses the release: Num Lock turns on once and never
+        # off, Caps Lock never toggles. Identify them by VK alone.
+        if vk_code in (0x14, 0x90, 0x91):
+            extended = False
         return (vk_code if vk_code is not None else key_name, bool(extended))
 
     def _linux_rdaccess_forward_key(self, **kwargs):
@@ -5970,6 +5978,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V97,
                 LEGACY_COMPAT_MARKER_V96,
                 LEGACY_COMPAT_MARKER_V95,
                 LEGACY_COMPAT_MARKER_V94,
