@@ -22,13 +22,21 @@ fi
 
 # environ entries are NUL separated and may contain newlines; splitting on
 # newlines would let one variable's value forge another variable.
+# Use the selected desktop's complete environment, without SSH forwarding or
+# stale session variables from the shell that launched this helper.
+unset DISPLAY WAYLAND_DISPLAY XAUTHORITY DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR XDG_SESSION_TYPE
 while IFS= read -r -d '' line || [[ -n "$line" ]]; do
     case "$line" in
-        DISPLAY=*|XAUTHORITY=*|DBUS_SESSION_BUS_ADDRESS=*|XDG_RUNTIME_DIR=*|WAYLAND_DISPLAY=*)
+        DISPLAY=*|XAUTHORITY=*|DBUS_SESSION_BUS_ADDRESS=*|XDG_RUNTIME_DIR=*|WAYLAND_DISPLAY=*|XDG_SESSION_TYPE=*)
             export "$line"
             ;;
     esac
 done < "$env_file"
+
+if [[ -z "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" ]]; then
+    echo "No graphical display found in the active XFCE session." >&2
+    exit 1
+fi
 
 echo "DISPLAY=${DISPLAY:-not set}"
 echo "XAUTHORITY=${XAUTHORITY:-not set}"

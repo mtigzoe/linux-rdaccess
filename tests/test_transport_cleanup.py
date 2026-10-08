@@ -360,6 +360,18 @@ class TransportCleanupTests(unittest.TestCase):
             transport.write_text(source, encoding="utf-8")
             rows = dict(linux_rdaccess.patch_status(config))
             self.assertEqual(rows["relay transport cleanup (transport.py)"], "current")
+            historical_v7 = remote_access._strip_transport_pending_connect(source)
+            transport.write_text(historical_v7, encoding="utf-8")
+            rows = dict(linux_rdaccess.patch_status(config))
+            self.assertEqual(rows["relay transport cleanup (transport.py)"],
+                             "outdated - run: linux-rdaccess connect")
+            tampered_v7 = historical_v7.replace(
+                "if self.server_sock is None and self.queue_thread is None:",
+                "if not self.connected:", 1)
+            transport.write_text(tampered_v7, encoding="utf-8")
+            rows = dict(linux_rdaccess.patch_status(config))
+            self.assertEqual(rows["relay transport cleanup (transport.py)"],
+                             "incomplete patch - repair required")
             v1 = SOURCE.replace(
                 "if not self.connected:",
                 "if self.server_sock is None and self.queue_thread is None:",

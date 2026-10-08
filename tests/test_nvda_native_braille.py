@@ -129,7 +129,8 @@ class SemanticFocusPayloadTests(unittest.TestCase):
 
 
 class CustomizationSemanticBrailleTests(unittest.TestCase):
-    def run_hook(self, *, native=False, semantic=None):
+    def run_hook(self, *, native=False, semantic=None, offer_available=True,
+                 offer_error=None):
         messages = []
         braille = types.ModuleType("orca.braille")
         braille.refresh = mock.Mock(return_value="native refresh")
@@ -159,6 +160,10 @@ class CustomizationSemanticBrailleTests(unittest.TestCase):
             _linux_rdaccess_offer_native_braille=lambda: offers.append(True),
         )
         controller._lrd_native_braille_offers = offers
+        if not offer_available:
+            del controller._linux_rdaccess_offer_native_braille
+        elif offer_error is not None:
+            controller._linux_rdaccess_offer_native_braille = mock.Mock(side_effect=offer_error)
         namespace = {"controller": controller, "_dbg": lambda *_args: None}
         with mock.patch.dict(sys.modules, {
             "orca": orca,
@@ -184,6 +189,34 @@ class CustomizationSemanticBrailleTests(unittest.TestCase):
             ],
         )
         self.assertEqual(controller._lrd_native_braille_offers, [True, True])
+
+    def test_older_controller_without_semantic_offer_still_forwards_raw_cells(self):
+        result, messages, _controller = self.run_hook(offer_available=False)
+        self.assertEqual(result, "native refresh")
+        self.assertEqual(messages, [
+            {"type": "display", "cells": [1, 2, 3, 0]},
+            {"type": "display", "cells": [1, 2, 3, 0]},
+        ])
+
+    def test_failed_optional_semantic_offer_still_forwards_raw_cells(self):
+        result, messages, controller = self.run_hook(
+            offer_error=RuntimeError("capability unavailable"))
+        self.assertEqual(result, "native refresh")
+        self.assertEqual(messages, [
+            {"type": "display", "cells": [1, 2, 3, 0]},
+            {"type": "display", "cells": [1, 2, 3, 0]},
+        ])
+        self.assertEqual(controller._linux_rdaccess_offer_native_braille.call_count, 2)
+
+    def test_v2_optional_negotiation_hook_upgrade_is_strict_and_idempotent(self):
+        original = remote_access._CUSTOMIZATION_BRAILLE_CELLS_HOOK_V2
+        self.assertFalse(remote_access.legacy_customization_braille_cells_patch_current(original))
+        updated = remote_access._patch_legacy_customization_braille_cells(original)
+        self.assertTrue(remote_access.legacy_customization_braille_cells_patch_current(updated))
+        self.assertEqual(remote_access._patch_legacy_customization_braille_cells(updated), updated)
+        tampered = original.replace("cells=cells", "cells=[]")
+        with self.assertRaisesRegex(ValueError, "incomplete"):
+            remote_access._patch_legacy_customization_braille_cells(tampered)
 
     def test_capability_sends_semantics_and_dedupes_identical_focus(self):
         semantic = {

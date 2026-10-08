@@ -175,7 +175,7 @@ class Bridge:
         previous = self._a11y_objects.get(focus_id) if focus_id is not None else None
         if previous is not None:
             try:
-                if is_focused(previous):
+                if is_focused(previous) and previous.get_role_name() not in {"window", "frame", "dialog"}:
                     return previous, True
             except GLib.Error:
                 pass  # proxy died with its application: fall back to a search

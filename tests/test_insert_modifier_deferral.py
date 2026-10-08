@@ -91,11 +91,103 @@ class InsertModifierDeferralTests(Harness, unittest.TestCase):
         self.assertFalse(request["used"])
         self.assertTrue(c._lrd_bypass_next)
 
+        # Complete the failed Insert chord before starting plain input. A
+        # still-held Insert must keep later chord keys from becoming plain.
+        self._key(c, 0x2D, False, extended=True)
         # The bypass remains available for the next complete gesture.
         self._key(c, 0x41, True)
         self._key(c, 0x41, False)
         self.assertIn((0x41, True), attempts)
         self.assertFalse(c._lrd_bypass_next)
+
+    def test_failed_insert_replay_retries_before_each_following_chord_key(self):
+        for failure in (False, OSError("backend unavailable")):
+            with self.subTest(failure=type(failure).__name__):
+                c, _, _ = self._patched_controller()
+                attempts = []
+
+                def send(**kw):
+                    attempts.append((kw["vk_code"], kw["pressed"]))
+                    if kw["vk_code"] == 0x2D and kw["pressed"]:
+                        if isinstance(failure, Exception):
+                            raise failure
+                        return False
+                    return True
+
+                c.local_machine.send_key = send
+                self._key(c, 0x2D, True, extended=True)
+                for vk in (0x59, 0x4A):  # Hold Insert across two application keys.
+                    self._key(c, vk, True)
+                    self._key(c, vk, False)
+                self.assertEqual(attempts, [(0x2D, True), (0x2D, True)])
+                self._key(c, 0x2D, False, extended=True)
+
+                # Releasing an unsuccessful chord must not replay a standalone
+                # Insert or retain the retry for later plain input.
+                self.assertEqual(attempts, [(0x2D, True), (0x2D, True)])
+                self._key(c, 0x41, True)
+                self._key(c, 0x41, False)
+                self.assertEqual(attempts[-2:], [(0x41, True), (0x41, False)])
+                self.assertIsNone(c._lrd_insert_pending)
+                self.assertEqual(c._lrd_forwarded, {})
+
+    def test_deferred_insert_recovers_before_following_chord_key(self):
+        c, _, _ = self._patched_controller()
+        attempts = []
+        failed = [False]
+
+        def send(**kw):
+            attempts.append((kw["vk_code"], kw["pressed"]))
+            if kw["vk_code"] == 0x2D and kw["pressed"] and not failed[0]:
+                failed[0] = True
+                return False
+            return True
+
+        c.local_machine.send_key = send
+        self._key(c, 0x2D, True, extended=True)
+        self._key(c, 0x59, True)
+        self._key(c, 0x59, False)
+        self._key(c, 0x4A, True)
+        self._key(c, 0x4A, False)
+        self._key(c, 0x2D, False, extended=True)
+        self.assertEqual(attempts, [
+            (0x2D, True),  # Rejected for the first application key.
+            (0x2D, True),  # Successful retry precedes the second key.
+            (0x4A, True), (0x4A, False), (0x2D, False),
+        ])
+        self.assertEqual(c._lrd_forwarded, {})
+
+    def test_failed_insert_replay_does_not_survive_control_handoff(self):
+        c, _, _ = self._patched_controller()
+        attempts = []
+
+        def send(**kw):
+            attempts.append((kw["vk_code"], kw["pressed"]))
+            return kw["vk_code"] != 0x2D
+
+        c.local_machine.send_key = send
+        self._key(c, 0x2D, True, extended=True)
+        self._key(c, 0x59, True)
+        self._key(c, 0x59, False)
+        c.toggle_control()
+        c.toggle_control()
+        self._key(c, 0x41, True)
+        self._key(c, 0x41, False)
+        self.assertEqual(attempts, [(0x2D, True), (0x41, True), (0x41, False)])
+        self.assertIsNone(c._lrd_insert_pending)
+
+    def test_v98_controller_patch_upgrades_failed_insert_ownership(self):
+        import remote_access
+        _, path, _ = self._patched_controller()
+        previous = path.read_text(encoding="utf-8").replace(
+            remote_access.LEGACY_COMPAT_MARKER,
+            remote_access.LEGACY_COMPAT_MARKER_V98,
+        )
+        path.write_text(previous, encoding="utf-8")
+        self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
+        self.assertTrue(remote_access.legacy_controller_patch_current(
+            path.read_text(encoding="utf-8")))
+        self.assertFalse(remote_access.patch_legacy_orca_remote_controller(path))
 
     def test_v84_controller_patch_upgrades_to_v85(self):
         import remote_access

@@ -31,6 +31,7 @@ from remote_access import (
     TRANSPORT_CLEANUP_MARKER_V4,
     TRANSPORT_CLEANUP_MARKER_V5,
     TRANSPORT_CLEANUP_MARKER_V6,
+    TRANSPORT_PENDING_CONNECT_MARKER,
     DEFAULT_CONFIG,
     disable_legacy_orca_connection,
     load_config,
@@ -41,6 +42,7 @@ from remote_access import (
     legacy_customization_say_all_callback_patch_current,
     legacy_local_machine_patch_current,
     legacy_transport_cleanup_patch_current,
+    _legacy_transport_cleanup_v7_current,
     print_status,
     update_legacy_orca_customizations,
 )
@@ -121,6 +123,11 @@ def graphical_session_env(
             candidates.append((_process_start_time(entry), int(entry.name), session_env))
 
     if candidates:
+        # Session variables belong together. In particular, retaining an SSH
+        # XAUTHORITY or forwarded DISPLAY when the desktop omits it can point
+        # Orca at an unrelated X server instead of the selected desktop.
+        for key in wanted:
+            env.pop(key, None)
         env.update(max(candidates, key=lambda item: item[:2])[2])
     return env
 
@@ -443,6 +450,9 @@ def patch_status(orca_config: Path) -> list[tuple[str, str]]:
     else:
         if legacy_transport_cleanup_patch_current(transport_text):
             rows.append((label, "current"))
+        elif (TRANSPORT_PENDING_CONNECT_MARKER not in transport_text
+              and _legacy_transport_cleanup_v7_current(transport_text)):
+            rows.append((label, "outdated - run: linux-rdaccess connect"))
         elif TRANSPORT_CLEANUP_MARKER in transport_text:
             rows.append((label, "incomplete patch - repair required"))
         elif (TRANSPORT_CLEANUP_MARKER_V1 in transport_text
