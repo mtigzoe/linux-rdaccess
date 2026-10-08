@@ -84,7 +84,7 @@ def ssh_arguments(config: dict, action: str) -> list[str]:
         "-p", str(config["port"]),
         "--",
         f'{config["username"]}@{config["host"]}',
-        f"linux-rdaccess {action}",
+        f"~/.local/bin/linux-rdaccess {action}",
     ]
 
 
