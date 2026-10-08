@@ -99,7 +99,16 @@ def main() -> int:
                             return True
                     return False
                 wait_for(has_window, f"{name} accessible top-level window")
-                print(f"PASS {name}: application and window exposed through AT-SPI", flush=True)
+                def semantic_controls():
+                    roles = {node.get_role_name() for node in walk(app)}
+                    # Both real applications expose interactive controls in
+                    # their AT-SPI hierarchy, not just an application frame.
+                    return roles if any(role in roles for role in (
+                        "menu bar", "menu", "push button", "text", "entry",
+                        "table", "tree table", "page tab list", "tool bar",
+                    )) else None
+                roles = wait_for(semantic_controls, f"{name} interactive AT-SPI controls")
+                print(f"PASS {name}: application, window and interactive roles {sorted(roles)}", flush=True)
             return 0
         except Exception:
             for log in sorted(root.glob("*.log")):
