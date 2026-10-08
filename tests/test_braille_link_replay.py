@@ -3,7 +3,7 @@ import unittest
 
 from braille_link import NvdaBrailleLink
 from rdaccess_dvc import XON
-from tests.test_braille_link import FakeChannel
+from tests.unit.braille.test_braille_link import FakeChannel
 
 
 class BrailleReplayTests(unittest.TestCase):
