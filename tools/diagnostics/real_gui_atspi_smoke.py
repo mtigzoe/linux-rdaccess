@@ -315,12 +315,34 @@ def settings_check(session):
     session.launch("settings", [BINARIES["settings"]])
     app = session.application("xfce4-settings-manager")
     session.activate(app)
-    search = session.wait(lambda: session.find(app, {"text", "entry"}, "Search", session.showing), "showing settings Search")
-    session.tab_round_trip(app, search)
-    session.text_edit(search, "keyboard", "Settings search")
-    session.key("ctrl+a", "BackSpace")
-    session.check("Settings Manager: search has accessible name and editable text",
-                  "EditableText" in search.get_interfaces())
+    # XFCE Settings Manager versions differ in whether Search is mapped
+    # initially. Keep the editable-field assertions when it is present, but
+    # validate actual keyboard navigation through the category view when not.
+    search = session.find(app, {"text", "entry"}, "Search", session.showing)
+    if search is not None:
+        session.tab_round_trip(app, search)
+        session.text_edit(search, "keyboard", "Settings search")
+        session.key("ctrl+a", "BackSpace")
+        session.check("Settings Manager: search has accessible name and editable text",
+                      "EditableText" in search.get_interfaces())
+        return app
+
+    # Require an accessible, visible control inside the Settings dialog.
+    # Some Ubuntu/XFCE versions render the category chooser without a
+    # standalone Search text entry.
+    controls = {"push button", "toggle button", "icon", "list item", "table cell",
+                "tree item", "page tab", "combo box", "check box"}
+    control = session.wait(
+        lambda: session.find(app, controls, predicate=session.showing),
+        "showing Settings Manager category control",
+    )
+    session.focus(control)
+    session.check("Settings Manager: category control is keyboard focusable",
+                  session.state(control, "FOCUSED"))
+    session.key("Tab")
+    session.wait(lambda: (target if (target := session.focused(app)) != control else None),
+                 "Settings Manager Tab moves from category control")
+    session.check("Settings Manager: keyboard Tab changes accessible focus")
     return app
 
 
