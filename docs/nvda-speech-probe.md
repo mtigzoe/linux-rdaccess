@@ -45,15 +45,15 @@ or xrdp.
 
 Metadata only:
 
-    python3 diagnostics/nvda_speech_probe.py
+    python3 diagnostics/nvda/nvda_speech_probe.py
 
 For a controlled test where Codex needs to verify the actual announcement:
 
-    python3 diagnostics/nvda_speech_probe.py --show-text
+    python3 diagnostics/nvda/nvda_speech_probe.py --show-text
 
 A one-event test is also available:
 
-    python3 diagnostics/nvda_speech_probe.py --show-text --once
+    python3 diagnostics/nvda/nvda_speech_probe.py --show-text --once
 
 No output file is created.
 
