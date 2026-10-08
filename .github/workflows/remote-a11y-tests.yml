@@ -51,10 +51,10 @@ jobs:
           python -m unittest -v \
             tests.unit.accessibility.test_a11y_link \
             tests.test_a11y_model \
-            tests.test_nvda_remote_check \
+            tests.unit.transport.test_nvda_remote_check \
             tests.test_remote_access \
             tests.test_linux_rdaccess
-          python -m py_compile nvda_remote_check.py remote_access.py linux_rdaccess.py tests/test_nvda_remote_check.py tests/test_remote_access.py tests/test_linux_rdaccess.py
+          python -m py_compile nvda_remote_check.py remote_access.py linux_rdaccess.py tests/unit/transport/test_nvda_remote_check.py tests/test_remote_access.py tests/test_linux_rdaccess.py
       - name: Run pre-live compatibility smoke contracts
         run: |
           python -m unittest -v \
@@ -67,7 +67,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq xvfb libxtst6
-          xvfb-run -a python -m unittest -v tests.test_xtest_injection tests.test_live_x11
+          xvfb-run -a python -m unittest -v tests.test_xtest_injection tests.integration.x11.test_live_x11
 
       - name: Run full repository test suite and compile check
         run: |
