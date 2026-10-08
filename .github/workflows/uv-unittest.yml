@@ -25,6 +25,9 @@ jobs:
         run: |
           python3 -m compileall -q linux_rdaccess_core diagnostics tools tests
           python3 -m py_compile linux_rdaccess.py linux_rdaccess_windows.py remote_access.py
+      - name: Installed Linux CLI acceptance checks (isolated environment)
+        run: |
+          uv run --no-project --python 3.10 python -m unittest -v tests.unit.transport.test_installed_runtime_acceptance
       - name: Run repository tests via uv and save output
         shell: bash
         run: |
