@@ -3231,12 +3231,8 @@ _LEGACY_HELPERS = '''\
                 for k in self._lrd_down
             )
             browse_action = None
-            if vk_code == 0x46 and ctrl and not shifts and not alt_win:   # NVDA+Ctrl+F
-                browse_action = "find"
-            elif vk_code == 0x56 and not shifts and not ctrl and not alt_win:  # NVDA+V
+            if vk_code == 0x56 and not shifts and not ctrl and not alt_win:  # NVDA+V
                 browse_action = "layout"
-            elif vk_code == 0x72 and not ctrl and not alt_win:            # NVDA+F3/Shift+F3
-                browse_action = "findPrevious" if shifts else "findNext"
             elif vk_code == 0x79 and shifts and not ctrl and not alt_win: # NVDA+Shift+F10
                 browse_action = "nativeSelection"
             if browse_action is not None:
@@ -3263,9 +3259,10 @@ _LEGACY_HELPERS = '''\
                 or (vk_code == 0x42 and not other)
                 or (vk_code in (0x46, 0x4B, 0x53)
                     and not shifts and not other)
+                or (vk_code in (0x72, 0x74) and not other)
                 or (vk_code in (
                         0x47, 0x53, 0x56, 0x41, 0x55, 0x4B, 0x4D, 0x4F,
-                        0x42, 0x44, 0x57, 0x43, 0x52, 0x5A, 0x54, 0x50)
+                        0x42, 0x44, 0x57, 0x43, 0x52, 0x5A, 0x54, 0x50, 0x46)
                     and ctrl and not shifts and not alt_win)
             )
             if collision:

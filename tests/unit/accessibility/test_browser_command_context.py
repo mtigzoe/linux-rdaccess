@@ -38,7 +38,7 @@ class BrowserCommandContextTests(Harness, unittest.TestCase):
         elif command == 'heading':
             nav.enabledObjects['heading'].goNextAtLevelFactory = lambda level: action
             vk, key, code, modifiers = 0x37, '7', 17, 0
-        elif command in ('layout', 'find', 'find_next'):
+        elif command in ('layout'):
             self._key(controller, 0x2D, True, extended=True)
             if command == 'layout':
                 script.toggleLayoutMode = action
@@ -80,7 +80,7 @@ class BrowserCommandContextTests(Harness, unittest.TestCase):
         else:
             event._handler.function(event._script, event)
 
-    DEFERRED_COMMANDS = ('form', 'heading', 'layout', 'find', 'find_next',
+    DEFERRED_COMMANDS = ('form', 'heading', 'layout',
                          'edge', 'arrow', 'landmark')
 
     def test_deferred_browser_actions_refuse_chrome_with_cached_page_caret(self):
@@ -129,7 +129,7 @@ class BrowserCommandContextTests(Harness, unittest.TestCase):
                 action.assert_called_once()
 
     def test_deferred_document_commands_still_work_in_focus_mode(self):
-        for command in ('layout', 'find', 'find_next'):
+        for command in ('layout'):
             with self.subTest(command=command):
                 _, event, script, action, _ = self._deferred_action(command)
                 script.state['browse'] = False
