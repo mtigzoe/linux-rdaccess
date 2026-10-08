@@ -7,7 +7,7 @@ from unittest import mock
 import a11y_link
 import braille_link
 import rdaccess_dvc
-from tests import test_speech_link as fixtures
+from tests.unit.transport import test_speech_link as fixtures
 
 SECRET = 'private-text-DO-NOT-LOG'
 
