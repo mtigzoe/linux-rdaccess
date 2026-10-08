@@ -419,9 +419,19 @@ def _value(obj) -> str:
         is_gi_accessible = isinstance(iface, Atspi.Accessible)
     except (ImportError, ValueError):
         is_gi_accessible = False
-    text = "" if is_gi_accessible else _clean(_invoke(iface, ("get_text", "getText")))
+    if is_gi_accessible:
+        # Use Value.get_text explicitly: Accessible.get_text is a different
+        # interface accessor in libatspi 2.50+.
+        try:
+            raw_text = Atspi.Value.get_text(iface)
+        except (AttributeError, TypeError):
+            raw_text = None
+    else:
+        raw_text = _invoke(iface, ("get_text", "getText"))
+    # A provider can return an interface object instead of a textual value.
+    text = _clean(raw_text, MAX_VALUE_CHARS) if isinstance(raw_text, str) else ""
     if text:
-        return text[:MAX_VALUE_CHARS]
+        return text
 
     current = _gi_atspi_method(iface, "Value", "get_current_value")
     if current is None:
