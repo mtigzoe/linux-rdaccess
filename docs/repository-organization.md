@@ -62,3 +62,18 @@ until the installation and Orca script-copy contracts can be migrated together.
 In particular, `linux_rdaccess.py`, `remote_access.py`, `orca_adapter.py`, and
 `a11y_model.py` have root-relative installation dependencies. Do not remove
 those root paths as part of cosmetic cleanup.
+
+## Optional launch scripts and examples
+
+- `scripts/windows/start-windows-session.ps1` and
+  `scripts/windows/stop-windows-session.ps1` are optional Windows PowerShell
+  session helpers. Run them from the repository root as
+  `.\\scripts\\windows\\start-windows-session.ps1` and
+  `.\\scripts\\windows\\stop-windows-session.ps1`. They resolve the
+  repository root before launching `linux_rdaccess_windows.py`.
+- `examples/xrdp/rdaccess_speak_test.py` is an experimental manual xrdp
+  speech diagnostic, not part of the recommended Orca Remote backend.
+
+The root directory still contains Python modules that are used by installer
+copy operations, compatibility imports, and standalone Linux entry points.
+Do not move those files without an installer and integration migration.
