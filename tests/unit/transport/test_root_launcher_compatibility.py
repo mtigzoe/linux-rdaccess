@@ -59,7 +59,7 @@ class RootLauncherCompatibilityTests(unittest.TestCase):
                         cwd="/", env=env, capture_output=True, timeout=10,
                     )
                     self.assertEqual(result.returncode, 37, result.stderr.decode(errors="replace"))
-                    self.assertEqual(marker.read_bytes().split(b"\\0")[:-1],
+                    self.assertEqual(marker.read_bytes().split(b"\0")[:-1],
                                      [value.encode() for value in arguments])
 
 
