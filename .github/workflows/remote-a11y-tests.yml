@@ -22,7 +22,7 @@ on:
       - "a11y_model.py"
       - "atspi_nvda_braille_bridge.py"
       - "tests/unit/accessibility/test_a11y_link.py"
-      - "tests/test_a11y_model.py"
+      - "tests/unit/accessibility/test_a11y_model.py"
       - "tools/generate_remote_a11y_fixture.py"
       - "tools/generate_remote_a11y_role_matrix.py"
       - "tools/generate_remote_a11y_state_matrix.py"
@@ -50,7 +50,7 @@ jobs:
         run: |
           python -m unittest -v \
             tests.unit.accessibility.test_a11y_link \
-            tests.test_a11y_model \
+            tests.unit.accessibility.test_a11y_model \
             tests.unit.transport.test_nvda_remote_check \
             tests.test_remote_access \
             tests.test_linux_rdaccess

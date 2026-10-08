@@ -9,7 +9,7 @@ from unittest import mock
 import a11y_model
 import orca_adapter
 import remote_access
-from tests.test_a11y_model import FakeAccessible, FakeAction
+from tests.unit.accessibility.test_a11y_model import FakeAccessible, FakeAction
 
 
 class SemanticFocusPayloadTests(unittest.TestCase):

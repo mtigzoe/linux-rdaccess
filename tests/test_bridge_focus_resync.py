@@ -3,7 +3,7 @@ from unittest import mock
 
 from a11y_model import object_id
 from tests.bridge_stubs import GLibError, import_braille_bridge
-from tests.test_a11y_model_bounds import Node
+from tests.unit.accessibility.test_a11y_model_bounds import Node
 
 bridge = import_braille_bridge()
 

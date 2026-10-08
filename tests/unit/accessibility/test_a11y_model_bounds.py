@@ -6,7 +6,7 @@ from a11y_model import (
     find_focused_object,
     find_focused_object_ex,
 )
-from tests.test_a11y_model import FakeStateSet
+from tests.unit.accessibility.test_a11y_model import FakeStateSet
 
 
 class Node:

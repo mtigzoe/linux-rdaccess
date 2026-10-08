@@ -12,7 +12,7 @@ from announcer import (
     SELECTED,
     Announcer,
 )
-from tests.test_a11y_model import FakeAccessible, FakeAction, FakeText, FakeValue
+from tests.unit.accessibility.test_a11y_model import FakeAccessible, FakeAction, FakeText, FakeValue
 
 
 class ControlPatternContractTests(unittest.TestCase):
