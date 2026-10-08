@@ -5,8 +5,7 @@ The optional `linux_rdaccess_windows.py` utility runs on Windows and invokes the
 the Windows NVDA Remote add-on or the Linux Orca accessibility bridge.
 
 Requirements: Python 3.10+, Windows OpenSSH client (`ssh` in PATH), SSH access
-to a Linux machine, and `linux-rdaccess` installed and available in the remote
-non-interactive SSH PATH. Enable the Linux desktop session before connecting.
+to a Linux machine, and `linux-rdaccess` installed at `~/.local/bin/linux-rdaccess` on Linux. Enable the Linux desktop session before connecting.
 The Linux CLI already searches for the active graphical session when restarting Orca.
 
 Run from PowerShell in a checkout of the repository:
@@ -35,8 +34,9 @@ The controller runs only a fixed allowlist of remote CLI subcommands; it does
 not accept arbitrary remote shell commands. It returns the SSH process exit
 status. A successful SSH command indicates the Linux CLI ran successfully, not
 that Windows NVDA speech and braille have been independently verified.
-If the command is not found remotely, arrange for the installed
-`~/.local/bin` directory to be on the non-interactive SSH PATH.
+The controller invokes `~/.local/bin/linux-rdaccess` explicitly because
+non-interactive SSH sessions may not include `~/.local/bin` in PATH.
+If that executable is missing, on Linux run `python3 linux_rdaccess.py install` from the cloned repository.
 
 Unit tests (do not require Linux, SSH access or NVDA):
 
