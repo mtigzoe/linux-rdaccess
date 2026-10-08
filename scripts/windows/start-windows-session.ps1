@@ -6,7 +6,8 @@ param(
     [switch]$SkipStatus
 )
 $ErrorActionPreference = 'Stop'
-$controller = Join-Path $PSScriptRoot 'linux_rdaccess_windows.py'
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$controller = Join-Path $repoRoot 'linux_rdaccess_windows.py'
 if (-not (Test-Path -LiteralPath $controller -PathType Leaf)) {
     Write-Error 'Windows controller file was not found.'
     exit 1
@@ -19,9 +20,9 @@ if (-not (Get-Command ssh -ErrorAction SilentlyContinue)) {
     Write-Error 'Windows OpenSSH (ssh) is required.'
     exit 1
 }
-Push-Location $PSScriptRoot
+Push-Location $repoRoot
 try {
-    $venvPython = Join-Path $PSScriptRoot '.venv\Scripts\python.exe'
+    $venvPython = Join-Path $repoRoot '.venv\Scripts\python.exe'
     if (-not (Test-Path -LiteralPath $venvPython)) {
         & uv venv
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

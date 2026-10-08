@@ -6,8 +6,8 @@ Requires on the Windows client: NVDA with the rdAccess add-on, client side enabl
 for RDP, and mstsc started after rdAccess registered rd_pipe.dll.
 
 Usage:
-    python3 rdaccess_speak_test.py "Hello from Linux"
-    XRDPAPI_LIB=/path/to/libxrdpapi.so python3 rdaccess_speak_test.py --debug
+    python3 examples/xrdp/rdaccess_speak_test.py "Hello from Linux"
+    XRDPAPI_LIB=/path/to/libxrdpapi.so python3 examples/xrdp/rdaccess_speak_test.py --debug
 
 The transport and protocol code lives in rdaccess_dvc.py (shared with the bridge).
 """
@@ -18,6 +18,9 @@ import argparse
 import logging
 import os
 import sys
+
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from rdaccess_dvc import (
     CHANNEL,

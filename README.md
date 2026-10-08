@@ -154,7 +154,7 @@ For requirements, architecture, and troubleshooting, see
 From PowerShell in the Windows repository directory, run:
 
 ```powershell
-.\start-windows-session.ps1
+.\scripts\windows\start-windows-session.ps1
 ```
 
 This creates `.venv` with `uv venv` if needed, prompts for SSH configuration
@@ -162,19 +162,19 @@ if none is saved, runs `linux-rdaccess connect` on Linux, and checks its status.
 To change the SSH target:
 
 ```powershell
-.\start-windows-session.ps1 -Configure
+.\scripts\windows\start-windows-session.ps1 -Configure
 ```
 
 To skip the status check after connecting:
 
 ```powershell
-.\start-windows-session.ps1 -SkipStatus
+.\scripts\windows\start-windows-session.ps1 -SkipStatus
 ```
 
 To disable the Linux-side Orca Remote auto-connection:
 
 ```powershell
-.\stop-windows-session.ps1
+.\scripts\windows\stop-windows-session.ps1
 ```
 
 These scripts are Windows-side counterparts to the Linux session helper, but
