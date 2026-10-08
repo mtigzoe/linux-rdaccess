@@ -197,38 +197,24 @@ def connect(
     restart: bool = True,
     quiet: bool = False,
 ) -> int:
-    config = load_config(config_path)
-    if not config.ready:
-        if not quiet:
-            print("Remote Access configuration is incomplete.")
-            print("Run: linux-rdaccess configure --role host --generate-key")
-        return 1
-    if not orca_config.exists():
-        if not quiet:
-            print(f"Orca Remote legacy config not found: {orca_config}")
-        return 1
+    from linux_rdaccess_core.connection.session import connect_session
 
-    update_legacy_orca_customizations(config, orca_config)
-    if not quiet:
-        print(f"Configured {config.host}:{config.port} as role {config.role}.")
-        print("Remote Access key remains hidden.")
-    if restart:
-        return restart_orca()
-    return 0
+    return connect_session(
+        config_path=config_path, orca_config=orca_config,
+        restart=restart, quiet=quiet, load_config=load_config,
+        update_customizations=update_legacy_orca_customizations,
+        restart_orca=restart_orca,
+    )
 
 
 def disconnect(*, orca_config: Path, restart: bool = True, quiet: bool = False) -> int:
-    if not orca_config.exists():
-        if not quiet:
-            print(f"Orca Remote legacy config not found: {orca_config}")
-        return 1
-    disable_legacy_orca_connection(orca_config)
-    if not quiet:
-        print("Disabled Orca Remote auto-connect. Saved linux-rdaccess settings were kept.")
-    if restart:
-        return restart_orca()
-    return 0
+    from linux_rdaccess_core.connection.session import disconnect_session
 
+    return disconnect_session(
+        orca_config=orca_config, restart=restart, quiet=quiet,
+        disable_connection=disable_legacy_orca_connection,
+        restart_orca=restart_orca,
+    )
 
 
 DEFAULT_VSCODE_SETTINGS = Path("~/.config/Code/User/settings.json").expanduser()
