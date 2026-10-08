@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Count available applications on the AT-SPI bus without printing their names.
 
-    python3 diagnostics/atspi_probe.py            # all applications
-    python3 diagnostics/atspi_probe.py --limit 5
+    python3 diagnostics/atspi/atspi_probe.py            # all applications
+    python3 diagnostics/atspi/atspi_probe.py --limit 5
 """
 
 import argparse

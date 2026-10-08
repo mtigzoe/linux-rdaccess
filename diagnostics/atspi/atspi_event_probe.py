@@ -4,9 +4,9 @@
 Registers broad listeners, like the bridge does, and reports whether each registration
 succeeded. Noisy geometry events are counted but not printed unless --all is given.
 
-    python3 diagnostics/atspi_event_probe.py                 # 12 seconds, object + window
-    python3 diagnostics/atspi_event_probe.py --seconds 30 --all
-    python3 diagnostics/atspi_event_probe.py --types object:state-changed:focused window:activate
+    python3 diagnostics/atspi/atspi_event_probe.py                 # 12 seconds, object + window
+    python3 diagnostics/atspi/atspi_event_probe.py --seconds 30 --all
+    python3 diagnostics/atspi/atspi_event_probe.py --types object:state-changed:focused window:activate
 """
 
 import argparse

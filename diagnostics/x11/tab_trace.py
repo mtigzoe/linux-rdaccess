@@ -14,7 +14,7 @@ Reading the result:
     Either focus did not move (the control swallows Tab: terminals, text editors) or the toolkit does
     not report focus for that widget (GTK3 combo boxes).
 
-    DISPLAY=:10 python3 diagnostics/tab_trace.py [--seconds 60] [--keycode 23] [--window 0.6]
+    DISPLAY=:10 python3 diagnostics/x11/tab_trace.py [--seconds 60] [--keycode 23] [--window 0.6]
 """
 
 from __future__ import annotations
