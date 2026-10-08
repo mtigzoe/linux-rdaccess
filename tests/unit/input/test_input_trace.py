@@ -783,7 +783,7 @@ class SummarizerTests(TraceCase):
         import io
         spec = importlib.util.spec_from_file_location(
             'summarize_input_trace',
-            Path(__file__).resolve().parent.parent / 'tools' / 'summarize_input_trace.py')
+            Path(__file__).resolve().parents[3] / 'tools' / 'summarize_input_trace.py')
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         out = io.StringIO()
