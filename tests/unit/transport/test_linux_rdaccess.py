@@ -75,6 +75,16 @@ class InstallTests(unittest.TestCase):
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                     self.assertIn("usage:", result.stdout.lower())
 
+    def test_remove_autostart_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "autostart" / "linux-rdaccess.desktop"
+            linux_rdaccess.remove_autostart(path)
+            linux_rdaccess.write_autostart(autostart_path=path, bin_path=Path("/tmp/linux-rdaccess"))
+            self.assertTrue(path.exists())
+            linux_rdaccess.remove_autostart(path)
+            self.assertFalse(path.exists())
+            linux_rdaccess.remove_autostart(path)
+
     def test_autostart_executes_connect_quietly(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "linux-rdaccess.desktop"
