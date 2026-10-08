@@ -9,7 +9,7 @@ import types
 import unittest
 from unittest import mock
 
-from diagnostics import live_x11 as live
+from diagnostics.x11 import live_x11 as live
 
 
 class LiveDiagnosticTests(unittest.TestCase):
