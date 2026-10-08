@@ -19,7 +19,7 @@ import orca_adapter
 import remote_access
 from diagnostics.live_x11 import Xkb
 from tests import test_remote_access as fixtures
-from tests.test_xtest_injection import UPSTREAM
+from tests.integration.x11.test_xtest_injection import UPSTREAM
 
 
 def _isolated_xvfb() -> bool:
