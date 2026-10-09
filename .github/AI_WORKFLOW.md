@@ -6,6 +6,10 @@ This policy applies to Codex, Claude, and GitHub Copilot when working on linux-r
 
 Find, reproduce, and fix genuine NVDA–Orca compatibility defects, including keyboard input, focus, speech, braille, AT-SPI, and Linux application accessibility.
 
+## Upstream Orca reference
+
+When investigating NVDA–Orca behavior, consult [Orca source references](ORCA_SOURCE_REFERENCES.md) and verify against the installed Orca version before changing bridge behavior.
+
 ## Efficient development
 
 1. Inspect the relevant code and existing tests before changing anything.
