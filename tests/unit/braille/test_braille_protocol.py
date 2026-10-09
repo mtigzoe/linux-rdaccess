@@ -73,6 +73,44 @@ class BrailleProtocolTests(Harness, unittest.TestCase):
         self._key(c, 0xA0, False)
         self.assertFalse(c._lrd_forwarded)
 
+    def test_braille_key_does_not_release_a_held_name_only_keyboard_key(self):
+        for name, gesture in (("Tab", "tab"), ("Return", "enter"), ("Down", "downArrow")):
+            with self.subTest(name=name):
+                c, _, _ = self._patched_controller()
+                c._on_remote_key(key_name=name, pressed=True)
+                c.local_machine.events.clear()
+                self._send(c, "kb:" + gesture)
+                self.assertEqual(self._keys(c), [])
+                self.assertEqual(set(c._lrd_forwarded), {(name, False)})
+                c._on_remote_key(key_name=name, pressed=False)
+                self.assertEqual(self._keys(c), [("key", None, False)])
+                self.assertFalse(c._lrd_forwarded)
+
+    def test_braille_chord_borrows_name_only_modifiers_without_releasing_them(self):
+        for name, modifier in (("Shift_L", "shift"), ("Control_L", "control"),
+                               ("Alt_L", "alt")):
+            with self.subTest(name=name):
+                c, _, _ = self._patched_controller()
+                c._on_remote_key(key_name=name, pressed=True)
+                c.local_machine.events.clear()
+                self._send(c, "kb:" + modifier + "+tab")
+                self.assertEqual(self._keys(c), [("key", 0x09, True), ("key", 0x09, False)])
+                self.assertEqual(set(c._lrd_forwarded), {(name, False)})
+                c._on_remote_key(key_name=name, pressed=False)
+                self.assertFalse(c._lrd_forwarded)
+
+    def test_v99_controller_upgrades_without_replacing_its_original_backup(self):
+        import remote_access
+        _, path, _ = self._patched_controller()
+        backup = path.with_name(path.name + ".linux-rdaccess-backup")
+        original = backup.read_text()
+        path.write_text(path.read_text().replace(
+            remote_access.LEGACY_COMPAT_MARKER, remote_access.LEGACY_COMPAT_MARKER_V99))
+        self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
+        self.assertTrue(remote_access.legacy_controller_patch_current(path.read_text()))
+        self.assertFalse(remote_access.patch_legacy_orca_remote_controller(path))
+        self.assertEqual(backup.read_text(), original)
+
     def test_unknown_character_and_malformed_commands_stay_redacted(self):
         c, _, _ = self._patched_controller()
         for name in ("kb:A", "kb:Control+A", "kb:SPACE", "kb:private-sentinel",

@@ -2030,7 +2030,8 @@ LEGACY_COMPAT_MARKER_V95 = "# linux-rdaccess NVDA/Orca input compatibility v95"
 LEGACY_COMPAT_MARKER_V96 = "# linux-rdaccess NVDA/Orca input compatibility v96"
 LEGACY_COMPAT_MARKER_V97 = "# linux-rdaccess NVDA/Orca input compatibility v97"
 LEGACY_COMPAT_MARKER_V98 = "# linux-rdaccess NVDA/Orca input compatibility v98"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v99"
+LEGACY_COMPAT_MARKER_V99 = "# linux-rdaccess NVDA/Orca input compatibility v99"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v100"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -3629,8 +3630,13 @@ _LEGACY_HELPERS = '''\
         mods, key = parsed
         x_name, vk, extended = self._LRD_BRAILLE_KEYS[key]
         forwarded = getattr(self, "_lrd_forwarded", {})
+        # Legacy name-only events and VK events can own the same X key.
+        # Compare their resolved names before synthesizing a release: distinct
+        # protocol identities do not imply distinct physical keys.
+        held_names = {self._linux_rdaccess_bypass_key_name(payload)
+                      for payload in forwarded.values()}
         # A synthetic release must not release a key the controller holds.
-        if (vk, extended) in forwarded:
+        if (vk, extended) in forwarded or x_name in held_names:
             return
         send = self._linux_rdaccess_forward_key
         pressed_modifiers = []
@@ -3638,8 +3644,9 @@ _LEGACY_HELPERS = '''\
             for mod in mods:
                 mod_name, mod_vk = self._LRD_BRAILLE_MODIFIERS[mod]
                 generic_vk = {0xA0: 0x10, 0xA2: 0x11, 0xA4: 0x12}[mod_vk]
-                if any(held_vk in (mod_vk, generic_vk) and not held_ext
-                       for held_vk, held_ext in getattr(self, "_lrd_forwarded", {})):
+                if (mod_name in held_names
+                        or any(held_vk in (mod_vk, generic_vk) and not held_ext
+                               for held_vk, held_ext in forwarded)):
                     continue
                 if send(key_name=mod_name, pressed=True, modifiers=None,
                         vk_code=mod_vk, scan_code=0, extended=False) is False:
@@ -6184,6 +6191,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V99,
                 LEGACY_COMPAT_MARKER_V98,
                 LEGACY_COMPAT_MARKER_V97,
                 LEGACY_COMPAT_MARKER_V96,
