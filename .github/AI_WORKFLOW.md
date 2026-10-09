@@ -14,6 +14,12 @@ When investigating NVDA–Orca behavior, consult [Orca source references](ORCA_S
 
 Use [NVDA on Linux behavior contract](NVDA_LINUX_BEHAVIOR.md) to distinguish user expectations from implemented, automated-tested, and live-tested behavior.
 
+## Current development priority
+
+**Next priority:** End-to-end validation of **Orca → Windows NVDA speech and braille**, while preserving NVDA keyboard compatibility.
+
+Verify actual speech and braille presentation on the Windows NVDA side, including accessible names, roles, states, focus/caret synchronization, speech cancellation, braille panning and routing. Distinguish forwarding Orca-generated text/events from genuine NVDA-style semantic presentation. Add automated regressions where possible and separately document live NVDA and physical braille acceptance. Do not claim end-to-end success based only on mocked, loopback, or Xvfb tests.
+
 ## Efficient development
 
 1. Inspect the relevant code and existing tests before changing anything.
