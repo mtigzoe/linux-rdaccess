@@ -158,6 +158,32 @@ class XTestInjectionTests(Harness, unittest.TestCase):
         self.assertEqual(helper._down_codes, {})
         self.assertEqual(controller._lrd_forwarded, {})
 
+    def test_braille_emulation_preserves_name_only_keys_on_the_x_server(self):
+        controller, _, _ = self._patched_controller()
+        controller.local_machine = self.machine
+        self.machine.cancel_speech = lambda: None
+        original_send = self.machine.send_key
+        self.machine.send_key = lambda **payload: original_send(**{
+            field: payload.get(field)
+            for field in ("key_name", "pressed", "vk_code", "extended")
+        })
+        self.addCleanup(controller._linux_rdaccess_reset_keys)
+        helper = self.module._LRD_XTEST
+        for name, gesture in (("Tab", "tab"), ("Shift_L", "shift+tab"),
+                              ("Control_L", "control+tab"), ("Alt_L", "alt+tab")):
+            with self.subTest(name=name):
+                controller._on_remote_key(key_name=name, pressed=True)
+                helper._x11.XSync(helper._dpy, 0)
+                self.assertTrue(self._is_down(name))
+                controller._on_remote_braille_input(scriptPath=[
+                    "globalCommands", "GlobalCommands", "kb:" + gesture])
+                helper._x11.XSync(helper._dpy, 0)
+                self.assertTrue(self._is_down(name))
+                controller._on_remote_key(key_name=name, pressed=False)
+                helper._x11.XSync(helper._dpy, 0)
+                self.assertFalse(self._is_down(name))
+                self.assertEqual(controller._lrd_forwarded, {})
+
     def test_keys_really_reach_the_server_without_a_subprocess(self):
         for name in ("Down", "KP_Add", "KP_Enter", "KP_End", "KP_Down",
                      "KP_Next", "KP_Left", "KP_Begin", "KP_Right",

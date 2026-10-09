@@ -2030,7 +2030,10 @@ LEGACY_COMPAT_MARKER_V95 = "# linux-rdaccess NVDA/Orca input compatibility v95"
 LEGACY_COMPAT_MARKER_V96 = "# linux-rdaccess NVDA/Orca input compatibility v96"
 LEGACY_COMPAT_MARKER_V97 = "# linux-rdaccess NVDA/Orca input compatibility v97"
 LEGACY_COMPAT_MARKER_V98 = "# linux-rdaccess NVDA/Orca input compatibility v98"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v99"
+LEGACY_COMPAT_MARKER_V99 = "# linux-rdaccess NVDA/Orca input compatibility v99"
+LEGACY_COMPAT_MARKER_V100 = "# linux-rdaccess NVDA/Orca input compatibility v100"
+LEGACY_COMPAT_MARKER_V101 = "# linux-rdaccess NVDA/Orca input compatibility v101"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v102"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -3629,8 +3632,13 @@ _LEGACY_HELPERS = '''\
         mods, key = parsed
         x_name, vk, extended = self._LRD_BRAILLE_KEYS[key]
         forwarded = getattr(self, "_lrd_forwarded", {})
+        # Legacy name-only events and VK events can own the same X key.
+        # Compare their resolved names before synthesizing a release: distinct
+        # protocol identities do not imply distinct physical keys.
+        held_names = {self._linux_rdaccess_bypass_key_name(payload)
+                      for payload in forwarded.values()}
         # A synthetic release must not release a key the controller holds.
-        if (vk, extended) in forwarded:
+        if (vk, extended) in forwarded or x_name in held_names:
             return
         send = self._linux_rdaccess_forward_key
         pressed_modifiers = []
@@ -3638,8 +3646,9 @@ _LEGACY_HELPERS = '''\
             for mod in mods:
                 mod_name, mod_vk = self._LRD_BRAILLE_MODIFIERS[mod]
                 generic_vk = {0xA0: 0x10, 0xA2: 0x11, 0xA4: 0x12}[mod_vk]
-                if any(held_vk in (mod_vk, generic_vk) and not held_ext
-                       for held_vk, held_ext in getattr(self, "_lrd_forwarded", {})):
+                if (mod_name in held_names
+                        or any(held_vk in (mod_vk, generic_vk) and not held_ext
+                               for held_vk, held_ext in forwarded)):
                     continue
                 if send(key_name=mod_name, pressed=True, modifiers=None,
                         vk_code=mod_vk, scan_code=0, extended=False) is False:
@@ -3716,11 +3725,18 @@ _LEGACY_HELPERS = '''\
         if (not isinstance(object_id, str) or not object_id or len(object_id) > 256
                 or type(action_index) is not int or not 0 <= action_index < 32):
             return
+        try:
+            from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _adapter
+            context = _adapter.semantic_focus_context()
+        except Exception:
+            return
+        if context is None:
+            return
 
         def run_action():
             try:
-                from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _adapter
-                if not _adapter.perform_semantic_action(object_id, action_index):
+                if not _adapter.perform_semantic_action(
+                        object_id, action_index, expected_context=context):
                     log.error("linux-rdaccess: semantic action rejected")
             except Exception:
                 log.error("linux-rdaccess: semantic action failed")
@@ -3736,11 +3752,18 @@ _LEGACY_HELPERS = '''\
         if (not isinstance(object_id, str) or not object_id or len(object_id) > 256
                 or type(offset) is not int or not 0 <= offset <= 8192):
             return
+        try:
+            from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _adapter
+            context = _adapter.semantic_focus_context()
+        except Exception:
+            return
+        if context is None:
+            return
 
         def set_caret():
             try:
-                from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _adapter
-                if not _adapter.set_semantic_caret(object_id, offset):
+                if not _adapter.set_semantic_caret(
+                        object_id, offset, expected_context=context):
                     log.error("linux-rdaccess: semantic caret rejected")
             except Exception:
                 log.error("linux-rdaccess: semantic caret failed")
@@ -6184,6 +6207,9 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V101,
+                LEGACY_COMPAT_MARKER_V100,
+                LEGACY_COMPAT_MARKER_V99,
                 LEGACY_COMPAT_MARKER_V98,
                 LEGACY_COMPAT_MARKER_V97,
                 LEGACY_COMPAT_MARKER_V96,

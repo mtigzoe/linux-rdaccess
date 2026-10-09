@@ -37,6 +37,8 @@ ELEMENT_LIST_TYPES = (
 _ELEMENT_LIST_LAST_INDEX = 0
 _REMOTE_BRAILLE_DISPLAY = None
 _REMOTE_SEMANTIC_OBJECTS: dict[str, object] = {}
+_REMOTE_SEMANTIC_FOCUS_ID: str | None = None
+_REMOTE_SEMANTIC_CONTEXT: object | None = None
 
 
 def show_elements_list(send_structural_list: Callable[[str], Any]) -> bool | None:
@@ -305,20 +307,24 @@ class OrcaRuntimeAdapter:
     @staticmethod
     def semantic_focus_payload() -> dict[str, Any] | None:
         """Build a bounded AT-SPI focus snapshot for NVDA-native braille."""
-        global _REMOTE_SEMANTIC_OBJECTS
-        # A failed or oversized rebuild must never leave actions pointing at
-        # objects from the previous focus/session.
+        global _REMOTE_SEMANTIC_OBJECTS, _REMOTE_SEMANTIC_FOCUS_ID, _REMOTE_SEMANTIC_CONTEXT
+        # Re-entrant actions cannot use the old registry while rebuilding.
+        # Retain the receipt context until publication so the network thread
+        # can queue commands during a same-focus refresh. Failed builds clear
+        # both fields; commands execute only later on this main loop.
         _REMOTE_SEMANTIC_OBJECTS = {}
         try:
             from orca import orca_state
             build_focus_payload = _a11y_model().build_focus_payload
         except Exception:
+            OrcaRuntimeAdapter.clear_semantic_focus()
             return None
 
         focus = getattr(orca_state, "locusOfFocus", None)
         if focus is None:
             focus = getattr(orca_state, "locus_of_focus", None)
         if focus is None:
+            OrcaRuntimeAdapter.clear_semantic_focus()
             return None
         registry: dict[str, object] = {}
         try:
@@ -330,6 +336,7 @@ class OrcaRuntimeAdapter:
                 object_registry=registry,
             )
         except Exception:
+            OrcaRuntimeAdapter.clear_semantic_focus()
             return None
         if payload is not None:
             try:
@@ -341,25 +348,59 @@ class OrcaRuntimeAdapter:
                     ensure_ascii=False,
                 ).encode("utf-8")
             except Exception:
+                OrcaRuntimeAdapter.clear_semantic_focus()
                 return None
             # Leave headroom for the Remote Access type/version envelope.
             if len(encoded) > 60 * 1024:
+                OrcaRuntimeAdapter.clear_semantic_focus()
                 return None
+            if _REMOTE_SEMANTIC_FOCUS_ID != payload["focus_id"] or _REMOTE_SEMANTIC_CONTEXT is None:
+                _REMOTE_SEMANTIC_CONTEXT = object()
             _REMOTE_SEMANTIC_OBJECTS = registry
+            _REMOTE_SEMANTIC_FOCUS_ID = payload["focus_id"]
+        else:
+            OrcaRuntimeAdapter.clear_semantic_focus()
         return payload
 
     @staticmethod
     def clear_semantic_focus() -> None:
-        global _REMOTE_SEMANTIC_OBJECTS
+        global _REMOTE_SEMANTIC_OBJECTS, _REMOTE_SEMANTIC_FOCUS_ID, _REMOTE_SEMANTIC_CONTEXT
         _REMOTE_SEMANTIC_OBJECTS = {}
+        _REMOTE_SEMANTIC_FOCUS_ID = None
+        _REMOTE_SEMANTIC_CONTEXT = None
 
     @staticmethod
-    def perform_semantic_action(object_id: str, action_index: int) -> bool:
+    def semantic_focus_context() -> object | None:
+        """Read an opaque focus lifetime without querying Orca/AT-SPI."""
+        return _REMOTE_SEMANTIC_CONTEXT
+
+    @staticmethod
+    def _semantic_target(object_id: str, expected_context: object | None):
+        """Validate snapshot and live focus on Orca's main loop before acting."""
+        if (_REMOTE_SEMANTIC_FOCUS_ID is None
+                or (expected_context is not None
+                    and expected_context is not _REMOTE_SEMANTIC_CONTEXT)):
+            return None
+        try:
+            from orca import orca_state
+            focus = getattr(orca_state, "locusOfFocus", None)
+            if focus is None:
+                focus = getattr(orca_state, "locus_of_focus", None)
+            if focus is not None and _a11y_model().object_id(focus) == _REMOTE_SEMANTIC_FOCUS_ID:
+                return _REMOTE_SEMANTIC_OBJECTS.get(object_id)
+        except Exception:
+            pass
+        OrcaRuntimeAdapter.clear_semantic_focus()
+        return None
+
+    @staticmethod
+    def perform_semantic_action(object_id: str, action_index: int, *,
+                                expected_context: object | None = None) -> bool:
         if not isinstance(object_id, str) or not object_id or len(object_id) > 256:
             return False
         if type(action_index) is not int or not 0 <= action_index < 32:
             return False
-        obj = _REMOTE_SEMANTIC_OBJECTS.get(object_id)
+        obj = OrcaRuntimeAdapter._semantic_target(object_id, expected_context)
         if obj is None:
             return False
         try:
@@ -370,13 +411,14 @@ class OrcaRuntimeAdapter:
 
 
     @staticmethod
-    def set_semantic_caret(object_id: str, offset: int) -> bool:
+    def set_semantic_caret(object_id: str, offset: int, *,
+                           expected_context: object | None = None) -> bool:
         """Route NVDA's semantic text position back to the current AT-SPI object."""
         if not isinstance(object_id, str) or not object_id or len(object_id) > 256:
             return False
         if type(offset) is not int or not 0 <= offset <= 8192:
             return False
-        obj = _REMOTE_SEMANTIC_OBJECTS.get(object_id)
+        obj = OrcaRuntimeAdapter._semantic_target(object_id, expected_context)
         if obj is None:
             return False
         try:

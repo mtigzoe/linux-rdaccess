@@ -13,6 +13,41 @@ from tests.unit.accessibility.test_a11y_model import FakeAccessible, FakeAction
 
 
 class SemanticFocusPayloadTests(unittest.TestCase):
+    def test_same_focus_rebuild_retains_receipt_context_until_publication(self):
+        first = FakeAccessible("Button", "push button")
+        state = types.SimpleNamespace(locusOfFocus=first)
+        orca = types.ModuleType("orca")
+        orca.orca_state = state
+        observed = []
+        build = a11y_model.build_focus_payload
+
+        def rebuild(*args, **kwargs):
+            observed.append(orca_adapter.OrcaRuntimeAdapter.semantic_focus_context())
+            return build(*args, **kwargs)
+
+        with mock.patch.dict(sys.modules, {"orca": orca}):
+            payload = orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload()
+            context = orca_adapter.OrcaRuntimeAdapter.semantic_focus_context()
+            with mock.patch.object(a11y_model, "build_focus_payload", side_effect=rebuild):
+                self.assertEqual(orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload(), payload)
+            self.assertEqual(observed, [context])
+            with mock.patch.object(a11y_model, "build_focus_payload", return_value=None):
+                self.assertIsNone(orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload())
+            self.assertIsNone(orca_adapter.OrcaRuntimeAdapter.semantic_focus_context())
+
+    def test_action_is_rejected_after_focus_changes_before_a_braille_refresh(self):
+        action = FakeAction(["click"])
+        first = FakeAccessible("Old button", "push button", action_iface=action)
+        state = types.SimpleNamespace(locusOfFocus=first)
+        orca = types.ModuleType("orca")
+        orca.orca_state = state
+        with mock.patch.dict(sys.modules, {"orca": orca}):
+            payload = orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload()
+            state.locusOfFocus = FakeAccessible("New button", "push button")
+            self.assertFalse(orca_adapter.OrcaRuntimeAdapter.perform_semantic_action(
+                payload["focus_id"], 0))
+        self.assertEqual(action.performed, [])
+
     def test_orca_focus_is_serialized_with_name_role_and_state(self):
         app = FakeAccessible("Smoke App", "application")
         button = FakeAccessible(
@@ -324,6 +359,20 @@ class LegacyAccessible:
 
 
 class Orca42LegacyApiTests(unittest.TestCase):
+    def test_caret_is_rejected_after_focus_disappears_before_a_braille_refresh(self):
+        text = LegacyText("alpha bravo", 2)
+        editor = LegacyAccessible("Old editor", "text", text=text)
+        state = types.SimpleNamespace(locusOfFocus=editor)
+        orca = types.ModuleType("orca")
+        orca.orca_state = state
+        with mock.patch.dict(sys.modules, {"orca": orca}), mock.patch.object(
+                a11y_model, "_gi_atspi_method", return_value=None):
+            payload = orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload()
+            state.locusOfFocus = None
+            self.assertFalse(orca_adapter.OrcaRuntimeAdapter.set_semantic_caret(
+                payload["focus_id"], 7))
+        self.assertEqual(text.caretOffset, 2)
+
     def test_semantic_focus_supports_pyatspi_style_name_role_tree_and_actions(self):
         action = LegacyAction()
         app = LegacyAccessible("Smoke App", "application")

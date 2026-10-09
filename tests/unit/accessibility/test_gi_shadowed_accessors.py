@@ -136,6 +136,32 @@ class ShadowedAccessorTests(unittest.TestCase):
 
         self.assertEqual(a11y_model._value(FakeAccessible()), "7")
 
+    def test_failed_optional_value_description_keeps_the_numeric_value(self):
+        from gi.repository import Atspi
+        for error in (NotImplementedError("unsupported"), RuntimeError("provider unavailable")):
+            with self.subTest(error=type(error).__name__), patch.object(
+                    Atspi.Value, "get_text", side_effect=error):
+                self.assertEqual(a11y_model._value(ShadowedAccessible()), "42")
+
+    def test_failed_numeric_value_query_does_not_discard_the_focus_snapshot(self):
+        from gi.repository import Atspi
+        from tests.unit.accessibility.test_a11y_model import FakeAccessible
+        obj = FakeAccessible("Slider", "slider", value_iface=ShadowedAccessible())
+        with patch.object(Atspi.Value, "get_current_value", side_effect=RuntimeError("provider unavailable")):
+            payload = a11y_model.build_focus_payload("object:state-changed:focused", 1, obj)
+        focus = next(item for item in payload["objects"] if item["id"] == payload["focus_id"])
+        self.assertEqual(focus["name"], "Slider")
+        self.assertEqual(focus["value"], "")
+
+    def test_failed_selection_query_keeps_text_and_caret(self):
+        from gi.repository import Atspi
+        with patch.object(Atspi.Text, "get_selection", side_effect=RuntimeError("provider unavailable")):
+            result = a11y_model._text_snapshot(ShadowedAccessible(), focused=True)
+        self.assertEqual(result["text"], "hello world")
+        self.assertEqual(result["caret_offset"], 4)
+        self.assertIsNone(result["selection_start"])
+        self.assertIsNone(result["selection_end"])
+
 
 
 if __name__ == "__main__":
