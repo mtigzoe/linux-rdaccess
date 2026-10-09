@@ -343,6 +343,58 @@ class NvdaRemoteLoopbackTests(Harness, unittest.TestCase):
         self.assertEqual(self.session.read_through_barrier()[-1],
                          {"type": "display", "cells": [1, 2, 0, 255]})
 
+    def test_queued_raw_routing_expires_when_focus_moves_without_refresh(self):
+        braille, state, _, _, idle = self.braille_runtime(queued=True)
+        self.connect()
+        braille.refresh()
+        self.session.read_through_barrier()
+        calls = []
+        self.controller._linux_rdaccess_script_call = lambda *args: calls.append(args)
+        self.session.send(type="braille_input", routingIndex=2)
+        self.session.barrier()
+        self.assertFalse(idle.callbacks.empty())
+        state.locusOfFocus = FakeAccessible("Another editor", "text")
+        idle.drain()
+        self.assertEqual(calls, [])
+
+    def test_queued_raw_pan_expires_after_focus_leaves_and_returns(self):
+        braille, state, button, _, idle = self.braille_runtime(queued=True)
+        self.connect()
+        braille.refresh()
+        self.session.read_through_barrier()
+        calls = []
+        self.controller._linux_rdaccess_script_call = lambda *args: calls.append(args)
+        self.session.send(type="braille_input", scriptPath=[
+            "globalCommands", "GlobalCommands", "braille_scrollForward"])
+        self.session.barrier()
+        state.locusOfFocus = FakeAccessible("Another control", "push button")
+        braille.refresh()
+        state.locusOfFocus = button
+        braille.refresh()
+        self.session.read_through_barrier()
+        idle.drain()
+        self.assertEqual(calls, [])
+
+    def test_queued_raw_pans_survive_refreshes_of_the_same_focus(self):
+        braille, _, _, _, idle = self.braille_runtime(queued=True)
+        self.connect()
+        braille.refresh()
+        self.session.read_through_barrier()
+        calls = []
+
+        def pan(*args):
+            calls.append(args[0])
+            braille.refresh()
+
+        self.controller._linux_rdaccess_script_call = pan
+        for _ in range(2):
+            self.session.send(type="braille_input", scriptPath=[
+                "globalCommands", "GlobalCommands", "braille_scrollForward"])
+        self.session.barrier()
+        braille.refresh()
+        idle.drain()
+        self.assertEqual(calls, ["panBrailleRight", "panBrailleRight"])
+
     def test_queued_semantic_action_expires_when_focus_moves_without_refresh(self):
         _, state, _, action, idle = self.braille_runtime(queued=True)
         self.connect()

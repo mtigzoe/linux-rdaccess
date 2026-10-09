@@ -595,7 +595,8 @@ def _patch_legacy_customization_reconnect(text: str) -> str:
 CUSTOMIZATION_BRAILLE_CELLS_MARKER_V1 = "# linux-rdaccess native Orca braille cells v1"
 CUSTOMIZATION_BRAILLE_CELLS_MARKER_V2 = "# linux-rdaccess native Orca braille cells v2"
 CUSTOMIZATION_BRAILLE_CELLS_MARKER_V3 = "# linux-rdaccess native Orca braille cells v3"
-CUSTOMIZATION_BRAILLE_CELLS_MARKER = "# linux-rdaccess native Orca braille cells v4"
+CUSTOMIZATION_BRAILLE_CELLS_MARKER_V4 = "# linux-rdaccess native Orca braille cells v4"
+CUSTOMIZATION_BRAILLE_CELLS_MARKER = "# linux-rdaccess native Orca braille cells v5"
 _LEGACY_CUSTOMIZATION_BRAILLE_SOURCE = '''
 try:
     import orca.braille as _remote_braille
@@ -733,8 +734,8 @@ _CUSTOMIZATION_BRAILLE_CELLS_HOOK_V3 = _CUSTOMIZATION_BRAILLE_CELLS_HOOK_V2.repl
     "                            pass\n",
 )
 
-_CUSTOMIZATION_BRAILLE_CELLS_HOOK = _CUSTOMIZATION_BRAILLE_CELLS_HOOK_V3.replace(
-    CUSTOMIZATION_BRAILLE_CELLS_MARKER_V3, CUSTOMIZATION_BRAILLE_CELLS_MARKER,
+_CUSTOMIZATION_BRAILLE_CELLS_HOOK_V4 = _CUSTOMIZATION_BRAILLE_CELLS_HOOK_V3.replace(
+    CUSTOMIZATION_BRAILLE_CELLS_MARKER_V3, CUSTOMIZATION_BRAILLE_CELLS_MARKER_V4,
 ).replace(
     "    _old_braille_refresh = _remote_braille.refresh\n",
     "    # Reloading customizations must retain the native refresh callable.\n"
@@ -749,6 +750,16 @@ _CUSTOMIZATION_BRAILLE_CELLS_HOOK = _CUSTOMIZATION_BRAILLE_CELLS_HOOK_V3.replace
     "    _remote_braille.refresh = _patched_braille_refresh\n",
     "    _patched_braille_refresh._linux_rdaccess_original = _old_braille_refresh\n"
     "    _remote_braille.refresh = _patched_braille_refresh\n",
+)
+
+_CUSTOMIZATION_BRAILLE_CELLS_HOOK = _CUSTOMIZATION_BRAILLE_CELLS_HOOK_V4.replace(
+    CUSTOMIZATION_BRAILLE_CELLS_MARKER_V4, CUSTOMIZATION_BRAILLE_CELLS_MARKER,
+).replace(
+    "                semantic = None\n",
+    "                record_focus = getattr(_linux_rdaccess_braille_adapter, \"record_braille_focus\", None)\n"
+    "                if callable(record_focus):\n"
+    "                    record_focus()\n"
+    "                semantic = None\n",
 )
 
 
@@ -790,7 +801,8 @@ def _patch_legacy_customization_braille_cells(text: str) -> str:
     for marker, hook in (
             (CUSTOMIZATION_BRAILLE_CELLS_MARKER_V1, _CUSTOMIZATION_BRAILLE_CELLS_HOOK_V1),
             (CUSTOMIZATION_BRAILLE_CELLS_MARKER_V2, _CUSTOMIZATION_BRAILLE_CELLS_HOOK_V2),
-            (CUSTOMIZATION_BRAILLE_CELLS_MARKER_V3, _CUSTOMIZATION_BRAILLE_CELLS_HOOK_V3)):
+            (CUSTOMIZATION_BRAILLE_CELLS_MARKER_V3, _CUSTOMIZATION_BRAILLE_CELLS_HOOK_V3),
+            (CUSTOMIZATION_BRAILLE_CELLS_MARKER_V4, _CUSTOMIZATION_BRAILLE_CELLS_HOOK_V4)):
         if marker in text:
             if text.count(marker) != 1 or hook not in text:
                 raise ValueError("incomplete legacy native Orca braille cells patch")
@@ -2097,7 +2109,8 @@ LEGACY_COMPAT_MARKER_V99 = "# linux-rdaccess NVDA/Orca input compatibility v99"
 LEGACY_COMPAT_MARKER_V100 = "# linux-rdaccess NVDA/Orca input compatibility v100"
 LEGACY_COMPAT_MARKER_V101 = "# linux-rdaccess NVDA/Orca input compatibility v101"
 LEGACY_COMPAT_MARKER_V102 = "# linux-rdaccess NVDA/Orca input compatibility v102"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v103"
+LEGACY_COMPAT_MARKER_V103 = "# linux-rdaccess NVDA/Orca input compatibility v103"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v104"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -3905,12 +3918,25 @@ _LEGACY_HELPERS = '''\
         display = getattr(self, "_lrd_braille_display", None)
         if display is not None and display["width"] == 0:
             return
+        focus_valid = None
+        context = None
+        try:
+            from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as adapter
+            read_focus = getattr(adapter, "braille_focus_context", None)
+            focus_valid = getattr(adapter, "braille_focus_is_current", None)
+            if callable(read_focus) and callable(focus_valid):
+                context = read_focus()
+            else:
+                focus_valid = None
+        except ImportError:
+            pass
 
         def invoke():
             # Cell positions and pan amounts belong to the display which
             # generated them, even if its replacement shares the transport.
             if (getattr(self, "_lrd_braille_display", None) is display
-                    and (display is None or display["ready"])):
+                    and (display is None or display["ready"])
+                    and (focus_valid is None or focus_valid(context))):
                 callback()
 
         self._linux_rdaccess_run_main(invoke)
@@ -6282,6 +6308,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V103,
                 LEGACY_COMPAT_MARKER_V102,
                 LEGACY_COMPAT_MARKER_V101,
                 LEGACY_COMPAT_MARKER_V100,

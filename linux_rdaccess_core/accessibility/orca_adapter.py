@@ -36,6 +36,7 @@ ELEMENT_LIST_TYPES = (
 
 _ELEMENT_LIST_LAST_INDEX = 0
 _REMOTE_BRAILLE_DISPLAY = None
+_REMOTE_BRAILLE_FOCUS: tuple[str, object] | None = None
 _REMOTE_SEMANTIC_OBJECTS: dict[str, object] = {}
 _REMOTE_SEMANTIC_FOCUS_ID: str | None = None
 _REMOTE_SEMANTIC_CONTEXT: object | None = None
@@ -426,6 +427,36 @@ class OrcaRuntimeAdapter:
             return bool(set_caret_offset(obj, offset))
         except Exception:
             return False
+
+    @staticmethod
+    def record_braille_focus() -> None:
+        """Publish the focus lifetime of a refresh on Orca's main loop."""
+        global _REMOTE_BRAILLE_FOCUS
+        try:
+            from orca import orca_state
+            focus = getattr(orca_state, "locusOfFocus", None)
+            if focus is None:
+                focus = getattr(orca_state, "locus_of_focus", None)
+            focus_id = _a11y_model().object_id(focus) if focus is not None else None
+        except Exception:
+            focus_id = None
+        if focus_id is None:
+            _REMOTE_BRAILLE_FOCUS = None
+        elif _REMOTE_BRAILLE_FOCUS is None or _REMOTE_BRAILLE_FOCUS[0] != focus_id:
+            _REMOTE_BRAILLE_FOCUS = (focus_id, object())
+
+    @staticmethod
+    def braille_focus_context() -> object | None:
+        """Read the published lifetime without querying Orca/AT-SPI."""
+        return _REMOTE_BRAILLE_FOCUS
+
+    @staticmethod
+    def braille_focus_is_current(context: object | None) -> bool:
+        """Reject delayed cell commands after focus changes, even before refresh."""
+        if context is None or context is not _REMOTE_BRAILLE_FOCUS:
+            return False
+        OrcaRuntimeAdapter.record_braille_focus()
+        return context is _REMOTE_BRAILLE_FOCUS
 
     @staticmethod
     def braille_cells(*, get_link_mask: bool = True) -> list[int]:
