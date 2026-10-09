@@ -59,7 +59,7 @@ class RuntimeStateTests(Harness, unittest.TestCase):
     def test_braille_type_boundaries_do_not_route_or_persist_untrusted_metadata(self):
         c, _, _ = self._patched_controller()
         calls = []
-        c._linux_rdaccess_script_call = lambda *args: calls.append(args)
+        c._linux_rdaccess_script_call = lambda *args, **kwargs: calls.append(args)
         invalid = (
             {'routingIndex': True}, {'routingIndex': 1.0}, {'routingIndex': -1},
             {'routingIndex': 10 ** 100}, {'routingIndex': None}, {'cellIndexes': []},
