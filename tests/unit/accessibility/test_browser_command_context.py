@@ -36,6 +36,7 @@ class BrowserCommandContextTests(Harness, unittest.TestCase):
         namespace = {'orca_state': state}
         exec(compile(fixture.read_text(), str(fixture), 'exec'), namespace)
         event_class.shouldConsume = namespace['KeyboardEvent'].shouldConsume
+        event_class._presentHandler = namespace['KeyboardEvent']._presentHandler
         event_class.timestamp = 1
         event_class.is_duplicate = False
         event_class._getUserHandler = lambda event: None
@@ -46,7 +47,7 @@ class BrowserCommandContextTests(Harness, unittest.TestCase):
         return controller, event_class, script
 
     def _deferred_action(self, command, *, native=False, capture=False,
-                         in_document=True):
+                         in_document=True, learn=False, browse=True):
         controller, event_class, script = self._native_hooked() if native else self._hooked()
         action = mock.Mock()
         state = {"document": in_document, "frame": object()}
@@ -55,14 +56,41 @@ class BrowserCommandContextTests(Harness, unittest.TestCase):
         if not native:
             sys.modules['orca'].orca_state = types.SimpleNamespace(activeScript=script)
         sys.modules['orca'].orca_state.capturingKeys = capture
+        if learn:
+            sys.modules['orca'].orca_state.learnModeEnabled = True
+        script.state['browse'] = browse
+        script.presentMessage = mock.Mock()
+        if native:
+            script.consumesKeyboardEvent = mock.Mock(wraps=script.consumesKeyboardEvent)
         nav = script.structuralNavigation
+        for name, description in (
+                ('findHandler', 'Localized find'),
+                ('findNextHandler', 'Localized find next'),
+                ('findPreviousHandler', 'Localized find previous'),
+                ('toggleLayoutModeHandler', 'Localized layout')):
+            handler = script.inputEventHandlers.setdefault(name, types.SimpleNamespace())
+            handler.description, handler.learnModeEnabled = description, True
+        nav.enabledObjects['formField'].inputEventHandlers = {
+            'formFieldGoNext': types.SimpleNamespace(
+                description='Localized next form field', learnModeEnabled=True),
+            'formFieldGoPrevious': types.SimpleNamespace(
+                description='Localized previous form field', learnModeEnabled=True),
+        }
+        nav.enabledObjects['heading'].inputEventHandlers = {}
+        cmdnames = types.ModuleType('orca.cmdnames')
+        cmdnames.HEADING_AT_LEVEL_NEXT = 'Localized next heading %d'
+        cmdnames.HEADING_AT_LEVEL_PREV = 'Localized previous heading %d'
+        cmdnames_patch = mock.patch.dict(sys.modules, {'orca.cmdnames': cmdnames})
+        cmdnames_patch.start()
+        self.addCleanup(cmdnames_patch.stop)
+        sys.modules['orca'].cmdnames = cmdnames
         if command == 'form':
             nav.enabledObjects['formField'].goNext = action
             vk, key, code, modifiers = 0x46, 'f', 41, 0
         elif command == 'heading':
             nav.enabledObjects['heading'].goNextAtLevelFactory = lambda level: action
             vk, key, code, modifiers = 0x37, '7', 17, 0
-        elif command in ('layout', 'find', 'find_next'):
+        elif command in ('layout', 'find', 'find_next', 'find_previous'):
             self._key(controller, 0x2D, True, extended=True)
             if command == 'layout':
                 script.toggleLayoutMode = action
@@ -72,8 +100,14 @@ class BrowserCommandContextTests(Harness, unittest.TestCase):
                 script.inputEventHandlers['findHandler'].function = action
                 vk, key, code, modifiers = 0x46, 'f', 41, self.ORCA | self.CTRL
             else:
-                script.findNext = action
-                vk, key, code, modifiers = 0x72, 'F3', 69, self.ORCA
+                modifiers = self.ORCA
+                if command == 'find_previous':
+                    self._key(controller, 0xA0, True)
+                    script.findPrevious = action
+                    modifiers |= self.SHIFT
+                else:
+                    script.findNext = action
+                vk, key, code = 0x72, 'F3', 69
         elif command in ('edge', 'arrow'):
             self._key(controller, 0xA2, True)
             self._key(controller, 0xA4, True)
@@ -92,6 +126,10 @@ class BrowserCommandContextTests(Harness, unittest.TestCase):
             script.keyBindings.table[(self.M_CODE, 0)] = types.SimpleNamespace(function=action)
             nav.functions.append(action)
             vk, key, code, modifiers = 0x44, 'd', self.D_CODE, 0
+        for handler in script.keyBindings.table.values():
+            handler.learnModeEnabled = True
+            if not hasattr(handler, 'description'):
+                handler.description = 'Native physical key binding'
         self._key(controller, vk, True, extended=command in ('edge', 'arrow'))
         event = event_class(key, code, modifiers=modifiers)
         consumed = event.consume[0] if isinstance(event.consume, tuple) else event.consume
@@ -110,6 +148,215 @@ class BrowserCommandContextTests(Harness, unittest.TestCase):
     COMMAND_KEYS = {'form': 0x46, 'heading': 0x37, 'layout': 0x56,
                     'find': 0x46, 'find_next': 0x72, 'edge': 0x23,
                     'arrow': 0x28, 'landmark': 0x44}
+    HELP_COMMANDS = {
+        'form': 'Localized next form field',
+        'heading': 'Localized next heading 7',
+        'layout': 'Localized layout',
+        'find': 'Localized find',
+        'find_next': 'Localized find next',
+        'find_previous': 'Localized find previous',
+    }
+
+    def test_input_help_describes_browse_commands_without_executing_them(self):
+        for command, description in self.HELP_COMMANDS.items():
+            with self.subTest(command=command):
+                _, event, script, action, _ = self._deferred_action(
+                    command, native=True, learn=True)
+                self.assertEqual(event.consume, (True, 'In Learn Mode'))
+                script.consumesKeyboardEvent.assert_called_once_with(event)
+                self._consume_deferred(event)
+                action.assert_not_called()
+                script.presentMessage.assert_called_once_with(description)
+
+    def test_input_help_describes_commands_in_focus_mode_and_browser_chrome(self):
+        for command, description in self.HELP_COMMANDS.items():
+            for document in (True, False):
+                with self.subTest(command=command, document=document):
+                    _, event, script, action, _ = self._deferred_action(
+                        command, native=True, learn=True, browse=False, in_document=document)
+                    self._consume_deferred(event)
+                    action.assert_not_called()
+                    script.presentMessage.assert_called_once_with(description)
+
+    def test_help_gesture_never_executes_after_help_is_turned_off(self):
+        for command in (*self.HELP_COMMANDS, 'edge'):
+            with self.subTest(command=command):
+                controller, event, script, action, _ = self._deferred_action(
+                    command, native=True, learn=True)
+                sys.modules['orca'].orca_state.learnModeEnabled = False
+                self._consume_deferred(event)
+                action.assert_not_called()
+                script.presentMessage.assert_not_called()
+                release = event.__class__(event.event_string, event.hw_code,
+                                          modifiers=event.modifiers, pressed=False)
+                self._consume_deferred(release)
+                action.assert_not_called()
+                vk = self.COMMAND_KEYS.get(command, 0x72)
+                self._key(controller, vk, True, extended=command == 'edge')
+                current = event.__class__(event.event_string, event.hw_code,
+                                          modifiers=event.modifiers)
+                self._consume_deferred(current)
+                action.assert_called_once()
+
+    def test_input_help_repeats_describe_each_press_and_release_does_not_repeat(self):
+        for command, description in self.HELP_COMMANDS.items():
+            with self.subTest(command=command):
+                controller, event, script, action, _ = self._deferred_action(
+                    command, native=True, learn=True)
+                self._consume_deferred(event)
+                self._key(controller, self.COMMAND_KEYS.get(command, 0x72), True)
+                repeated = event.__class__(event.event_string, event.hw_code,
+                                           modifiers=event.modifiers)
+                self._consume_deferred(repeated)
+                release = event.__class__(event.event_string, event.hw_code,
+                                          modifiers=event.modifiers, pressed=False)
+                self._consume_deferred(release)
+                action.assert_not_called()
+                self.assertEqual(script.presentMessage.call_args_list,
+                                 [mock.call(description), mock.call(description)])
+
+    def test_input_help_honors_native_handler_presentation_preferences(self):
+        for command in ('form', 'layout', 'find'):
+            with self.subTest(command=command):
+                _, event, script, action, _ = self._deferred_action(
+                    command, native=True, learn=True)
+                if command == 'form':
+                    handler = script.structuralNavigation.enabledObjects[
+                        'formField'].inputEventHandlers['formFieldGoNext']
+                else:
+                    name = 'toggleLayoutModeHandler' if command == 'layout' else 'findHandler'
+                    handler = script.inputEventHandlers[name]
+                handler.learnModeEnabled = False
+                self._consume_deferred(event)
+                action.assert_not_called()
+                script.presentMessage.assert_not_called()
+
+    def test_help_callbacks_expire_on_handoff_script_change_or_shortcut_capture(self):
+        for command in self.HELP_COMMANDS:
+            for change in ('handoff', 'script', 'capture'):
+                with self.subTest(command=command, change=change):
+                    controller, event, script, action, _ = self._deferred_action(
+                        command, native=True, learn=True)
+                    if change == 'handoff':
+                        controller.toggle_control()
+                    elif change == 'script':
+                        sys.modules['orca'].orca_state.activeScript = object()
+                    else:
+                        sys.modules['orca'].orca_state.capturingKeys = True
+                    self._consume_deferred(event)
+                    action.assert_not_called()
+                    script.presentMessage.assert_not_called()
+
+    def test_table_edges_in_input_help_never_query_or_move_the_cell(self):
+        controller, event_class, script = self._native_hooked()
+        sys.modules['orca'].orca_state.learnModeEnabled = True
+        query = mock.Mock(side_effect=AssertionError('input help queried a cell'))
+        script.utilities.getCaretContext = query
+        script.presentMessage = mock.Mock()
+        script.structuralNavigation.goCell = mock.Mock()
+        for vk in (0xA2, 0xA4, 0x23):
+            self._key(controller, vk, True, extended=vk == 0x23)
+        event = event_class('End', 115, modifiers=self.CTRL | self.ALT)
+        self._consume_deferred(event)
+        query.assert_not_called()
+        script.structuralNavigation.goCell.assert_not_called()
+        script.presentMessage.assert_not_called()
+
+    def test_caps_find_help_never_opens_orca_shortcut_list_in_either_layout(self):
+        for layout in ('desktop', 'laptop'):
+            for reverse in (False, True):
+                with self.subTest(layout=layout, reverse=reverse), mock.patch.dict(
+                        'os.environ', LINUX_RDACCESS_NVDA_LAYOUT=layout):
+                    controller, event_class, script = self._native_hooked()
+                    sys.modules['orca'].orca_state.learnModeEnabled = True
+                    script.presentMessage, script.listOrcaShortcuts = mock.Mock(), mock.Mock()
+                    script.findNext, script.findPrevious = mock.Mock(), mock.Mock()
+                    name = 'findPreviousHandler' if reverse else 'findNextHandler'
+                    script.inputEventHandlers[name] = types.SimpleNamespace(
+                        description='Localized find direction', learnModeEnabled=True)
+                    self._key(controller, 0x14, True)
+                    if reverse:
+                        self._key(controller, 0xA0, True)
+                    self._key(controller, 0x72, True)
+                    event = event_class('F3', 69, modifiers=self.SHIFT if reverse else 0)
+                    self._consume_deferred(event)
+                    script.presentMessage.assert_called_once_with('Localized find direction')
+                    script.listOrcaShortcuts.assert_not_called()
+                    script.findNext.assert_not_called()
+                    script.findPrevious.assert_not_called()
+
+    def test_input_help_claims_never_leak_into_later_local_commands(self):
+        for command in self.HELP_COMMANDS:
+            with self.subTest(command=command):
+                _, event, _, action, _ = self._deferred_action(command, native=True, learn=True)
+                sys.modules['orca'].orca_state.learnModeEnabled = False
+                local = event.__class__(event.event_string, event.hw_code,
+                                        modifiers=event.modifiers)
+                self.assertIsNone(local._consumer)
+                action.assert_not_called()
+
+    def test_input_help_preserves_native_timestamp_and_duplicate_refusals(self):
+        for reason in ('No timestamp', 'Is duplicate'):
+            with self.subTest(reason=reason):
+                controller, event_class, script = self._native_hooked()
+                state = sys.modules['orca'].orca_state
+                state.learnModeEnabled = True
+                event_class.timestamp = 0 if reason == 'No timestamp' else 1
+                event_class.is_duplicate = reason == 'Is duplicate'
+                script.presentMessage, script.toggleLayoutMode = mock.Mock(), mock.Mock()
+                self._key(controller, 0x2D, True, extended=True)
+                self._key(controller, 0x56, True)
+                event = event_class('v', 55, modifiers=self.ORCA)
+                self.assertEqual(event.consume, (False, reason))
+                self.assertIsNone(event._consumer)
+                script.presentMessage.assert_not_called()
+                script.toggleLayoutMode.assert_not_called()
+
+    def test_input_help_never_describes_unrelated_native_browse_bindings(self):
+        cases = ((0x41, 'a', 38, (), 0),
+                 (0x4D, 'm', 58, (), 0),
+                 (0x79, 'F10', 76, (0x2D, 0xA0), self.ORCA | self.SHIFT))
+        for vk, key, code, modifiers, mask in cases:
+            with self.subTest(key=key):
+                controller, event_class, script = self._native_hooked()
+                sys.modules['orca'].orca_state.learnModeEnabled = True
+                script.presentMessage = mock.Mock()
+                for modifier in modifiers:
+                    self._key(controller, modifier, True, extended=modifier == 0x2D)
+                self._key(controller, vk, True)
+                event = event_class(key, code, modifiers=mask)
+                self._consume_deferred(event)
+                self.assertIsNone(event._handler)
+                script.presentMessage.assert_not_called()
+
+    def test_shifted_form_and_heading_help_uses_native_previous_descriptions(self):
+        cases = [('form', 0x46, 'F', 41, 'Localized previous form field')]
+        cases.extend(('heading', vk, symbol, code, 'Localized previous heading %d' % level)
+                     for level, vk, code, symbol in self.LEVELS)
+        for command, vk, key, code, description in cases:
+            with self.subTest(key=key):
+                controller, original, script, action, _ = self._deferred_action(
+                    command, native=True, learn=True)
+                heading = script.structuralNavigation.enabledObjects['heading']
+                factory = mock.Mock(side_effect=AssertionError('help created a heading action'))
+                heading.goPreviousAtLevelFactory = factory
+                self._key(controller, 0xA0, True)
+                self._key(controller, vk, True)
+                event = original.__class__(key, code, modifiers=self.SHIFT)
+                self._consume_deferred(event)
+                factory.assert_not_called()
+                action.assert_not_called()
+                self.assertEqual(script.form_calls, [])
+                script.presentMessage.assert_called_once_with(description)
+
+    def test_native_landmark_and_table_arrow_help_keeps_native_presentation(self):
+        for command in ('landmark', 'arrow'):
+            with self.subTest(command=command):
+                _, event, script, action, _ = self._deferred_action(
+                    command, native=True, learn=True)
+                self._consume_deferred(event)
+                action.assert_not_called()
+                script.presentMessage.assert_called_once_with('Native physical key binding')
 
     def test_native_dispatcher_passes_remote_commands_to_shortcut_capture(self):
         for command in self.DEFERRED_COMMANDS:

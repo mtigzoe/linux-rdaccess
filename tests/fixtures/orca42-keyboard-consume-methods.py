@@ -18,7 +18,7 @@
 # Free Software Foundation, Inc., Franklin Street, Fifth Floor,
 # Boston MA  02110-1301 USA.
 
-# Frozen Orca 42.0 dispatcher for isolated shortcut-capture regressions.
+# Frozen Orca 42.0 dispatcher and presenter for isolated keyboard regressions.
 # Source: /usr/lib/python3/dist-packages/orca/input_event.py
 
 class KeyboardEvent:
@@ -80,3 +80,12 @@ class KeyboardEvent:
             return False, 'No handler'
 
         return scriptConsumes, 'Script indication'
+
+    def _presentHandler(self, input_event=None):
+        if not self._handler:
+            return False
+
+        if self._handler.learnModeEnabled and self._handler.description:
+            self._script.presentMessage(self._handler.description)
+
+        return True
