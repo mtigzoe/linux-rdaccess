@@ -517,6 +517,19 @@ class OrcaRuntimeAdapter:
     def route_braille(cls, index: int) -> bool | None:
         if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < 1024:
             return False
+        try:
+            from orca import braille
+        except ImportError:
+            braille = None
+        size = getattr(braille, "_displaySize", None)
+        # Check live geometry on Orca's main loop. A local BrlAPI reconnect can
+        # replace it after the controller checked the remote display width.
+        if size is not None and (
+            not isinstance(size, (list, tuple)) or len(size) != 2
+            or type(size[0]) is not int or not 0 < size[0] <= 1024
+            or index >= size[0]
+        ):
+            return False
         event = SimpleNamespace(event={"argument": index})
         return cls.call_script(
             ("processRoutingKey", "process_routing_key"),

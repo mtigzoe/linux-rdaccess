@@ -85,6 +85,31 @@ class BrailleDisplayLifecycleTests(Harness, unittest.TestCase):
         self.assertEqual(braille._displaySize, [40, 1])
         self.assertEqual(calls, [("refresh", 40), ("route", 39)])
 
+    def test_local_reconnect_cannot_route_beyond_the_actual_native_viewport(self):
+        c, queue, glib, patches, braille, calls = self.make()
+        with glib, patches:
+            c._on_remote_braille_info(numCells=80)
+            self.drain(queue)
+            calls.clear()
+            self.route(c, 79)
+            # Orca init() replaces this list when a local BrlAPI display joins.
+            # No new remote braille_info arrives before the queued route runs.
+            braille._displaySize = [20, 1]
+            self.drain(queue)
+            self.assertEqual(calls, [])
+            self.route(c, 19)
+            self.route(c, 20)
+            self.drain(queue)
+        self.assertEqual(calls, [("route", 19)])
+
+    def test_routing_without_remote_info_is_bounded_by_the_native_viewport(self):
+        c, queue, glib, patches, braille, calls = self.make()
+        with glib, patches:
+            self.route(c, 31)
+            self.route(c, 32)
+            self.drain(queue)
+        self.assertEqual(calls, [("route", 31)])
+
     def test_reset_restores_local_size_and_expires_pending_width_and_routing(self):
         c, queue, glib, patches, braille, calls = self.make()
         with glib, patches:

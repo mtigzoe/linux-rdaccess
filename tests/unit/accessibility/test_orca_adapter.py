@@ -257,6 +257,19 @@ class OrcaRuntimeAdapterTests(unittest.TestCase):
             for value in (-1, 1024, True, "4", None):
                 self.assertFalse(OrcaRuntimeAdapter.route_braille(value))
 
+    def test_invalid_native_display_geometry_never_reaches_routing_handler(self):
+        handler = mock.Mock()
+        script = types.SimpleNamespace(processRoutingKey=handler)
+        braille = types.ModuleType('orca.braille')
+        with self._fake_orca(script):
+            sys.modules['orca'].braille = braille
+            for size in ([], [20], [0, 1], [-1, 1], [1025, 1],
+                         [True, 1], ['20', 1], '20'):
+                with self.subTest(size=size):
+                    braille._displaySize = size
+                    self.assertFalse(OrcaRuntimeAdapter.route_braille(0))
+        handler.assert_not_called()
+
     def test_missing_active_script_is_safe(self):
         with self._fake_orca(None):
             self.assertIsNone(OrcaRuntimeAdapter.pan_braille_left())

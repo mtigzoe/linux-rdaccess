@@ -2112,7 +2112,8 @@ LEGACY_COMPAT_MARKER_V101 = "# linux-rdaccess NVDA/Orca input compatibility v101
 LEGACY_COMPAT_MARKER_V102 = "# linux-rdaccess NVDA/Orca input compatibility v102"
 LEGACY_COMPAT_MARKER_V103 = "# linux-rdaccess NVDA/Orca input compatibility v103"
 LEGACY_COMPAT_MARKER_V104 = "# linux-rdaccess NVDA/Orca input compatibility v104"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v105"
+LEGACY_COMPAT_MARKER_V105 = "# linux-rdaccess NVDA/Orca input compatibility v105"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v106"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -3316,7 +3317,9 @@ _LEGACY_HELPERS = '''\
         # their context decision to Orca's main-thread keyboard hook. Mark
         # CapsLock-as-NVDA as used so an eventual focus-mode pass-through never
         # toggles the Linux lock merely because the NVDA modifier was CapsLock.
-        if pressed and self._lrd_nvda_down and not repeat:
+        # Repeats need their own claim too, or Orca sees an unrelated native
+        # shortcut instead of the NVDA browse command which started the hold.
+        if pressed and self._lrd_nvda_down:
             shifts = [k for k in self._lrd_down if k[0] in self._LRD_SHIFT_VKS]
             ctrl = any(k[0] in self._LRD_CTRL_VKS for k in self._lrd_down)
             alt_win = any(
@@ -6319,6 +6322,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V105,
                 LEGACY_COMPAT_MARKER_V104,
                 LEGACY_COMPAT_MARKER_V103,
                 LEGACY_COMPAT_MARKER_V102,

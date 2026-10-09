@@ -153,6 +153,32 @@ class NvdaRemoteLoopbackTests(Harness, unittest.TestCase):
         self.assertEqual((keys[-1]["vk_code"], keys[-1]["pressed"]), (0xA0, False))
         self.assertEqual(self.controller._lrd_forwarded, {})
 
+    def test_wire_routing_rechecks_native_width_after_local_display_reconnect(self):
+        braille, state, _, _, idle = self.braille_runtime(queued=True)
+        braille._displaySize = [32, 1]
+        routes = []
+        state.activeScript = types.SimpleNamespace(
+            processRoutingKey=lambda event: routes.append(event.event['argument']))
+        self.connect()
+        self.session.send(type='braille_info', numCells=80)
+        self.session.barrier()
+        idle.drain()
+        self.session.read_through_barrier()
+        self.session.send(type='braille_input', scriptPath=[
+            'globalCommands', 'GlobalCommands', 'braille_routeTo'], routingIndex=79)
+        self.session.barrier()
+        # The network receiver accepted an 80-cell coordinate. Orca's local
+        # BrlAPI reconnect changes geometry before main-loop execution.
+        braille._displaySize = [20, 1]
+        idle.drain()
+        self.assertEqual(routes, [])
+        for index in (19, 20):
+            self.session.send(type='braille_input', scriptPath=[
+                'globalCommands', 'GlobalCommands', 'braille_routeTo'], routingIndex=index)
+        self.session.barrier()
+        idle.drain()
+        self.assertEqual(routes, [19])
+
     def test_controller_disconnect_does_not_deadlock_receiver_teardown(self):
         worker = self.connect()
         self.key(0xA0, True)
