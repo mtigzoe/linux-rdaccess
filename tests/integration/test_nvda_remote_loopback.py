@@ -587,6 +587,64 @@ class NvdaRemoteLoopbackTests(Harness, unittest.TestCase):
         self.assertEqual(calls[0][1].event["argument"], 2)
         self.assertEqual(len(calls), 1)
 
+    def test_queued_raw_routing_rejects_script_change_without_canceling_new_speech(self):
+        braille, state, focus, _, idle = self.braille_runtime(queued=True)
+        braille._displaySize = [32, 1]
+        original = types.SimpleNamespace(processRoutingKey=mock.Mock())
+        state.activeScript, state.activeWindow = original, object()
+        self.controller.local_machine.cancel_speech = mock.Mock()
+        self.connect()
+        braille.refresh()
+        self.session.read_through_barrier()
+        self.session.send(type='braille_input', routingIndex=2)
+        self.session.barrier()
+        replacement = state.activeScript = types.SimpleNamespace(processRoutingKey=mock.Mock())
+        idle.drain()
+        self.assertIs(state.locusOfFocus, focus)
+        original.processRoutingKey.assert_not_called()
+        replacement.processRoutingKey.assert_not_called()
+        self.controller.local_machine.cancel_speech.assert_not_called()
+        self.assertEqual(self.session.read_through_barrier(), [])
+
+        # A new publication belongs to the replacement script and permits
+        # fresh input with the ordinary cancel-before-route ordering.
+        braille.refresh()
+        self.session.read_through_barrier()
+        self.session.send(type='braille_input', routingIndex=3)
+        self.session.barrier()
+        idle.drain()
+        replacement.processRoutingKey.assert_called_once()
+        self.assertEqual(replacement.processRoutingKey.call_args.args[0].event['argument'], 3)
+        self.controller.local_machine.cancel_speech.assert_called_once_with()
+        self.assertEqual(self.session.read_through_barrier(), [{'type': 'cancel'}])
+
+    def test_queued_raw_home_rejects_window_change_without_canceling_current_speech(self):
+        braille, state, focus, _, idle = self.braille_runtime(queued=True)
+        script = state.activeScript = types.SimpleNamespace(goBrailleHome=mock.Mock())
+        state.activeWindow = object()
+        self.controller.local_machine.cancel_speech = mock.Mock()
+        self.connect()
+        braille.refresh()
+        self.session.read_through_barrier()
+        self.session.send(type='braille_input', scriptPath=[
+            'globalCommands', 'GlobalCommands', 'braille_toFocus'])
+        self.session.barrier()
+        state.activeWindow = object()
+        idle.drain()
+        self.assertIs(state.locusOfFocus, focus)
+        script.goBrailleHome.assert_not_called()
+        self.controller.local_machine.cancel_speech.assert_not_called()
+        self.assertEqual(self.session.read_through_barrier(), [])
+        braille.refresh()
+        self.session.read_through_barrier()
+        self.session.send(type='braille_input', scriptPath=[
+            'globalCommands', 'GlobalCommands', 'braille_toFocus'])
+        self.session.barrier()
+        idle.drain()
+        script.goBrailleHome.assert_called_once_with(None)
+        self.controller.local_machine.cancel_speech.assert_called_once_with()
+        self.assertEqual(self.session.read_through_barrier(), [{'type': 'cancel'}])
+
     def test_queued_raw_pan_expires_after_focus_leaves_and_returns(self):
         braille, state, button, _, idle = self.braille_runtime(queued=True)
         self.connect()

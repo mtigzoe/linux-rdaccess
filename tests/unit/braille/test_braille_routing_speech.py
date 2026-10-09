@@ -206,6 +206,149 @@ class BrailleRoutingSpeechTests(Harness, unittest.TestCase):
         text.setCaretOffset.assert_not_called()
         text.setSelection.assert_not_called()
 
+    def test_raw_braille_commands_expire_on_script_or_window_change_with_same_focus(self):
+        for command in ('route', 'home', 'pan'):
+            for change in ('script', 'window'):
+                with self.subTest(command=command, change=change):
+                    c, _, _, _, state, script, _, text, queue, _ = self.make()
+                    script.goBrailleHome = mock.Mock()
+                    state.activeWindow = object()
+                    focus = state.locusOfFocus
+                    orca_adapter.OrcaRuntimeAdapter.record_braille_focus()
+                    c._lrd_braille_focus_context = orca_adapter.OrcaRuntimeAdapter.braille_focus_context()
+                    if command == 'route':
+                        self.route(c)
+                    elif command == 'home':
+                        self.home(c)
+                    else:
+                        c._on_remote_braille_input(scriptPath=[
+                            'globalCommands', 'GlobalCommands', 'braille_scrollForward'])
+                    replacement = SimpleNamespace(
+                        processRoutingKey=mock.Mock(), goBrailleHome=mock.Mock(),
+                        panBrailleRight=mock.Mock())
+                    if change == 'script':
+                        state.activeScript = replacement
+                    else:
+                        state.activeWindow = object()
+                    self.drain_main(queue)
+                    self.assertIs(state.locusOfFocus, focus)
+                    c.local_machine.cancel_speech.assert_not_called()
+                    self.assertEqual(c.transport.sent, [])
+                    self.assertFalse(any(event[0] == 'key' for event in c.local_machine.events))
+                    for owner in (script, replacement):
+                        owner.processRoutingKey.assert_not_called()
+                        owner.goBrailleHome.assert_not_called()
+                        owner.panBrailleRight.assert_not_called()
+                    text.setCaretOffset.assert_not_called()
+
+    def test_raw_braille_context_cannot_revive_after_observed_activation_change(self):
+        for change in ('script', 'window'):
+            with self.subTest(change=change):
+                c, _, _, _, state, script, _, _, queue, _ = self.make()
+                state.activeWindow = window = object()
+                orca_adapter.OrcaRuntimeAdapter.record_braille_focus()
+                context = orca_adapter.OrcaRuntimeAdapter.braille_focus_context()
+                c._lrd_braille_focus_context = context
+                c._on_remote_braille_input(scriptPath=[
+                    'globalCommands', 'GlobalCommands', 'braille_scrollForward'])
+                if change == 'script':
+                    state.activeScript = object()
+                else:
+                    state.activeWindow = object()
+                self.assertFalse(orca_adapter.OrcaRuntimeAdapter.braille_focus_is_current(context))
+                state.activeScript, state.activeWindow = script, window
+                self.drain_main(queue)
+                script.panBrailleRight.assert_not_called()
+                self.assertFalse(orca_adapter.OrcaRuntimeAdapter.braille_focus_is_current(context))
+
+    def test_new_braille_presentation_allows_fresh_commands_after_activation_change(self):
+        c, _, _, _, state, old_script, _, _, queue, _ = self.make()
+        state.activeWindow = object()
+        orca_adapter.OrcaRuntimeAdapter.record_braille_focus()
+        c._lrd_braille_focus_context = orca_adapter.OrcaRuntimeAdapter.braille_focus_context()
+        c._on_remote_braille_input(scriptPath=[
+            'globalCommands', 'GlobalCommands', 'braille_scrollForward'])
+        script = state.activeScript = SimpleNamespace(panBrailleRight=mock.Mock())
+        state.activeWindow = object()
+        orca_adapter.OrcaRuntimeAdapter.record_braille_focus()
+        c._lrd_braille_focus_context = orca_adapter.OrcaRuntimeAdapter.braille_focus_context()
+        c._on_remote_braille_input(scriptPath=[
+            'globalCommands', 'GlobalCommands', 'braille_scrollForward'])
+        self.drain_main(queue)
+        old_script.panBrailleRight.assert_not_called()
+        script.panBrailleRight.assert_called_once_with(None)
+        c.local_machine.cancel_speech.assert_not_called()
+
+    def test_script_identity_and_equivalent_window_proxies_preserve_current_braille(self):
+        class Window:
+            def __eq__(self, other):
+                return isinstance(other, Window)
+
+        c, _, _, _, state, script, _, _, queue, _ = self.make()
+        state.activeWindow = Window()
+        orca_adapter.OrcaRuntimeAdapter.record_braille_focus()
+        context = orca_adapter.OrcaRuntimeAdapter.braille_focus_context()
+        c._lrd_braille_focus_context = context
+        c._on_remote_braille_input(scriptPath=[
+            'globalCommands', 'GlobalCommands', 'braille_scrollForward'])
+        state.activeWindow = Window()
+        orca_adapter.OrcaRuntimeAdapter.record_braille_focus()
+        self.assertIs(orca_adapter.OrcaRuntimeAdapter.braille_focus_context(), context)
+        self.drain_main(queue)
+        script.panBrailleRight.assert_called_once_with(None)
+
+    def test_equal_script_instances_cannot_reuse_an_old_braille_context(self):
+        class Script(SimpleNamespace):
+            def __eq__(self, other):
+                return isinstance(other, Script)
+
+        c, _, _, _, state, _, _, _, queue, _ = self.make()
+        state.activeScript = Script(panBrailleRight=mock.Mock())
+        orca_adapter.OrcaRuntimeAdapter.record_braille_focus()
+        c._lrd_braille_focus_context = orca_adapter.OrcaRuntimeAdapter.braille_focus_context()
+        c._on_remote_braille_input(scriptPath=[
+            'globalCommands', 'GlobalCommands', 'braille_scrollForward'])
+        replacement = state.activeScript = Script(panBrailleRight=mock.Mock())
+        self.drain_main(queue)
+        replacement.panBrailleRight.assert_not_called()
+
+    def test_snake_case_activation_change_expires_raw_braille_with_no_focus(self):
+        c, _, _, _, state, script, _, _, queue, _ = self.make()
+        state.active_script, state.active_window = script, object()
+        state.locus_of_focus = None
+        del state.activeScript, state.activeWindow, state.locusOfFocus
+        orca_adapter.OrcaRuntimeAdapter.record_braille_focus()
+        c._lrd_braille_focus_context = orca_adapter.OrcaRuntimeAdapter.braille_focus_context()
+        c._on_remote_braille_input(scriptPath=[
+            'globalCommands', 'GlobalCommands', 'braille_scrollForward'])
+        state.active_window = object()
+        self.drain_main(queue)
+        script.panBrailleRight.assert_not_called()
+        orca_adapter.OrcaRuntimeAdapter.record_braille_focus()
+        c._lrd_braille_focus_context = orca_adapter.OrcaRuntimeAdapter.braille_focus_context()
+        c._on_remote_braille_input(scriptPath=[
+            'globalCommands', 'GlobalCommands', 'braille_scrollForward'])
+        self.drain_main(queue)
+        script.panBrailleRight.assert_called_once_with(None)
+
+    def test_unreadable_window_expires_raw_braille_without_logging_application_text(self):
+        class Window:
+            def __eq__(self, other):
+                raise RuntimeError('private application text')
+
+        c, _, _, _, state, script, _, _, queue, _ = self.make()
+        state.activeWindow = Window()
+        orca_adapter.OrcaRuntimeAdapter.record_braille_focus()
+        c._lrd_braille_focus_context = orca_adapter.OrcaRuntimeAdapter.braille_focus_context()
+        c._on_remote_braille_input(scriptPath=[
+            'globalCommands', 'GlobalCommands', 'braille_scrollForward'])
+        state.activeWindow = Window()
+        with mock.patch.object(c._module.log, 'error') as error:
+            self.drain_main(queue)
+        script.panBrailleRight.assert_not_called()
+        self.assertIsNone(orca_adapter.OrcaRuntimeAdapter.braille_focus_context())
+        self.assertNotIn('private application text', str(error.call_args_list))
+
     def test_route_stops_on_main_loop_and_expires_queued_end(self):
         c, server, idle, messages, _, script, contexts, text, queue, _ = self.make()
         self.start(server, idle, script, contexts)
