@@ -2166,7 +2166,8 @@ LEGACY_COMPAT_MARKER_V107 = "# linux-rdaccess NVDA/Orca input compatibility v107
 LEGACY_COMPAT_MARKER_V108 = "# linux-rdaccess NVDA/Orca input compatibility v108"
 LEGACY_COMPAT_MARKER_V109 = "# linux-rdaccess NVDA/Orca input compatibility v109"
 LEGACY_COMPAT_MARKER_V110 = "# linux-rdaccess NVDA/Orca input compatibility v110"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v111"
+LEGACY_COMPAT_MARKER_V111 = "# linux-rdaccess NVDA/Orca input compatibility v111"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v112"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -4823,6 +4824,53 @@ def _lrd_capturing_keys():
     return bool(getattr(orca_state, "capturingKeys", False))
 
 
+def _lrd_learn_mode_enabled():
+    try:
+        from orca import orca_state
+    except ImportError:
+        return False
+    return bool(getattr(orca_state, "learnModeEnabled",
+                        getattr(orca_state, "learn_mode_enabled", False)))
+
+
+def _lrd_browse_help_handler(owner, name):
+    handlers = getattr(owner, "inputEventHandlers", None)
+    if handlers is None:
+        handlers = getattr(owner, "input_event_handlers", None)
+    return handlers.get(name) if isinstance(handlers, dict) else None
+
+
+def _lrd_prepare_browse_help(event, marker, handler=None, description=None):
+    if not _lrd_learn_mode_enabled():
+        return False
+    if handler is None and description:
+        handler = __import__("types").SimpleNamespace(
+            function=None, description=description, learnModeEnabled=True)
+    claim = getattr(event, "_lrd_navigation_claim", None)
+    epoch = claim[1] if claim is not None and claim[0] is marker else None
+    event._lrd_browse_help_context = (handler, marker, epoch, event._script)
+    # Turning help off while the key is held must not let its release invoke
+    # a physical Orca binding with different semantics.
+    marker["held"][event.hw_code] = event.modifiers
+    return True
+
+
+def _lrd_consume_browse_help(event):
+    if not _lrd_learn_mode_enabled() or _lrd_capturing_keys():
+        return True
+    handler, marker, epoch, script = event._lrd_browse_help_context
+    if epoch is None or marker.get("epoch") is not epoch:
+        return True
+    from orca import orca_state
+    active = getattr(orca_state, "activeScript", getattr(orca_state, "active_script", None))
+    if active is not script:
+        return True
+    presenter = getattr(event, "_presentHandler", None)
+    if callable(presenter):
+        presenter(event)
+    return True
+
+
 def _lrd_take_navigation_marker(marker, key, event=None):
     with _LRD_NAV_LOCK:
         _lrd_prune_navigation_markers(marker, __import__("time").monotonic())
@@ -5165,6 +5213,13 @@ def _lrd_maybe_nvda_browse(event, keybindings):
         return False
 
     script = getattr(event, "_script", None)
+    help_name = {
+        "find": "findHandler", "layout": "toggleLayoutModeHandler",
+        "findNext": "findNextHandler", "findPrevious": "findPreviousHandler",
+    }.get(action)
+    if _lrd_prepare_browse_help(
+            event, _LRD_NVDA_BROWSE, _lrd_browse_help_handler(script, help_name)):
+        return True
     utilities = getattr(script, "utilities", None)
     in_document = getattr(utilities, "inDocumentContent", None)
     if not callable(in_document):
@@ -5305,6 +5360,25 @@ def _lrd_maybe_suppress_browse(event, keybindings):
         return False
 
     script = getattr(event, "_script", None)
+    if _lrd_learn_mode_enabled():
+        nav = getattr(script, "structuralNavigation", getattr(script, "structural_navigation", None))
+        objects = getattr(nav, "enabledObjects", getattr(nav, "enabled_objects", None)) or {}
+        reverse = bool(event.modifiers & keybindings.SHIFT_MODIFIER_MASK)
+        handler, description = None, None
+        if key == "f":
+            name = "formFieldGoPrevious" if reverse else "formFieldGoNext"
+            handler = _lrd_browse_help_handler(objects.get("formField"), name)
+        elif key in ("7", "8", "9"):
+            name = "headingGo%sLevel%sHandler" % ("Previous" if reverse else "Next", key)
+            handler = _lrd_browse_help_handler(objects.get("heading"), name)
+            if handler is None:
+                try:
+                    from orca import cmdnames
+                    pattern = cmdnames.HEADING_AT_LEVEL_PREV if reverse else cmdnames.HEADING_AT_LEVEL_NEXT
+                    description = pattern % int(key)
+                except ImportError:
+                    pass
+        return _lrd_prepare_browse_help(event, _LRD_BROWSE_UNSUPPORTED, handler, description)
     gate = getattr(script, "useStructuralNavigationModel", None)
     if not callable(gate) or not gate():
         # Focus mode, editable controls and the address bar land here: the
@@ -5468,6 +5542,10 @@ def _lrd_maybe_table_edge(event, keybindings):
     if not _lrd_take_navigation_marker(_LRD_TABLE_EDGE, action_name, event):
         return False
 
+    # These row/column edges have no exact native command description. Let
+    # Orca echo the gesture in help, without reading or moving an AT-SPI cell.
+    if _lrd_prepare_browse_help(event, _LRD_TABLE_EDGE):
+        return True
     script = getattr(event, "_script", None)
     gate = getattr(script, "useStructuralNavigationModel", None)
     if not callable(gate) or not gate():
@@ -5575,6 +5653,21 @@ def _lrd_install_orca_hook():
         return True
     original = cls.shouldConsume
 
+    def handled(event, reason):
+        context = getattr(event, "_lrd_browse_help_context", None)
+        if context is None:
+            return True, reason
+        # Preserve native refusal gates and script bookkeeping. Override the
+        # physical binding's help with the claimed command: notably Orca+V is
+        # verbosity, and plain F3 from Caps+F3 normally lists Orca shortcuts.
+        result = original(event)
+        consumed = result[0] if isinstance(result, tuple) else result
+        if consumed:
+            event._handler = context[0]
+            event._consumer = _lrd_consume_browse_help
+            return True, "In Learn Mode"
+        return result
+
     def shouldConsume(self):
         if not self.isPressedKey() and _lrd_capturing_keys():
             # Capture can start while a browse key is held. Release its old
@@ -5599,17 +5692,17 @@ def _lrd_install_orca_hook():
             log.error("linux-rdaccess: native bypass dispatch failed")
         try:
             if _lrd_maybe_nvda_browse(self, keybindings):
-                return True, "linux-rdaccess handled NVDA browse-mode command"
+                return handled(self, "linux-rdaccess handled NVDA browse-mode command")
         except Exception:
             log.error("linux-rdaccess: NVDA browse-mode command failed")
         try:
             if _lrd_maybe_suppress_browse(self, keybindings):
-                return True, "linux-rdaccess suppressed mismatched NVDA browse command"
+                return handled(self, "linux-rdaccess suppressed mismatched NVDA browse command")
         except Exception:
             log.error("linux-rdaccess: browse command suppression failed")
         try:
             if _lrd_maybe_table_edge(self, keybindings):
-                return True, "linux-rdaccess translated NVDA table edge command"
+                return handled(self, "linux-rdaccess translated NVDA table edge command")
         except Exception:
             log.error("linux-rdaccess: table edge navigation translation failed")
         restore = None
@@ -6436,6 +6529,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V111,
                 LEGACY_COMPAT_MARKER_V110,
                 LEGACY_COMPAT_MARKER_V109,
                 LEGACY_COMPAT_MARKER_V108,

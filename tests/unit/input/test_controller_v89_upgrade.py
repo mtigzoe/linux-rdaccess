@@ -69,7 +69,8 @@ class ControllerV89UpgradeTests(unittest.TestCase):
                        remote_access.LEGACY_COMPAT_MARKER_V107,
                        remote_access.LEGACY_COMPAT_MARKER_V108,
                        remote_access.LEGACY_COMPAT_MARKER_V109,
-                       remote_access.LEGACY_COMPAT_MARKER_V110):
+                       remote_access.LEGACY_COMPAT_MARKER_V110,
+                       remote_access.LEGACY_COMPAT_MARKER_V111):
             with self.subTest(marker=marker), tempfile.TemporaryDirectory() as directory:
                 path = Path(directory) / "remote_controller.py"
                 path.write_text(original)
