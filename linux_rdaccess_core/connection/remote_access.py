@@ -2113,7 +2113,8 @@ LEGACY_COMPAT_MARKER_V102 = "# linux-rdaccess NVDA/Orca input compatibility v102
 LEGACY_COMPAT_MARKER_V103 = "# linux-rdaccess NVDA/Orca input compatibility v103"
 LEGACY_COMPAT_MARKER_V104 = "# linux-rdaccess NVDA/Orca input compatibility v104"
 LEGACY_COMPAT_MARKER_V105 = "# linux-rdaccess NVDA/Orca input compatibility v105"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v106"
+LEGACY_COMPAT_MARKER_V106 = "# linux-rdaccess NVDA/Orca input compatibility v106"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v107"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -4129,8 +4130,14 @@ _LEGACY_HELPERS = '''\
         Orca receives the actual Alt+Shift+letter binding.
         """
         vk = ord(str(key)[0].upper())
+        forwarded = getattr(self, "_lrd_forwarded", {})
+        held_names = {self._linux_rdaccess_bypass_key_name(payload)
+                      for payload in forwarded.values()}
         # A synthetic release must not release a remotely held letter.
-        if (vk, False) in getattr(self, "_lrd_forwarded", {}):
+        # Name-only events can hold the same X key as this VK shortcut. Upper-
+        # and lowercase letter keysyms also share its physical X keycode.
+        if ((vk, False) in forwarded
+                or str(key).lower() in held_names or str(key).upper() in held_names):
             return
         send = self._linux_rdaccess_forward_key
         held_modifiers = (
@@ -4144,8 +4151,9 @@ _LEGACY_HELPERS = '''\
                 # same Linux keys. Borrow either alias instead of releasing
                 # a modifier held by the Windows controller.
                 generic_vk = 0x10 if mod_vk == 0xA0 else 0x12
-                if any(held_vk == mod_vk or (held_vk == generic_vk and not held_ext)
-                       for held_vk, held_ext in getattr(self, "_lrd_forwarded", {})):
+                if name in held_names or any(
+                        held_vk == mod_vk or (held_vk == generic_vk and not held_ext)
+                        for held_vk, held_ext in forwarded):
                     continue
                 if send(
                     key_name=name, pressed=True, modifiers=None,
@@ -6322,6 +6330,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V106,
                 LEGACY_COMPAT_MARKER_V105,
                 LEGACY_COMPAT_MARKER_V104,
                 LEGACY_COMPAT_MARKER_V103,
