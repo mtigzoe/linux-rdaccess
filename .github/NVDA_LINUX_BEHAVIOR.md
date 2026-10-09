@@ -10,6 +10,12 @@ Windows NVDA + NVDA Remote Access → linux-rdaccess transport/controller → Or
 
 Orca remains the Linux accessibility engine. Preserve Orca semantics and local accessibility while translating remote NVDA intent. Prefer semantic Orca APIs to fragile simulated key sequences. Local Orca output and Windows NVDA output may differ; report differences instead of claiming they are identical.
 
+## Current development priority
+
+**Next priority:** End-to-end validation of **Orca → Windows NVDA speech and braille**, while preserving NVDA keyboard compatibility.
+
+Verify actual speech and braille presentation on the Windows NVDA side, including accessible names, roles, states, focus/caret synchronization, speech cancellation, braille panning and routing. Distinguish forwarding Orca-generated text/events from genuine NVDA-style semantic presentation. Add automated regressions where possible and separately document live NVDA and physical braille acceptance. Do not claim end-to-end success based only on mocked, loopback, or Xvfb tests.
+
 ## Behavioral expectations
 
 ### Control, keyboard and command ownership
