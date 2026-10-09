@@ -8,6 +8,7 @@ relay, real credentials, NVDA installation, or braille display is used.
 from __future__ import annotations
 
 import sys
+import threading
 import types
 import unittest
 from unittest import mock
@@ -147,6 +148,44 @@ class NvdaRemoteLoopbackTests(Harness, unittest.TestCase):
         self.session.transport.callback_manager.wait_for("transport_disconnected")
         self.assertEqual((keys[-1]["vk_code"], keys[-1]["pressed"]), (0xA0, False))
         self.assertEqual(self.controller._lrd_forwarded, {})
+
+    def test_output_serialized_in_old_session_is_not_delivered_after_reconnect(self):
+        self.connect()
+        entered, release = threading.Event(), threading.Event()
+        errors = []
+        serialize = self.session.transport.serializer.serialize
+
+        def delayed(**kwargs):
+            if kwargs.get("sequence") == ["old-session"]:
+                entered.set()
+                if not release.wait(5):
+                    raise AssertionError("old speech serialization was never released")
+            return serialize(**kwargs)
+
+        def speak():
+            try:
+                self.session.transport.send(type="speak", sequence=["old-session"])
+            except BaseException as error:
+                errors.append(error)
+
+        self.session.transport.serializer.serialize = delayed
+        sender = threading.Thread(target=speak)
+        sender.start()
+        try:
+            self.assertTrue(entered.wait(2))
+            self.session.disconnect_peer()
+            self.session.transport.callback_manager.wait_for("transport_disconnected")
+            self.connect()
+        finally:
+            release.set()
+            sender.join(2)
+        self.assertFalse(sender.is_alive())
+        self.assertEqual(errors, [])
+        self.session.transport.send(type="speak", sequence=["new-session"])
+        self.assertEqual(self.session.read_through_barrier(), [
+            {"type": "speak", "sequence": ["new-session"]},
+        ])
+
 
     def test_native_reconnector_rejoins_and_discards_partial_message_and_held_modifier(self):
         self.connect(native_reconnector=True)

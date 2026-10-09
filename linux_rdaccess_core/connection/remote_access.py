@@ -1138,6 +1138,67 @@ if hasattr(TCPTransport, "close"):
 '''
 
 
+TRANSPORT_OUTBOUND_MARKER = "# linux-rdaccess relay output lifetime v1"
+_TRANSPORT_OUTBOUND_HOOK = TRANSPORT_OUTBOUND_MARKER + '''
+_linux_rdaccess_outbound_init = TCPTransport.__init__
+def _linux_rdaccess_outbound_owned_init(self, *args, **kwargs):
+    self._linux_rdaccess_outbound_lock = _linux_rdaccess_transport_threading.RLock()
+    self._linux_rdaccess_outbound_epoch = 0
+    return _linux_rdaccess_outbound_init(self, *args, **kwargs)
+TCPTransport.__init__ = _linux_rdaccess_outbound_owned_init
+
+_linux_rdaccess_outbound_disconnect = TCPTransport._disconnect
+def _linux_rdaccess_outbound_owned_disconnect(self, *args, **kwargs):
+    with self._linux_rdaccess_outbound_lock:
+        self._linux_rdaccess_outbound_epoch += 1
+        return _linux_rdaccess_outbound_disconnect(self, *args, **kwargs)
+TCPTransport._disconnect = _linux_rdaccess_outbound_owned_disconnect
+
+if hasattr(TCPTransport, "send"):
+    def _linux_rdaccess_outbound_send(self, type, **kwargs):
+        # Use a separate lock: controller callbacks already own the input lock
+        # and connection teardown calls them under the connection lock.
+        with self._linux_rdaccess_outbound_lock:
+            if not self.connected:
+                return
+            epoch = self._linux_rdaccess_outbound_epoch
+            current_socket = self.server_sock
+        obj = self.serializer.serialize(type=type, **kwargs)
+        with self._linux_rdaccess_outbound_lock:
+            if (self.connected and self.server_sock is current_socket
+                    and epoch == self._linux_rdaccess_outbound_epoch):
+                self.queue.put(obj)
+    TCPTransport.send = _linux_rdaccess_outbound_send
+'''
+
+_TRANSPORT_SEND_SOURCE = '''
+def send(self, type, **kwargs):
+    obj = self.serializer.serialize(type=type, **kwargs)
+    if self.connected:
+        self.queue.put(obj)
+'''
+
+
+def _strip_transport_outbound(text: str) -> str:
+    if TRANSPORT_OUTBOUND_MARKER not in text:
+        return text
+    if (text.count(TRANSPORT_OUTBOUND_MARKER) != 1
+            or not text.endswith(_TRANSPORT_OUTBOUND_HOOK)):
+        raise ValueError("incomplete relay output lifetime patch")
+    return text[:-len(_TRANSPORT_OUTBOUND_HOOK)].rstrip("\n") + "\n"
+
+
+def _patch_transport_outbound(text: str) -> str:
+    if TRANSPORT_OUTBOUND_MARKER in text:
+        _strip_transport_outbound(text)
+        return text
+    tcp = _unique_class(ast.parse(text, feature_version=(3, 10)), "TCPTransport")
+    send = _unique_method(tcp, "send") if tcp is not None else None
+    if send is not None and not _ast_equal(send, ast.parse(_TRANSPORT_SEND_SOURCE).body[0]):
+        raise ValueError("unsupported legacy transport send layout")
+    return text.rstrip("\n") + "\n\n" + _TRANSPORT_OUTBOUND_HOOK
+
+
 def _transport_pending_connect_run(source: str, *, reverse: bool = False) -> str:
     """Add/remove only the recognized run() connection-publication guards."""
     match = re.search(r"(?m)^([ \t]*)current_socket = None$", source)
@@ -1230,6 +1291,7 @@ def _transport_pending_connect_run(source: str, *, reverse: bool = False) -> str
 
 
 def _strip_transport_pending_connect(text: str) -> str:
+    text = _strip_transport_outbound(text)
     if TRANSPORT_PENDING_CONNECT_MARKER not in text:
         return text
     if (text.count(TRANSPORT_PENDING_CONNECT_MARKER) != 1
@@ -1323,7 +1385,8 @@ def _legacy_transport_cleanup_v7_current(text: str) -> bool:
 
 def legacy_transport_cleanup_patch_current(text: str) -> bool:
     try:
-        return (TRANSPORT_PENDING_CONNECT_MARKER in text
+        return (TRANSPORT_OUTBOUND_MARKER in text
+                and TRANSPORT_PENDING_CONNECT_MARKER in text
                 and _legacy_transport_cleanup_v7_current(_strip_transport_pending_connect(text)))
     except (SyntaxError, ValueError):
         return False
@@ -1334,7 +1397,7 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
     text = _strip_transport_pending_connect(text)
     if TRANSPORT_CLEANUP_MARKER in text:
         if _legacy_transport_cleanup_v7_current(text):
-            return _patch_transport_pending_connect(text)
+            return _patch_transport_outbound(_patch_transport_pending_connect(text))
         raise ValueError("current transport cleanup marker has an incomplete patch")
 
     upgrading_v1 = TRANSPORT_CLEANUP_MARKER_V1 in text
@@ -1689,7 +1752,7 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
     # finish the marker upgrade directly.
     if upgrading_v6:
         text = text.rstrip("\n") + "\n\n" + TRANSPORT_CLEANUP_MARKER + "\n"
-        text = _patch_transport_pending_connect(text)
+        text = _patch_transport_outbound(_patch_transport_pending_connect(text))
         if not legacy_transport_cleanup_patch_current(text):
             raise ValueError("transport cleanup patch validation failed")
         return text
@@ -1786,7 +1849,7 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
     text = text.replace(run_source, updated_run, 1)
 
     text = text.rstrip("\n") + "\n\n" + TRANSPORT_CLEANUP_MARKER + "\n"
-    text = _patch_transport_pending_connect(text)
+    text = _patch_transport_outbound(_patch_transport_pending_connect(text))
     if not legacy_transport_cleanup_patch_current(text):
         raise ValueError("transport cleanup patch validation failed")
     return text
