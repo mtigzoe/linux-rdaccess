@@ -433,7 +433,8 @@ class OrcaRuntimeAdapter:
 
     @staticmethod
     def set_semantic_caret(object_id: str, offset: int, *,
-                           expected_context: object | None = None) -> bool:
+                           expected_context: object | None = None,
+                           before_route: Callable[[], Any] | None = None) -> bool:
         """Route NVDA's semantic text position back to the current AT-SPI object."""
         if not isinstance(object_id, str) or not object_id or len(object_id) > 256:
             return False
@@ -444,6 +445,8 @@ class OrcaRuntimeAdapter:
             return False
         try:
             set_caret_offset = _a11y_model().set_caret_offset
+            if before_route is not None:
+                return bool(set_caret_offset(obj, offset, before_action=before_route))
             return bool(set_caret_offset(obj, offset))
         except Exception:
             return False

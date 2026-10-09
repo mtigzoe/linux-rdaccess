@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 A11Y_FOCUS_EVENTS = frozenset({
     "object:state-changed:focused",
@@ -292,7 +292,7 @@ def _text_iface(obj):
     return _invoke(obj, ("get_text_iface", "queryText"))
 
 
-def set_caret_offset(obj, offset: int) -> bool:
+def set_caret_offset(obj, offset: int, *, before_action: Callable[[], Any] | None = None) -> bool:
     """Move one current semantic text object's caret to a bounded character offset."""
     if type(offset) is not int or offset < 0 or offset > MAX_FOCUS_TEXT_CHARS:
         return False
@@ -313,6 +313,8 @@ def set_caret_offset(obj, offset: int) -> bool:
         if not callable(method):
             continue
         try:
+            if before_action is not None:
+                before_action()
             return method(offset) is not False
         except Exception:
             # A provider failure is an unsuccessful operation, not evidence
@@ -322,6 +324,8 @@ def set_caret_offset(obj, offset: int) -> bool:
     if not isinstance(descriptor, property) or descriptor.fset is None:
         return False
     try:
+        if before_action is not None:
+            before_action()
         iface.caretOffset = offset
     except Exception:
         return False
