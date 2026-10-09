@@ -408,6 +408,26 @@ class NvdaRemoteLoopbackTests(Harness, unittest.TestCase):
         text.setSelection.assert_not_called()
         self.assertFalse(script._inSayAll)
 
+    def test_master_departure_during_elements_lookup_discards_the_key_fallback(self):
+        self.braille_runtime(queued=True)
+        self.connect()
+        keys = []
+        self.controller.local_machine.send_key = lambda **payload: keys.append(payload)
+
+        def unsupported(*args, **kwargs):
+            self.session.send(type="client_left", client={
+                "id": 7, "connection_type": "master",
+            })
+            self.session.barrier()
+            return None
+
+        with mock.patch.object(orca_adapter.OrcaRuntimeAdapter, "show_structural_list",
+                               side_effect=unsupported):
+            self.controller._linux_rdaccess_open_structural_list("m", None)
+        self.assertEqual(self.controller.connected_clients, {})
+        self.assertEqual(keys, [])
+        self.assertFalse(getattr(self.controller, "_lrd_forwarded", {}))
+
     def test_raw_braille_native_focus_actions_and_fallback_cross_real_wire(self):
         braille, state, button, action, _ = self.braille_runtime()
         self.connect()

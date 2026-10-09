@@ -1,6 +1,7 @@
 """Elements List keyboard fallback must preserve remotely held Linux keys."""
 
 import sys
+import threading
 import types
 import unittest
 from unittest import mock
@@ -124,6 +125,129 @@ class StructuralListOwnershipTests(Harness, unittest.TestCase):
                 self._key(controller, alt, False)
                 self._key(controller, shift, False)
                 self.assertFalse(controller._lrd_forwarded)
+
+    def test_session_changes_during_native_lookup_discard_the_key_fallback(self):
+        for change in ("handoff", "last_master", "disconnect", "role"):
+            with self.subTest(change=change):
+                c, _, _ = self._patched_controller()
+                c.connected_clients = {7: {"connection_type": "master"}}
+                adapter = types.ModuleType("linux_rdaccess_orca_adapter")
+
+                def unsupported(*args, **kwargs):
+                    if change == "handoff":
+                        c.toggle_control()
+                    elif change == "last_master":
+                        c._on_client_left(client={"id": 7, "connection_type": "master"})
+                    elif change == "disconnect":
+                        c.transport.connected = False
+                    else:
+                        c.transport.connection_type = "master"
+                    return None
+
+                adapter.OrcaRuntimeAdapter = types.SimpleNamespace(show_structural_list=unsupported)
+                with mock.patch.dict(sys.modules, {"linux_rdaccess_orca_adapter": adapter}):
+                    c._linux_rdaccess_open_structural_list("m", None)
+                self.assertEqual(self.keys(c), [])
+                self.assertFalse(getattr(c, "_lrd_forwarded", {}))
+
+    def test_handoff_while_fallback_waits_for_input_lock_discards_it(self):
+        c, _, _ = self._patched_controller()
+        c._linux_rdaccess_sync_state()
+        original = c._LRD_INPUT_LOCK
+        waiting = threading.Event()
+        main_thread = threading.current_thread()
+        failures = []
+
+        class ObservedLock:
+            def __enter__(self):
+                if threading.current_thread() is not main_thread:
+                    waiting.set()
+                return original.__enter__()
+
+            def __exit__(self, *args):
+                return original.__exit__(*args)
+
+        c._LRD_INPUT_LOCK = ObservedLock()
+
+        def open_list():
+            try:
+                self.fallback(c)
+            except BaseException as error:
+                failures.append(error)
+
+        worker = threading.Thread(target=open_list)
+        try:
+            with original:
+                worker.start()
+                self.assertTrue(waiting.wait(1), "fallback did not reach the input lock")
+                c.toggle_control()
+        finally:
+            # Leave the lock before joining the main-loop worker.
+            worker.join(2)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(failures, [])
+        self.assertEqual(self.keys(c), [])
+        self.assertFalse(getattr(c, "_lrd_forwarded", {}))
+
+    def test_native_lookup_allows_handoff_without_holding_the_input_lock(self):
+        c, _, _ = self._patched_controller()
+        started, resume, finished = (threading.Event() for _ in range(3))
+        adapter = types.ModuleType("linux_rdaccess_orca_adapter")
+        failures = []
+
+        def unsupported(*args, **kwargs):
+            started.set()
+            if not resume.wait(2):
+                raise RuntimeError("test lookup was not resumed")
+            return None
+
+        def open_list():
+            try:
+                c._linux_rdaccess_open_structural_list("m", None)
+            except BaseException as error:
+                failures.append(error)
+
+        def handoff():
+            c.toggle_control()
+            finished.set()
+
+        adapter.OrcaRuntimeAdapter = types.SimpleNamespace(show_structural_list=unsupported)
+        worker = threading.Thread(target=open_list)
+        reset = threading.Thread(target=handoff)
+        with mock.patch.dict(sys.modules, {"linux_rdaccess_orca_adapter": adapter}):
+            worker.start()
+            try:
+                self.assertTrue(started.wait(1))
+                reset.start()
+                self.assertTrue(finished.wait(1), "native lookup blocked control handoff")
+            finally:
+                resume.set()
+                worker.join(2)
+                if reset.ident is not None:
+                    reset.join(2)
+        self.assertFalse(worker.is_alive())
+        self.assertFalse(reset.is_alive())
+        self.assertEqual(failures, [])
+        self.assertEqual(self.keys(c), [])
+
+    def test_current_session_fallback_survives_unrelated_remote_input(self):
+        c, _, _ = self._patched_controller()
+        adapter = types.ModuleType("linux_rdaccess_orca_adapter")
+
+        def unsupported(*args, **kwargs):
+            self._key(c, 0x41, True)
+            self._key(c, 0x41, False)
+            c.local_machine.events.clear()
+            return None
+
+        adapter.OrcaRuntimeAdapter = types.SimpleNamespace(show_structural_list=unsupported)
+        with mock.patch.dict(sys.modules, {"linux_rdaccess_orca_adapter": adapter}):
+            c._linux_rdaccess_open_structural_list("m", None)
+        self.assertEqual(self.keys(c), [
+            ("key", 0xA0, True), ("key", 0xA4, True), ("key", 0x4D, True),
+            ("key", 0x4D, False), ("key", 0xA4, False), ("key", 0xA0, False),
+        ])
+        self.assertFalse(c._lrd_forwarded)
 
 
 if __name__ == "__main__":
