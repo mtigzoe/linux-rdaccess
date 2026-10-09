@@ -211,6 +211,7 @@ class OrcaRuntimeAdapter:
         names: str | Iterable[str],
         *args: Any,
         default_event: bool = False,
+        before_action: Callable[[], Any] | None = None,
     ) -> bool | None:
         """Invoke one supported handler, or return None when none is available.
 
@@ -227,6 +228,8 @@ class OrcaRuntimeAdapter:
             handler = getattr(script, name, None)
             if not callable(handler):
                 continue
+            if before_action is not None:
+                before_action()
             if default_event and not args:
                 result = handler(None)
             else:
@@ -514,7 +517,10 @@ class OrcaRuntimeAdapter:
         return cells
 
     @classmethod
-    def route_braille(cls, index: int) -> bool | None:
+    def route_braille(
+        cls, index: int, *, before_route: Callable[[], Any] | None = None,
+    ) -> bool | None:
+        """Run before_route only after bounds and routing-handler checks pass."""
         if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < 1024:
             return False
         try:
@@ -534,6 +540,7 @@ class OrcaRuntimeAdapter:
         return cls.call_script(
             ("processRoutingKey", "process_routing_key"),
             event,
+            before_action=before_route,
         )
 
     @classmethod

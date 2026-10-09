@@ -380,7 +380,7 @@ _CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK_V3 = _CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK
     '        interrupted = getattr(native_context, "INTERRUPTED", object())',
 )
 
-_CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK = _CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK_V3.replace(
+_CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK_V4 = _CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK_V3.replace(
     '        script = getattr(callback, "__self__", None)\n',
     '        native_state = getattr(original, "__globals__", {}).get("orca_state")\n'
     '\n'
@@ -407,6 +407,13 @@ _CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK = _CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK_V3
     '                    and getattr(server, "_linux_rdaccess_say_all_run", None) is run\n',
 )
 
+_CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK = _CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK_V4.replace(
+    '            getattr(owner, "_lrd_generation", 0))',
+    '            getattr(owner, "_lrd_generation", 0),\n'
+    '            # Routing chooses a new caret; even late CANCEL must expire.\n'
+    '            getattr(owner, "_lrd_braille_route_epoch", 0))',
+)
+
 CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V2 = "# linux-rdaccess native Say All callbacks v2"
 _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V2 = _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V1.replace(
     CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V1,
@@ -419,7 +426,13 @@ _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V3 = _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V
     CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V3,
 ) + _CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK_V3
 
-CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER = "# linux-rdaccess native Say All callbacks v4"
+CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V4 = "# linux-rdaccess native Say All callbacks v4"
+_CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V4 = _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V1.replace(
+    CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V1,
+    CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V4,
+) + _CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK_V4
+
+CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER = "# linux-rdaccess native Say All callbacks v5"
 _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK = _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V1.replace(
     CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V1,
     CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER,
@@ -521,7 +534,8 @@ def _patch_legacy_customization_say_all_callbacks(text: str) -> str:
     for marker, hook in (
             (CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V1, _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V1),
             (CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V2, _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V2),
-            (CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V3, _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V3)):
+            (CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V3, _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V3),
+            (CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V4, _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V4)):
         if marker in text:
             if text.count(marker) != 1 or hook not in text:
                 raise ValueError("incomplete native Say All callback patch")
@@ -2148,7 +2162,8 @@ LEGACY_COMPAT_MARKER_V103 = "# linux-rdaccess NVDA/Orca input compatibility v103
 LEGACY_COMPAT_MARKER_V104 = "# linux-rdaccess NVDA/Orca input compatibility v104"
 LEGACY_COMPAT_MARKER_V105 = "# linux-rdaccess NVDA/Orca input compatibility v105"
 LEGACY_COMPAT_MARKER_V106 = "# linux-rdaccess NVDA/Orca input compatibility v106"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v107"
+LEGACY_COMPAT_MARKER_V107 = "# linux-rdaccess NVDA/Orca input compatibility v107"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v108"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -4154,7 +4169,20 @@ _LEGACY_HELPERS = '''\
             import types as _types
             event = _types.SimpleNamespace(event={"argument": index})
             self._linux_rdaccess_run_braille(
-                lambda: self._linux_rdaccess_script_call("processRoutingKey", event))
+                lambda: self._linux_rdaccess_script_call(
+                    "processRoutingKey", event,
+                    before_route=self._linux_rdaccess_stop_braille_routing_speech))
+
+    def _linux_rdaccess_stop_braille_routing_speech(self):
+        """Interrupt a validated route on Orca's main loop before moving its caret."""
+        # The native progress callback restores its old caret on CANCEL.
+        # Invalidate that run before stopping, so it cannot undo the route.
+        self._lrd_braille_route_epoch = getattr(self, "_lrd_braille_route_epoch", 0) + 1
+        try:
+            self.local_machine.cancel_speech()
+        except Exception:
+            log.error("linux-rdaccess: failed to cancel speech for braille routing")
+        self._linux_rdaccess_stop_nvda_speech()
 
     def _linux_rdaccess_send_structural_list(self, key, modifiers):
         """Ask Orca to show one of its native structural-navigation lists.
@@ -4397,7 +4425,7 @@ _LEGACY_HELPERS = '''\
         open_list("h")
 
     @staticmethod
-    def _linux_rdaccess_script_call(method, *args):
+    def _linux_rdaccess_script_call(method, *args, before_route=None):
         """Run an Orca operation through the linux-rdaccess Orca API adapter.
 
         The adapter keeps Orca-version compatibility in one place and delegates
@@ -4453,7 +4481,10 @@ _LEGACY_HELPERS = '''\
                 adapter_args = (args[0].event["argument"],)
             if adapter_method:
                 handler = getattr(_adapter, adapter_method, None)
-                result = handler(*adapter_args) if callable(handler) else None
+                if callable(handler) and method == "processRoutingKey" and before_route is not None:
+                    result = handler(*adapter_args, before_route=before_route)
+                else:
+                    result = handler(*adapter_args) if callable(handler) else None
             elif _adapter is not None:
                 result = _adapter.call_script(method, *args, default_event=not args)
             else:
@@ -4598,8 +4629,10 @@ _LEGACY_HELPERS = '''\
                         for name, value in saved_flags.items():
                             setattr(script, name, value)
             handler = getattr(script, method, None)
-            if handler is None:
+            if not callable(handler):
                 return unavailable()
+            if method == "processRoutingKey" and before_route is not None:
+                before_route()
             if not args:
                 if method == "togglePresentationMode":
                     focus = getattr(_state, "locusOfFocus", None)
@@ -6364,6 +6397,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V107,
                 LEGACY_COMPAT_MARKER_V106,
                 LEGACY_COMPAT_MARKER_V105,
                 LEGACY_COMPAT_MARKER_V104,
