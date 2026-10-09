@@ -12,6 +12,243 @@ from tests.test_compat_lifecycle import Harness
 from tests import test_remote_access as fixtures
 
 
+class DirectCommandInputHelpTests(Harness, unittest.TestCase):
+    """Receive-side commands preserve native help without invoking actions."""
+
+    # layout, vk, extended, scan code, extra modifiers, script method, handler
+    COMMANDS = (
+        ('desktop', 0x28, True, 0, (), 'sayAll', 'sayAllHandler'),
+        ('laptop', 0x41, False, 0, (), 'sayAll', 'sayAllHandler'),
+        ('desktop', 0x54, False, 0, (), 'presentTitle', 'getTitleHandler'),
+        ('desktop', 0x23, True, 0, (), 'presentStatusBar', 'getStatusBarHandler'),
+        ('laptop', 0x23, True, 0, (0xA0,), 'presentStatusBar', 'getStatusBarHandler'),
+        ('desktop', 0x09, False, 0, (), 'whereAmI', 'whereAmIBasicHandler'),
+        ('desktop', 0x26, True, 0, (0xA0,), 'whereAmISelection', 'whereAmISelectionHandler'),
+        ('laptop', 0x53, False, 0, (0xA0,), 'whereAmISelection', 'whereAmISelectionHandler'),
+        ('desktop', 0x50, False, 0, (), 'cycleSpeakingPunctuationLevel', 'cycleSpeakingPunctuationLevelHandler'),
+        ('desktop', 0x4D, False, 0, (), 'toggleMouseReview', 'toggleMouseReviewHandler'),
+        ('desktop', 0x20, False, 0, (), 'togglePresentationMode', 'togglePresentationModeHandler'),
+        ('desktop', 0x20, False, 0, (0xA0,), 'toggleStructuralNavigation', 'toggleStructuralNavigationHandler'),
+        ('desktop', 0x7B, False, 0, (), 'presentTime', 'presentTimeHandler'),
+        ('desktop', 0x26, True, 0, (), 'presentCurrentLine', None),
+        ('laptop', 0x4C, False, 0, (), 'presentCurrentLine', None),
+        ('desktop', 0x55, False, 0, (), 'cycleProgressBarOutput', None),
+        ('desktop', 0x76, False, 0, (), 'elementsList', None),
+        ('laptop', 0xBE, False, 0, (0xA2,), 'presentFocusAccelerator', None),
+        ('desktop', 0x71, False, 0, (), 'bypassNextCommand', 'bypassNextCommandHandler'),
+    )
+
+    def environment(self, *, learn=True, queued=False, snake=False):
+        controller, _, _ = self._patched_controller(inline=not queued)
+        script = types.SimpleNamespace(presentMessage=mock.Mock(), inputEventHandlers={})
+        state = types.SimpleNamespace(activeScript=script, learnModeEnabled=learn,
+                                      capturingKeys=False, bypassNextCommand=False)
+        for *_, name in self.COMMANDS:
+            if name:
+                script.inputEventHandlers[name] = types.SimpleNamespace(
+                    description='Localized ' + name, learnModeEnabled=True)
+        script.inputEventHandlers['presentDateHandler'] = types.SimpleNamespace(
+            description='Localized presentDateHandler', learnModeEnabled=True)
+        # Current-line and Elements List must not describe flat review or a
+        # single category's unrelated native command.
+        script.inputEventHandlers['reviewCurrentLineHandler'] = types.SimpleNamespace(
+            description='Unrelated flat review', learnModeEnabled=True)
+        script.structuralNavigation = types.SimpleNamespace(inputEventHandlers={
+            'toggleStructuralNavigationHandler': script.inputEventHandlers.pop(
+                'toggleStructuralNavigationHandler')})
+        if snake:
+            script.present_message = script.presentMessage
+            script.input_event_handlers = script.inputEventHandlers
+            script.structural_navigation = script.structuralNavigation
+            del script.presentMessage, script.inputEventHandlers, script.structuralNavigation
+            state.active_script, state.learn_mode_enabled = state.activeScript, state.learnModeEnabled
+            del state.activeScript, state.learnModeEnabled
+        module = types.ModuleType('orca')
+        module.orca_state = state
+        patch = mock.patch.dict(sys.modules, {'orca': module})
+        patch.start()
+        self.addCleanup(patch.stop)
+        controller._linux_rdaccess_script_call = mock.Mock(return_value=True)
+        controller._linux_rdaccess_show_elements_list = mock.Mock()
+        controller._linux_rdaccess_stop_local_speech = mock.Mock()
+        controller._linux_rdaccess_stop_nvda_speech = mock.Mock()
+        queue = []
+        if queued:
+            glib = types.SimpleNamespace(idle_add=lambda fn: (queue.append(fn), len(queue))[1])
+            gi, repository = types.ModuleType('gi'), types.ModuleType('gi.repository')
+            gi.repository, repository.GLib = repository, glib
+            patch = mock.patch.dict(sys.modules, {'gi': gi, 'gi.repository': repository})
+            patch.start()
+            self.addCleanup(patch.stop)
+        return controller, script, state, queue
+
+    def gesture(self, controller, case, modifier=0x2D, *, repeat=False, release=True):
+        layout, vk, extended, scan, extras, _, _ = case
+        with mock.patch.dict('os.environ', LINUX_RDACCESS_NVDA_LAYOUT=layout):
+            self._key(controller, modifier, True, extended=modifier == 0x2D)
+            for extra in extras:
+                self._key(controller, extra, True)
+            self._key(controller, vk, True, extended=extended, scan_code=scan)
+            if repeat:
+                self._key(controller, vk, True, extended=extended, scan_code=scan)
+            if release:
+                self._key(controller, vk, False, extended=extended, scan_code=scan)
+                for extra in reversed(extras):
+                    self._key(controller, extra, False)
+                self._key(controller, modifier, False, extended=modifier == 0x2D)
+
+    @staticmethod
+    def drain(queue):
+        while queue:
+            queue.pop(0)()
+
+    def assert_no_action(self, controller, state):
+        controller._linux_rdaccess_script_call.assert_not_called()
+        controller._linux_rdaccess_show_elements_list.assert_not_called()
+        self.assertFalse(state.bypassNextCommand)
+        self.assertFalse(controller._lrd_bypass_next)
+        self.assertIsNone(getattr(controller, '_lrd_bypass_request', None))
+
+    def test_direct_commands_describe_native_help_without_executing(self):
+        for case in self.COMMANDS:
+            for modifier in (0x2D, 0x14):
+                with self.subTest(command=case[-2], layout=case[0], modifier=modifier):
+                    c, script, state, _ = self.environment()
+                    self.gesture(c, case, modifier)
+                    self.assert_no_action(c, state)
+                    expected = [mock.call('Localized ' + case[-1])] if case[-1] else []
+                    self.assertEqual(script.presentMessage.call_args_list, expected)
+
+    def test_help_commands_never_execute_after_help_ends_before_callback(self):
+        for case in self.COMMANDS:
+            with self.subTest(command=case[-2], layout=case[0]):
+                c, script, state, queue = self.environment(queued=True)
+                self.gesture(c, case)
+                state.learnModeEnabled = False
+                self.drain(queue)
+                self.assert_no_action(c, state)
+                script.presentMessage.assert_not_called()
+
+    def test_commands_use_help_if_it_starts_before_the_callback(self):
+        for case in self.COMMANDS:
+            if case[-2] == 'bypassNextCommand':
+                continue  # Pass-next owns input on receipt; it has a separate contract.
+            with self.subTest(command=case[-2], layout=case[0]):
+                c, script, state, queue = self.environment(learn=False, queued=True)
+                self.gesture(c, case)
+                state.learnModeEnabled = True
+                self.drain(queue)
+                self.assert_no_action(c, state)
+                expected = [mock.call('Localized ' + case[-1])] if case[-1] else []
+                self.assertEqual(script.presentMessage.call_args_list, expected)
+
+    def test_queued_help_expires_at_handoff_disconnect_script_change_and_capture(self):
+        for change in ('handoff', 'disconnect', 'script', 'capture'):
+            with self.subTest(change=change):
+                c, script, state, queue = self.environment(queued=True)
+                self.gesture(c, self.COMMANDS[0])
+                if change == 'handoff':
+                    c.toggle_control()
+                elif change == 'disconnect':
+                    c.transport.connected = False
+                elif change == 'script':
+                    state.activeScript = types.SimpleNamespace(presentMessage=mock.Mock())
+                else:
+                    state.capturingKeys = True
+                self.drain(queue)
+                self.assert_no_action(c, state)
+                script.presentMessage.assert_not_called()
+
+    def test_help_preserves_native_description_preferences_and_snake_case_api(self):
+        for snake, enabled, description in ((False, False, 'Hidden'), (False, True, ''),
+                                            (True, True, 'Localized snake case')):
+            with self.subTest(snake=snake, enabled=enabled, description=description):
+                c, script, state, _ = self.environment(snake=snake)
+                handlers = getattr(script, 'inputEventHandlers', None) or script.input_event_handlers
+                handler = handlers['sayAllHandler']
+                handler.learnModeEnabled, handler.description = enabled, description
+                self.gesture(c, self.COMMANDS[0])
+                self.assert_no_action(c, state)
+                present = getattr(script, 'presentMessage', None) or script.present_message
+                expected = [mock.call(description)] if enabled and description else []
+                self.assertEqual(present.call_args_list, expected)
+
+    def test_repeats_and_releases_do_not_execute_or_repeat_help(self):
+        for case in self.COMMANDS:
+            with self.subTest(command=case[-2], layout=case[0]):
+                c, script, state, _ = self.environment()
+                self.gesture(c, case, modifier=0x14, repeat=True, release=False)
+                state.learnModeEnabled = False
+                self.gesture(c, case, modifier=0x14, release=True)
+                self.assert_no_action(c, state)
+                expected = [mock.call('Localized ' + case[-1])] if case[-1] else []
+                self.assertEqual(script.presentMessage.call_args_list, expected)
+                self.assertFalse(c._lrd_swapped)
+                self.assertFalse(any(event[0] == 'key' and event[1] in (0x14, case[1])
+                                     for event in c.local_machine.events))
+
+    def test_input_help_toggle_still_exits_and_fresh_commands_execute(self):
+        c, script, state, _ = self.environment()
+        calls = []
+        def action(method, *args):
+            calls.append(method)
+            if method == 'toggleInputHelp':
+                state.learnModeEnabled = not state.learnModeEnabled
+            return True
+        c._linux_rdaccess_script_call = action
+        self.gesture(c, self.COMMANDS[0])
+        self.assertEqual(calls, [])
+        self.gesture(c, ('desktop', 0x31, False, 0, (), 'toggleInputHelp', None))
+        self.assertFalse(state.learnModeEnabled)
+        self.gesture(c, self.COMMANDS[0])
+        self.assertEqual(calls, ['toggleInputHelp', 'sayAll'])
+
+    def test_braille_commands_keep_native_actions_during_keyboard_help(self):
+        c, _, _, _ = self.environment()
+        c._linux_rdaccess_run_braille = lambda operation: operation()
+        c._linux_rdaccess_handle_braille_input({
+            'scriptPath': ['globalCommands', 'GlobalCommands', 'braille_scrollForward']})
+        c._linux_rdaccess_script_call.assert_called_once_with('panBrailleRight')
+
+    def test_help_pass_next_does_not_bypass_the_following_remote_command(self):
+        c, script, state, queue = self.environment(queued=True)
+        self.gesture(c, self.COMMANDS[-1])
+        self.gesture(c, self.COMMANDS[2])
+        self.drain(queue)
+        self.assert_no_action(c, state)
+        self.assertEqual(script.presentMessage.call_args_list, [
+            mock.call('Localized bypassNextCommandHandler'), mock.call('Localized getTitleHandler')])
+        self.assertFalse(c._lrd_bypass_keys)
+
+    def test_clock_help_taps_do_not_change_the_first_normal_clock_command(self):
+        c, script, state, _ = self.environment()
+        case = self.COMMANDS[12]
+        for moment in (100.0, 100.1):
+            with mock.patch('time.monotonic', return_value=moment):
+                self.gesture(c, case)
+        self.assert_no_action(c, state)
+        self.assertEqual(script.presentMessage.call_args_list, [
+            mock.call('Localized presentTimeHandler'), mock.call('Localized presentDateHandler')])
+        state.learnModeEnabled = False  # Native Escape can end help locally.
+        with mock.patch('time.monotonic', return_value=100.2):
+            self.gesture(c, case)
+        c._linux_rdaccess_script_call.assert_called_once_with('presentTime')
+
+    def test_native_help_unavailable_or_failing_never_retries_as_an_action(self):
+        for failure in ('missing', 'exception'):
+            with self.subTest(failure=failure):
+                c, script, state, queue = self.environment(queued=True)
+                if failure == 'missing':
+                    del script.inputEventHandlers['sayAllHandler']
+                else:
+                    script.presentMessage.side_effect = RuntimeError('private application text')
+                with mock.patch.object(c._module.log, 'error') as error:
+                    self.gesture(c, self.COMMANDS[0])
+                    self.drain(queue)
+                self.assert_no_action(c, state)
+                self.assertNotIn('private application text', str(error.call_args_list))
+
+
 class BrowserCommandContextTests(Harness, unittest.TestCase):
     SHIFT, CTRL, ALT, ORCA = fixtures.LegacyConfigTests.SHIFT, fixtures.LegacyConfigTests.CTRL, \
         fixtures.LegacyConfigTests.ALT, fixtures.LegacyConfigTests.ORCA

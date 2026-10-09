@@ -2167,7 +2167,8 @@ LEGACY_COMPAT_MARKER_V108 = "# linux-rdaccess NVDA/Orca input compatibility v108
 LEGACY_COMPAT_MARKER_V109 = "# linux-rdaccess NVDA/Orca input compatibility v109"
 LEGACY_COMPAT_MARKER_V110 = "# linux-rdaccess NVDA/Orca input compatibility v110"
 LEGACY_COMPAT_MARKER_V111 = "# linux-rdaccess NVDA/Orca input compatibility v111"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v112"
+LEGACY_COMPAT_MARKER_V112 = "# linux-rdaccess NVDA/Orca input compatibility v112"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v113"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -2564,10 +2565,12 @@ _LEGACY_HELPERS = '''\
         """Select time/date for consecutive complete NVDA+F12 gestures."""
         now = __import__("time").monotonic()
         generation = getattr(self, "_lrd_generation", 0)
+        help_mode = _lrd_learn_mode_enabled()
         previous = getattr(self, "_lrd_last_clock_press", None)
         repeated = (previous is not None and previous[0] == generation
+                    and previous[2] == help_mode
                     and 0 <= now - previous[1] <= 0.5)
-        self._lrd_last_clock_press = (generation, now)
+        self._lrd_last_clock_press = (generation, now, help_mode)
         return "presentDate" if repeated else "presentTime"
 
     def _linux_rdaccess_stop_local_speech(self):
@@ -3214,8 +3217,7 @@ _LEGACY_HELPERS = '''\
                 self._lrd_trace_why = "translate:focus_accelerator"
                 self._lrd_swapped.add(held)
                 self._linux_rdaccess_mark_nvda_modifier_used()
-                self._linux_rdaccess_run_main(
-                    lambda: self._linux_rdaccess_script_call("presentFocusAccelerator"))
+                self._linux_rdaccess_run_keyboard_command("presentFocusAccelerator")
                 return True
 
         # NVDA's plain keypad mouse buttons click the current pointer. Orca's
@@ -3311,8 +3313,7 @@ _LEGACY_HELPERS = '''\
                 self._lrd_trace_why = "translate:current_selection"
                 self._lrd_swapped.add(held)
                 self._linux_rdaccess_mark_nvda_modifier_used()
-                self._linux_rdaccess_run_main(
-                    lambda: self._linux_rdaccess_script_call("whereAmISelection"))
+                self._linux_rdaccess_run_keyboard_command("whereAmISelection")
                 return True
 
         if (
@@ -3482,8 +3483,7 @@ _LEGACY_HELPERS = '''\
                 self._lrd_swapped.add(held)
                 self._linux_rdaccess_mark_nvda_modifier_used()
                 if action != "unsupported_review":
-                    self._linux_rdaccess_run_main(
-                        lambda action=action: self._linux_rdaccess_script_call(action))
+                    self._linux_rdaccess_run_keyboard_command(action)
                 return True
 
         # Desktop NVDA+Down has an exact Orca Say All method. Only the extended
@@ -3502,8 +3502,7 @@ _LEGACY_HELPERS = '''\
             self._lrd_trace_why = "translate:sayAll"
             self._lrd_swapped.add(held)
             self._linux_rdaccess_mark_nvda_modifier_used()
-            self._linux_rdaccess_run_main(
-                lambda: self._linux_rdaccess_script_call("sayAll"))
+            self._linux_rdaccess_run_keyboard_command("sayAll")
             return True
 
         # NVDA+Ctrl+Space moves out of an embedded document in NVDA.
@@ -3542,13 +3541,9 @@ _LEGACY_HELPERS = '''\
                 self._lrd_swapped.add(held)
                 self._linux_rdaccess_mark_nvda_modifier_used()
                 if shifts:
-                    self._linux_rdaccess_run_main(
-                        lambda: self._linux_rdaccess_script_call(
-                            "toggleStructuralNavigation"))
+                    self._linux_rdaccess_run_keyboard_command("toggleStructuralNavigation")
                 else:
-                    self._linux_rdaccess_run_main(
-                        lambda: self._linux_rdaccess_script_call(
-                            "togglePresentationMode"))
+                    self._linux_rdaccess_run_keyboard_command("togglePresentationMode")
                 return True
 
         # NVDA-only actions that do not map cleanly to one Orca key.
@@ -3568,40 +3563,29 @@ _LEGACY_HELPERS = '''\
                     self._linux_rdaccess_run_main(
                         lambda: self._linux_rdaccess_script_call("toggleInputHelp"))
                 elif action == "punctuation":
-                    self._linux_rdaccess_run_main(
-                        lambda: self._linux_rdaccess_script_call(
-                            "cycleSpeakingPunctuationLevel"))
+                    self._linux_rdaccess_run_keyboard_command("cycleSpeakingPunctuationLevel")
                 elif action == "mouse_review":
-                    self._linux_rdaccess_run_main(
-                        lambda: self._linux_rdaccess_script_call(
-                            "toggleMouseReview"))
+                    self._linux_rdaccess_run_keyboard_command("toggleMouseReview")
                 elif action == "progress_output":
-                    self._linux_rdaccess_run_main(
-                        lambda: self._linux_rdaccess_script_call(
-                            "cycleProgressBarOutput"))
+                    self._linux_rdaccess_run_keyboard_command("cycleProgressBarOutput")
                 elif action == "elements_list":
-                    self._linux_rdaccess_run_main(
+                    self._linux_rdaccess_run_keyboard_command("elementsList",
                         lambda: self._linux_rdaccess_show_elements_list(modifiers))
                 elif action == "pass_next":
                     self._linux_rdaccess_arm_bypass()
                 elif action == "where_am_i":
-                    self._linux_rdaccess_run_main(
-                        lambda: self._linux_rdaccess_script_call("whereAmI"))
+                    self._linux_rdaccess_run_keyboard_command("whereAmI")
                 elif action == "title":
-                    self._linux_rdaccess_run_main(
-                        lambda: self._linux_rdaccess_script_call("presentTitle"))
+                    self._linux_rdaccess_run_keyboard_command("presentTitle")
                 elif action == "status_bar":
-                    self._linux_rdaccess_run_main(
-                        lambda: self._linux_rdaccess_script_call("presentStatusBar"))
+                    self._linux_rdaccess_run_keyboard_command("presentStatusBar")
                 elif action == "current_line":
-                    self._linux_rdaccess_run_main(
-                        lambda: self._linux_rdaccess_script_call("presentCurrentLine"))
+                    self._linux_rdaccess_run_keyboard_command("presentCurrentLine")
                 elif action == "date_time":
                     # Resolve the tap count on receipt; queued callbacks must
                     # retain each gesture's time/date choice independently.
                     method = self._linux_rdaccess_clock_command()
-                    self._linux_rdaccess_run_main(
-                        lambda method=method: self._linux_rdaccess_script_call(method))
+                    self._linux_rdaccess_run_keyboard_command(method)
                 return True
 
         # NVDA chords -> Orca commands (see _LRD_CHORDS). Only the first press
@@ -3669,7 +3653,64 @@ _LEGACY_HELPERS = '''\
             return True
         return False
 
+    def _linux_rdaccess_run_keyboard_command(self, method, action=None):
+        """Present direct keyboard commands in help without executing them."""
+        def active_script():
+            try:
+                from orca import orca_state
+            except ImportError:
+                return None
+            return getattr(orca_state, "activeScript", getattr(orca_state, "active_script", None))
+
+        received_help = _lrd_learn_mode_enabled()
+        origin = active_script()
+
+        def invoke():
+            if _lrd_capturing_keys():
+                return False
+            help_now = _lrd_learn_mode_enabled()
+            if received_help or help_now:
+                script = active_script()
+                # A gesture received in help can never become a real action
+                # after Escape or NVDA+1, nor describe a different script.
+                if not help_now or script is None or script is not origin:
+                    return False
+                name = {
+                    "sayAll": "sayAllHandler",
+                    "presentTitle": "getTitleHandler",
+                    "presentStatusBar": "getStatusBarHandler",
+                    "whereAmI": "whereAmIBasicHandler",
+                    "whereAmISelection": "whereAmISelectionHandler",
+                    "cycleSpeakingPunctuationLevel": "cycleSpeakingPunctuationLevelHandler",
+                    "toggleMouseReview": "toggleMouseReviewHandler",
+                    "togglePresentationMode": "togglePresentationModeHandler",
+                    "toggleStructuralNavigation": "toggleStructuralNavigationHandler",
+                    "presentTime": "presentTimeHandler",
+                    "presentDate": "presentDateHandler",
+                    "bypassNextCommand": "bypassNextCommandHandler",
+                }.get(method)
+                handler = _lrd_browse_help_handler(script, name)
+                if handler is None and method == "toggleStructuralNavigation":
+                    nav = getattr(script, "structuralNavigation", getattr(script, "structural_navigation", None))
+                    handler = _lrd_browse_help_handler(nav, name)
+                # Match KeyboardEvent._presentHandler. Several translated
+                # commands have no exact native handler: suppress the action
+                # without describing an unrelated physical Orca binding.
+                description = getattr(handler, "description", None)
+                present = getattr(script, "presentMessage", getattr(script, "present_message", None))
+                if getattr(handler, "learnModeEnabled", False) and description and callable(present):
+                    present(description)
+                return True
+            return action() if action is not None else self._linux_rdaccess_script_call(method)
+
+        return self._linux_rdaccess_run_main(invoke)
+
     def _linux_rdaccess_arm_bypass(self):
+        if _lrd_learn_mode_enabled():
+            # Arming on receipt would pass the following gesture through help
+            # before Orca processes its command-description callback.
+            self._linux_rdaccess_run_keyboard_command("bypassNextCommand")
+            return
         old = getattr(self, "_lrd_bypass_request", None)
         if old is not None:
             _lrd_schedule_bypass_cleanup(old)
@@ -6529,6 +6570,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V112,
                 LEGACY_COMPAT_MARKER_V111,
                 LEGACY_COMPAT_MARKER_V110,
                 LEGACY_COMPAT_MARKER_V109,
