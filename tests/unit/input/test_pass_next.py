@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import sys
 import ast
+import time
 from pathlib import Path
 import types
 import unittest
@@ -215,6 +216,49 @@ class PassNextTests(Harness, unittest.TestCase):
         self.assertFalse(c._module._LRD_D['swapped'])
         self._key(c, 0x44, False)
         self.assertPassed(KE('d', self.D_CODE, pressed=False))
+
+    def test_bypassed_repeat_release_survives_delayed_orca_processing(self):
+        cases = (
+            ('form', 0x46, 'f', 41, (), 0, False),
+            ('heading', 0x37, '7', 17, (), 0, False),
+            ('layout', 0x56, 'v', 55, (0x2D,), self.ORCA, False),
+            ('find_next', 0x72, 'F3', 69, (0x2D,), self.ORCA, False),
+            ('edge', 0x23, 'End', 115, (0xA2, 0xA4), self.CTRL | self.ALT, True),
+        )
+        for command, vk, name, code, mods, native_mods, extended in cases:
+            with self.subTest(command=command):
+                c, KE, script, _state, _calls, _queue = self.environment(queued=True)
+                if command == 'edge':
+                    script.utilities.getCaretContext = lambda: ('caret', 0)
+                    script.utilities.rowAndColumnCount = lambda table, prefer: (5, 6)
+                    # The production LocalMachine resolves this VK to End.
+                    c.local_machine._resolve_key = lambda name, vk, extended: (
+                        'End' if vk == 0x23 else name)
+                for mod in mods:
+                    self._key(c, mod, True, extended=mod == 0x2D)
+                self._key(c, vk, True, extended=extended)
+                first = KE(name, code, modifiers=native_mods)
+                self.assertTrue(first.consume)
+                self.assertIsNotNone(first._consumer)
+                for mod in reversed(mods):
+                    self._key(c, mod, False, extended=mod == 0x2D)
+                self.arm(c)
+                self._key(c, vk, True, extended=extended)
+                self.assertPassed(KE(name, code))
+                self._key(c, vk, False, extended=extended)
+                # Orca may process the release after its short-lived remote
+                # provenance token expires. The bypassed press must already
+                # have discarded the old command's release ownership.
+                script.keyBindings.table = {}
+                later = time.monotonic() + c._module._LRD_NAV_WINDOW + 1
+                with mock.patch('time.monotonic', return_value=later):
+                    self.assertPassed(KE(name, code, pressed=False))
+                # This local application gesture has no remote provenance.
+                # Neither half may inherit the command's old release claim.
+                script.state['browse'] = False
+                script.keyBindings.table = {}
+                self.assertPassed(KE(name, code))
+                self.assertPassed(KE(name, code, pressed=False))
 
     def test_normal_forward_rejection_removes_only_its_native_fifo_token(self):
         for failure in (False, RuntimeError('backend unavailable')):

@@ -2111,7 +2111,8 @@ LEGACY_COMPAT_MARKER_V100 = "# linux-rdaccess NVDA/Orca input compatibility v100
 LEGACY_COMPAT_MARKER_V101 = "# linux-rdaccess NVDA/Orca input compatibility v101"
 LEGACY_COMPAT_MARKER_V102 = "# linux-rdaccess NVDA/Orca input compatibility v102"
 LEGACY_COMPAT_MARKER_V103 = "# linux-rdaccess NVDA/Orca input compatibility v103"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v104"
+LEGACY_COMPAT_MARKER_V104 = "# linux-rdaccess NVDA/Orca input compatibility v104"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v105"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -5467,6 +5468,13 @@ def _lrd_install_orca_hook():
     original = cls.shouldConsume
 
     def shouldConsume(self):
+        if self.isPressedKey():
+            # A fresh press or repeat supersedes the previous release decision,
+            # including when pass-next returns before the navigation hooks run.
+            # A newly accepted command below acquires its own release again.
+            for marker in (_LRD_NVDA_BROWSE, _LRD_BROWSE_UNSUPPORTED,
+                           _LRD_TABLE_EDGE, _LRD_T):
+                marker["held"].pop(self.hw_code, None)
         try:
             if _lrd_native_bypass_claim(self, keybindings):
                 return False, "linux-rdaccess passed remote gesture to application"
@@ -6311,6 +6319,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V104,
                 LEGACY_COMPAT_MARKER_V103,
                 LEGACY_COMPAT_MARKER_V102,
                 LEGACY_COMPAT_MARKER_V101,
