@@ -2164,7 +2164,8 @@ LEGACY_COMPAT_MARKER_V105 = "# linux-rdaccess NVDA/Orca input compatibility v105
 LEGACY_COMPAT_MARKER_V106 = "# linux-rdaccess NVDA/Orca input compatibility v106"
 LEGACY_COMPAT_MARKER_V107 = "# linux-rdaccess NVDA/Orca input compatibility v107"
 LEGACY_COMPAT_MARKER_V108 = "# linux-rdaccess NVDA/Orca input compatibility v108"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v109"
+LEGACY_COMPAT_MARKER_V109 = "# linux-rdaccess NVDA/Orca input compatibility v109"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v110"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -4805,12 +4806,25 @@ def _lrd_remove_navigation_marker(marker, token):
                                 if item is not token]
 
 
+def _lrd_capturing_keys():
+    try:
+        from orca import orca_state
+    except ImportError:
+        return False
+    return bool(getattr(orca_state, "capturingKeys", False))
+
+
 def _lrd_take_navigation_marker(marker, key, event=None):
     with _LRD_NAV_LOCK:
         _lrd_prune_navigation_markers(marker, __import__("time").monotonic())
         for index, token in enumerate(marker["pending"]):
             if token[1] == key:
                 marker["pending"].pop(index)
+                # Orca's shortcut editor owns this key. Retire the eligible
+                # claim so it cannot translate later local input, but leave
+                # the event unchanged for the native capture dispatcher.
+                if _lrd_capturing_keys():
+                    return False
                 if event is not None:
                     event._lrd_navigation_claim = (marker, marker.setdefault("epoch", object()))
                 return True
@@ -4842,6 +4856,8 @@ def _lrd_track_navigation_consumer(event, marker, browse=True):
 
 
 def _lrd_navigation_consumer_is_current(event):
+    if _lrd_capturing_keys():
+        return False
     context = getattr(event, "_lrd_navigation_context", None)
     if context is None:
         return False
@@ -5551,6 +5567,15 @@ def _lrd_install_orca_hook():
     original = cls.shouldConsume
 
     def shouldConsume(self):
+        if not self.isPressedKey() and _lrd_capturing_keys():
+            # Capture can start while a browse key is held. Release its old
+            # ownership without rewriting or consuming the captured key-up.
+            for marker in (_LRD_NVDA_BROWSE, _LRD_BROWSE_UNSUPPORTED,
+                           _LRD_TABLE_EDGE, _LRD_T):
+                marker["held"].pop(self.hw_code, None)
+            if getattr(self, "event_string", None) in ("d", "D"):
+                _LRD_D.update(swapped=False, modifiers=0, code=None)
+            return original(self)
         if self.isPressedKey():
             # A fresh press or repeat supersedes the previous release decision,
             # including when pass-next returns before the navigation hooks run.
@@ -6402,6 +6427,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V109,
                 LEGACY_COMPAT_MARKER_V108,
                 LEGACY_COMPAT_MARKER_V107,
                 LEGACY_COMPAT_MARKER_V106,
