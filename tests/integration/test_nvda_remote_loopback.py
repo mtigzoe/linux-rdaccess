@@ -18,7 +18,7 @@ from tests.integration.nvda_remote_harness import (
     LoopbackSession, QueuedMainLoop, packet,
 )
 from tests.shared.test_compat_lifecycle import Harness
-from tests.unit.accessibility.test_a11y_model import FakeAccessible, FakeAction
+from tests.unit.accessibility.test_a11y_model import FakeAccessible, FakeAction, FakeText
 
 
 CONTROLLER_LIFECYCLE = '''
@@ -291,6 +291,85 @@ class NvdaRemoteLoopbackTests(Harness, unittest.TestCase):
         braille.refresh()
         self.assertEqual(self.session.read_through_barrier()[-1],
                          {"type": "display", "cells": [1, 2, 0, 255]})
+
+    def test_queued_semantic_action_expires_when_focus_moves_without_refresh(self):
+        _, state, _, action, idle = self.braille_runtime(queued=True)
+        self.connect()
+        self.session.send(type="lrd_a11y_capability", version=1, presentation="nvda")
+        self.session.barrier()
+        idle.drain()
+        focus = self.session.read_through_barrier()[0]
+        self.session.send(type="lrd_a11y_action", version=1,
+                          object_id=focus["focus_id"], action_index=0)
+        self.session.barrier()
+        state.locusOfFocus = FakeAccessible("New target", "push button")
+        idle.drain()
+        self.assertEqual(action.performed, [])
+
+    def test_queued_semantic_action_expires_even_if_old_target_remains_a_sibling(self):
+        braille, state, button, action, idle = self.braille_runtime(queued=True)
+        self.connect()
+        self.session.send(type="lrd_a11y_capability", version=1, presentation="nvda")
+        self.session.barrier()
+        idle.drain()
+        focus = self.session.read_through_barrier()[0]
+        self.session.send(type="lrd_a11y_action", version=1,
+                          object_id=focus["focus_id"], action_index=0)
+        self.session.barrier()
+        state.locusOfFocus = FakeAccessible("New target", "push button", button.parent)
+        braille.refresh()
+        replacement = self.session.read_through_barrier()[0]
+        self.assertIn(focus["focus_id"], [obj["id"] for obj in replacement["objects"]])
+        idle.drain()
+        self.assertEqual(action.performed, [])
+        # A fresh command may still act on a neighbor in the current snapshot.
+        self.session.send(type="lrd_a11y_action", version=1,
+                          object_id=focus["focus_id"], action_index=0)
+        self.session.barrier()
+        idle.drain()
+        self.assertEqual(action.performed, [0])
+
+    def test_queued_semantic_caret_expires_when_an_editor_loses_focus(self):
+        braille, state, button, _, idle = self.braille_runtime(queued=True)
+        text = FakeText("alpha bravo", caret=2)
+        text.set_caret_offset = lambda offset: setattr(text, "caret", offset) or True
+        editor = FakeAccessible("Editor", "text", button.parent, text_iface=text)
+        state.locusOfFocus = editor
+        self.connect()
+        self.session.send(type="lrd_a11y_capability", version=1, presentation="nvda")
+        self.session.barrier()
+        idle.drain()
+        focus = self.session.read_through_barrier()[0]
+        self.session.send(type="lrd_a11y_caret", version=1,
+                          object_id=focus["focus_id"], offset=7)
+        self.session.barrier()
+        state.locusOfFocus = button
+        braille.refresh()
+        self.session.read_through_barrier()
+        idle.drain()
+        self.assertEqual(text.caret, 2)
+        state.locusOfFocus = editor
+        braille.refresh()
+        self.session.read_through_barrier()
+        self.session.send(type="lrd_a11y_caret", version=1,
+                          object_id=focus["focus_id"], offset=7)
+        self.session.barrier()
+        idle.drain()
+        self.assertEqual(text.caret, 7)
+
+    def test_same_focus_refresh_preserves_a_queued_semantic_action(self):
+        braille, _, _, action, idle = self.braille_runtime(queued=True)
+        self.connect()
+        self.session.send(type="lrd_a11y_capability", version=1, presentation="nvda")
+        self.session.barrier()
+        idle.drain()
+        focus = self.session.read_through_barrier()[0]
+        self.session.send(type="lrd_a11y_action", version=1,
+                          object_id=focus["focus_id"], action_index=0)
+        self.session.barrier()
+        braille.refresh()
+        idle.drain()
+        self.assertEqual(action.performed, [0])
 
     def test_braille_customization_reload_forwards_once_without_recursing(self):
         braille, _, _, _, _ = self.braille_runtime()
