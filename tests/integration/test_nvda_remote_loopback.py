@@ -186,6 +186,18 @@ class NvdaRemoteLoopbackTests(Harness, unittest.TestCase):
             {"type": "speak", "sequence": ["new-session"]},
         ])
 
+    def test_legacy_name_only_ctrl_cancels_windows_speech_without_losing_key_ownership(self):
+        self.connect()
+        for pressed in (True, True, False, True, False):
+            self.session.send(type="key", key_name="Control_R", pressed=pressed)
+        self.session.barrier()
+        self.assertEqual(self.session.read_through_barrier(), [
+            {"type": "cancel"}, {"type": "cancel"},
+        ])
+        delivered = [event for event in self.controller.local_machine.events if event[0] == "key"]
+        self.assertEqual(delivered, [("key", None, pressed, "Control_R")
+                                     for pressed in (True, True, False, True, False)])
+        self.assertFalse(self.controller._lrd_forwarded)
 
     def test_native_reconnector_rejoins_and_discards_partial_message_and_held_modifier(self):
         self.connect(native_reconnector=True)

@@ -2096,7 +2096,8 @@ LEGACY_COMPAT_MARKER_V98 = "# linux-rdaccess NVDA/Orca input compatibility v98"
 LEGACY_COMPAT_MARKER_V99 = "# linux-rdaccess NVDA/Orca input compatibility v99"
 LEGACY_COMPAT_MARKER_V100 = "# linux-rdaccess NVDA/Orca input compatibility v100"
 LEGACY_COMPAT_MARKER_V101 = "# linux-rdaccess NVDA/Orca input compatibility v101"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v102"
+LEGACY_COMPAT_MARKER_V102 = "# linux-rdaccess NVDA/Orca input compatibility v102"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v103"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -2105,6 +2106,13 @@ _LEGACY_HELPERS = '''\
     # dots, speech text or connection keys.
     _LRD_INPUT_LOCK = __import__("threading").RLock()
     _LRD_CTRL_VKS = (0x11, 0xA2, 0xA3)
+    _LRD_NAMED_MODIFIERS = {
+        "Shift_L": 0xA0, "Shift_R": 0xA1,
+        "Control_L": 0xA2, "Control_R": 0xA3,
+        "Alt_L": 0xA4, "Alt_R": 0xA5,
+        "Super_L": 0x5B, "Super_R": 0x5C,
+        "Insert": 0x2D, "KP_Insert": 0x2D, "Caps_Lock": 0x14,
+    }
     _LRD_LOCK_VKS = (0x14, 0x90, 0x91)  # Caps Lock, Num Lock, Scroll Lock
     _LRD_REPEAT_TOGGLE_VKS = (0x90, 0x91)  # repeated key-down would re-toggle
     _LRD_MODIFIER_VKS = (
@@ -2909,6 +2917,10 @@ _LEGACY_HELPERS = '''\
         pressed = bool(pressed)
         held = self._linux_rdaccess_key_identity(vk_code, extended, key_name)
         repeat = pressed and held in self._lrd_down
+        # Legacy named modifiers need the same speech/pass-next decisions as
+        # VK modifiers. Keep their protocol identity and injection unchanged.
+        modifier_vk = (vk_code if vk_code is not None
+                       else self._LRD_NAMED_MODIFIERS.get(key_name))
         if pressed:
             self._lrd_down.add(held)
         else:
@@ -3025,8 +3037,8 @@ _LEGACY_HELPERS = '''\
         # modifier keys (and their auto-repeat) must not cut off speech that
         # a chord such as NVDA+Down started; Ctrl itself does interrupt.
         if pressed and (
-            vk_code not in self._LRD_MODIFIER_VKS
-            or (vk_code in self._LRD_CTRL_VKS and not repeat)
+            modifier_vk not in self._LRD_MODIFIER_VKS
+            or (modifier_vk in self._LRD_CTRL_VKS and not repeat)
         ):
             # Auto-repeat re-cancels at most every 150 ms: Orca's own new
             # speech interrupts per item anyway, and a cancel per repeat event
@@ -3042,7 +3054,7 @@ _LEGACY_HELPERS = '''\
                 # Windows NVDA side, so send the NVDA Remote cancel message too.
                 # Restrict the protocol cancel to Ctrl to avoid adding a network
                 # round-trip to every ordinary navigation key.
-                if vk_code in self._LRD_CTRL_VKS and not repeat:
+                if modifier_vk in self._LRD_CTRL_VKS and not repeat:
                     self._linux_rdaccess_stop_nvda_speech()
             else:
                 self._linux_rdaccess_trace("speech", what="cancel_throttled")
@@ -3090,7 +3102,7 @@ _LEGACY_HELPERS = '''\
         bypass = (request is not None and not request["used"]
                   and (getattr(self, "_lrd_bypass_next", False) or native_bypass))
         if bypass:
-            if pressed and vk_code not in self._LRD_MODIFIER_VKS:
+            if pressed and modifier_vk not in self._LRD_MODIFIER_VKS:
                 request["used"] = True
                 self._lrd_trace_why = "pass_next"
                 self._lrd_bypass_next = False
@@ -6270,6 +6282,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V102,
                 LEGACY_COMPAT_MARKER_V101,
                 LEGACY_COMPAT_MARKER_V100,
                 LEGACY_COMPAT_MARKER_V99,
