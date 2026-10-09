@@ -205,7 +205,7 @@ class DirectCommandInputHelpTests(Harness, unittest.TestCase):
 
     def test_braille_commands_keep_native_actions_during_keyboard_help(self):
         c, _, _, _ = self.environment()
-        c._linux_rdaccess_run_braille = lambda operation: operation()
+        c._linux_rdaccess_run_braille = lambda operation, **kwargs: operation()
         c._linux_rdaccess_handle_braille_input({
             'scriptPath': ['globalCommands', 'GlobalCommands', 'braille_scrollForward']})
         c._linux_rdaccess_script_call.assert_called_once_with('panBrailleRight')
