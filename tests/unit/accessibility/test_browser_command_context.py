@@ -147,6 +147,8 @@ class DirectCommandInputHelpTests(Harness, unittest.TestCase):
 
     def test_native_shortcut_editor_receives_the_insert_or_capslock_chord(self):
         path = Path('/usr/lib/python3/dist-packages/orca/orca_gui_prefs.py')
+        if not path.is_file():
+            self.skipTest('Installed Orca preferences source is unavailable')
         tree = ast.parse(path.read_text())
         cls = next(node for node in tree.body if isinstance(node, ast.ClassDef)
                    and node.name == 'OrcaSetupGUI')
