@@ -759,6 +759,7 @@ _CUSTOMIZATION_BRAILLE_CELLS_HOOK = _CUSTOMIZATION_BRAILLE_CELLS_HOOK_V4.replace
     "                record_focus = getattr(_linux_rdaccess_braille_adapter, \"record_braille_focus\", None)\n"
     "                if callable(record_focus):\n"
     "                    record_focus()\n"
+    "                    controller._lrd_braille_focus_context = _linux_rdaccess_braille_adapter.braille_focus_context()\n"
     "                semantic = None\n",
 )
 
@@ -3919,17 +3920,15 @@ _LEGACY_HELPERS = '''\
         if display is not None and display["width"] == 0:
             return
         focus_valid = None
-        context = None
-        try:
-            from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as adapter
-            read_focus = getattr(adapter, "braille_focus_context", None)
-            focus_valid = getattr(adapter, "braille_focus_is_current", None)
-            if callable(read_focus) and callable(focus_valid):
-                context = read_focus()
-            else:
-                focus_valid = None
-        except ImportError:
-            pass
+        context = getattr(self, "_lrd_braille_focus_context", None)
+        if hasattr(self, "_lrd_braille_focus_context"):
+            try:
+                from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as adapter
+                check_focus = getattr(adapter, "braille_focus_is_current", None)
+                if callable(check_focus):
+                    focus_valid = check_focus
+            except ImportError:
+                pass
 
         def invoke():
             # Cell positions and pan amounts belong to the display which

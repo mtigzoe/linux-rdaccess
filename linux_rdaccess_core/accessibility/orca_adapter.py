@@ -36,7 +36,7 @@ ELEMENT_LIST_TYPES = (
 
 _ELEMENT_LIST_LAST_INDEX = 0
 _REMOTE_BRAILLE_DISPLAY = None
-_REMOTE_BRAILLE_FOCUS: tuple[str, object] | None = None
+_REMOTE_BRAILLE_FOCUS: tuple[str | None, object] | None = None
 _REMOTE_SEMANTIC_OBJECTS: dict[str, object] = {}
 _REMOTE_SEMANTIC_FOCUS_ID: str | None = None
 _REMOTE_SEMANTIC_CONTEXT: object | None = None
@@ -440,9 +440,7 @@ class OrcaRuntimeAdapter:
             focus_id = _a11y_model().object_id(focus) if focus is not None else None
         except Exception:
             focus_id = None
-        if focus_id is None:
-            _REMOTE_BRAILLE_FOCUS = None
-        elif _REMOTE_BRAILLE_FOCUS is None or _REMOTE_BRAILLE_FOCUS[0] != focus_id:
+        if _REMOTE_BRAILLE_FOCUS is None or _REMOTE_BRAILLE_FOCUS[0] != focus_id:
             _REMOTE_BRAILLE_FOCUS = (focus_id, object())
 
     @staticmethod

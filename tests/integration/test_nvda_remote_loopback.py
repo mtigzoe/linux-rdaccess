@@ -416,6 +416,14 @@ class NvdaRemoteLoopbackTests(Harness, unittest.TestCase):
         state.locusOfFocus = FakeAccessible("Another editor", "text")
         idle.drain()
         self.assertEqual(calls, [])
+        braille.refresh()
+        self.session.read_through_barrier()
+        self.session.send(type="braille_input", routingIndex=2)
+        self.session.barrier()
+        idle.drain()
+        self.assertEqual(calls[0][0], "processRoutingKey")
+        self.assertEqual(calls[0][1].event["argument"], 2)
+        self.assertEqual(len(calls), 1)
 
     def test_queued_raw_pan_expires_after_focus_leaves_and_returns(self):
         braille, state, button, _, idle = self.braille_runtime(queued=True)
@@ -454,6 +462,20 @@ class NvdaRemoteLoopbackTests(Harness, unittest.TestCase):
         braille.refresh()
         idle.drain()
         self.assertEqual(calls, ["panBrailleRight", "panBrailleRight"])
+
+    def test_raw_pan_keeps_working_when_a_refresh_has_no_accessible_focus(self):
+        braille, state, _, _, idle = self.braille_runtime(queued=True)
+        state.locusOfFocus = None
+        self.connect()
+        braille.refresh()
+        self.session.read_through_barrier()
+        calls = []
+        self.controller._linux_rdaccess_script_call = lambda *args: calls.append(args[0])
+        self.session.send(type="braille_input", scriptPath=[
+            "globalCommands", "GlobalCommands", "braille_scrollForward"])
+        self.session.barrier()
+        idle.drain()
+        self.assertEqual(calls, ["panBrailleRight"])
 
     def test_queued_semantic_action_expires_when_focus_moves_without_refresh(self):
         _, state, _, action, idle = self.braille_runtime(queued=True)
