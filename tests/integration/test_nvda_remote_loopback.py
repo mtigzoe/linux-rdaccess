@@ -20,6 +20,7 @@ from tests.integration.nvda_remote_harness import (
 )
 from tests.shared.test_compat_lifecycle import Harness
 from tests.unit.accessibility.test_a11y_model import FakeAccessible, FakeAction, FakeText
+from tests.unit.accessibility import test_customization_say_all_callbacks as say_all_callbacks
 
 
 CONTROLLER_LIFECYCLE = '''
@@ -344,6 +345,33 @@ class NvdaRemoteLoopbackTests(Harness, unittest.TestCase):
         self.session.transport.callback_manager.wait_for("transport_disconnected")
         speech["my_speak"](None, "Local after disconnect", None)
         self.assertEqual(len(local), 1)
+
+    def test_say_all_stops_forwarding_after_an_orca_window_change(self):
+        self.connect()
+        helper = say_all_callbacks.SayAllCallbacksTests()
+        namespace, server, native_speak, idle, _ = helper.hooked()
+        namespace["controller"] = self.controller
+        namespace["transport"] = self.session.transport
+        state = native_speak.__globals__["orca_state"]
+        state.activeScript = types.SimpleNamespace(
+            utilities=types.SimpleNamespace(adjustForPronunciation=lambda text: text))
+        state.activeWindow = object()
+        contexts = [types.SimpleNamespace(utterance=text, startOffset=0, endOffset=len(text))
+                    for text in ("FIRST", "SECOND")]
+        progress = []
+        server.sayAll(iter((context, say_all_callbacks.Voice(gain=5)) for context in contexts),
+                      lambda *args: progress.append(args))
+        func, args = idle.pop(0)
+        func(*args)
+        server._client.queued[0][2]["callback"]("end")
+        state.activeWindow = object()
+        while idle:
+            func, args = idle.pop(0)
+            func(*args)
+        self.assertEqual(self.session.read_through_barrier(), [
+            {"type": "speak", "sequence": ["FIRST"]},
+        ])
+        self.assertEqual(progress, [])
 
     def test_raw_braille_native_focus_actions_and_fallback_cross_real_wire(self):
         braille, state, button, action, _ = self.braille_runtime()

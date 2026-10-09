@@ -371,7 +371,7 @@ if (getattr(_linux_rdaccess_native_say_all, "__module__", None) == "orca.speechd
         SpeechServer.stop = old_stop
 '''
 
-_CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK = _CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK_V2.replace(
+_CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK_V3 = _CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK_V2.replace(
     '        interrupted = getattr(server, "_CALLBACK_TYPE_MAP", {}).get("CANCEL", object())',
     '        # Speech Dispatcher callback keys are lowercase protocol values.\n'
     '        # Compare Orca\'s public progress enum, independent of those keys.\n'
@@ -380,13 +380,46 @@ _CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK = _CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK_V2
     '        interrupted = getattr(native_context, "INTERRUPTED", object())',
 )
 
+_CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK = _CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK_V3.replace(
+    '        script = getattr(callback, "__self__", None)\n',
+    '        native_state = getattr(original, "__globals__", {}).get("orca_state")\n'
+    '\n'
+    '        def presentation_context():\n'
+    '            return (getattr(native_state, "activeScript",\n'
+    '                            getattr(native_state, "active_script", None)),\n'
+    '                    getattr(native_state, "activeWindow",\n'
+    '                            getattr(native_state, "active_window", None)))\n'
+    '\n'
+    '        originating_script, originating_window = presentation_context()\n'
+    '        context_valid = True\n'
+    '        script = getattr(callback, "__self__", None)\n',
+).replace(
+    '        def current_session():\n'
+    '            return (getattr(server, "_linux_rdaccess_say_all_run", None) is run\n',
+    '        def current_session():\n'
+    '            nonlocal context_valid\n'
+    '            active_script, active_window = presentation_context()\n'
+    '            # An observed activation change permanently expires this run,\n'
+    '            # including CANCEL callbacks which otherwise restore its caret.\n'
+    '            context_valid = (context_valid and active_script is originating_script\n'
+    '                             and active_window == originating_window)\n'
+    '            return (context_valid\n'
+    '                    and getattr(server, "_linux_rdaccess_say_all_run", None) is run\n',
+)
+
 CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V2 = "# linux-rdaccess native Say All callbacks v2"
 _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V2 = _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V1.replace(
     CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V1,
     CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V2,
 ) + _CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK_V2
 
-CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER = "# linux-rdaccess native Say All callbacks v3"
+CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V3 = "# linux-rdaccess native Say All callbacks v3"
+_CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V3 = _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V1.replace(
+    CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V1,
+    CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V3,
+) + _CUSTOMIZATION_SAY_ALL_LIFECYCLE_HOOK_V3
+
+CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER = "# linux-rdaccess native Say All callbacks v4"
 _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK = _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V1.replace(
     CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V1,
     CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER,
@@ -487,7 +520,8 @@ def _patch_legacy_customization_say_all_callbacks(text: str) -> str:
     text = _patch_legacy_customization_speech_server(text)
     for marker, hook in (
             (CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V1, _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V1),
-            (CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V2, _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V2)):
+            (CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V2, _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V2),
+            (CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER_V3, _CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V3)):
         if marker in text:
             if text.count(marker) != 1 or hook not in text:
                 raise ValueError("incomplete native Say All callback patch")
