@@ -2165,7 +2165,8 @@ LEGACY_COMPAT_MARKER_V106 = "# linux-rdaccess NVDA/Orca input compatibility v106
 LEGACY_COMPAT_MARKER_V107 = "# linux-rdaccess NVDA/Orca input compatibility v107"
 LEGACY_COMPAT_MARKER_V108 = "# linux-rdaccess NVDA/Orca input compatibility v108"
 LEGACY_COMPAT_MARKER_V109 = "# linux-rdaccess NVDA/Orca input compatibility v109"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v110"
+LEGACY_COMPAT_MARKER_V110 = "# linux-rdaccess NVDA/Orca input compatibility v110"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v111"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -4145,7 +4146,8 @@ _LEGACY_HELPERS = '''\
                     "panBrailleLeft" if action == "pan_back" else "panBrailleRight"))
         elif action == "to_focus":
             self._linux_rdaccess_run_braille(
-                lambda: self._linux_rdaccess_script_call("goBrailleHome"))
+                lambda: self._linux_rdaccess_script_call(
+                    "goBrailleHome", before_action=self._linux_rdaccess_stop_braille_speech))
         elif action == "key":
             self._linux_rdaccess_send_braille_key(record["scriptPath"][2])
         elif action == "route":
@@ -4173,17 +4175,20 @@ _LEGACY_HELPERS = '''\
             self._linux_rdaccess_run_braille(
                 lambda: self._linux_rdaccess_script_call(
                     "processRoutingKey", event,
-                    before_route=self._linux_rdaccess_stop_braille_routing_speech))
+                    before_route=lambda: self._linux_rdaccess_stop_braille_speech(routing=True)))
 
-    def _linux_rdaccess_stop_braille_routing_speech(self):
-        """Interrupt a validated route on Orca's main loop before moving its caret."""
-        # The native progress callback restores its old caret on CANCEL.
-        # Invalidate that run before stopping, so it cannot undo the route.
-        self._lrd_braille_route_epoch = getattr(self, "_lrd_braille_route_epoch", 0) + 1
+    def _linux_rdaccess_stop_braille_speech(self, *, routing=False):
+        """Interrupt validated braille navigation before its native action."""
+        # Routing chooses a new caret: expire even the native CANCEL callback
+        # which would restore the old one. Home retains native cancellation's
+        # placement at the last spoken word. The shared stop wrapper prevents
+        # queued END callbacks from continuing either interrupted Say All.
+        if routing:
+            self._lrd_braille_route_epoch = getattr(self, "_lrd_braille_route_epoch", 0) + 1
         try:
             self.local_machine.cancel_speech()
         except Exception:
-            log.error("linux-rdaccess: failed to cancel speech for braille routing")
+            log.error("linux-rdaccess: failed to cancel speech for braille navigation")
         self._linux_rdaccess_stop_nvda_speech()
 
     def _linux_rdaccess_send_structural_list(self, key, modifiers):
@@ -4431,7 +4436,7 @@ _LEGACY_HELPERS = '''\
         open_list("h")
 
     @staticmethod
-    def _linux_rdaccess_script_call(method, *args, before_route=None):
+    def _linux_rdaccess_script_call(method, *args, before_route=None, before_action=None):
         """Run an Orca operation through the linux-rdaccess Orca API adapter.
 
         The adapter keeps Orca-version compatibility in one place and delegates
@@ -4489,6 +4494,8 @@ _LEGACY_HELPERS = '''\
                 handler = getattr(_adapter, adapter_method, None)
                 if callable(handler) and method == "processRoutingKey" and before_route is not None:
                     result = handler(*adapter_args, before_route=before_route)
+                elif callable(handler) and method == "goBrailleHome" and before_action is not None:
+                    result = handler(*adapter_args, before_action=before_action)
                 else:
                     result = handler(*adapter_args) if callable(handler) else None
             elif _adapter is not None:
@@ -4639,6 +4646,8 @@ _LEGACY_HELPERS = '''\
                 return unavailable()
             if method == "processRoutingKey" and before_route is not None:
                 before_route()
+            elif method == "goBrailleHome" and before_action is not None:
+                before_action()
             if not args:
                 if method == "togglePresentationMode":
                     focus = getattr(_state, "locusOfFocus", None)
@@ -6427,6 +6436,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V110,
                 LEGACY_COMPAT_MARKER_V109,
                 LEGACY_COMPAT_MARKER_V108,
                 LEGACY_COMPAT_MARKER_V107,
