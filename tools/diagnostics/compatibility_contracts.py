@@ -27,6 +27,7 @@ AREAS = {
         "tests.unit.braille.test_braille_cell_alignment",
         "tests.unit.braille.test_braille_routing_speech",
         "tests.unit.braille.test_nvda_native_braille",
+        "tests.unit.braille.test_braille_input_help",
     },
     "speech-and-focus": {
         "tests.unit.accessibility.test_say_all_presentation_lifetime",

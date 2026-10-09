@@ -2169,7 +2169,8 @@ LEGACY_COMPAT_MARKER_V110 = "# linux-rdaccess NVDA/Orca input compatibility v110
 LEGACY_COMPAT_MARKER_V111 = "# linux-rdaccess NVDA/Orca input compatibility v111"
 LEGACY_COMPAT_MARKER_V112 = "# linux-rdaccess NVDA/Orca input compatibility v112"
 LEGACY_COMPAT_MARKER_V113 = "# linux-rdaccess NVDA/Orca input compatibility v113"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v114"
+LEGACY_COMPAT_MARKER_V114 = "# linux-rdaccess NVDA/Orca input compatibility v114"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v115"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -4016,7 +4017,17 @@ _LEGACY_HELPERS = '''\
             except Exception:
                 log.error("linux-rdaccess: failed to schedule braille width cleanup")
 
-    def _linux_rdaccess_run_braille(self, callback):
+    def _linux_rdaccess_run_braille(self, callback, method=None):
+        def active_script():
+            try:
+                from orca import orca_state
+                script = getattr(orca_state, "activeScript", None)
+                return script if script is not None else getattr(orca_state, "active_script", None)
+            except ImportError:
+                return None
+
+        received_help = _lrd_learn_mode_enabled()
+        origin = active_script()
         display = getattr(self, "_lrd_braille_display", None)
         if display is not None and display["width"] == 0:
             return
@@ -4037,6 +4048,33 @@ _LEGACY_HELPERS = '''\
             if (getattr(self, "_lrd_braille_display", None) is display
                     and (display is None or display["ready"])
                     and (focus_valid is None or focus_valid(context))):
+                help_now = _lrd_learn_mode_enabled()
+                if method is not None and (received_help or help_now):
+                    script = active_script()
+                    if script is None or script is not origin:
+                        return
+                    handler = _lrd_browse_help_handler(script, {
+                        "processRoutingKey": "processRoutingKeyHandler",
+                        "goBrailleHome": "goBrailleHomeHandler",
+                        "panBrailleLeft": "panBrailleLeftHandler",
+                        "panBrailleRight": "panBrailleRightHandler",
+                    }.get(method))
+                    # Native panning remains usable in help by default. Other
+                    # commands must never turn a help request into an action.
+                    enabled = getattr(handler, "learnModeEnabled", method not in (
+                        "panBrailleLeft", "panBrailleRight"))
+                    if enabled:
+                        if not help_now:
+                            return
+                        description = getattr(handler, "description", None)
+                        present = getattr(script, "presentMessage", None)
+                        if not callable(present):
+                            present = getattr(script, "present_message", None)
+                        if description and callable(present):
+                            if method in ("processRoutingKey", "goBrailleHome"):
+                                self._linux_rdaccess_stop_braille_speech()
+                            present(description)
+                        return
                 callback()
 
         self._linux_rdaccess_run_main(invoke)
@@ -4185,13 +4223,14 @@ _LEGACY_HELPERS = '''\
         except Exception:
             log.error("linux-rdaccess: failed to trace braille input")
         if action in ("pan_back", "pan_forward"):
+            method = "panBrailleLeft" if action == "pan_back" else "panBrailleRight"
             self._linux_rdaccess_run_braille(
-                lambda: self._linux_rdaccess_script_call(
-                    "panBrailleLeft" if action == "pan_back" else "panBrailleRight"))
+                lambda: self._linux_rdaccess_script_call(method), method=method)
         elif action == "to_focus":
             self._linux_rdaccess_run_braille(
                 lambda: self._linux_rdaccess_script_call(
-                    "goBrailleHome", before_action=self._linux_rdaccess_stop_braille_speech))
+                    "goBrailleHome", before_action=self._linux_rdaccess_stop_braille_speech),
+                method="goBrailleHome")
         elif action == "key":
             self._linux_rdaccess_send_braille_key(record["scriptPath"][2])
         elif action == "route":
@@ -4219,7 +4258,8 @@ _LEGACY_HELPERS = '''\
             self._linux_rdaccess_run_braille(
                 lambda: self._linux_rdaccess_script_call(
                     "processRoutingKey", event,
-                    before_route=lambda: self._linux_rdaccess_stop_braille_speech(routing=True)))
+                    before_route=lambda: self._linux_rdaccess_stop_braille_speech(routing=True)),
+                method="processRoutingKey")
 
     def _linux_rdaccess_stop_braille_speech(self, *, routing=False):
         """Interrupt validated braille navigation before its native action."""
@@ -6572,6 +6612,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V114,
                 LEGACY_COMPAT_MARKER_V113,
                 LEGACY_COMPAT_MARKER_V112,
                 LEGACY_COMPAT_MARKER_V111,

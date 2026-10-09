@@ -588,6 +588,59 @@ class NvdaRemoteLoopbackTests(Harness, unittest.TestCase):
         self.assertFalse(self.controller._lrd_nvda_native_braille)
         self.assertFalse(orca_adapter.OrcaRuntimeAdapter.perform_semantic_action(focus["focus_id"], 0))
 
+    def braille_help_runtime(self):
+        braille, state, _, _, main = self.braille_runtime(queued=True)
+        namespace, _ = self.speech()
+        script = types.SimpleNamespace(
+            processRoutingKey=mock.Mock(), goBrailleHome=mock.Mock(),
+            presentMessage=mock.Mock(side_effect=lambda description:
+                namespace["my_speak"](None, description, None)),
+            inputEventHandlers={
+                "processRoutingKeyHandler": types.SimpleNamespace(
+                    description="Localized braille routing", learnModeEnabled=True),
+                "goBrailleHomeHandler": types.SimpleNamespace(
+                    description="Localized braille home", learnModeEnabled=True),
+            },
+        )
+        state.activeScript, state.learnModeEnabled = script, True
+        self.controller.local_machine.cancel_speech = mock.Mock()
+        self.connect()
+        braille.refresh()
+        self.session.read_through_barrier()
+        return state, script, main
+
+    def test_braille_input_help_forwards_description_without_routing_over_wire(self):
+        _, script, main = self.braille_help_runtime()
+        self.session.send(type="braille_input", routingIndex=4,
+                          scriptPath=["globalCommands", "GlobalCommands", "braille_routeTo"])
+        self.session.barrier()
+        script.presentMessage.assert_not_called()
+        main.drain()
+        self.assertEqual(self.session.read_through_barrier(), [
+            {"type": "cancel"},
+            {"type": "speak", "sequence": ["Localized braille routing"]},
+        ])
+        script.processRoutingKey.assert_not_called()
+        self.controller.local_machine.cancel_speech.assert_called_once_with()
+        self.assertEqual(getattr(self.controller, "_lrd_braille_route_epoch", 0), 0)
+
+    def test_queued_braille_help_expires_after_exit_and_fresh_home_still_runs(self):
+        state, script, main = self.braille_help_runtime()
+        path = ["globalCommands", "GlobalCommands", "braille_toFocus"]
+        self.session.send(type="braille_input", scriptPath=path)
+        self.session.barrier()
+        state.learnModeEnabled = False
+        main.drain()
+        self.assertEqual(self.session.read_through_barrier(), [])
+        script.goBrailleHome.assert_not_called()
+        script.presentMessage.assert_not_called()
+        self.controller.local_machine.cancel_speech.assert_not_called()
+        self.session.send(type="braille_input", scriptPath=path)
+        self.session.barrier()
+        main.drain()
+        self.assertEqual(self.session.read_through_barrier(), [{"type": "cancel"}])
+        script.goBrailleHome.assert_called_once_with(None)
+
     def test_raw_braille_pan_and_routing_messages_reject_ambiguous_input(self):
         self.connect()
         calls = []

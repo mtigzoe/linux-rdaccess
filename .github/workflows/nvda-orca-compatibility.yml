@@ -37,7 +37,7 @@ jobs:
           - area: keyboard-and-browse
             modules: "tests.unit.accessibility.test_browser_command_context tests.unit.input.test_pass_next tests.unit.input.test_structural_list_ownership"
           - area: braille
-            modules: "tests.unit.braille.test_braille_display_lifecycle tests.unit.braille.test_braille_cell_alignment tests.unit.braille.test_braille_routing_speech tests.unit.braille.test_nvda_native_braille"
+            modules: "tests.unit.braille.test_braille_display_lifecycle tests.unit.braille.test_braille_cell_alignment tests.unit.braille.test_braille_routing_speech tests.unit.braille.test_nvda_native_braille tests.unit.braille.test_braille_input_help"
           - area: speech-and-focus
             modules: "tests.unit.accessibility.test_say_all_presentation_lifetime"
           - area: remote-protocol
