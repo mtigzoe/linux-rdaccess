@@ -61,6 +61,21 @@ class ControllerV89UpgradeTests(unittest.TestCase):
                 self.assertTrue(remote_access.legacy_controller_patch_current(upgraded))
                 self.assertEqual(backup.read_text(), original)
 
+    def test_v104_marker_upgrades_from_original_backup_and_is_idempotent(self):
+        original = (FIXTURES / "controller-upstream.txt").read_text()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "remote_controller.py"
+            path.write_text(original)
+            self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
+            current = path.read_text()
+            path.write_text(current.replace(
+                remote_access.LEGACY_COMPAT_MARKER, remote_access.LEGACY_COMPAT_MARKER_V104))
+            backup = path.with_name(path.name + '.linux-rdaccess-backup')
+            self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
+            self.assertEqual(path.read_text(), current)
+            self.assertEqual(backup.read_text(), original)
+            self.assertFalse(remote_access.patch_legacy_orca_remote_controller(path))
+
     def test_genuine_v89_without_original_backup_is_preserved_and_rejected(self):
         previous = (FIXTURES / "controller-v89.txt").read_text()
         with tempfile.TemporaryDirectory() as directory:

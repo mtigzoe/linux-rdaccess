@@ -128,6 +128,44 @@ class BrowserCommandContextTests(Harness, unittest.TestCase):
                 self._consume_deferred(event)
                 action.assert_called_once()
 
+    def test_untranslated_repeat_does_not_keep_a_previous_command_release(self):
+        cases = (
+            ('form', 0x46, (), False),
+            ('heading', 0x37, (), False),
+            ('layout', 0x56, (0x2D,), False),
+            ('find', 0x46, (0xA2, 0x2D), False),
+            ('find_next', 0x72, (0x2D,), False),
+            ('edge', 0x23, (0xA4, 0xA2), True),
+        )
+        for command, vk, modifiers, extended in cases:
+            with self.subTest(command=command):
+                controller, event, script, _, state = self._deferred_action(command)
+                # The first press was a remote browse command. A repeat after
+                # a mode/chord change is ordinary application input.
+                script.state['browse'] = False
+                state['document'] = False
+                script.keyBindings.table = {}
+                for modifier in modifiers:
+                    self._key(controller, modifier, False, extended=modifier == 0x2D)
+                self._key(controller, vk, True, extended=extended)
+                repeated = event.__class__(event.event_string, event.hw_code)
+                self.assertFalse(repeated.consume)
+                self._key(controller, vk, False, extended=extended)
+                release = event.__class__(event.event_string, event.hw_code, pressed=False)
+                self.assertFalse(release.consume)
+                self.assertIsNone(release._consumer)
+
+    def test_command_release_remains_owned_without_an_intervening_press(self):
+        for command in ('form', 'heading', 'layout', 'find', 'find_next', 'edge'):
+            with self.subTest(command=command):
+                _, event, script, _, state = self._deferred_action(command)
+                script.state['browse'] = False
+                state['document'] = False
+                script.keyBindings.table = {}
+                release = event.__class__(event.event_string, event.hw_code, pressed=False)
+                self.assertTrue(release.consume)
+                self.assertIsNotNone(release._consumer)
+
     def test_deferred_document_commands_still_work_in_focus_mode(self):
         for command in ('layout', 'find', 'find_next'):
             with self.subTest(command=command):
