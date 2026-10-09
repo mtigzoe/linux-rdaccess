@@ -199,7 +199,7 @@ try:
     key("ctrl+a")
     subprocess.run(["xdotool", "type", "--clearmodifiers", "prelive-edit"], check=True)
     text = entry.get_text_iface()
-    wait(lambda: text.get_text(0, text.get_character_count()) == "prelive-edit", "entry edits")
+    wait(lambda: Atspi.Text.get_text(text, 0, text.get_character_count()) == "prelive-edit", "entry edits")
     check("keyboard typing replaces editable entry text")
     wait(lambda: text.get_caret_offset() == len("prelive-edit"), "entry caret")
     check("editable entry caret follows typed text")
