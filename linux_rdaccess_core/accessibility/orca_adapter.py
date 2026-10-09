@@ -36,7 +36,7 @@ ELEMENT_LIST_TYPES = (
 
 _ELEMENT_LIST_LAST_INDEX = 0
 _REMOTE_BRAILLE_DISPLAY = None
-_REMOTE_BRAILLE_FOCUS: tuple[str | None, object] | None = None
+_REMOTE_BRAILLE_FOCUS: tuple[str | None, Any, Any] | None = None
 _REMOTE_SEMANTIC_OBJECTS: dict[str, object] = {}
 _REMOTE_SEMANTIC_FOCUS_ID: str | None = None
 _REMOTE_SEMANTIC_CONTEXT: object | None = None
@@ -433,7 +433,7 @@ class OrcaRuntimeAdapter:
 
     @staticmethod
     def record_braille_focus() -> None:
-        """Publish the focus lifetime of a refresh on Orca's main loop."""
+        """Publish a refresh's focus, script and window lifetime on the main loop."""
         global _REMOTE_BRAILLE_FOCUS
         try:
             from orca import orca_state
@@ -441,10 +441,17 @@ class OrcaRuntimeAdapter:
             if focus is None:
                 focus = getattr(orca_state, "locus_of_focus", None)
             focus_id = _a11y_model().object_id(focus) if focus is not None else None
+            script = OrcaRuntimeAdapter.active_script()
+            window = getattr(orca_state, "activeWindow", None)
+            if window is None:
+                window = getattr(orca_state, "active_window", None)
+            previous = _REMOTE_BRAILLE_FOCUS
+            if (previous is None or previous[0] != focus_id
+                    or previous[1] is not script or previous[2] != window):
+                _REMOTE_BRAILLE_FOCUS = (focus_id, script, window)
         except Exception:
-            focus_id = None
-        if _REMOTE_BRAILLE_FOCUS is None or _REMOTE_BRAILLE_FOCUS[0] != focus_id:
-            _REMOTE_BRAILLE_FOCUS = (focus_id, object())
+            # A disappearing accessible/window cannot validate old cell input.
+            _REMOTE_BRAILLE_FOCUS = None
 
     @staticmethod
     def braille_focus_context() -> object | None:
@@ -453,7 +460,7 @@ class OrcaRuntimeAdapter:
 
     @staticmethod
     def braille_focus_is_current(context: object | None) -> bool:
-        """Reject delayed cell commands after focus changes, even before refresh."""
+        """Reject delayed input after focus/script/window changes before refresh."""
         if context is None or context is not _REMOTE_BRAILLE_FOCUS:
             return False
         OrcaRuntimeAdapter.record_braille_focus()
