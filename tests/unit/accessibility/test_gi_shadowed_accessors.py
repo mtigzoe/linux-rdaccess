@@ -98,6 +98,30 @@ class ShadowedAccessorTests(unittest.TestCase):
         self.assertEqual(result["text"], "")
         self.assertFalse(result["text_truncated"])
 
+    def test_missing_gi_value_method_does_not_crash_snapshot(self):
+        # Older/newer GI typelib bindings can omit interface methods.
+        from gi.repository import Atspi
+        old_value = Atspi.Value
+        Atspi.Value = types.SimpleNamespace(get_text=lambda obj: "")
+        try:
+            self.assertEqual(a11y_model._value(ShadowedAccessible()), "")
+        finally:
+            Atspi.Value = old_value
+
+    def test_incompatible_gi_text_method_does_not_crash_snapshot(self):
+        from gi.repository import Atspi
+        old_text = Atspi.Text
+        Atspi.Text = types.SimpleNamespace(
+            get_text=lambda obj: (_ for _ in ()).throw(TypeError("incompatible")),
+            get_selection=old_text.get_selection,
+        )
+        try:
+            result = a11y_model._text_snapshot(ShadowedAccessible(), focused=True)
+            self.assertEqual(result["text"], "")
+            self.assertTrue(result["text_truncated"])
+        finally:
+            Atspi.Text = old_text
+
     def test_non_gi_value_object_repr_is_not_reported(self):
         class FakeValue:
             def get_text(self):
