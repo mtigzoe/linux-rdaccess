@@ -1,8 +1,12 @@
 {
   "servers": {
     "desktop-commander": {
-      "command": "npx",
-      "args": ["-y", "@wonderwhy-er/desktop-commander@latest"]
+      "type": "stdio",
+      "command": "npx.cmd",
+      "args": [
+        "-y",
+        "@wonderwhy-er/desktop-commander@latest"
+      ]
     }
   }
 }
