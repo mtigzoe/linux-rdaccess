@@ -111,14 +111,16 @@ class BrailleProtocolTests(Harness, unittest.TestCase):
         self.assertFalse(remote_access.patch_legacy_orca_remote_controller(path))
         self.assertEqual(backup.read_text(), original)
 
-    def test_v100_controller_upgrades_semantic_focus_guards(self):
+    def test_intermediate_controllers_upgrade_semantic_focus_guards(self):
         import remote_access
-        _, path, _ = self._patched_controller()
-        path.write_text(path.read_text().replace(
-            remote_access.LEGACY_COMPAT_MARKER, remote_access.LEGACY_COMPAT_MARKER_V100))
-        self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
-        self.assertTrue(remote_access.legacy_controller_patch_current(path.read_text()))
-        self.assertFalse(remote_access.patch_legacy_orca_remote_controller(path))
+        for marker in (remote_access.LEGACY_COMPAT_MARKER_V100,
+                       remote_access.LEGACY_COMPAT_MARKER_V101):
+            with self.subTest(marker=marker):
+                _, path, _ = self._patched_controller()
+                path.write_text(path.read_text().replace(remote_access.LEGACY_COMPAT_MARKER, marker))
+                self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
+                self.assertTrue(remote_access.legacy_controller_patch_current(path.read_text()))
+                self.assertFalse(remote_access.patch_legacy_orca_remote_controller(path))
 
     def test_unknown_character_and_malformed_commands_stay_redacted(self):
         c, _, _ = self._patched_controller()

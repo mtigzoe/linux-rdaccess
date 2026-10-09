@@ -22,17 +22,18 @@ class SemanticFocusPayloadTests(unittest.TestCase):
         build = a11y_model.build_focus_payload
 
         def rebuild(*args, **kwargs):
-            observed.append(orca_adapter.OrcaRuntimeAdapter.semantic_focus_id())
+            observed.append(orca_adapter.OrcaRuntimeAdapter.semantic_focus_context())
             return build(*args, **kwargs)
 
         with mock.patch.dict(sys.modules, {"orca": orca}):
             payload = orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload()
+            context = orca_adapter.OrcaRuntimeAdapter.semantic_focus_context()
             with mock.patch.object(a11y_model, "build_focus_payload", side_effect=rebuild):
                 self.assertEqual(orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload(), payload)
-            self.assertEqual(observed, [payload["focus_id"]])
+            self.assertEqual(observed, [context])
             with mock.patch.object(a11y_model, "build_focus_payload", return_value=None):
                 self.assertIsNone(orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload())
-            self.assertIsNone(orca_adapter.OrcaRuntimeAdapter.semantic_focus_id())
+            self.assertIsNone(orca_adapter.OrcaRuntimeAdapter.semantic_focus_context())
 
     def test_action_is_rejected_after_focus_changes_before_a_braille_refresh(self):
         action = FakeAction(["click"])

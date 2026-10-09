@@ -371,6 +371,24 @@ class NvdaRemoteLoopbackTests(Harness, unittest.TestCase):
         idle.drain()
         self.assertEqual(action.performed, [0])
 
+    def test_queued_semantic_action_expires_after_focus_moves_away_and_back(self):
+        braille, state, button, action, idle = self.braille_runtime(queued=True)
+        self.connect()
+        self.session.send(type="lrd_a11y_capability", version=1, presentation="nvda")
+        self.session.barrier()
+        idle.drain()
+        focus = self.session.read_through_barrier()[0]
+        self.session.send(type="lrd_a11y_action", version=1,
+                          object_id=focus["focus_id"], action_index=0)
+        self.session.barrier()
+        state.locusOfFocus = FakeAccessible("New target", "push button", button.parent)
+        braille.refresh()
+        state.locusOfFocus = button
+        braille.refresh()
+        self.session.read_through_barrier()
+        idle.drain()
+        self.assertEqual(action.performed, [])
+
     def test_braille_customization_reload_forwards_once_without_recursing(self):
         braille, _, _, _, _ = self.braille_runtime()
         self.connect()

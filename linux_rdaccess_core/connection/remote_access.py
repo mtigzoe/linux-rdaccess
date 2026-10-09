@@ -2032,7 +2032,8 @@ LEGACY_COMPAT_MARKER_V97 = "# linux-rdaccess NVDA/Orca input compatibility v97"
 LEGACY_COMPAT_MARKER_V98 = "# linux-rdaccess NVDA/Orca input compatibility v98"
 LEGACY_COMPAT_MARKER_V99 = "# linux-rdaccess NVDA/Orca input compatibility v99"
 LEGACY_COMPAT_MARKER_V100 = "# linux-rdaccess NVDA/Orca input compatibility v100"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v101"
+LEGACY_COMPAT_MARKER_V101 = "# linux-rdaccess NVDA/Orca input compatibility v101"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v102"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -3726,16 +3727,16 @@ _LEGACY_HELPERS = '''\
             return
         try:
             from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _adapter
-            focus_id = _adapter.semantic_focus_id()
+            context = _adapter.semantic_focus_context()
         except Exception:
             return
-        if focus_id is None:
+        if context is None:
             return
 
         def run_action():
             try:
                 if not _adapter.perform_semantic_action(
-                        object_id, action_index, expected_focus_id=focus_id):
+                        object_id, action_index, expected_context=context):
                     log.error("linux-rdaccess: semantic action rejected")
             except Exception:
                 log.error("linux-rdaccess: semantic action failed")
@@ -3753,16 +3754,16 @@ _LEGACY_HELPERS = '''\
             return
         try:
             from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _adapter
-            focus_id = _adapter.semantic_focus_id()
+            context = _adapter.semantic_focus_context()
         except Exception:
             return
-        if focus_id is None:
+        if context is None:
             return
 
         def set_caret():
             try:
                 if not _adapter.set_semantic_caret(
-                        object_id, offset, expected_focus_id=focus_id):
+                        object_id, offset, expected_context=context):
                     log.error("linux-rdaccess: semantic caret rejected")
             except Exception:
                 log.error("linux-rdaccess: semantic caret failed")
@@ -6206,6 +6207,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V101,
                 LEGACY_COMPAT_MARKER_V100,
                 LEGACY_COMPAT_MARKER_V99,
                 LEGACY_COMPAT_MARKER_V98,
