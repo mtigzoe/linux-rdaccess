@@ -2170,7 +2170,8 @@ LEGACY_COMPAT_MARKER_V111 = "# linux-rdaccess NVDA/Orca input compatibility v111
 LEGACY_COMPAT_MARKER_V112 = "# linux-rdaccess NVDA/Orca input compatibility v112"
 LEGACY_COMPAT_MARKER_V113 = "# linux-rdaccess NVDA/Orca input compatibility v113"
 LEGACY_COMPAT_MARKER_V114 = "# linux-rdaccess NVDA/Orca input compatibility v114"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v115"
+LEGACY_COMPAT_MARKER_V115 = "# linux-rdaccess NVDA/Orca input compatibility v115"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v116"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -3922,9 +3923,13 @@ _LEGACY_HELPERS = '''\
             return
         if context is None:
             return
+        received_help = _lrd_learn_mode_enabled()
 
         def run_action():
             try:
+                if self._linux_rdaccess_semantic_braille_help(
+                        object_id, context, received_help):
+                    return
                 if not _adapter.perform_semantic_action(
                         object_id, action_index, expected_context=context):
                     log.error("linux-rdaccess: semantic action rejected")
@@ -3949,9 +3954,13 @@ _LEGACY_HELPERS = '''\
             return
         if context is None:
             return
+        received_help = _lrd_learn_mode_enabled()
 
         def set_caret():
             try:
+                if self._linux_rdaccess_semantic_braille_help(
+                        object_id, context, received_help):
+                    return
                 if not _adapter.set_semantic_caret(
                         object_id, offset, expected_context=context,
                         before_route=lambda: self._linux_rdaccess_stop_braille_speech(routing=True)):
@@ -3960,6 +3969,32 @@ _LEGACY_HELPERS = '''\
                 log.error("linux-rdaccess: semantic caret failed")
 
         self._linux_rdaccess_run_main(set_caret)
+
+    def _linux_rdaccess_semantic_braille_help(self, object_id, context, received_help):
+        """Consume semantic routing help before any AT-SPI action or caret write."""
+        help_now = _lrd_learn_mode_enabled()
+        if not (received_help or help_now):
+            return False
+        from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as adapter
+        # Help belongs to the same presentation as the action it replaces.
+        # Validate on Orca's main loop before cancelling speech or presenting.
+        if adapter._semantic_target(object_id, context) is None:
+            return True
+        script = adapter.active_script()
+        handler = _lrd_browse_help_handler(script, "processRoutingKeyHandler")
+        if not getattr(handler, "learnModeEnabled", True):
+            return False
+        if help_now:
+            description = getattr(handler, "description", None)
+            present = getattr(script, "presentMessage", None)
+            if not callable(present):
+                present = getattr(script, "present_message", None)
+            if description and callable(present):
+                # Describing a route chooses no caret position: preserve native
+                # Say All cancellation placement instead of expiring its route.
+                self._linux_rdaccess_stop_braille_speech()
+                present(description)
+        return True
 
     def _linux_rdaccess_handle_braille_info(self, num_cells):
         """Apply NVDA Remote's display width to Orca's native pan/routing state."""
@@ -6612,6 +6647,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V115,
                 LEGACY_COMPAT_MARKER_V114,
                 LEGACY_COMPAT_MARKER_V113,
                 LEGACY_COMPAT_MARKER_V112,
