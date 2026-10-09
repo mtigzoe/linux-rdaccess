@@ -2163,7 +2163,8 @@ LEGACY_COMPAT_MARKER_V104 = "# linux-rdaccess NVDA/Orca input compatibility v104
 LEGACY_COMPAT_MARKER_V105 = "# linux-rdaccess NVDA/Orca input compatibility v105"
 LEGACY_COMPAT_MARKER_V106 = "# linux-rdaccess NVDA/Orca input compatibility v106"
 LEGACY_COMPAT_MARKER_V107 = "# linux-rdaccess NVDA/Orca input compatibility v107"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v108"
+LEGACY_COMPAT_MARKER_V108 = "# linux-rdaccess NVDA/Orca input compatibility v108"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v109"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -4283,7 +4284,11 @@ _LEGACY_HELPERS = '''\
 
         # Adapter unavailable or this Orca version does not expose the object.
         # Fall back to the verified Orca 42 Alt+Shift+letter binding.
-        self._linux_rdaccess_send_structural_list(key, modifiers)
+        # A control handoff can race native lookup or waiting for the input
+        # lock. Validate and inject together; native GUI lookup stays unlocked.
+        with self._LRD_INPUT_LOCK:
+            if lifetime_valid():
+                self._linux_rdaccess_send_structural_list(key, modifiers)
 
     def _linux_rdaccess_defer_structural_list(self, key, modifiers, generation,
                                              origin, window, document, request):
@@ -6397,6 +6402,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V108,
                 LEGACY_COMPAT_MARKER_V107,
                 LEGACY_COMPAT_MARKER_V106,
                 LEGACY_COMPAT_MARKER_V105,

@@ -229,6 +229,37 @@ class XTestInjectionTests(Harness, unittest.TestCase):
                 time.sleep(0.02)
                 self.assertFalse(self._is_down(name))
 
+    def test_stale_structural_list_fallback_does_not_inject_into_the_x_server(self):
+        controller, _, _ = self._patched_controller()
+        controller.local_machine = self.machine
+        self.machine.cancel_speech = lambda: None
+        original_send = self.machine.send_key
+        helper = self.module._LRD_XTEST
+        observed = []
+
+        def send(**payload):
+            result = original_send(**{
+                field: payload.get(field)
+                for field in ("key_name", "pressed", "vk_code", "extended")
+            })
+            helper._x11.XSync(helper._dpy, 0)
+            observed.append((payload["key_name"], self._is_down(payload["key_name"])))
+            return result
+
+        self.machine.send_key = send
+        self.addCleanup(controller._linux_rdaccess_reset_keys)
+        adapter = types.ModuleType("linux_rdaccess_orca_adapter")
+
+        def unsupported(*args, **kwargs):
+            controller.toggle_control()
+            return None
+
+        adapter.OrcaRuntimeAdapter = types.SimpleNamespace(show_structural_list=unsupported)
+        with mock.patch.dict("sys.modules", {"linux_rdaccess_orca_adapter": adapter}):
+            controller._linux_rdaccess_open_structural_list("m", None)
+        self.assertEqual(observed, [])
+        self.assertFalse(getattr(controller, "_lrd_forwarded", {}))
+
     def test_unknown_keysym_falls_back_instead_of_injecting_garbage(self):
         with self.assertRaises(AssertionError):
             self.machine._send_key_xdotool("NotARealKeysymName", True)
