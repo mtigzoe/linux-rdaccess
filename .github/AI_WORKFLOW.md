@@ -24,6 +24,10 @@ Follow [Python compatibility wrappers and repository layout](PYTHON_WRAPPERS.md)
 
 Verify actual speech and braille presentation on the Windows NVDA side, including accessible names, roles, states, focus/caret synchronization, speech cancellation, braille panning and routing. Distinguish forwarding Orca-generated text/events from genuine NVDA-style semantic presentation. Add automated regressions where possible and separately document live NVDA and physical braille acceptance. Do not claim end-to-end success based only on mocked, loopback, or Xvfb tests.
 
+## Live Linux Mint testing with xa11y
+
+For live testing on the active XFCE session, follow [xa11y and AT-SPI live-testing guidance](XA11Y_LIVE_TESTING.md). Use xa11y for Linux accessibility-tree observation and targeted actions, but require separate Windows NVDA Remote input, speech, and braille evidence for end-to-end compatibility claims. Preserve the active desktop and remote connection; do not substitute AT-SPI actions for real NVDA keyboard gestures.
+
 ## Efficient development
 
 1. Inspect the relevant code and existing tests before changing anything.
