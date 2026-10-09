@@ -8,7 +8,7 @@ from unittest import mock
 
 import orca_adapter
 from tests.shared.test_compat_lifecycle import Harness
-from tests.unit.accessibility.test_a11y_model import FakeAccessible
+from tests.unit.accessibility.test_a11y_model import FakeAccessible, FakeAction, FakeText
 
 
 class BrailleInputHelpTests(Harness, unittest.TestCase):
@@ -186,3 +186,145 @@ class BrailleInputHelpTests(Harness, unittest.TestCase):
                 methods[self.COMMANDS[kind][1]].assert_not_called()
                 present.assert_called_once_with('Localized ' + self.COMMANDS[kind][2])
                 self.assertEqual(c.transport.sent, ['cancel'])
+
+    def semantic_runtime(self, *, learn=True, snake=False):
+        runtime = self.runtime(learn=learn, snake=snake)
+        c, _, state, _, _, _, _ = runtime
+        action = FakeAction(['click'])
+        text = FakeText('alpha bravo', caret=2)
+        text.set_caret_offset = mock.Mock(side_effect=lambda offset:
+            setattr(text, 'caret', offset) or True)
+        focus = FakeAccessible('Editor', 'text', action_iface=action, text_iface=text)
+        state.locusOfFocus = focus
+        c._lrd_nvda_native_braille = True
+        payload = orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload()
+        self.assertIsNotNone(payload)
+        self.addCleanup(orca_adapter.OrcaRuntimeAdapter.clear_semantic_focus)
+        return (*runtime, action, text, payload['focus_id'])
+
+    @staticmethod
+    def semantic_send(c, kind, focus_id):
+        if kind == 'action':
+            c._linux_rdaccess_semantic_action(version=1, object_id=focus_id, action_index=0)
+        else:
+            c._linux_rdaccess_semantic_caret(version=1, object_id=focus_id, offset=7)
+
+    def test_semantic_routing_describes_help_without_activation_or_caret_write(self):
+        for kind in ('action', 'caret'):
+            with self.subTest(kind=kind):
+                c, _, _, queue, _, _, present, action, text, focus_id = self.semantic_runtime()
+                self.semantic_send(c, kind, focus_id)
+                present.assert_not_called()
+                self.assertEqual(action.performed, [])
+                text.set_caret_offset.assert_not_called()
+                self.drain(queue)
+                self.assertEqual(action.performed, [])
+                text.set_caret_offset.assert_not_called()
+                present.assert_called_once_with('Localized processRoutingKeyHandler')
+                c.local_machine.cancel_speech.assert_called_once_with()
+                self.assertEqual(c.transport.sent, ['cancel'])
+                self.assertEqual(getattr(c, '_lrd_braille_route_epoch', 0), 0)
+
+    def test_semantic_help_cannot_become_an_action_after_exit(self):
+        for kind in ('action', 'caret'):
+            with self.subTest(kind=kind):
+                c, _, state, queue, _, _, present, action, text, focus_id = self.semantic_runtime()
+                self.semantic_send(c, kind, focus_id)
+                state.learnModeEnabled = False
+                self.drain(queue)
+                self.assertEqual(action.performed, [])
+                text.set_caret_offset.assert_not_called()
+                present.assert_not_called()
+                c.local_machine.cancel_speech.assert_not_called()
+                self.assertEqual(c.transport.sent, [])
+
+    def test_semantic_help_started_before_dispatch_suppresses_the_action(self):
+        for kind in ('action', 'caret'):
+            with self.subTest(kind=kind):
+                c, _, state, queue, _, _, present, action, text, focus_id = self.semantic_runtime(learn=False)
+                self.semantic_send(c, kind, focus_id)
+                state.learnModeEnabled = True
+                self.drain(queue)
+                self.assertEqual(action.performed, [])
+                text.set_caret_offset.assert_not_called()
+                present.assert_called_once_with('Localized processRoutingKeyHandler')
+
+    def test_semantic_help_with_missing_metadata_suppresses_actions(self):
+        for kind in ('action', 'caret'):
+            for missing in ('handler', 'description', 'presenter'):
+                with self.subTest(kind=kind, missing=missing):
+                    c, script, _, queue, _, handlers, present, action, text, focus_id = self.semantic_runtime()
+                    if missing == 'handler':
+                        handlers.clear()
+                    elif missing == 'description':
+                        handlers['processRoutingKeyHandler'].description = ''
+                    else:
+                        script.presentMessage = None
+                    self.semantic_send(c, kind, focus_id)
+                    self.drain(queue)
+                    self.assertEqual(action.performed, [])
+                    text.set_caret_offset.assert_not_called()
+                    present.assert_not_called()
+                    c.local_machine.cancel_speech.assert_not_called()
+                    self.assertEqual(c.transport.sent, [])
+
+    def test_semantic_routing_respects_a_native_help_exemption(self):
+        for kind in ('action', 'caret'):
+            with self.subTest(kind=kind):
+                c, _, _, queue, _, handlers, present, action, text, focus_id = self.semantic_runtime()
+                handlers['processRoutingKeyHandler'].learnModeEnabled = False
+                self.semantic_send(c, kind, focus_id)
+                self.drain(queue)
+                present.assert_not_called()
+                if kind == 'action':
+                    self.assertEqual(action.performed, [0])
+                    text.set_caret_offset.assert_not_called()
+                    self.assertEqual(c.transport.sent, [])
+                else:
+                    self.assertEqual(action.performed, [])
+                    text.set_caret_offset.assert_called_once_with(7)
+                    self.assertEqual(c.transport.sent, ['cancel'])
+                    self.assertEqual(c._lrd_braille_route_epoch, 1)
+
+    def test_stale_semantic_help_never_presents_or_interrupts_current_speech(self):
+        for kind in ('action', 'caret'):
+            for change in ('handoff', 'disconnect', 'script', 'window', 'focus', 'snapshot', 'unknown'):
+                with self.subTest(kind=kind, change=change):
+                    c, _, state, queue, _, _, present, action, text, focus_id = self.semantic_runtime()
+                    self.semantic_send(c, kind, 'unknown' if change == 'unknown' else focus_id)
+                    if change == 'handoff':
+                        c.toggle_control()
+                    elif change == 'disconnect':
+                        c.transport.connected = False
+                    elif change == 'snapshot':
+                        orca_adapter.OrcaRuntimeAdapter.clear_semantic_focus()
+                        orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload()
+                    elif change != 'unknown':
+                        setattr(state, {'script': 'activeScript', 'window': 'activeWindow',
+                                        'focus': 'locusOfFocus'}[change], object())
+                    self.drain(queue)
+                    self.assertEqual(action.performed, [])
+                    text.set_caret_offset.assert_not_called()
+                    present.assert_not_called()
+                    c.local_machine.cancel_speech.assert_not_called()
+                    self.assertEqual(c.transport.sent, [])
+
+    def test_semantic_snake_case_help_and_fresh_routing_after_exit(self):
+        for kind in ('action', 'caret'):
+            with self.subTest(kind=kind):
+                c, _, state, queue, _, _, present, action, text, focus_id = self.semantic_runtime(snake=True)
+                self.semantic_send(c, kind, focus_id)
+                self.drain(queue)
+                present.assert_called_once_with('Localized processRoutingKeyHandler')
+                self.assertEqual(action.performed, [])
+                text.set_caret_offset.assert_not_called()
+                state.learn_mode_enabled = False
+                self.semantic_send(c, kind, focus_id)
+                self.drain(queue)
+                self.assertEqual(present.call_count, 1)
+                if kind == 'action':
+                    self.assertEqual(action.performed, [0])
+                    self.assertEqual(c.transport.sent, ['cancel'])
+                else:
+                    text.set_caret_offset.assert_called_once_with(7)
+                    self.assertEqual(c.transport.sent, ['cancel', 'cancel'])

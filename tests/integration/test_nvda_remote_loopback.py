@@ -641,6 +641,72 @@ class NvdaRemoteLoopbackTests(Harness, unittest.TestCase):
         self.assertEqual(self.session.read_through_barrier(), [{"type": "cancel"}])
         script.goBrailleHome.assert_called_once_with(None)
 
+    def semantic_braille_help_runtime(self):
+        state, script, main = self.braille_help_runtime()
+        text = FakeText('alpha bravo', caret=2)
+        text.set_caret_offset = mock.Mock(side_effect=lambda offset:
+            setattr(text, 'caret', offset) or True)
+        state.locusOfFocus.text_iface = text
+        self.session.send(type='lrd_a11y_capability', version=1, presentation='nvda')
+        self.session.barrier()
+        main.drain()
+        focus = self.session.read_through_barrier()[0]
+        self.assertEqual(focus['type'], 'lrd_a11y_focus')
+        return state, script, main, state.locusOfFocus.action_iface, text, focus['focus_id']
+
+    def send_semantic_braille_routes(self, focus_id):
+        self.session.send(type='lrd_a11y_action', version=1, object_id=focus_id, action_index=0)
+        self.session.send(type='lrd_a11y_caret', version=1, object_id=focus_id, offset=7)
+        self.session.barrier()
+
+    def test_semantic_braille_help_forwards_descriptions_without_actions_over_wire(self):
+        _, script, main, action, text, focus_id = self.semantic_braille_help_runtime()
+        self.send_semantic_braille_routes(focus_id)
+        script.presentMessage.assert_not_called()
+        main.drain()
+        self.assertEqual(action.performed, [])
+        text.set_caret_offset.assert_not_called()
+        self.assertEqual(self.session.read_through_barrier(), [
+            {'type': 'cancel'},
+            {'type': 'speak', 'sequence': ['Localized braille routing']},
+            {'type': 'cancel'},
+            {'type': 'speak', 'sequence': ['Localized braille routing']},
+        ])
+        self.assertEqual(script.presentMessage.call_count, 2)
+        self.assertEqual(self.controller.local_machine.cancel_speech.call_count, 2)
+        self.assertEqual(getattr(self.controller, '_lrd_braille_route_epoch', 0), 0)
+
+    def test_semantic_braille_help_exit_expires_requests_and_fresh_routes_execute(self):
+        state, script, main, action, text, focus_id = self.semantic_braille_help_runtime()
+        self.send_semantic_braille_routes(focus_id)
+        state.learnModeEnabled = False
+        main.drain()
+        self.assertEqual(action.performed, [])
+        text.set_caret_offset.assert_not_called()
+        script.presentMessage.assert_not_called()
+        self.controller.local_machine.cancel_speech.assert_not_called()
+        self.assertEqual(self.session.read_through_barrier(), [])
+        self.send_semantic_braille_routes(focus_id)
+        main.drain()
+        self.assertEqual(action.performed, [0])
+        text.set_caret_offset.assert_called_once_with(7)
+        self.assertEqual(self.session.read_through_barrier(), [{'type': 'cancel'}])
+
+    def test_semantic_braille_help_started_before_dispatch_prevents_actions_over_wire(self):
+        state, _, main, action, text, focus_id = self.semantic_braille_help_runtime()
+        state.learnModeEnabled = False
+        self.send_semantic_braille_routes(focus_id)
+        state.learnModeEnabled = True
+        main.drain()
+        self.assertEqual(action.performed, [])
+        text.set_caret_offset.assert_not_called()
+        self.assertEqual(self.session.read_through_barrier(), [
+            {'type': 'cancel'},
+            {'type': 'speak', 'sequence': ['Localized braille routing']},
+            {'type': 'cancel'},
+            {'type': 'speak', 'sequence': ['Localized braille routing']},
+        ])
+
     def test_raw_braille_pan_and_routing_messages_reject_ambiguous_input(self):
         self.connect()
         calls = []

@@ -261,6 +261,38 @@ class BrailleRoutingSpeechTests(Harness, unittest.TestCase):
                 self.assertEqual(order, ['stop', ('caret', 9)])
                 self.assertEqual(c.transport.sent, ['cancel'])
 
+    def test_semantic_input_help_stops_say_all_without_overriding_native_cancel_caret(self):
+        for event in ('end', 'cancel'):
+            with self.subTest(event=event):
+                c, server, idle, messages, state, script, contexts, text, queue, _, focus_id = self.make_semantic()
+                state.learnModeEnabled = True
+                script.inputEventHandlers = {'processRoutingKeyHandler': SimpleNamespace(
+                    description='Localized braille routing', learnModeEnabled=True)}
+                script.presentMessage = mock.Mock()
+                contexts[0].currentOffset = 3
+                self.start(server, idle, script, contexts)
+                callback = server._client.queued[0][2]['callback']
+                if event == 'end':
+                    callback('end')
+                self.semantic_route(c, focus_id)
+                self.drain_main(queue)
+                text.setCaretOffset.assert_not_called()
+                script.presentMessage.assert_called_once_with('Localized braille routing')
+                self.assertEqual(c.transport.sent, ['cancel'])
+                self.assertEqual(getattr(c, '_lrd_braille_route_epoch', 0), 0)
+                if event == 'cancel':
+                    callback('cancel')
+                self.drain_native(idle)
+                self.assertEqual([m['sequence'] for m in messages], [['FIRST']])
+                if event == 'cancel':
+                    text.setCaretOffset.assert_called_once_with(3)
+                    text.setSelection.assert_called_once_with(0, 3, 3)
+                    self.assertEqual(text.caretOffset, 3)
+                else:
+                    text.setCaretOffset.assert_not_called()
+                    text.setSelection.assert_not_called()
+                self.assertFalse(script._inSayAll)
+
     @staticmethod
     def home(c):
         c._on_remote_braille_input(scriptPath=[
