@@ -274,8 +274,17 @@ def _gi_atspi_method(iface, interface_name: str, method_name: str, *args):
         return None
     if not isinstance(iface, Atspi.Accessible):
         return None
-    interface = getattr(Atspi, interface_name)
-    return getattr(interface, method_name)(iface, *args)
+    # Some libatspi releases do not expose every interface function.
+    # Treat an unavailable or incompatible method as unsupported rather than
+    # letting a snapshot or value read raise out of the event handler.
+    interface = getattr(Atspi, interface_name, None)
+    method = getattr(interface, method_name, None)
+    if not callable(method):
+        return None
+    try:
+        return method(iface, *args)
+    except (TypeError, AttributeError, NotImplementedError):
+        return None
 
 
 def _text_iface(obj):
