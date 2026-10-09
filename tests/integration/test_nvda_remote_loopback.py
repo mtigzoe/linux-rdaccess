@@ -156,6 +156,66 @@ class NvdaRemoteLoopbackTests(Harness, unittest.TestCase):
         self.assertEqual((keys[-1]["vk_code"], keys[-1]["pressed"]), (0xA0, False))
         self.assertEqual(self.controller._lrd_forwarded, {})
 
+    def test_wire_shortcut_capture_preserves_chord_and_held_key_ownership(self):
+        _, state, _, _, idle = self.braille_runtime(queued=True)
+        state.activeScript = types.SimpleNamespace()
+        state.capturingKeys = True
+        self.controller._linux_rdaccess_script_call = mock.Mock(return_value=True)
+        keys = []
+        self.controller.local_machine.send_key = lambda **kwargs: keys.append(kwargs)
+        self.connect()
+        self.key(0x2D, True, extended=True)
+        self.key(0x54, True)
+        self.session.barrier()
+        self.assertEqual([(key['vk_code'], key['pressed']) for key in keys], [
+            (0x2D, True), (0x54, True)])
+        state.capturingKeys = False
+        self.key(0x54, True)
+        self.key(0x54, False)
+        self.key(0x2D, False, extended=True)
+        self.session.barrier()
+        idle.drain()
+        self.controller._linux_rdaccess_script_call.assert_not_called()
+        self.assertEqual([(key['vk_code'], key['pressed']) for key in keys], [
+            (0x2D, True), (0x54, True), (0x54, True), (0x54, False), (0x2D, False)])
+        self.assertFalse(self.controller._lrd_forwarded)
+        self.key(0x2D, True, extended=True)
+        self.key(0x54, True)
+        self.key(0x54, False)
+        self.key(0x2D, False, extended=True)
+        self.session.barrier()
+        idle.drain()
+        self.controller._linux_rdaccess_script_call.assert_called_once_with('presentTitle')
+
+    def test_wire_input_help_toggle_respects_receive_and_dispatch_capture(self):
+        _, state, _, _, idle = self.braille_runtime(queued=True)
+        state.activeScript = types.SimpleNamespace()
+        state.capturingKeys = False
+        self.controller._linux_rdaccess_script_call = mock.Mock(return_value=True)
+        keys = []
+        self.controller.local_machine.send_key = lambda **kwargs: keys.append(kwargs)
+        self.connect()
+        for capture in (False, True):
+            state.capturingKeys = capture
+            self.key(0x2D, True, extended=True)
+            self.key(0x31, True)
+            self.key(0x31, False)
+            self.key(0x2D, False, extended=True)
+            self.session.barrier()
+            state.capturingKeys = True
+            idle.drain()
+            self.controller._linux_rdaccess_script_call.assert_not_called()
+        self.assertEqual([(key['vk_code'], key['pressed']) for key in keys], [
+            (0x2D, True), (0x31, True), (0x31, False), (0x2D, False)])
+        state.capturingKeys = False
+        self.key(0x2D, True, extended=True)
+        self.key(0x31, True)
+        self.key(0x31, False)
+        self.key(0x2D, False, extended=True)
+        self.session.barrier()
+        idle.drain()
+        self.controller._linux_rdaccess_script_call.assert_called_once_with('toggleInputHelp')
+
     def test_wire_routing_rechecks_native_width_after_local_display_reconnect(self):
         braille, state, _, _, idle = self.braille_runtime(queued=True)
         braille._displaySize = [32, 1]
