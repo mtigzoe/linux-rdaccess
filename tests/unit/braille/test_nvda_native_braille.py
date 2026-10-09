@@ -12,6 +12,86 @@ import remote_access
 from tests.unit.accessibility.test_a11y_model import FakeAccessible, FakeAction, FakeText
 
 
+class DualApiAction(FakeAction):
+    """Both supported spellings invoke the same provider action."""
+
+    def doAction(self, index):
+        return super().do_action(index)
+
+
+class SemanticActionFailureTests(unittest.TestCase):
+    def button(self, action):
+        return FakeAccessible('Apply changes', 'push button', action_iface=action)
+
+    def test_action_error_after_activation_does_not_repeat_through_an_alias(self):
+        action = DualApiAction(['click'])
+
+        def activate_then_fail(index):
+            action.performed.append(index)
+            raise RuntimeError('provider reply unavailable')
+
+        action.do_action = mock.Mock(side_effect=activate_then_fail)
+        action.doAction = mock.Mock(wraps=action.doAction)
+        result = a11y_model.perform_action(self.button(action), 0)
+        self.assertEqual(action.performed, [0])
+        self.assertFalse(result)
+        action.do_action.assert_called_once_with(0)
+        action.doAction.assert_not_called()
+
+    def test_action_error_before_activation_cannot_succeed_through_an_alias(self):
+        action = DualApiAction(['click'])
+        action.do_action = mock.Mock(side_effect=RuntimeError('provider unavailable'))
+        action.doAction = mock.Mock(wraps=action.doAction)
+        self.assertFalse(a11y_model.perform_action(self.button(action), 0))
+        action.do_action.assert_called_once_with(0)
+        action.doAction.assert_not_called()
+        self.assertEqual(action.performed, [])
+
+    def test_missing_modern_action_method_still_uses_the_legacy_api(self):
+        for missing in (None, False):
+            with self.subTest(missing=missing):
+                action = DualApiAction(['click', 'show menu'])
+                action.do_action = missing
+                self.assertTrue(a11y_model.perform_action(self.button(action), 1))
+                self.assertEqual(action.performed, [1])
+
+    def test_explicit_action_rejection_is_not_retried(self):
+        action = DualApiAction(['click'], results=[False])
+        action.doAction = mock.Mock(wraps=action.doAction)
+        self.assertFalse(a11y_model.perform_action(self.button(action), 0))
+        self.assertEqual(action.performed, [0])
+        action.doAction.assert_not_called()
+
+    def test_semantic_action_failure_preserves_a_fresh_request_to_the_same_object(self):
+        action = DualApiAction(['click'])
+        original = action.do_action
+
+        def activate_then_fail(index):
+            original(index)
+            raise RuntimeError('provider reply unavailable')
+
+        action.do_action = mock.Mock(side_effect=activate_then_fail)
+        action.doAction = mock.Mock(wraps=action.doAction)
+        state = types.SimpleNamespace(locusOfFocus=self.button(action),
+                                      activeScript=object(), activeWindow=object())
+        orca = types.ModuleType('orca')
+        orca.orca_state = state
+        self.addCleanup(orca_adapter.OrcaRuntimeAdapter.clear_semantic_focus)
+        with mock.patch.dict(sys.modules, {'orca': orca}):
+            payload = orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload()
+            context = orca_adapter.OrcaRuntimeAdapter.semantic_focus_context()
+            result = orca_adapter.OrcaRuntimeAdapter.perform_semantic_action(
+                payload['focus_id'], 0, expected_context=context)
+            self.assertEqual(action.performed, [0])
+            self.assertFalse(result)
+            self.assertIs(orca_adapter.OrcaRuntimeAdapter.semantic_focus_context(), context)
+            action.do_action.side_effect = original
+            self.assertTrue(orca_adapter.OrcaRuntimeAdapter.perform_semantic_action(
+                payload['focus_id'], 0, expected_context=context))
+            self.assertEqual(action.performed, [0, 0])
+            action.doAction.assert_not_called()
+
+
 class SemanticPresentationLifetimeTests(unittest.TestCase):
     def setUp(self):
         self.action = FakeAction(["click"])
