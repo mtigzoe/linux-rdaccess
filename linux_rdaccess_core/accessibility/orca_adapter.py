@@ -307,19 +307,23 @@ class OrcaRuntimeAdapter:
     def semantic_focus_payload() -> dict[str, Any] | None:
         """Build a bounded AT-SPI focus snapshot for NVDA-native braille."""
         global _REMOTE_SEMANTIC_OBJECTS, _REMOTE_SEMANTIC_FOCUS_ID
-        # A failed or oversized rebuild must never leave actions pointing at
-        # objects from the previous focus/session.
-        OrcaRuntimeAdapter.clear_semantic_focus()
+        # Re-entrant actions cannot use the old registry while rebuilding.
+        # Retain the receipt context until publication so the network thread
+        # can queue commands during a same-focus refresh. Failed builds clear
+        # both fields; commands execute only later on this main loop.
+        _REMOTE_SEMANTIC_OBJECTS = {}
         try:
             from orca import orca_state
             build_focus_payload = _a11y_model().build_focus_payload
         except Exception:
+            OrcaRuntimeAdapter.clear_semantic_focus()
             return None
 
         focus = getattr(orca_state, "locusOfFocus", None)
         if focus is None:
             focus = getattr(orca_state, "locus_of_focus", None)
         if focus is None:
+            OrcaRuntimeAdapter.clear_semantic_focus()
             return None
         registry: dict[str, object] = {}
         try:
@@ -331,6 +335,7 @@ class OrcaRuntimeAdapter:
                 object_registry=registry,
             )
         except Exception:
+            OrcaRuntimeAdapter.clear_semantic_focus()
             return None
         if payload is not None:
             try:
@@ -342,12 +347,16 @@ class OrcaRuntimeAdapter:
                     ensure_ascii=False,
                 ).encode("utf-8")
             except Exception:
+                OrcaRuntimeAdapter.clear_semantic_focus()
                 return None
             # Leave headroom for the Remote Access type/version envelope.
             if len(encoded) > 60 * 1024:
+                OrcaRuntimeAdapter.clear_semantic_focus()
                 return None
             _REMOTE_SEMANTIC_OBJECTS = registry
             _REMOTE_SEMANTIC_FOCUS_ID = payload["focus_id"]
+        else:
+            OrcaRuntimeAdapter.clear_semantic_focus()
         return payload
 
     @staticmethod

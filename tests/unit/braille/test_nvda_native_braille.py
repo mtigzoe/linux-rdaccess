@@ -13,6 +13,27 @@ from tests.unit.accessibility.test_a11y_model import FakeAccessible, FakeAction
 
 
 class SemanticFocusPayloadTests(unittest.TestCase):
+    def test_same_focus_rebuild_retains_receipt_context_until_publication(self):
+        first = FakeAccessible("Button", "push button")
+        state = types.SimpleNamespace(locusOfFocus=first)
+        orca = types.ModuleType("orca")
+        orca.orca_state = state
+        observed = []
+        build = a11y_model.build_focus_payload
+
+        def rebuild(*args, **kwargs):
+            observed.append(orca_adapter.OrcaRuntimeAdapter.semantic_focus_id())
+            return build(*args, **kwargs)
+
+        with mock.patch.dict(sys.modules, {"orca": orca}):
+            payload = orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload()
+            with mock.patch.object(a11y_model, "build_focus_payload", side_effect=rebuild):
+                self.assertEqual(orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload(), payload)
+            self.assertEqual(observed, [payload["focus_id"]])
+            with mock.patch.object(a11y_model, "build_focus_payload", return_value=None):
+                self.assertIsNone(orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload())
+            self.assertIsNone(orca_adapter.OrcaRuntimeAdapter.semantic_focus_id())
+
     def test_action_is_rejected_after_focus_changes_before_a_braille_refresh(self):
         action = FakeAction(["click"])
         first = FakeAccessible("Old button", "push button", action_iface=action)
