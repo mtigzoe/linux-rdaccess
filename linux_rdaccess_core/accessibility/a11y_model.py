@@ -257,7 +257,9 @@ def perform_action(obj, index: int) -> bool:
         try:
             return method(index) is not False
         except Exception:
-            continue
+            # The provider may have acted before its reply failed. Retrying a
+            # different spelling of the same operation can activate it twice.
+            return False
     return False
 
 

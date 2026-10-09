@@ -22,7 +22,7 @@ from tests.shared.test_compat_lifecycle import Harness
 from tests.unit.accessibility.test_a11y_model import FakeAccessible, FakeAction, FakeText
 from tests.unit.accessibility import test_customization_say_all_callbacks as say_all_callbacks
 from tests.unit.accessibility import test_say_all_presentation_lifetime as say_all_presentation
-from tests.unit.braille.test_nvda_native_braille import LegacyText
+from tests.unit.braille.test_nvda_native_braille import DualApiAction, LegacyText
 
 
 CONTROLLER_LIFECYCLE = '''
@@ -608,6 +608,57 @@ class NvdaRemoteLoopbackTests(Harness, unittest.TestCase):
         braille.refresh()
         self.session.read_through_barrier()
         return state, script, main
+
+    def action_failure_runtime(self, *, activated):
+        _, _, button, _, main = self.braille_runtime(queued=True)
+        action = DualApiAction(['click'])
+        original = action.do_action
+
+        def fail(index):
+            if activated:
+                original(index)
+            raise RuntimeError('private provider detail')
+
+        action.do_action = mock.Mock(side_effect=fail)
+        action.doAction = mock.Mock(wraps=action.doAction)
+        button.action_iface = action
+        self.connect()
+        self.session.send(type='lrd_a11y_capability', version=1, presentation='nvda')
+        self.session.barrier()
+        main.drain()
+        focus = self.session.read_through_barrier()[0]
+        return action, original, main, focus['focus_id']
+
+    def test_semantic_action_error_after_activation_never_repeats_over_wire(self):
+        action, _, main, focus_id = self.action_failure_runtime(activated=True)
+        self.session.send(type='lrd_a11y_action', version=1, object_id=focus_id, action_index=0)
+        self.session.barrier()
+        action.do_action.assert_not_called()
+        main.drain()
+        self.assertEqual(action.performed, [0])
+        action.do_action.assert_called_once_with(0)
+        action.doAction.assert_not_called()
+        self.assertEqual(self.session.read_through_barrier(), [])
+
+    def test_semantic_action_error_before_activation_keeps_fresh_requests_working(self):
+        action, original, main, focus_id = self.action_failure_runtime(activated=False)
+        self.session.send(type='lrd_a11y_action', version=1, object_id=focus_id, action_index=0)
+        self.session.barrier()
+        with mock.patch.object(self.controller._module.log, 'error') as error:
+            main.drain()
+        self.assertEqual(action.performed, [])
+        action.do_action.assert_called_once_with(0)
+        action.doAction.assert_not_called()
+        self.assertNotIn('private provider detail', str(error.call_args_list))
+        self.assertEqual(self.session.read_through_barrier(), [])
+        action.do_action.side_effect = original
+        self.session.send(type='lrd_a11y_action', version=1, object_id=focus_id, action_index=0)
+        self.session.barrier()
+        main.drain()
+        self.assertEqual(action.performed, [0])
+        self.assertEqual(action.do_action.call_count, 2)
+        action.doAction.assert_not_called()
+        self.assertTrue(self.session.transport.connected)
 
     def test_braille_input_help_forwards_description_without_routing_over_wire(self):
         _, script, main = self.braille_help_runtime()
