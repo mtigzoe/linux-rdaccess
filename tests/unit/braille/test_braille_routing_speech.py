@@ -1,7 +1,8 @@
-"""Routing must interrupt remote Say All without restoring its old caret."""
+"""Braille routing and return-to-focus must interrupt remote Say All."""
 
+from pathlib import Path
 import sys
-from types import ModuleType
+from types import MethodType, ModuleType, SimpleNamespace
 import unittest
 from unittest import mock
 
@@ -51,6 +52,159 @@ class BrailleRoutingSpeechTests(Harness, unittest.TestCase):
     def drain_main(queue):
         while queue:
             queue.pop(0)()
+
+    def make_home(self):
+        runtime = self.make()
+        c, _, _, _, state, script, _, _, _, braille = runtime
+        order = []
+        namespace = {
+            'braille': braille, 'orca_state': state,
+            '_brlAPIAvailable': True,
+            'brlapi': SimpleNamespace(**{
+                'KEY_CMD_' + key: key for key in ('HWINLT', 'HWINRT', 'FWINLT',
+                    'FWINRT', 'FWINLTSKIP', 'FWINRTSKIP', 'LNUP', 'LNDN')}),
+            'BrailleEvent': lambda event: SimpleNamespace(event=event),
+            'speech': SimpleNamespace(stop=lambda: order.append('stop')),
+            'debug': SimpleNamespace(printException=lambda level: self.fail('native dispatch failed')),
+        }
+        fixture = Path(__file__).resolve().parents[2] / 'fixtures/orca42-braille-home-methods.py'
+        exec(compile(fixture.read_text(), str(fixture), 'exec'), namespace)
+        braille.dontInteruptSpeechKeys = namespace['dontInteruptSpeechKeys']
+        script.flatReviewContext = None
+        script.goBrailleHome = MethodType(namespace['Script'].goBrailleHome, script)
+        namespace['_regionWithFocus'] = state.locusOfFocus
+        namespace['setFocus'] = lambda region: order.append(('focus', region))
+        namespace['refresh'] = lambda force: order.append(('refresh', force))
+        braille.returnToRegionWithFocus = namespace['returnToRegionWithFocus']
+        namespace['_eventManager'] = SimpleNamespace(processBrailleEvent=lambda event:
+            script.goBrailleHome(event) if event.event['command'] == 'home' else True)
+        stop = c.local_machine.cancel_speech.side_effect
+        c.local_machine.cancel_speech.side_effect = lambda: (order.append('stop'), stop())
+        return (*runtime, order)
+
+    @staticmethod
+    def home(c):
+        c._on_remote_braille_input(scriptPath=[
+            'globalCommands', 'GlobalCommands', 'braille_toFocus'])
+
+    def test_native_orca_home_interrupts_speech_before_returning_to_focus(self):
+        _, _, _, _, state, script, _, _, _, _, order = self.make_home()
+        dispatch = script.goBrailleHome.__func__.__globals__['_processBrailleEvent']
+        self.assertTrue(dispatch({'command': 'home'}))
+        self.assertEqual(order, ['stop', ('focus', state.locusOfFocus), ('refresh', True)])
+        order.clear()
+        self.assertTrue(dispatch({'command': 'FWINRT'}))
+        self.assertEqual(order, [])
+
+    def test_home_interrupts_before_native_focus_return_and_expires_queued_end(self):
+        c, server, idle, messages, state, script, contexts, text, queue, _, order = self.make_home()
+        self.start(server, idle, script, contexts)
+        server._client.queued[0][2]['callback']('end')
+        self.home(c)
+        self.assertEqual(order, [])
+        self.assertEqual(c.transport.sent, [])
+        self.drain_main(queue)
+        self.assertEqual(order, ['stop', ('focus', state.locusOfFocus), ('refresh', True)])
+        self.assertEqual(c.transport.sent, ['cancel'])
+        self.drain_native(idle)
+        self.assertEqual([m['sequence'] for m in messages], [['FIRST']])
+        text.setCaretOffset.assert_not_called()
+        text.setSelection.assert_not_called()
+        self.assertFalse(script._inSayAll)
+
+    def test_home_before_first_idle_never_starts_the_old_say_all(self):
+        c, server, idle, messages, _, script, contexts, text, queue, _, _ = self.make_home()
+        server.sayAll(iter((context, presentation.Voice(gain=5)) for context in contexts),
+                      script._Script__sayAllProgressCallback)
+        self.home(c)
+        self.drain_main(queue)
+        self.drain_native(idle)
+        self.assertEqual(messages, [])
+        self.assertEqual(server._client.queued, [])
+        self.assertEqual(c.transport.sent, ['cancel'])
+        text.setCaretOffset.assert_not_called()
+        self.assertFalse(script._inSayAll)
+
+    def test_home_preserves_native_cancel_caret_placement_at_the_spoken_word(self):
+        c, server, idle, _, _, script, contexts, text, queue, _, _ = self.make_home()
+        contexts[0].currentOffset = 3
+        self.start(server, idle, script, contexts)
+        self.home(c)
+        self.drain_main(queue)
+        server._client.queued[0][2]['callback']('cancel')
+        self.drain_native(idle)
+        text.setCaretOffset.assert_called_once_with(3)
+        text.setSelection.assert_called_once_with(0, 3, 3)
+        self.assertEqual(script._sayAllContexts, [])
+        self.assertFalse(script._inSayAll)
+
+    def test_home_legacy_fallback_and_snake_case_handler_keep_interrupt_order(self):
+        for api in ('legacy', 'snake'):
+            with self.subTest(api=api):
+                c, _, _, _, state, script, _, _, queue, _, order = self.make_home()
+                if api == 'snake':
+                    script.go_braille_home, script.goBrailleHome = script.goBrailleHome, None
+                with mock.patch.dict(sys.modules,
+                        {'linux_rdaccess_orca_adapter': None} if api == 'legacy' else {}):
+                    self.home(c)
+                    self.drain_main(queue)
+                self.assertEqual(order, ['stop', ('focus', state.locusOfFocus), ('refresh', True)])
+                self.assertEqual(c.transport.sent, ['cancel'])
+
+    def test_stale_or_unsupported_home_does_not_cancel_current_speech(self):
+        for reason in ('focus', 'session', 'display', 'handler', 'legacy_handler'):
+            with self.subTest(reason=reason):
+                c, _, _, _, state, script, _, _, queue, _, order = self.make_home()
+                c._lrd_braille_focus_context = orca_adapter.OrcaRuntimeAdapter.braille_focus_context()
+                self.home(c)
+                if reason == 'focus':
+                    state.locusOfFocus = object()
+                elif reason == 'session':
+                    c.transport.connected = False
+                elif reason == 'display':
+                    c._lrd_braille_display = {'width': 0, 'ready': True, 'owner': object()}
+                else:
+                    script.goBrailleHome = None
+                with mock.patch.dict(sys.modules,
+                        {'linux_rdaccess_orca_adapter': None} if reason == 'legacy_handler' else {}):
+                    self.drain_main(queue)
+                self.assertEqual(order, [])
+                c.local_machine.cancel_speech.assert_not_called()
+                self.assertEqual(c.transport.sent, [])
+
+    def test_declined_home_interrupts_once_without_retrying_the_handler(self):
+        c, _, _, _, _, script, _, _, queue, _, order = self.make_home()
+        script.goBrailleHome = mock.Mock(return_value=False)
+        self.home(c)
+        self.drain_main(queue)
+        script.goBrailleHome.assert_called_once_with(None)
+        self.assertEqual(order, ['stop'])
+        self.assertEqual(c.transport.sent, ['cancel'])
+
+    def test_home_interrupts_before_leaving_native_flat_review(self):
+        c, _, _, _, _, script, _, _, queue, _, order = self.make_home()
+        script.flatReviewContext = object()
+        script.toggleFlatReviewMode = mock.Mock(side_effect=lambda event:
+            order.append('leave-review') or True)
+        self.home(c)
+        self.drain_main(queue)
+        self.assertEqual(order, ['stop', 'leave-review'])
+        script.toggleFlatReviewMode.assert_called_once_with(None)
+        self.assertEqual(c.transport.sent, ['cancel'])
+
+    def test_old_cancel_after_home_cannot_expire_new_say_all(self):
+        c, server, idle, messages, _, script, contexts, text, queue, _, _ = self.make_home()
+        self.start(server, idle, script, contexts)
+        old_callback = server._client.queued[0][2]['callback']
+        self.home(c)
+        self.drain_main(queue)
+        self.start(server, idle, script, contexts[1:])
+        old_callback('cancel')
+        self.drain_native(idle)
+        self.assertTrue(script._inSayAll)
+        self.assertEqual([m['sequence'] for m in messages], [['FIRST'], ['SECOND']])
+        text.setCaretOffset.assert_not_called()
+        text.setSelection.assert_not_called()
 
     def test_route_stops_on_main_loop_and_expires_queued_end(self):
         c, server, idle, messages, _, script, contexts, text, queue, _ = self.make()
@@ -143,10 +297,10 @@ class BrailleRoutingSpeechTests(Harness, unittest.TestCase):
         self.start(server, idle, script, contexts)
         c.local_machine.cancel_speech.side_effect = RuntimeError("private-speech-sentinel")
         self.route(c)
-        log = c._linux_rdaccess_stop_braille_routing_speech.__func__.__globals__["log"]
+        log = c._linux_rdaccess_stop_braille_speech.__func__.__globals__["log"]
         with mock.patch.object(log, "error") as error:
             self.drain_main(queue)
-        error.assert_called_once_with("linux-rdaccess: failed to cancel speech for braille routing")
+        error.assert_called_once_with("linux-rdaccess: failed to cancel speech for braille navigation")
         self.assertEqual(c.transport.sent, ["cancel"])
         server._client.queued[0][2]["callback"]("end")
         self.drain_native(idle)

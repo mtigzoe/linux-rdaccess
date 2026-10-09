@@ -667,10 +667,13 @@ class OrcaRuntimeAdapter:
         )
 
     @classmethod
-    def to_braille_focus(cls) -> bool | None:
+    def to_braille_focus(
+        cls, *, before_action: Callable[[], Any] | None = None,
+    ) -> bool | None:
         return cls.call_script(
             ("goBrailleHome", "go_braille_home"),
             default_event=True,
+            before_action=before_action,
         )
 
     @classmethod

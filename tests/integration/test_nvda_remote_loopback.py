@@ -428,6 +428,59 @@ class NvdaRemoteLoopbackTests(Harness, unittest.TestCase):
         self.assertEqual(keys, [])
         self.assertFalse(getattr(self.controller, "_lrd_forwarded", {}))
 
+    def test_remote_braille_home_cancels_say_all_before_native_home_over_wire(self):
+        _, state, _, _, main = self.braille_runtime(queued=True)
+        self.connect()
+        helper = say_all_presentation.SayAllPresentationLifetimeTests()
+        namespace, server, idle, _, native_state, script, contexts, text, _ = helper.runtime()
+        namespace['controller'], namespace['transport'] = self.controller, self.session.transport
+        state.activeScript, state.activeWindow = script, native_state.activeWindow
+        state.locusOfFocus = contexts[0].obj
+        state.lastInputEvent = native_state.lastInputEvent
+        type(server).sayAll._linux_rdaccess_original.__globals__['orca_state'] = state
+        script._Script__sayAllProgressCallback.__func__.__globals__['orca_state'] = state
+        order = []
+        contexts[0].currentOffset = 3
+        script.goBrailleHome = lambda event: order.append('home')
+        self.controller.local_machine.cancel_speech = mock.Mock(side_effect=lambda:
+            (order.append('stop'), namespace['old_stop'](server)))
+        self.controller._linux_rdaccess_sync_state()
+        helper.start(server, idle, script, contexts)
+        self.assertEqual(self.session.read_through_barrier(), [
+            {'type': 'speak', 'sequence': ['FIRST']},
+        ])
+        self.session.send(type='braille_input', scriptPath=[
+            'globalCommands', 'GlobalCommands', 'braille_toFocus'])
+        self.session.barrier()
+        self.assertEqual(order, [])
+        main.drain()
+        self.assertEqual(order, ['stop', 'home'])
+        self.assertEqual(self.session.read_through_barrier(), [{'type': 'cancel'}])
+        callback = server._client.queued[0][2]['callback']
+        callback('cancel')
+        helper.drain(idle)
+        callback('end')
+        helper.drain(idle)
+        self.assertEqual(self.session.read_through_barrier(), [])
+        text.setCaretOffset.assert_called_once_with(3)
+        text.setSelection.assert_called_once_with(0, 3, 3)
+        self.assertFalse(script._inSayAll)
+
+    def test_master_departure_expires_queued_braille_home_without_cancelling_speech(self):
+        _, state, _, _, main = self.braille_runtime(queued=True)
+        self.connect()
+        home = mock.Mock()
+        state.activeScript = types.SimpleNamespace(goBrailleHome=home)
+        self.controller.local_machine.cancel_speech = mock.Mock()
+        self.session.send(type='braille_input', scriptPath=[
+            'globalCommands', 'GlobalCommands', 'braille_toFocus'])
+        self.session.send(type='client_left', client={'id': 7, 'connection_type': 'master'})
+        self.session.barrier()
+        main.drain()
+        self.controller.local_machine.cancel_speech.assert_not_called()
+        home.assert_not_called()
+        self.assertEqual(self.session.read_through_barrier(), [])
+
     def test_raw_braille_native_focus_actions_and_fallback_cross_real_wire(self):
         braille, state, button, action, _ = self.braille_runtime()
         self.connect()
