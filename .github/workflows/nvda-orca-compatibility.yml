@@ -47,7 +47,7 @@ jobs:
       - name: Set up distro Python and accessibility dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y python3-gi gir1.2-atspi-2.0 python3-louis liblouis-data
+          sudo apt-get install -y python3-gi gir1.2-atspi-2.0 python3-louis liblouis-data orca
           python3 --version
       - name: Verify test inventory and run behavioral contracts
         shell: bash
