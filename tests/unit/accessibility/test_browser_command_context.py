@@ -13,7 +13,7 @@ from tests import test_remote_access as fixtures
 
 
 class DirectCommandInputHelpTests(Harness, unittest.TestCase):
-    """Receive-side commands preserve native help without invoking actions."""
+    """Receive-side commands preserve native help and shortcut capture."""
 
     # layout, vk, extended, scan code, extra modifiers, script method, handler
     COMMANDS = (
@@ -118,6 +118,167 @@ class DirectCommandInputHelpTests(Harness, unittest.TestCase):
                     self.assert_no_action(c, state)
                     expected = [mock.call('Localized ' + case[-1])] if case[-1] else []
                     self.assertEqual(script.presentMessage.call_args_list, expected)
+
+    @staticmethod
+    def physical_keys(controller):
+        return [event[1:3] for event in controller.local_machine.events if event[0] == 'key']
+
+    def test_shortcut_capture_receives_direct_commands_and_their_modifiers(self):
+        cases = self.COMMANDS + (
+            ('desktop', 0x31, False, 0, (), 'toggleInputHelp', None),
+            ('desktop', 0x51, False, 0, (), 'unsupportedQuit', None),
+        )
+        for case in cases:
+            for modifier in (0x2D, 0x14):
+                with self.subTest(command=case[-2], modifier=modifier):
+                    c, script, state, queue = self.environment(learn=False, queued=True)
+                    state.capturingKeys = True
+                    self.gesture(c, case, modifier)
+                    self.drain(queue)
+                    extras, vk = case[4], case[1]
+                    expected = [(extra, True) for extra in extras]
+                    expected += [(modifier, True), (vk, True), (vk, False)]
+                    expected += [(extra, False) for extra in reversed(extras)]
+                    expected.append((modifier, False))
+                    self.assertEqual(self.physical_keys(c), expected)
+                    self.assert_no_action(c, state)
+                    script.presentMessage.assert_not_called()
+                    self.assertFalse(c._lrd_forwarded)
+
+    def test_native_shortcut_editor_receives_the_insert_or_capslock_chord(self):
+        path = Path('/usr/lib/python3/dist-packages/orca/orca_gui_prefs.py')
+        tree = ast.parse(path.read_text())
+        cls = next(node for node in tree.body if isinstance(node, ast.ClassDef)
+                   and node.name == 'OrcaSetupGUI')
+        method = next(node for node in cls.body if isinstance(node, ast.FunctionDef)
+                      and node.name == '_processKeyCaptured')
+        for modifier, name in ((0x2D, 'Insert'), (0x14, 'Caps_Lock')):
+            with self.subTest(modifier=modifier):
+                c, _, state, _ = self.environment(learn=False)
+                state.capturingKeys = True
+                self.gesture(c, self.COMMANDS[2], modifier)
+                editor = types.SimpleNamespace(_capturedKey=[])
+                namespace = {
+                    'Gdk': types.SimpleNamespace(
+                        Keymap=types.SimpleNamespace(get_default=lambda: types.SimpleNamespace(
+                            get_entries_for_keycode=lambda code: (True, [code]))),
+                        keyval_name=lambda code: {modifier: name, 0x54: 't'}[code]),
+                    'Gtk': types.SimpleNamespace(accelerator_get_default_mod_mask=lambda: 13),
+                    'settings': types.SimpleNamespace(orcaModifierKeys=[name]),
+                    'keybindings': types.SimpleNamespace(ORCA_MODIFIER_MASK=256),
+                }
+                exec(compile(ast.Module(body=[method], type_ignores=[]), str(path), 'exec'), namespace)
+                for vk, pressed in self.physical_keys(c):
+                    if pressed:
+                        namespace['_processKeyCaptured'](editor, types.SimpleNamespace(
+                            hardware_keycode=vk, state=0))
+                self.assertEqual(editor._capturedKey, ['t', 256, 1])
+
+    def test_captured_command_keeps_raw_repeats_and_release_after_capture_ends(self):
+        for modifier in (0x2D, 0x14):
+            with self.subTest(modifier=modifier):
+                c, _, state, queue = self.environment(learn=False, queued=True)
+                state.capturingKeys = True
+                self.gesture(c, self.COMMANDS[2], modifier, release=False)
+                state.capturingKeys = False
+                self._key(c, 0x54, True)
+                self._key(c, 0x54, False)
+                self._key(c, modifier, False, extended=modifier == 0x2D)
+                self.drain(queue)
+                self.assertEqual(self.physical_keys(c), [
+                    (modifier, True), (0x54, True), (0x54, True), (0x54, False), (modifier, False)])
+                c._linux_rdaccess_script_call.assert_not_called()
+                self.gesture(c, self.COMMANDS[2], modifier)
+                self.drain(queue)
+                c._linux_rdaccess_script_call.assert_called_once_with('presentTitle')
+                self.assertFalse(c._lrd_forwarded)
+
+    def test_capture_entry_preserves_an_already_translated_press_and_release(self):
+        c, _, state, queue = self.environment(learn=False, queued=True)
+        self.gesture(c, self.COMMANDS[2], release=False)
+        state.capturingKeys = True
+        self._key(c, 0x54, True)
+        self._key(c, 0x54, False)
+        self._key(c, 0x55, True)
+        self._key(c, 0x55, False)
+        self._key(c, 0x2D, False, extended=True)
+        self.drain(queue)
+        self.assertEqual(self.physical_keys(c), [
+            (0x2D, True), (0x55, True), (0x55, False), (0x2D, False)])
+        c._linux_rdaccess_script_call.assert_not_called()
+        self.assertFalse(c._lrd_forwarded)
+
+    def test_queued_input_help_toggle_cannot_run_after_shortcut_capture_starts(self):
+        c, _, state, queue = self.environment(learn=False, queued=True)
+        case = ('desktop', 0x31, False, 0, (), 'toggleInputHelp', None)
+        self.gesture(c, case)
+        state.capturingKeys = True
+        self.drain(queue)
+        c._linux_rdaccess_script_call.assert_not_called()
+        self.assertEqual(self.physical_keys(c), [])
+        state.capturingKeys = False
+        self.gesture(c, case)
+        self.drain(queue)
+        c._linux_rdaccess_script_call.assert_called_once_with('toggleInputHelp')
+
+    def test_rejected_capture_modifier_never_delivers_an_unmodified_command(self):
+        for failure in (False, OSError('private backend failure')):
+            with self.subTest(failure=type(failure).__name__):
+                c, _, state, queue = self.environment(learn=False, queued=True)
+                state.capturingKeys = True
+                original = c.local_machine.send_key
+                c.local_machine.send_key = mock.Mock(return_value=failure)
+                if isinstance(failure, Exception):
+                    c.local_machine.send_key.side_effect = failure
+                self.gesture(c, self.COMMANDS[2])
+                self.drain(queue)
+                self.assertEqual(self.physical_keys(c), [])
+                self.assertFalse(getattr(c, '_lrd_forwarded', {}))
+                c._linux_rdaccess_script_call.assert_not_called()
+                c.local_machine.send_key = original
+                self.gesture(c, self.COMMANDS[2])
+                self.drain(queue)
+                self.assertEqual(self.physical_keys(c), [
+                    (0x2D, True), (0x54, True), (0x54, False), (0x2D, False)])
+
+    def test_failed_capture_release_keeps_ownership_until_a_successful_retry(self):
+        c, _, state, queue = self.environment(learn=False, queued=True)
+        state.capturingKeys = True
+        self.gesture(c, self.COMMANDS[2], release=False)
+        original = c.local_machine.send_key
+        c.local_machine.send_key = mock.Mock(return_value=False)
+        self._key(c, 0x54, False)
+        state.capturingKeys = False
+        c.local_machine.send_key = original
+        self._key(c, 0x54, True)
+        self._key(c, 0x54, False)
+        self._key(c, 0x2D, False, extended=True)
+        self.drain(queue)
+        c._linux_rdaccess_script_call.assert_not_called()
+        self.assertEqual(self.physical_keys(c), [
+            (0x2D, True), (0x54, True), (0x54, True), (0x54, False), (0x2D, False)])
+        self.assertFalse(c._lrd_forwarded)
+
+    def test_capture_ownership_expires_at_handoff_and_disconnect(self):
+        for change in ('handoff', 'disconnect'):
+            with self.subTest(change=change):
+                c, _, state, queue = self.environment(learn=False, queued=True)
+                state.capturingKeys = True
+                self.gesture(c, self.COMMANDS[2], release=False)
+                self.assertEqual(self.physical_keys(c), [(0x2D, True), (0x54, True)])
+                if change == 'handoff':
+                    c.toggle_control()
+                else:
+                    c.transport.connected = False
+                    c._linux_rdaccess_sync_state()
+                self.assertFalse(getattr(c, '_lrd_capture_keys', set()))
+                self.assertFalse(getattr(c, '_lrd_forwarded', {}))
+                state.capturingKeys = False
+                c.control_state = 1
+                c.transport.connected = True
+                self.gesture(c, self.COMMANDS[2])
+                self.drain(queue)
+                c._linux_rdaccess_script_call.assert_called_once_with('presentTitle')
 
     def test_help_commands_never_execute_after_help_ends_before_callback(self):
         for case in self.COMMANDS:
@@ -656,6 +817,9 @@ class BrowserCommandContextTests(Harness, unittest.TestCase):
                 controller, event, _, action, _ = self._deferred_action(
                     command, native=True, capture=True)
                 sys.modules['orca'].orca_state.capturingKeys = False
+                # Finish the captured press before starting a fresh command.
+                self._key(controller, self.COMMAND_KEYS[command], False,
+                          extended=command in ('edge', 'arrow'))
                 self._key(controller, self.COMMAND_KEYS[command], True,
                           extended=command in ('edge', 'arrow'))
                 current = event.__class__(event.event_string, event.hw_code,
@@ -710,8 +874,9 @@ class BrowserCommandContextTests(Harness, unittest.TestCase):
 
     def test_capture_does_not_retire_a_claim_for_an_ineligible_earlier_key(self):
         controller, event_class, _ = self._native_hooked()
-        sys.modules['orca'].orca_state.capturingKeys = True
         self._key(controller, 0x44, True)
+        # This claim was queued before the native capture dialog opened.
+        sys.modules['orca'].orca_state.capturingKeys = True
         # An older Ctrl+D event must not steal the arriving plain D's claim.
         earlier = event_class('d', self.D_CODE, modifiers=self.CTRL)
         self.assertEqual(earlier.consume, (False, 'Capturing keys'))

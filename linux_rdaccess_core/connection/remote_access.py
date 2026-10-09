@@ -2171,7 +2171,8 @@ LEGACY_COMPAT_MARKER_V112 = "# linux-rdaccess NVDA/Orca input compatibility v112
 LEGACY_COMPAT_MARKER_V113 = "# linux-rdaccess NVDA/Orca input compatibility v113"
 LEGACY_COMPAT_MARKER_V114 = "# linux-rdaccess NVDA/Orca input compatibility v114"
 LEGACY_COMPAT_MARKER_V115 = "# linux-rdaccess NVDA/Orca input compatibility v115"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v116"
+LEGACY_COMPAT_MARKER_V116 = "# linux-rdaccess NVDA/Orca input compatibility v116"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v117"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -2782,6 +2783,7 @@ _LEGACY_HELPERS = '''\
         bypass_request = getattr(self, "_lrd_bypass_request", None)
         self._lrd_bypass_request = None
         self._lrd_bypass_keys = {}
+        self._lrd_capture_keys = set()
         _lrd_clear_bypass_keys()
         if bypass_request is not None:
             _lrd_schedule_bypass_cleanup(bypass_request)
@@ -3204,6 +3206,33 @@ _LEGACY_HELPERS = '''\
                 return True
             return False
 
+        # Orca's shortcut editor needs the original physical chord, including
+        # NVDA commands normally consumed here. Keep captured keys raw through
+        # their release even if the dialog finishes while a key is held.
+        capture_keys = getattr(self, "_lrd_capture_keys", None)
+        if _lrd_capturing_keys() or (capture_keys is not None and held in capture_keys):
+            if capture_keys is None:
+                capture_keys = self._lrd_capture_keys = set()
+            self._lrd_trace_why = "shortcut_capture"
+            if pressed:
+                if modifier_vk not in self._LRD_MODIFIER_VKS:
+                    # A previously translated command can have marked the
+                    # still-held modifier as used. Capture nevertheless needs
+                    # that modifier before a new physical key reaches Gtk.
+                    self._linux_rdaccess_flush_pending_caps()
+                    if not self._linux_rdaccess_flush_pending_insert():
+                        self._lrd_swapped.add(held)
+                        self._lrd_trace_why = "deferred_modifier_rejected"
+                        return True
+                capture_keys.add(held)
+            self._linux_rdaccess_forward_key(
+                key_name=key_name, pressed=pressed, modifiers=modifiers,
+                vk_code=vk_code, scan_code=scan_code, extended=extended)
+            # A rejected release retains ownership until a successful retry.
+            if not pressed and held not in getattr(self, "_lrd_forwarded", {}):
+                capture_keys.discard(held)
+            return True
+
         # NVDA reports the focused object's shortcut independently of review.
         # Orca exposes the exact shortcut utility and speech/braille presenter.
         if pressed and not repeat:
@@ -3564,7 +3593,8 @@ _LEGACY_HELPERS = '''\
                 self._linux_rdaccess_mark_nvda_modifier_used()
                 if action == "input_help":
                     self._linux_rdaccess_run_main(
-                        lambda: self._linux_rdaccess_script_call("toggleInputHelp"))
+                        lambda: self._linux_rdaccess_script_call("toggleInputHelp")
+                        if not _lrd_capturing_keys() else False)
                 elif action == "punctuation":
                     self._linux_rdaccess_run_keyboard_command("cycleSpeakingPunctuationLevel")
                 elif action == "mouse_review":
@@ -6647,6 +6677,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V116,
                 LEGACY_COMPAT_MARKER_V115,
                 LEGACY_COMPAT_MARKER_V114,
                 LEGACY_COMPAT_MARKER_V113,
