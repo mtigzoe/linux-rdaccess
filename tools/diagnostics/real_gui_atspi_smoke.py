@@ -281,7 +281,7 @@ class Session:
         self.key("ctrl+a")
         self.type(value)
         text = node.get_text_iface()
-        self.wait(lambda: Atspi.Text.get_text(text, 0, text.get_character_count()) == value, label + " text")
+        self.wait(lambda: self.Atspi.Text.get_text(text, 0, text.get_character_count()) == value, label + " text")
         self.wait(lambda: text.get_caret_offset() == len(value), label + " caret")
         self.key("Left")
         self.wait(lambda: text.get_caret_offset() == len(value) - 1, label + " left-arrow caret")
@@ -359,7 +359,7 @@ def thunar_check(session):
                                                 predicate=lambda node: session.state(node, "FOCUSED")),
                             "Thunar location bar focus")
     text = location.get_text_iface()
-    session.wait(lambda: str(files) in Atspi.Text.get_text(text, 0, text.get_character_count()), "location path")
+    session.wait(lambda: str(files) in session.Atspi.Text.get_text(text, 0, text.get_character_count()), "location path")
     session.check("Thunar: Ctrl+L exposes focused location text with current path")
     session.key("Escape", "ctrl+2")
     table = session.wait(lambda: session.find(app, {"table", "tree table"},
@@ -423,7 +423,7 @@ def terminal_check(session):
     session.type("printf 'LRD_%s_%s\\n' TERMINAL MARKER")
     session.key("Return")
     text = terminal.get_text_iface()
-    session.wait(lambda: re.search(r"(?m)^LRD_TERMINAL_MARKER\r?$", Atspi.Text.get_text(text, 0, text.get_character_count())),
+    session.wait(lambda: re.search(r"(?m)^LRD_TERMINAL_MARKER\r?$", session.Atspi.Text.get_text(text, 0, text.get_character_count())),
                  "terminal output in AT-SPI text")
     session.check("XFCE Terminal: typed shell command exposes output through AT-SPI terminal text")
     session.key("F10")
@@ -585,7 +585,7 @@ def vscode_check(session):
     session.check("VS Code: command palette exposes named text input", bool(palette.get_name()))
     session.type("Go to Line")
     text = palette.get_text_iface()
-    session.wait(lambda: "Go to Line" in Atspi.Text.get_text(text, 0, text.get_character_count()), "Code palette text")
+    session.wait(lambda: "Go to Line" in session.Atspi.Text.get_text(text, 0, text.get_character_count()), "Code palette text")
     session.wait(lambda: session.find(app, {"list item", "option"},
                                       predicate=lambda node: "go to line" in node.get_name().casefold()
                                       and session.state(node, "FOCUSED")),
