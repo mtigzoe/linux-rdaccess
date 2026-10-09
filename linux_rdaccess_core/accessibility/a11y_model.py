@@ -315,7 +315,12 @@ def set_caret_offset(obj, offset: int) -> bool:
         try:
             return method(offset) is not False
         except Exception:
-            continue
+            # A provider failure is an unsuccessful operation, not evidence
+            # that another alias or a Python attribute can move its caret.
+            return False
+    descriptor = getattr(type(iface), "caretOffset", None)
+    if not isinstance(descriptor, property) or descriptor.fset is None:
+        return False
     try:
         iface.caretOffset = offset
     except Exception:

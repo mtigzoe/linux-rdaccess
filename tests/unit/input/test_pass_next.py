@@ -69,6 +69,22 @@ class PassNextTests(Harness, unittest.TestCase):
         self.assertNotIn('bypassNextCommand', calls)
         self.assertFalse(state.bypassNextCommand)
 
+    def test_name_only_modifier_does_not_use_up_pass_next_gesture(self):
+        for name in ("Shift_L", "Control_L", "Alt_L"):
+            with self.subTest(name=name):
+                c, KE, _script, _state, _calls, queue = self.environment(queued=True)
+                self.arm(c)
+                c._on_remote_key(key_name=name, pressed=True)
+                self.assertTrue(c._lrd_bypass_next)
+                self.assertFalse(c._lrd_bypass_request["used"])
+                self._key(c, 0x44, True)
+                self.assertPassed(KE("d", self.D_CODE))
+                self._key(c, 0x44, False)
+                self.assertPassed(KE("d", self.D_CODE, pressed=False))
+                c._on_remote_key(key_name=name, pressed=False)
+                self.drain(queue)
+                self.assertFalse(c._lrd_forwarded)
+
     def test_only_one_gesture_passes_while_native_flag_is_still_armed(self):
         c, KE, script, state, calls, _queue = self.environment()
         self.arm(c, release_modifier=False)

@@ -114,7 +114,8 @@ class BrailleProtocolTests(Harness, unittest.TestCase):
     def test_intermediate_controllers_upgrade_semantic_focus_guards(self):
         import remote_access
         for marker in (remote_access.LEGACY_COMPAT_MARKER_V100,
-                       remote_access.LEGACY_COMPAT_MARKER_V101):
+                       remote_access.LEGACY_COMPAT_MARKER_V101,
+                       remote_access.LEGACY_COMPAT_MARKER_V102):
             with self.subTest(marker=marker):
                 _, path, _ = self._patched_controller()
                 path.write_text(path.read_text().replace(remote_access.LEGACY_COMPAT_MARKER, marker))

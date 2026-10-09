@@ -21,6 +21,11 @@ import sys
 import tempfile
 import time
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from linux_rdaccess_core.accessibility.a11y_model import (
+    build_focus_payload, build_text_update, object_id, set_caret_offset,
+)
+
 APPLICATIONS = ("settings", "thunar", "mousepad", "terminal", "calendar", "firefox", "vscode")
 BINARIES = dict(zip(APPLICATIONS, ("xfce4-settings-manager", "thunar", "mousepad",
                                 "xfce4-terminal", "xfce4-panel", "firefox", "code")))
@@ -286,6 +291,25 @@ class Session:
         self.key("Left")
         self.wait(lambda: text.get_caret_offset() == len(value) - 1, label + " left-arrow caret")
         self.check(label + ": typed text and left-arrow caret match AT-SPI")
+        self.check(label + ": semantic routing accepts provider caret setter",
+                   set_caret_offset(node, 1))
+        self.wait(lambda: text.get_caret_offset() == 1, label + " routed caret")
+        self.check(label + ": routed caret is confirmed by the provider")
+        self.key("ctrl+a")
+
+        def selected_text():
+            update = build_text_update("object:text-selection-changed", node,
+                                       object_registry={object_id(node): node})
+            if (update is not None and update["text"] == value
+                    and update["selection_start"] == 0
+                    and update["selection_end"] == len(value)):
+                return update
+            return None
+
+        self.wait(selected_text, label + " semantic selection")
+        self.check(label + ": semantic text snapshot tracks keyboard selection")
+        self.key("Right")
+        self.wait(lambda: text.get_caret_offset() == len(value), label + " selection collapse")
 
     def close(self):
         # Bus launchers and GUI apps may fork. Each launched process owns a
@@ -496,7 +520,9 @@ user_pref("browser.tabs.warnOnClose", false);
     page = session.root / "firefox.html"
     page.write_text('''<!doctype html><html lang="en"><title>LRD Firefox accessibility fixture</title>
 <h1>Browser accessibility fixture</h1><label for="input">Smoke input</label>
-<input id="input" autofocus><button>Smoke action</button><a href="#end">Smoke link</a>
+<input id="input" autofocus><button onclick="const b=document.createElement('button');
+b.textContent='Smoke replacement action';this.replaceWith(b);b.focus()">Smoke action</button>
+<a href="#end">Smoke link</a>
 <h2 id="end">Destination</h2></html>''')
     session.launch("firefox", ["firefox", "--no-remote", "--profile", str(profile), page.as_uri()])
     app = session.application("firefox")
@@ -537,6 +563,19 @@ user_pref("browser.tabs.warnOnClose", false);
     session.key("Escape")
     session.wait(lambda: session.state(entry, "FOCUSED"), "Firefox Escape returns to document")
     session.check("Firefox: Escape restores document focus")
+    old_id = object_id(button)
+    session.focus(button)
+    session.key("Return")
+    replacement = session.wait(lambda: session.find(app, {"push button"}, "Smoke replacement action",
+                                                    lambda node: session.state(node, "FOCUSED")),
+                               "Firefox replacement button focus")
+    payload = build_focus_payload("object:state-changed:focused", 1, replacement)
+    objects = {item["id"]: item for item in payload["objects"]}
+    session.check("Firefox: DOM replacement has a new semantic object identity",
+                  payload["focus_id"] != old_id and old_id not in objects)
+    session.check("Firefox: dynamic snapshot names and focuses the replacement control",
+                  objects[payload["focus_id"]]["name"] == "Smoke replacement action"
+                  and "focused" in objects[payload["focus_id"]]["states"])
 
 
 def vscode_check(session):

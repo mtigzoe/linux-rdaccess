@@ -91,6 +91,36 @@ def my_stop(server):
         self.assertEqual(stopped, [])
         self.assertFalse(c._lrd_local_stop_pending)
 
+    def test_name_only_ctrl_interrupts_nvda_once_per_fresh_press(self):
+        for name in ("Control_L", "Control_R"):
+            with self.subTest(name=name):
+                c, _, _ = self._patched_controller()
+                c.local_machine.cancel_speech = mock.Mock()
+                for pressed in (True, True, False, True, False):
+                    c._on_remote_key(key_name=name, pressed=pressed)
+                self.assertEqual(c.transport.sent, ["cancel", "cancel"])
+                self.assertEqual(c.local_machine.cancel_speech.call_count, 2)
+                self.assertFalse(c._lrd_forwarded)
+
+    def test_name_only_non_ctrl_modifier_does_not_interrupt_say_all(self):
+        for name in ("Shift_L", "Shift_R", "Alt_L", "Alt_R", "Super_L", "Super_R"):
+            with self.subTest(name=name):
+                c, _, _ = self._patched_controller()
+                c.local_machine.cancel_speech = mock.Mock()
+                c._on_remote_key(key_name=name, pressed=True)
+                c._on_remote_key(key_name=name, pressed=False)
+                c.local_machine.cancel_speech.assert_not_called()
+                self.assertEqual(c.transport.sent, [])
+                self.assertFalse(c._lrd_forwarded)
+
+    def test_explicit_vk_remains_authoritative_for_speech_interruption(self):
+        c, _, _ = self._patched_controller()
+        c.local_machine.cancel_speech = mock.Mock()
+        c._on_remote_key(key_name="Control_L", vk_code=0x41, pressed=True)
+        c._on_remote_key(key_name="Control_L", vk_code=0x41, pressed=False)
+        self.assertEqual(c.transport.sent, [])
+        c.local_machine.cancel_speech.assert_called_once()
+
     def test_getter_supports_both_orca42_and_newer_server_slots(self):
         namespace = {}
         exec(remote_access._patch_legacy_customization_speech_server(

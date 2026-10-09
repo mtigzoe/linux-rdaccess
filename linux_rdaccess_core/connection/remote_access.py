@@ -1138,6 +1138,67 @@ if hasattr(TCPTransport, "close"):
 '''
 
 
+TRANSPORT_OUTBOUND_MARKER = "# linux-rdaccess relay output lifetime v1"
+_TRANSPORT_OUTBOUND_HOOK = TRANSPORT_OUTBOUND_MARKER + '''
+_linux_rdaccess_outbound_init = TCPTransport.__init__
+def _linux_rdaccess_outbound_owned_init(self, *args, **kwargs):
+    self._linux_rdaccess_outbound_lock = _linux_rdaccess_transport_threading.RLock()
+    self._linux_rdaccess_outbound_epoch = 0
+    return _linux_rdaccess_outbound_init(self, *args, **kwargs)
+TCPTransport.__init__ = _linux_rdaccess_outbound_owned_init
+
+_linux_rdaccess_outbound_disconnect = TCPTransport._disconnect
+def _linux_rdaccess_outbound_owned_disconnect(self, *args, **kwargs):
+    with self._linux_rdaccess_outbound_lock:
+        self._linux_rdaccess_outbound_epoch += 1
+        return _linux_rdaccess_outbound_disconnect(self, *args, **kwargs)
+TCPTransport._disconnect = _linux_rdaccess_outbound_owned_disconnect
+
+if hasattr(TCPTransport, "send"):
+    def _linux_rdaccess_outbound_send(self, type, **kwargs):
+        # Use a separate lock: controller callbacks already own the input lock
+        # and connection teardown calls them under the connection lock.
+        with self._linux_rdaccess_outbound_lock:
+            if not self.connected:
+                return
+            epoch = self._linux_rdaccess_outbound_epoch
+            current_socket = self.server_sock
+        obj = self.serializer.serialize(type=type, **kwargs)
+        with self._linux_rdaccess_outbound_lock:
+            if (self.connected and self.server_sock is current_socket
+                    and epoch == self._linux_rdaccess_outbound_epoch):
+                self.queue.put(obj)
+    TCPTransport.send = _linux_rdaccess_outbound_send
+'''
+
+_TRANSPORT_SEND_SOURCE = '''
+def send(self, type, **kwargs):
+    obj = self.serializer.serialize(type=type, **kwargs)
+    if self.connected:
+        self.queue.put(obj)
+'''
+
+
+def _strip_transport_outbound(text: str) -> str:
+    if TRANSPORT_OUTBOUND_MARKER not in text:
+        return text
+    if (text.count(TRANSPORT_OUTBOUND_MARKER) != 1
+            or not text.endswith(_TRANSPORT_OUTBOUND_HOOK)):
+        raise ValueError("incomplete relay output lifetime patch")
+    return text[:-len(_TRANSPORT_OUTBOUND_HOOK)].rstrip("\n") + "\n"
+
+
+def _patch_transport_outbound(text: str) -> str:
+    if TRANSPORT_OUTBOUND_MARKER in text:
+        _strip_transport_outbound(text)
+        return text
+    tcp = _unique_class(ast.parse(text, feature_version=(3, 10)), "TCPTransport")
+    send = _unique_method(tcp, "send") if tcp is not None else None
+    if send is not None and not _ast_equal(send, ast.parse(_TRANSPORT_SEND_SOURCE).body[0]):
+        raise ValueError("unsupported legacy transport send layout")
+    return text.rstrip("\n") + "\n\n" + _TRANSPORT_OUTBOUND_HOOK
+
+
 def _transport_pending_connect_run(source: str, *, reverse: bool = False) -> str:
     """Add/remove only the recognized run() connection-publication guards."""
     match = re.search(r"(?m)^([ \t]*)current_socket = None$", source)
@@ -1230,6 +1291,7 @@ def _transport_pending_connect_run(source: str, *, reverse: bool = False) -> str
 
 
 def _strip_transport_pending_connect(text: str) -> str:
+    text = _strip_transport_outbound(text)
     if TRANSPORT_PENDING_CONNECT_MARKER not in text:
         return text
     if (text.count(TRANSPORT_PENDING_CONNECT_MARKER) != 1
@@ -1323,7 +1385,8 @@ def _legacy_transport_cleanup_v7_current(text: str) -> bool:
 
 def legacy_transport_cleanup_patch_current(text: str) -> bool:
     try:
-        return (TRANSPORT_PENDING_CONNECT_MARKER in text
+        return (TRANSPORT_OUTBOUND_MARKER in text
+                and TRANSPORT_PENDING_CONNECT_MARKER in text
                 and _legacy_transport_cleanup_v7_current(_strip_transport_pending_connect(text)))
     except (SyntaxError, ValueError):
         return False
@@ -1334,7 +1397,7 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
     text = _strip_transport_pending_connect(text)
     if TRANSPORT_CLEANUP_MARKER in text:
         if _legacy_transport_cleanup_v7_current(text):
-            return _patch_transport_pending_connect(text)
+            return _patch_transport_outbound(_patch_transport_pending_connect(text))
         raise ValueError("current transport cleanup marker has an incomplete patch")
 
     upgrading_v1 = TRANSPORT_CLEANUP_MARKER_V1 in text
@@ -1689,7 +1752,7 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
     # finish the marker upgrade directly.
     if upgrading_v6:
         text = text.rstrip("\n") + "\n\n" + TRANSPORT_CLEANUP_MARKER + "\n"
-        text = _patch_transport_pending_connect(text)
+        text = _patch_transport_outbound(_patch_transport_pending_connect(text))
         if not legacy_transport_cleanup_patch_current(text):
             raise ValueError("transport cleanup patch validation failed")
         return text
@@ -1786,7 +1849,7 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
     text = text.replace(run_source, updated_run, 1)
 
     text = text.rstrip("\n") + "\n\n" + TRANSPORT_CLEANUP_MARKER + "\n"
-    text = _patch_transport_pending_connect(text)
+    text = _patch_transport_outbound(_patch_transport_pending_connect(text))
     if not legacy_transport_cleanup_patch_current(text):
         raise ValueError("transport cleanup patch validation failed")
     return text
@@ -2033,7 +2096,8 @@ LEGACY_COMPAT_MARKER_V98 = "# linux-rdaccess NVDA/Orca input compatibility v98"
 LEGACY_COMPAT_MARKER_V99 = "# linux-rdaccess NVDA/Orca input compatibility v99"
 LEGACY_COMPAT_MARKER_V100 = "# linux-rdaccess NVDA/Orca input compatibility v100"
 LEGACY_COMPAT_MARKER_V101 = "# linux-rdaccess NVDA/Orca input compatibility v101"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v102"
+LEGACY_COMPAT_MARKER_V102 = "# linux-rdaccess NVDA/Orca input compatibility v102"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v103"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -2042,6 +2106,13 @@ _LEGACY_HELPERS = '''\
     # dots, speech text or connection keys.
     _LRD_INPUT_LOCK = __import__("threading").RLock()
     _LRD_CTRL_VKS = (0x11, 0xA2, 0xA3)
+    _LRD_NAMED_MODIFIERS = {
+        "Shift_L": 0xA0, "Shift_R": 0xA1,
+        "Control_L": 0xA2, "Control_R": 0xA3,
+        "Alt_L": 0xA4, "Alt_R": 0xA5,
+        "Super_L": 0x5B, "Super_R": 0x5C,
+        "Insert": 0x2D, "KP_Insert": 0x2D, "Caps_Lock": 0x14,
+    }
     _LRD_LOCK_VKS = (0x14, 0x90, 0x91)  # Caps Lock, Num Lock, Scroll Lock
     _LRD_REPEAT_TOGGLE_VKS = (0x90, 0x91)  # repeated key-down would re-toggle
     _LRD_MODIFIER_VKS = (
@@ -2846,6 +2917,10 @@ _LEGACY_HELPERS = '''\
         pressed = bool(pressed)
         held = self._linux_rdaccess_key_identity(vk_code, extended, key_name)
         repeat = pressed and held in self._lrd_down
+        # Legacy named modifiers need the same speech/pass-next decisions as
+        # VK modifiers. Keep their protocol identity and injection unchanged.
+        modifier_vk = (vk_code if vk_code is not None
+                       else self._LRD_NAMED_MODIFIERS.get(key_name))
         if pressed:
             self._lrd_down.add(held)
         else:
@@ -2962,8 +3037,8 @@ _LEGACY_HELPERS = '''\
         # modifier keys (and their auto-repeat) must not cut off speech that
         # a chord such as NVDA+Down started; Ctrl itself does interrupt.
         if pressed and (
-            vk_code not in self._LRD_MODIFIER_VKS
-            or (vk_code in self._LRD_CTRL_VKS and not repeat)
+            modifier_vk not in self._LRD_MODIFIER_VKS
+            or (modifier_vk in self._LRD_CTRL_VKS and not repeat)
         ):
             # Auto-repeat re-cancels at most every 150 ms: Orca's own new
             # speech interrupts per item anyway, and a cancel per repeat event
@@ -2979,7 +3054,7 @@ _LEGACY_HELPERS = '''\
                 # Windows NVDA side, so send the NVDA Remote cancel message too.
                 # Restrict the protocol cancel to Ctrl to avoid adding a network
                 # round-trip to every ordinary navigation key.
-                if vk_code in self._LRD_CTRL_VKS and not repeat:
+                if modifier_vk in self._LRD_CTRL_VKS and not repeat:
                     self._linux_rdaccess_stop_nvda_speech()
             else:
                 self._linux_rdaccess_trace("speech", what="cancel_throttled")
@@ -3027,7 +3102,7 @@ _LEGACY_HELPERS = '''\
         bypass = (request is not None and not request["used"]
                   and (getattr(self, "_lrd_bypass_next", False) or native_bypass))
         if bypass:
-            if pressed and vk_code not in self._LRD_MODIFIER_VKS:
+            if pressed and modifier_vk not in self._LRD_MODIFIER_VKS:
                 request["used"] = True
                 self._lrd_trace_why = "pass_next"
                 self._lrd_bypass_next = False
@@ -6207,6 +6282,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V102,
                 LEGACY_COMPAT_MARKER_V101,
                 LEGACY_COMPAT_MARKER_V100,
                 LEGACY_COMPAT_MARKER_V99,
