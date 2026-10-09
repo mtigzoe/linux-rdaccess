@@ -12,6 +12,10 @@ import sys
 import unittest
 from pathlib import Path
 
+# Executing this script by path otherwise puts tools/diagnostics on sys.path,
+# not the repository root that contains the tests and bridge packages.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
 AREAS = {
     "keyboard-and-browse": {
         "tests.unit.accessibility.test_browser_command_context",
