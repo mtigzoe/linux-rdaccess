@@ -115,6 +115,16 @@ class NativeBrailleAlignmentTests(unittest.TestCase):
                 self.assertEqual(routes, [(target, region.inPos[start + cell])
                                          for cell in (0, width // 2, width - 1)])
 
+    def test_native_routing_cannot_move_caret_to_a_cell_outside_the_display(self):
+        braille, _, routes, target, patches = self.native(
+            'abcdefghijklmno', contracted=False, width=8)
+        braille.orca_state.activeScript.processRoutingKey = braille.processRoutingKey
+        with patches:
+            sys.modules['orca'].orca_state = braille.orca_state
+            self.assertTrue(orca_adapter.OrcaRuntimeAdapter.route_braille(7))
+            self.assertFalse(orca_adapter.OrcaRuntimeAdapter.route_braille(8))
+        self.assertEqual(routes, [(target, 7)])
+
     def test_mixed_regions_use_each_native_table_and_preserve_unicode_dots(self):
         braille, text, _, _, patches = self.native("the and 123")
         prefix = braille.Region("NASA and xyz")

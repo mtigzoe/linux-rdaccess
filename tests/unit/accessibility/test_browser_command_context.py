@@ -174,6 +174,75 @@ class BrowserCommandContextTests(Harness, unittest.TestCase):
                 self._consume_deferred(event)
                 action.assert_called_once()
 
+    def test_held_nvda_browse_commands_keep_their_native_action_on_repeat(self):
+        for command, vk in (('layout', 0x56), ('find', 0x46), ('find_next', 0x72)):
+            with self.subTest(command=command):
+                controller, event, script, action, _ = self._deferred_action(command)
+                # Bind the same physical key to an unrelated native command.
+                # Without a new remote claim, repeats fall into that binding.
+                unrelated = mock.Mock()
+                script.keyBindings.table[(event.hw_code, event.modifiers)] = (
+                    types.SimpleNamespace(function=unrelated))
+                self._consume_deferred(event)
+                for _ in range(2):
+                    self._key(controller, vk, True)
+                    repeated = event.__class__(event.event_string, event.hw_code,
+                                               modifiers=event.modifiers)
+                    self._consume_deferred(repeated)
+                self.assertEqual(action.call_count, 3)
+                unrelated.assert_not_called()
+
+    def test_held_nvda_browse_commands_in_chrome_never_repeat_into_application(self):
+        for command, vk in (('layout', 0x56), ('find', 0x46), ('find_next', 0x72)):
+            with self.subTest(command=command):
+                controller, event, script, action, state = self._deferred_action(command)
+                state['document'] = False
+                unrelated = mock.Mock()
+                script.keyBindings.table[(event.hw_code, event.modifiers)] = (
+                    types.SimpleNamespace(function=unrelated))
+                self._key(controller, vk, True)
+                repeated = event.__class__(event.event_string, event.hw_code,
+                                           modifiers=event.modifiers)
+                self._consume_deferred(repeated)
+                action.assert_not_called()
+                unrelated.assert_not_called()
+
+    def test_unsupported_native_selection_repeat_stays_consumed(self):
+        controller, event_class, script = self._hooked()
+        self._key(controller, 0x2D, True, extended=True)
+        self._key(controller, 0xA0, True)
+        self._key(controller, 0x79, True)
+        event = event_class('F10', 76, modifiers=self.ORCA | self.SHIFT)
+        self.assertIsNotNone(event._consumer)
+        self._key(controller, 0x79, True)
+        repeated = event_class('F10', 76, modifiers=self.ORCA | self.SHIFT)
+        consumed = repeated.consume[0] if isinstance(repeated.consume, tuple) else repeated.consume
+        self.assertTrue(consumed)
+        self.assertIsNotNone(repeated._consumer)
+        self.assertIsNone(repeated._handler)
+
+    def test_shifted_find_repeats_with_insert_or_caps_in_both_layouts(self):
+        for layout in ('desktop', 'laptop'):
+            for nvda_vk in (0x2D, 0x14):
+                with self.subTest(layout=layout, nvda_vk=nvda_vk), mock.patch.dict(
+                        'os.environ', LINUX_RDACCESS_NVDA_LAYOUT=layout):
+                    controller, event_class, script = self._hooked()
+                    self._key(controller, nvda_vk, True, extended=nvda_vk == 0x2D)
+                    self._key(controller, 0xA0, True)
+                    for _ in range(2):
+                        self._key(controller, 0x72, True)
+                        event = event_class('F3', 69, modifiers=self.SHIFT)
+                        self.assertIsNotNone(event._consumer)
+                        self._consume_deferred(event)
+                    self._key(controller, 0x72, False)
+                    self._key(controller, 0xA0, False)
+                    self._key(controller, nvda_vk, False, extended=nvda_vk == 0x2D)
+                    self.assertEqual(script.find_calls, ['previous', 'previous'])
+                    self.assertFalse(controller._lrd_forwarded)
+                    if nvda_vk == 0x14:
+                        self.assertNotIn(('key', 0x14, True, None),
+                                         controller.local_machine.events)
+
     def test_handoff_during_mode_query_cannot_rebind_old_event_to_new_session(self):
         controller, event_class, script = self._hooked()
         action = mock.Mock()
