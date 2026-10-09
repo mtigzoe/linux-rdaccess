@@ -9,7 +9,145 @@ from unittest import mock
 import a11y_model
 import orca_adapter
 import remote_access
-from tests.unit.accessibility.test_a11y_model import FakeAccessible, FakeAction
+from tests.unit.accessibility.test_a11y_model import FakeAccessible, FakeAction, FakeText
+
+
+class SemanticPresentationLifetimeTests(unittest.TestCase):
+    def setUp(self):
+        self.action = FakeAction(["click"])
+        self.text = FakeText("alpha bravo", caret=2)
+        self.text.set_caret_offset = lambda offset: setattr(self.text, "caret", offset) or True
+        self.focus = FakeAccessible("Editable control", "text", action_iface=self.action,
+                                    text_iface=self.text)
+        self.state = types.SimpleNamespace(locusOfFocus=self.focus, activeScript=object(),
+                                           activeWindow=types.SimpleNamespace(name="Main"))
+        orca = types.ModuleType("orca")
+        orca.orca_state = self.state
+        patch = mock.patch.dict(sys.modules, {"orca": orca})
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.addCleanup(orca_adapter.OrcaRuntimeAdapter.clear_semantic_focus)
+
+    def publish(self):
+        payload = orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload()
+        self.assertIsNotNone(payload)
+        return payload["focus_id"], orca_adapter.OrcaRuntimeAdapter.semantic_focus_context()
+
+    def request(self, kind, focus_id, context):
+        if kind == "action":
+            return orca_adapter.OrcaRuntimeAdapter.perform_semantic_action(
+                focus_id, 0, expected_context=context)
+        return orca_adapter.OrcaRuntimeAdapter.set_semantic_caret(
+            focus_id, 7, expected_context=context)
+
+    def test_action_and_caret_expire_on_activation_change_without_refresh(self):
+        for field in ("activeScript", "activeWindow"):
+            for kind in ("action", "caret"):
+                with self.subTest(field=field, kind=kind):
+                    focus_id, context = self.publish()
+                    setattr(self.state, field, object())
+                    self.assertFalse(self.request(kind, focus_id, context))
+                    self.assertIsNone(orca_adapter.OrcaRuntimeAdapter.semantic_focus_context())
+        self.assertEqual(self.action.performed, [])
+        self.assertEqual(self.text.caret, 2)
+
+    def test_same_focus_refresh_rebinds_activation_and_preserves_fresh_requests(self):
+        for field in ("activeScript", "activeWindow"):
+            for kind in ("action", "caret"):
+                with self.subTest(field=field, kind=kind):
+                    self.action.performed.clear()
+                    self.text.caret = 2
+                    focus_id, old = self.publish()
+                    setattr(self.state, field, object())
+                    new_id, fresh = self.publish()
+                    self.assertEqual(new_id, focus_id)
+                    self.assertIsNot(fresh, old)
+                    self.assertFalse(self.request(kind, focus_id, old))
+                    self.assertIs(orca_adapter.OrcaRuntimeAdapter.semantic_focus_context(), fresh)
+                    self.assertEqual(self.action.performed, [])
+                    self.assertEqual(self.text.caret, 2)
+                    self.assertTrue(self.request(kind, new_id, fresh))
+                    self.assertEqual(self.action.performed, [0] if kind == "action" else [])
+                    self.assertEqual(self.text.caret, 7 if kind == "caret" else 2)
+
+    def test_observed_activation_change_and_return_cannot_revive_old_requests(self):
+        for field in ("activeScript", "activeWindow"):
+            for kind in ("action", "caret"):
+                with self.subTest(field=field, kind=kind):
+                    focus_id, old = self.publish()
+                    origin = getattr(self.state, field)
+                    setattr(self.state, field, object())
+                    self.publish()
+                    setattr(self.state, field, origin)
+                    self.publish()
+                    self.assertFalse(self.request(kind, focus_id, old))
+        self.assertEqual(self.action.performed, [])
+        self.assertEqual(self.text.caret, 2)
+
+    def test_equivalent_window_proxy_and_unchanged_refresh_preserve_requests(self):
+        focus_id, context = self.publish()
+        self.state.activeWindow = types.SimpleNamespace(name="Main")
+        self.assertTrue(self.request("action", focus_id, context))
+        _, fresh = self.publish()
+        self.assertIs(fresh, context)
+        self.assertTrue(self.request("caret", focus_id, context))
+        self.assertEqual(self.action.performed, [0])
+        self.assertEqual(self.text.caret, 7)
+
+    def test_equal_script_instances_still_expire_requests(self):
+        for kind in ("action", "caret"):
+            with self.subTest(kind=kind):
+                self.state.activeScript = types.SimpleNamespace(name="Script")
+                focus_id, context = self.publish()
+                self.state.activeScript = types.SimpleNamespace(name="Script")
+                self.assertFalse(self.request(kind, focus_id, context))
+        self.assertEqual(self.action.performed, [])
+        self.assertEqual(self.text.caret, 2)
+
+    def test_snake_case_activation_changes_and_deactivation_expire_requests(self):
+        del self.state.locusOfFocus, self.state.activeScript, self.state.activeWindow
+        self.state.locus_of_focus = self.focus
+        self.state.active_script = object()
+        self.state.active_window = object()
+        for field in ("active_script", "active_window"):
+            for kind in ("action", "caret"):
+                with self.subTest(field=field, kind=kind):
+                    setattr(self.state, field, object())
+                    focus_id, context = self.publish()
+                    setattr(self.state, field, None)
+                    self.assertFalse(self.request(kind, focus_id, context))
+        self.assertEqual(self.action.performed, [])
+        self.assertEqual(self.text.caret, 2)
+
+    def test_failed_window_comparison_or_read_invalidates_snapshot(self):
+        class UnreadableWindow:
+            def __eq__(self, other):
+                raise RuntimeError("private window contents")
+
+        class UnreadableState:
+            locusOfFocus = self.focus
+            activeScript = self.state.activeScript
+
+            @property
+            def activeWindow(self):
+                raise RuntimeError("private window contents")
+
+        focus_id, context = self.publish()
+        self.state.activeWindow = UnreadableWindow()
+        self.assertFalse(self.request("action", focus_id, context))
+        self.assertIsNone(orca_adapter.OrcaRuntimeAdapter.semantic_focus_context())
+        self.publish()
+        self.assertIsNone(orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload())
+        self.assertIsNone(orca_adapter.OrcaRuntimeAdapter.semantic_focus_context())
+        sys.modules["orca"].orca_state = UnreadableState()
+        self.assertIsNone(orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload())
+        self.assertEqual(self.action.performed, [])
+
+    def test_receipt_context_does_not_query_orca_on_the_network_thread(self):
+        _, context = self.publish()
+        with mock.patch.object(orca_adapter.OrcaRuntimeAdapter, "active_script",
+                               side_effect=AssertionError("network thread queried Orca")):
+            self.assertIs(orca_adapter.OrcaRuntimeAdapter.semantic_focus_context(), context)
 
 
 class SemanticFocusPayloadTests(unittest.TestCase):

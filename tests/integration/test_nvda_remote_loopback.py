@@ -697,6 +697,65 @@ class NvdaRemoteLoopbackTests(Harness, unittest.TestCase):
         idle.drain()
         self.assertEqual(calls, ["panBrailleRight"])
 
+    def test_queued_semantic_action_expires_when_script_changes_with_same_focus(self):
+        braille, state, _, action, idle = self.braille_runtime(queued=True)
+        state.activeScript = object()
+        state.activeWindow = object()
+        self.connect()
+        self.session.send(type="lrd_a11y_capability", version=1, presentation="nvda")
+        self.session.barrier()
+        idle.drain()
+        focus = self.session.read_through_barrier()[0]
+        self.session.send(type="lrd_a11y_action", version=1,
+                          object_id=focus["focus_id"], action_index=0)
+        self.session.barrier()
+        state.activeScript = object()
+        idle.drain()
+        self.assertEqual(action.performed, [])
+        self.assertIsNone(orca_adapter.OrcaRuntimeAdapter.semantic_focus_context())
+        braille.refresh()
+        self.session.read_through_barrier()
+        self.session.send(type="lrd_a11y_action", version=1,
+                          object_id=focus["focus_id"], action_index=0)
+        self.session.barrier()
+        idle.drain()
+        self.assertEqual(action.performed, [0])
+
+    def test_queued_semantic_caret_expires_when_window_refresh_retains_same_editor(self):
+        braille, state, button, _, idle = self.braille_runtime(queued=True)
+        text = FakeText("alpha bravo", caret=2)
+        text.set_caret_offset = lambda offset: setattr(text, "caret", offset) or True
+        state.locusOfFocus = FakeAccessible("Editor", "text", button.parent, text_iface=text)
+        state.activeScript = object()
+        state.activeWindow = object()
+        self.connect()
+        self.session.send(type="lrd_a11y_capability", version=1, presentation="nvda")
+        self.session.barrier()
+        idle.drain()
+        focus = self.session.read_through_barrier()[0]
+        self.session.send(type="lrd_a11y_caret", version=1,
+                          object_id=focus["focus_id"], offset=7)
+        self.session.barrier()
+        state.activeWindow = object()
+        braille.refresh()
+        self.session.read_through_barrier()
+        self.session.send(type="lrd_a11y_caret", version=1,
+                          object_id=focus["focus_id"], offset=5)
+        self.session.barrier()
+        # Old and new requests share the accessible ID but only the new
+        # presentation may write. Check calls as well as the final caret.
+        writes = []
+
+        def write_caret(offset):
+            writes.append(offset)
+            text.caret = offset
+            return True
+
+        text.set_caret_offset = write_caret
+        idle.drain()
+        self.assertEqual(writes, [5])
+        self.assertEqual(text.caret, 5)
+
     def test_queued_semantic_action_expires_when_focus_moves_without_refresh(self):
         _, state, _, action, idle = self.braille_runtime(queued=True)
         self.connect()

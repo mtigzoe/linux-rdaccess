@@ -39,7 +39,7 @@ _REMOTE_BRAILLE_DISPLAY = None
 _REMOTE_BRAILLE_FOCUS: tuple[str | None, Any, Any] | None = None
 _REMOTE_SEMANTIC_OBJECTS: dict[str, object] = {}
 _REMOTE_SEMANTIC_FOCUS_ID: str | None = None
-_REMOTE_SEMANTIC_CONTEXT: object | None = None
+_REMOTE_SEMANTIC_CONTEXT: tuple[str, Any, Any] | None = None
 
 
 def show_elements_list(send_structural_list: Callable[[str], Any]) -> bool | None:
@@ -324,14 +324,18 @@ class OrcaRuntimeAdapter:
             OrcaRuntimeAdapter.clear_semantic_focus()
             return None
 
-        focus = getattr(orca_state, "locusOfFocus", None)
-        if focus is None:
-            focus = getattr(orca_state, "locus_of_focus", None)
-        if focus is None:
-            OrcaRuntimeAdapter.clear_semantic_focus()
-            return None
         registry: dict[str, object] = {}
         try:
+            focus = getattr(orca_state, "locusOfFocus", None)
+            if focus is None:
+                focus = getattr(orca_state, "locus_of_focus", None)
+            if focus is None:
+                OrcaRuntimeAdapter.clear_semantic_focus()
+                return None
+            script = OrcaRuntimeAdapter.active_script()
+            window = getattr(orca_state, "activeWindow", None)
+            if window is None:
+                window = getattr(orca_state, "active_window", None)
             payload = build_focus_payload(
                 "object:state-changed:focused",
                 1,
@@ -351,6 +355,14 @@ class OrcaRuntimeAdapter:
                     separators=(",", ":"),
                     ensure_ascii=False,
                 ).encode("utf-8")
+                # Accessible identity alone does not identify the presentation:
+                # Orca can activate a script/window before changing its focus.
+                previous = _REMOTE_SEMANTIC_CONTEXT
+                if (previous is None or previous[0] != payload["focus_id"]
+                        or previous[1] is not script or previous[2] != window):
+                    context = (payload["focus_id"], script, window)
+                else:
+                    context = previous
             except Exception:
                 OrcaRuntimeAdapter.clear_semantic_focus()
                 return None
@@ -358,8 +370,7 @@ class OrcaRuntimeAdapter:
             if len(encoded) > 60 * 1024:
                 OrcaRuntimeAdapter.clear_semantic_focus()
                 return None
-            if _REMOTE_SEMANTIC_FOCUS_ID != payload["focus_id"] or _REMOTE_SEMANTIC_CONTEXT is None:
-                _REMOTE_SEMANTIC_CONTEXT = object()
+            _REMOTE_SEMANTIC_CONTEXT = context
             _REMOTE_SEMANTIC_OBJECTS = registry
             _REMOTE_SEMANTIC_FOCUS_ID = payload["focus_id"]
         else:
@@ -375,22 +386,28 @@ class OrcaRuntimeAdapter:
 
     @staticmethod
     def semantic_focus_context() -> object | None:
-        """Read an opaque focus lifetime without querying Orca/AT-SPI."""
+        """Read an opaque presentation lifetime without querying Orca/AT-SPI."""
         return _REMOTE_SEMANTIC_CONTEXT
 
     @staticmethod
     def _semantic_target(object_id: str, expected_context: object | None):
-        """Validate snapshot and live focus on Orca's main loop before acting."""
-        if (_REMOTE_SEMANTIC_FOCUS_ID is None
+        """Validate snapshot and live activation on Orca's main loop before acting."""
+        context = _REMOTE_SEMANTIC_CONTEXT
+        if (_REMOTE_SEMANTIC_FOCUS_ID is None or context is None
                 or (expected_context is not None
-                    and expected_context is not _REMOTE_SEMANTIC_CONTEXT)):
+                    and expected_context is not context)):
             return None
         try:
             from orca import orca_state
             focus = getattr(orca_state, "locusOfFocus", None)
             if focus is None:
                 focus = getattr(orca_state, "locus_of_focus", None)
-            if focus is not None and _a11y_model().object_id(focus) == _REMOTE_SEMANTIC_FOCUS_ID:
+            script = OrcaRuntimeAdapter.active_script()
+            window = getattr(orca_state, "activeWindow", None)
+            if window is None:
+                window = getattr(orca_state, "active_window", None)
+            if (focus is not None and _a11y_model().object_id(focus) == context[0]
+                    and script is context[1] and window == context[2]):
                 return _REMOTE_SEMANTIC_OBJECTS.get(object_id)
         except Exception:
             pass
