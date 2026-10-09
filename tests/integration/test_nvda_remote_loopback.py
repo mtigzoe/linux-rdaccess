@@ -21,6 +21,7 @@ from tests.integration.nvda_remote_harness import (
 from tests.shared.test_compat_lifecycle import Harness
 from tests.unit.accessibility.test_a11y_model import FakeAccessible, FakeAction, FakeText
 from tests.unit.accessibility import test_customization_say_all_callbacks as say_all_callbacks
+from tests.unit.accessibility import test_say_all_presentation_lifetime as say_all_presentation
 
 
 CONTROLLER_LIFECYCLE = '''
@@ -373,6 +374,40 @@ class NvdaRemoteLoopbackTests(Harness, unittest.TestCase):
         ])
         self.assertEqual(progress, [])
 
+    def test_remote_routing_cancels_say_all_and_preserves_the_chosen_caret(self):
+        braille, state, _, _, main = self.braille_runtime(queued=True)
+        self.connect()
+        helper = say_all_presentation.SayAllPresentationLifetimeTests()
+        namespace, server, idle, _, native_state, script, contexts, text, _ = helper.runtime()
+        namespace["controller"], namespace["transport"] = self.controller, self.session.transport
+        state.activeScript, state.activeWindow = script, native_state.activeWindow
+        state.locusOfFocus = contexts[0].obj
+        type(server).sayAll._linux_rdaccess_original.__globals__["orca_state"] = state
+        script._Script__sayAllProgressCallback.__func__.__globals__["orca_state"] = state
+        script.processRoutingKey = lambda event: text.setCaretOffset(event.event["argument"])
+        braille._displaySize = [32, 1]
+        self.controller.local_machine.cancel_speech = mock.Mock(
+            side_effect=lambda: namespace["old_stop"](server))
+        helper.start(server, idle, script, contexts)
+        self.assertEqual(self.session.read_through_barrier(), [
+            {"type": "speak", "sequence": ["FIRST"]},
+        ])
+        self.session.send(type="braille_input", routingIndex=9,
+                          scriptPath=["globalCommands", "GlobalCommands", "braille_routeTo"])
+        self.session.barrier()
+        self.controller.local_machine.cancel_speech.assert_not_called()
+        main.drain()
+        self.controller.local_machine.cancel_speech.assert_called_once_with()
+        self.assertEqual(self.session.read_through_barrier(), [{"type": "cancel"}])
+        callback = server._client.queued[0][2]["callback"]
+        callback("end")
+        callback("cancel")
+        helper.drain(idle)
+        self.assertEqual(self.session.read_through_barrier(), [])
+        text.setCaretOffset.assert_called_once_with(9)
+        text.setSelection.assert_not_called()
+        self.assertFalse(script._inSayAll)
+
     def test_raw_braille_native_focus_actions_and_fallback_cross_real_wire(self):
         braille, state, button, action, _ = self.braille_runtime()
         self.connect()
@@ -419,7 +454,7 @@ class NvdaRemoteLoopbackTests(Harness, unittest.TestCase):
     def test_raw_braille_pan_and_routing_messages_reject_ambiguous_input(self):
         self.connect()
         calls = []
-        self.controller._linux_rdaccess_script_call = lambda *args: calls.append(args)
+        self.controller._linux_rdaccess_script_call = lambda *args, **kwargs: calls.append(args)
         for script in ("braille_scrollBack", "braille_scrollForward"):
             self.session.send(type="braille_input", dots=0, space=False,
                               scriptPath=["globalCommands", "GlobalCommands", script])
@@ -463,7 +498,7 @@ class NvdaRemoteLoopbackTests(Harness, unittest.TestCase):
         braille.refresh()
         self.session.read_through_barrier()
         calls = []
-        self.controller._linux_rdaccess_script_call = lambda *args: calls.append(args)
+        self.controller._linux_rdaccess_script_call = lambda *args, **kwargs: calls.append(args)
         self.session.send(type="braille_input", routingIndex=2)
         self.session.barrier()
         self.assertFalse(idle.callbacks.empty())

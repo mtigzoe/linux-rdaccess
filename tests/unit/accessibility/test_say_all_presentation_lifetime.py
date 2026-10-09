@@ -198,6 +198,7 @@ connection_type = "slave"
             remote_access._CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V1,
             remote_access._CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V2,
             remote_access._CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V3,
+            remote_access._CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V4,
         ):
             with self.subTest(marker=historical.splitlines()[0]), tempfile.TemporaryDirectory() as folder:
                 path = Path(folder) / "orca-customizations.py"
@@ -232,7 +233,11 @@ connection_type = "slave"
             source.replace(remote_access._CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK,
                            remote_access._CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V3)
                   .replace("while current():", "while True:"),
+            source.replace(remote_access._CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK,
+                           remote_access._CUSTOMIZATION_SAY_ALL_CALLBACK_HOOK_V4)
+                  .replace("while current():", "while True:"),
             source.replace("context_valid and active_script is originating_script", "True"),
+            source.replace('getattr(owner, "_lrd_braille_route_epoch", 0)', '0'),
             source + "\n_linux_rdaccess_wrap_say_all = another\n",
         ):
             with self.subTest(marker=corrupted[-80:]), tempfile.TemporaryDirectory() as folder:

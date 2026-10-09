@@ -64,7 +64,9 @@ class ControllerV89UpgradeTests(unittest.TestCase):
     def test_recent_markers_upgrade_from_original_backup_and_are_idempotent(self):
         original = (FIXTURES / "controller-upstream.txt").read_text()
         for marker in (remote_access.LEGACY_COMPAT_MARKER_V104,
-                       remote_access.LEGACY_COMPAT_MARKER_V105):
+                       remote_access.LEGACY_COMPAT_MARKER_V105,
+                       remote_access.LEGACY_COMPAT_MARKER_V106,
+                       remote_access.LEGACY_COMPAT_MARKER_V107):
             with self.subTest(marker=marker), tempfile.TemporaryDirectory() as directory:
                 path = Path(directory) / "remote_controller.py"
                 path.write_text(original)
