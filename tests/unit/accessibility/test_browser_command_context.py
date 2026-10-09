@@ -34,7 +34,7 @@ class DirectCommandInputHelpTests(Harness, unittest.TestCase):
         ('laptop', 0x4C, False, 0, (), 'presentCurrentLine', None),
         ('desktop', 0x55, False, 0, (), 'cycleProgressBarOutput', None),
         ('desktop', 0x76, False, 0, (), 'elementsList', None),
-        ('laptop', 0xBE, False, 0, (0xA2,), 'presentFocusAccelerator', None),
+        ('laptop', 0xBE, False, 0, (0xA2, 0xA0), 'presentFocusAccelerator', None),
         ('desktop', 0x71, False, 0, (), 'bypassNextCommand', 'bypassNextCommandHandler'),
     )
 
@@ -291,6 +291,143 @@ class DirectCommandInputHelpTests(Harness, unittest.TestCase):
                 self.drain(queue)
                 self.assert_no_action(c, state)
                 script.presentMessage.assert_not_called()
+
+    def test_queued_direct_commands_expire_on_script_or_window_activation_change(self):
+        # Pass-next owns input immediately; its separate lifecycle contracts
+        # cover delivery while its native activation callback is pending.
+        for case in self.COMMANDS[:-1]:
+            for change in ('script', 'window'):
+                with self.subTest(command=case[-2], change=change):
+                    c, _, state, queue = self.environment(learn=False, queued=True)
+                    state.activeWindow = object()
+                    self.gesture(c, case)
+                    if change == 'script':
+                        state.activeScript = types.SimpleNamespace()
+                    else:
+                        state.activeWindow = object()
+                    self.drain(queue)
+                    self.assert_no_action(c, state)
+                    self.assertFalse(getattr(c, '_lrd_forwarded', {}))
+
+    def test_queued_help_description_expires_when_the_same_script_changes_window(self):
+        c, script, state, queue = self.environment(queued=True)
+        state.activeWindow = object()
+        self.gesture(c, self.COMMANDS[0])
+        state.activeWindow = object()
+        self.drain(queue)
+        script.presentMessage.assert_not_called()
+        self.assert_no_action(c, state)
+        self.gesture(c, self.COMMANDS[0])
+        self.drain(queue)
+        script.presentMessage.assert_called_once_with('Localized sayAllHandler')
+
+    def test_queued_input_help_toggle_expires_on_activation_change(self):
+        case = ('desktop', 0x31, False, 0, (), 'toggleInputHelp', None)
+        for learn in (False, True):
+            for change in ('script', 'window'):
+                with self.subTest(learn=learn, change=change):
+                    c, _, state, queue = self.environment(learn=learn, queued=True)
+                    state.activeWindow = object()
+                    self.gesture(c, case)
+                    if change == 'script':
+                        state.activeScript = types.SimpleNamespace()
+                    else:
+                        state.activeWindow = object()
+                    self.drain(queue)
+                    c._linux_rdaccess_script_call.assert_not_called()
+                    self.gesture(c, case)
+                    self.drain(queue)
+                    c._linux_rdaccess_script_call.assert_called_once_with('toggleInputHelp')
+
+    def test_equal_script_instances_cannot_receive_a_previous_scripts_command(self):
+        c, script, state, queue = self.environment(learn=False, queued=True)
+        state.activeWindow = object()
+        self.gesture(c, self.COMMANDS[2])
+        state.activeScript = types.SimpleNamespace(**vars(script))
+        self.assertEqual(state.activeScript, script)
+        self.assertIsNot(state.activeScript, script)
+        self.drain(queue)
+        c._linux_rdaccess_script_call.assert_not_called()
+
+    def test_failed_window_read_or_comparison_rejects_queued_commands(self):
+        class UnreadableWindow:
+            def __eq__(self, other):
+                raise RuntimeError('private window contents')
+
+        for change in ('read', 'comparison'):
+            with self.subTest(change=change):
+                c, script, state, queue = self.environment(learn=False, queued=True)
+                state.activeWindow = object()
+                self.gesture(c, self.COMMANDS[2])
+                if change == 'comparison':
+                    state.activeWindow = UnreadableWindow()
+                else:
+                    class UnreadableState:
+                        activeScript = script
+                        capturingKeys = learnModeEnabled = False
+
+                        @property
+                        def activeWindow(self):
+                            raise RuntimeError('private window contents')
+
+                    sys.modules['orca'].orca_state = UnreadableState()
+                self.drain(queue)
+                c._linux_rdaccess_script_call.assert_not_called()
+
+    def test_expired_command_stays_consumed_until_release_and_fresh_press(self):
+        for modifier in (0x2D, 0x14):
+            with self.subTest(modifier=modifier):
+                c, _, state, queue = self.environment(learn=False, queued=True)
+                state.activeWindow = object()
+                self.gesture(c, self.COMMANDS[2], modifier, release=False)
+                state.activeWindow = object()
+                self.drain(queue)
+                c._linux_rdaccess_script_call.assert_not_called()
+                self._key(c, 0x54, True)
+                self._key(c, 0x54, False)
+                self._key(c, modifier, False, extended=modifier == 0x2D)
+                self.drain(queue)
+                c._linux_rdaccess_script_call.assert_not_called()
+                self.assertEqual(self.physical_keys(c), [])
+                self.gesture(c, self.COMMANDS[2], modifier)
+                self.drain(queue)
+                c._linux_rdaccess_script_call.assert_called_once_with('presentTitle')
+
+    def test_equivalent_windows_and_focus_changes_preserve_current_commands(self):
+        c, _, state, queue = self.environment(learn=False, queued=True)
+        state.activeWindow = types.SimpleNamespace(name='Main')
+        state.locusOfFocus = object()
+        self.gesture(c, self.COMMANDS[0])
+        state.activeWindow = types.SimpleNamespace(name='Main')
+        state.locusOfFocus = object()
+        self.drain(queue)
+        c._linux_rdaccess_script_call.assert_called_once_with('sayAll')
+
+    def test_all_direct_commands_still_execute_in_the_current_activation(self):
+        for case in self.COMMANDS[:-1]:
+            with self.subTest(command=case[-2]):
+                c, _, state, queue = self.environment(learn=False, queued=True)
+                state.activeWindow = object()
+                self.gesture(c, case)
+                self.drain(queue)
+                if case[-2] == 'elementsList':
+                    c._linux_rdaccess_show_elements_list.assert_called_once()
+                    c._linux_rdaccess_script_call.assert_not_called()
+                else:
+                    c._linux_rdaccess_script_call.assert_called_once_with(case[-2])
+
+    def test_snake_case_activation_change_expires_the_old_command_only(self):
+        for change in ('active_script', 'active_window'):
+            with self.subTest(change=change):
+                c, _, state, queue = self.environment(learn=False, queued=True, snake=True)
+                state.active_window = object()
+                self.gesture(c, self.COMMANDS[2])
+                setattr(state, change, object())
+                self.drain(queue)
+                c._linux_rdaccess_script_call.assert_not_called()
+                self.gesture(c, self.COMMANDS[2])
+                self.drain(queue)
+                c._linux_rdaccess_script_call.assert_called_once_with('presentTitle')
 
     def test_commands_use_help_if_it_starts_before_the_callback(self):
         for case in self.COMMANDS:

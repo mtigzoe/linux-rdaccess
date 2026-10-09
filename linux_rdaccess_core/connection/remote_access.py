@@ -2172,7 +2172,8 @@ LEGACY_COMPAT_MARKER_V113 = "# linux-rdaccess NVDA/Orca input compatibility v113
 LEGACY_COMPAT_MARKER_V114 = "# linux-rdaccess NVDA/Orca input compatibility v114"
 LEGACY_COMPAT_MARKER_V115 = "# linux-rdaccess NVDA/Orca input compatibility v115"
 LEGACY_COMPAT_MARKER_V116 = "# linux-rdaccess NVDA/Orca input compatibility v116"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v117"
+LEGACY_COMPAT_MARKER_V117 = "# linux-rdaccess NVDA/Orca input compatibility v117"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v118"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -3592,9 +3593,7 @@ _LEGACY_HELPERS = '''\
                 self._lrd_swapped.add(held)
                 self._linux_rdaccess_mark_nvda_modifier_used()
                 if action == "input_help":
-                    self._linux_rdaccess_run_main(
-                        lambda: self._linux_rdaccess_script_call("toggleInputHelp")
-                        if not _lrd_capturing_keys() else False)
+                    self._linux_rdaccess_run_keyboard_command("toggleInputHelp")
                 elif action == "punctuation":
                     self._linux_rdaccess_run_keyboard_command("cycleSpeakingPunctuationLevel")
                 elif action == "mouse_review":
@@ -3687,26 +3686,45 @@ _LEGACY_HELPERS = '''\
         return False
 
     def _linux_rdaccess_run_keyboard_command(self, method, action=None):
-        """Present direct keyboard commands in help without executing them."""
-        def active_script():
+        """Keep queued direct commands within their received Orca activation."""
+        def presentation_context():
             try:
                 from orca import orca_state
+                script = getattr(orca_state, "activeScript", None)
+                if script is None:
+                    script = getattr(orca_state, "active_script", None)
+                window = getattr(orca_state, "activeWindow", None)
+                if window is None:
+                    window = getattr(orca_state, "active_window", None)
+                return script, window
             except ImportError:
+                return None, None
+            except Exception:
                 return None
-            return getattr(orca_state, "activeScript", getattr(orca_state, "active_script", None))
 
         received_help = _lrd_learn_mode_enabled()
-        origin = active_script()
+        origin = presentation_context()
 
         def invoke():
             if _lrd_capturing_keys():
                 return False
+            current = presentation_context()
+            if origin is None or current is None or current[0] is not origin[0]:
+                return False
+            try:
+                if current[1] != origin[1]:
+                    return False
+            except Exception:
+                return False
+            # Input help changes help state itself, including exiting it.
+            if method == "toggleInputHelp":
+                return self._linux_rdaccess_script_call(method)
             help_now = _lrd_learn_mode_enabled()
             if received_help or help_now:
-                script = active_script()
+                script = current[0]
                 # A gesture received in help can never become a real action
                 # after Escape or NVDA+1, nor describe a different script.
-                if not help_now or script is None or script is not origin:
+                if not help_now or script is None:
                     return False
                 name = {
                     "sayAll": "sayAllHandler",
@@ -6677,6 +6695,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V117,
                 LEGACY_COMPAT_MARKER_V116,
                 LEGACY_COMPAT_MARKER_V115,
                 LEGACY_COMPAT_MARKER_V114,
