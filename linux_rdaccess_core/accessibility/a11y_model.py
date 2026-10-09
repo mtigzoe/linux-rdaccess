@@ -275,15 +275,16 @@ def _gi_atspi_method(iface, interface_name: str, method_name: str, *args):
     if not isinstance(iface, Atspi.Accessible):
         return None
     # Some libatspi releases do not expose every interface function.
-    # Treat an unavailable or incompatible method as unsupported rather than
-    # letting a snapshot or value read raise out of the event handler.
+    # A provider can also fail one interface query while its other properties
+    # remain usable. Match _invoke's fallback behavior so a missing selection
+    # or Value description cannot discard the entire focus snapshot.
     interface = getattr(Atspi, interface_name, None)
     method = getattr(interface, method_name, None)
     if not callable(method):
         return None
     try:
         return method(iface, *args)
-    except (TypeError, AttributeError, NotImplementedError):
+    except Exception:
         return None
 
 
@@ -431,10 +432,7 @@ def _value(obj) -> str:
     if is_gi_accessible:
         # Use Value.get_text explicitly: Accessible.get_text is a different
         # interface accessor in libatspi 2.50+.
-        try:
-            raw_text = Atspi.Value.get_text(iface)
-        except (AttributeError, TypeError):
-            raw_text = None
+        raw_text = _gi_atspi_method(iface, "Value", "get_text")
     else:
         raw_text = _invoke(iface, ("get_text", "getText"))
     # A provider can return an interface object instead of a textual value.
