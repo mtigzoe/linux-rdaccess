@@ -81,6 +81,7 @@ def _dbg(message):
             remote_access._CUSTOMIZATION_BRAILLE_CELLS_HOOK_V1,
             remote_access._CUSTOMIZATION_BRAILLE_CELLS_HOOK_V2,
             remote_access._CUSTOMIZATION_BRAILLE_CELLS_HOOK_V3,
+            remote_access._CUSTOMIZATION_BRAILLE_CELLS_HOOK_V4,
         ):
             with self.subTest(marker=historical.splitlines()[0]):
                 braille, original, native_calls = self.runtime()
@@ -93,8 +94,8 @@ def _dbg(message):
                 self.assertEqual(len(native_calls), 1)
                 self.assertIs(braille.refresh._linux_rdaccess_original, original)
 
-    def test_v3_on_disk_upgrade_preserves_original_private_backup_and_is_idempotent(self):
-        original = self.CONFIG_SOURCE + remote_access._CUSTOMIZATION_BRAILLE_CELLS_HOOK_V3
+    def test_v4_on_disk_upgrade_preserves_original_private_backup_and_is_idempotent(self):
+        original = self.CONFIG_SOURCE + remote_access._CUSTOMIZATION_BRAILLE_CELLS_HOOK_V4
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "orca-customizations.py"
             path.write_text(original)
@@ -102,7 +103,7 @@ def _dbg(message):
             remote_access.update_legacy_orca_customizations(config, path)
             updated = path.read_text()
             self.assertTrue(remote_access.legacy_customization_braille_cells_patch_current(updated))
-            self.assertNotIn(remote_access.CUSTOMIZATION_BRAILLE_CELLS_MARKER_V3, updated)
+            self.assertNotIn(remote_access.CUSTOMIZATION_BRAILLE_CELLS_MARKER_V4, updated)
             backup = path.with_name(path.name + ".linux-rdaccess-backup")
             self.assertEqual(backup.read_text(), original)
             self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
@@ -111,9 +112,10 @@ def _dbg(message):
             self.assertEqual(path.read_text(), updated)
             self.assertEqual(backup.read_text(), original)
 
-    def test_tampered_v3_and_v4_hooks_are_rejected_without_writing_config_or_backup(self):
+    def test_tampered_historical_and_current_hooks_are_rejected_without_writing_config_or_backup(self):
         for source in (
             remote_access._CUSTOMIZATION_BRAILLE_CELLS_HOOK_V3.replace("cells=cells", "cells=[]"),
+            remote_access._CUSTOMIZATION_BRAILLE_CELLS_HOOK_V4.replace("cells=cells", "cells=[]"),
             remote_access._CUSTOMIZATION_BRAILLE_CELLS_HOOK.replace(
                 "_patched_braille_refresh._linux_rdaccess_original = _old_braille_refresh",
                 "_patched_braille_refresh._linux_rdaccess_original = _patched_braille_refresh"),

@@ -23,6 +23,10 @@ from tests.unit.accessibility.test_a11y_model import FakeAccessible, FakeAction,
 
 
 CONTROLLER_LIFECYCLE = '''
+    def disconnect(self):
+        self.control_state = 0
+        self.transport.close()
+
     def _on_transport_connected(self, **kwargs):
         pass
 
@@ -148,6 +152,62 @@ class NvdaRemoteLoopbackTests(Harness, unittest.TestCase):
         self.session.transport.callback_manager.wait_for("transport_disconnected")
         self.assertEqual((keys[-1]["vk_code"], keys[-1]["pressed"]), (0xA0, False))
         self.assertEqual(self.controller._lrd_forwarded, {})
+
+    def test_controller_disconnect_does_not_deadlock_receiver_teardown(self):
+        worker = self.connect()
+        self.key(0xA0, True)
+        self.key(0x41, True)
+        self.session.barrier()
+        receiver_owns_connection = threading.Event()
+        close_started = threading.Event()
+        transport = self.session.transport
+        connection_lock = transport._linux_rdaccess_connection_lock
+
+        class BoundedConnectionLock:
+            # Bound only the acquisition that would otherwise deadlock the
+            # test. The receiver and controller still use the native RLock.
+            def __enter__(self):
+                if not connection_lock.acquire(timeout=1):
+                    raise AssertionError("disconnect waited on receiver while holding input lock")
+                return self
+
+            def __exit__(self, *_args):
+                connection_lock.release()
+
+        def before_disconnected_callback():
+            receiver_owns_connection.set()
+            if not close_started.wait(2):
+                raise AssertionError("controller did not start close")
+
+        original_close = transport.close
+
+        def observed_close():
+            close_started.set()
+            return original_close()
+
+        transport.callback_manager.callbacks["transport_disconnected"].insert(
+            0, before_disconnected_callback)
+        failure = None
+        with mock.patch.object(transport, "_linux_rdaccess_connection_lock", BoundedConnectionLock()), \
+                mock.patch.object(transport, "close", observed_close):
+            try:
+                self.session.disconnect_peer()
+                self.assertTrue(receiver_owns_connection.wait(2))
+                try:
+                    self.controller.disconnect()
+                except AssertionError as error:
+                    failure = error
+            finally:
+                close_started.set()
+                worker.join(3)
+        self.assertIsNone(failure)
+        self.assertFalse(worker.is_alive())
+        self.assertTrue(transport.closed)
+        self.assertEqual(self.controller._lrd_forwarded, {})
+        self.assertEqual(self.controller.local_machine.events, [
+            ("key", 0xA0, True, None), ("cancel",), ("key", 0x41, True, None),
+            ("key", 0x41, False, None), ("key", 0xA0, False, None),
+        ])
 
     def test_output_serialized_in_old_session_is_not_delivered_after_reconnect(self):
         self.connect()
@@ -342,6 +402,80 @@ class NvdaRemoteLoopbackTests(Harness, unittest.TestCase):
         braille.refresh()
         self.assertEqual(self.session.read_through_barrier()[-1],
                          {"type": "display", "cells": [1, 2, 0, 255]})
+
+    def test_queued_raw_routing_expires_when_focus_moves_without_refresh(self):
+        braille, state, _, _, idle = self.braille_runtime(queued=True)
+        self.connect()
+        braille.refresh()
+        self.session.read_through_barrier()
+        calls = []
+        self.controller._linux_rdaccess_script_call = lambda *args: calls.append(args)
+        self.session.send(type="braille_input", routingIndex=2)
+        self.session.barrier()
+        self.assertFalse(idle.callbacks.empty())
+        state.locusOfFocus = FakeAccessible("Another editor", "text")
+        idle.drain()
+        self.assertEqual(calls, [])
+        braille.refresh()
+        self.session.read_through_barrier()
+        self.session.send(type="braille_input", routingIndex=2)
+        self.session.barrier()
+        idle.drain()
+        self.assertEqual(calls[0][0], "processRoutingKey")
+        self.assertEqual(calls[0][1].event["argument"], 2)
+        self.assertEqual(len(calls), 1)
+
+    def test_queued_raw_pan_expires_after_focus_leaves_and_returns(self):
+        braille, state, button, _, idle = self.braille_runtime(queued=True)
+        self.connect()
+        braille.refresh()
+        self.session.read_through_barrier()
+        calls = []
+        self.controller._linux_rdaccess_script_call = lambda *args: calls.append(args)
+        self.session.send(type="braille_input", scriptPath=[
+            "globalCommands", "GlobalCommands", "braille_scrollForward"])
+        self.session.barrier()
+        state.locusOfFocus = FakeAccessible("Another control", "push button")
+        braille.refresh()
+        state.locusOfFocus = button
+        braille.refresh()
+        self.session.read_through_barrier()
+        idle.drain()
+        self.assertEqual(calls, [])
+
+    def test_queued_raw_pans_survive_refreshes_of_the_same_focus(self):
+        braille, _, _, _, idle = self.braille_runtime(queued=True)
+        self.connect()
+        braille.refresh()
+        self.session.read_through_barrier()
+        calls = []
+
+        def pan(*args):
+            calls.append(args[0])
+            braille.refresh()
+
+        self.controller._linux_rdaccess_script_call = pan
+        for _ in range(2):
+            self.session.send(type="braille_input", scriptPath=[
+                "globalCommands", "GlobalCommands", "braille_scrollForward"])
+        self.session.barrier()
+        braille.refresh()
+        idle.drain()
+        self.assertEqual(calls, ["panBrailleRight", "panBrailleRight"])
+
+    def test_raw_pan_keeps_working_when_a_refresh_has_no_accessible_focus(self):
+        braille, state, _, _, idle = self.braille_runtime(queued=True)
+        state.locusOfFocus = None
+        self.connect()
+        braille.refresh()
+        self.session.read_through_barrier()
+        calls = []
+        self.controller._linux_rdaccess_script_call = lambda *args: calls.append(args[0])
+        self.session.send(type="braille_input", scriptPath=[
+            "globalCommands", "GlobalCommands", "braille_scrollForward"])
+        self.session.barrier()
+        idle.drain()
+        self.assertEqual(calls, ["panBrailleRight"])
 
     def test_queued_semantic_action_expires_when_focus_moves_without_refresh(self):
         _, state, _, action, idle = self.braille_runtime(queued=True)
