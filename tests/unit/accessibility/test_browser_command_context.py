@@ -24,13 +24,37 @@ class BrowserCommandContextTests(Harness, unittest.TestCase):
 
     LEVELS = ((7, 0x37, 17, "&"), (8, 0x38, 18, "*"), (9, 0x39, 19, "("))
 
-    def _deferred_action(self, command):
-        controller, event_class, script = self._hooked()
+    def _native_hooked(self):
+        controller, _, _ = self._patched_controller()
+        event_class, script, patches = self._orca_env()
+        patches.start()
+        self.addCleanup(patches.stop)
+        state = sys.modules['orca'].orca_state
+        state.capturingKeys = state.bypassNextCommand = False
+        state.learnModeEnabled = state.listNotificationsModeEnabled = False
+        fixture = Path(__file__).resolve().parents[2] / 'fixtures/orca42-keyboard-consume-methods.py'
+        namespace = {'orca_state': state}
+        exec(compile(fixture.read_text(), str(fixture), 'exec'), namespace)
+        event_class.shouldConsume = namespace['KeyboardEvent'].shouldConsume
+        event_class.timestamp = 1
+        event_class.is_duplicate = False
+        event_class._getUserHandler = lambda event: None
+        event_class._isReleaseForLastNonModifierKeyEvent = lambda event: False
+        event_class.isModifierKey = lambda event: False
+        script.consumesKeyboardEvent = lambda event: bool(event._handler)
+        self.assertTrue(controller._module._lrd_install_orca_hook())
+        return controller, event_class, script
+
+    def _deferred_action(self, command, *, native=False, capture=False,
+                         in_document=True):
+        controller, event_class, script = self._native_hooked() if native else self._hooked()
         action = mock.Mock()
-        state = {"document": True, "frame": object()}
+        state = {"document": in_document, "frame": object()}
         script.utilities.inDocumentContent = lambda obj=None: state["document"]
         script.utilities.documentFrame = lambda: state["frame"]
-        sys.modules['orca'].orca_state = types.SimpleNamespace(activeScript=script)
+        if not native:
+            sys.modules['orca'].orca_state = types.SimpleNamespace(activeScript=script)
+        sys.modules['orca'].orca_state.capturingKeys = capture
         nav = script.structuralNavigation
         if command == 'form':
             nav.enabledObjects['formField'].goNext = action
@@ -70,7 +94,8 @@ class BrowserCommandContextTests(Harness, unittest.TestCase):
             vk, key, code, modifiers = 0x44, 'd', self.D_CODE, 0
         self._key(controller, vk, True, extended=command in ('edge', 'arrow'))
         event = event_class(key, code, modifiers=modifiers)
-        self.assertTrue(event.consume)
+        consumed = event.consume[0] if isinstance(event.consume, tuple) else event.consume
+        self.assertEqual(consumed, not capture)
         return controller, event, script, action, state
 
     @staticmethod
@@ -82,6 +107,138 @@ class BrowserCommandContextTests(Harness, unittest.TestCase):
 
     DEFERRED_COMMANDS = ('form', 'heading', 'layout', 'find', 'find_next',
                          'edge', 'arrow', 'landmark')
+    COMMAND_KEYS = {'form': 0x46, 'heading': 0x37, 'layout': 0x56,
+                    'find': 0x46, 'find_next': 0x72, 'edge': 0x23,
+                    'arrow': 0x28, 'landmark': 0x44}
+
+    def test_native_dispatcher_passes_remote_commands_to_shortcut_capture(self):
+        for command in self.DEFERRED_COMMANDS:
+            for in_document in (True, False):
+                with self.subTest(command=command, document=in_document):
+                    _, event, _, action, _ = self._deferred_action(
+                        command, native=True, capture=True, in_document=in_document)
+                    self.assertEqual(event.consume, (False, 'Capturing keys'))
+                    self.assertIsNone(event._handler)
+                    self.assertIsNone(event._consumer)
+                    self.assertFalse(hasattr(event, '_lrd_navigation_context'))
+                    action.assert_not_called()
+
+    def test_captured_command_claim_cannot_translate_a_later_local_key(self):
+        for command in self.DEFERRED_COMMANDS:
+            with self.subTest(command=command):
+                controller, event, _, action, _ = self._deferred_action(
+                    command, native=True, capture=True)
+                sys.modules['orca'].orca_state.capturingKeys = False
+                local = event.__class__(event.event_string, event.hw_code,
+                                        modifiers=event.modifiers)
+                self.assertIsNone(local._consumer)
+                self.assertFalse(hasattr(local, '_lrd_navigation_context'))
+                for marker in (controller._module._LRD_D, controller._module._LRD_T,
+                               controller._module._LRD_NVDA_BROWSE,
+                               controller._module._LRD_BROWSE_UNSUPPORTED,
+                               controller._module._LRD_TABLE_EDGE):
+                    self.assertEqual(marker['pending'], [])
+                action.assert_not_called()
+
+    def test_capture_start_passes_previously_owned_command_release(self):
+        for command in self.DEFERRED_COMMANDS:
+            with self.subTest(command=command):
+                controller, event, _, action, _ = self._deferred_action(command, native=True)
+                sys.modules['orca'].orca_state.capturingKeys = True
+                release = event.__class__(event.event_string, event.hw_code,
+                                          modifiers=event.modifiers, pressed=False)
+                self.assertEqual(release.consume, (False, 'Capturing keys'))
+                self.assertIsNone(release._consumer)
+                self.assertIsNone(release._handler)
+                self.assertFalse(controller._module._LRD_D['swapped'])
+                for marker in (controller._module._LRD_T,
+                               controller._module._LRD_NVDA_BROWSE,
+                               controller._module._LRD_BROWSE_UNSUPPORTED,
+                               controller._module._LRD_TABLE_EDGE):
+                    self.assertEqual(marker['held'], {})
+                action.assert_not_called()
+
+    def test_deferred_browser_action_refuses_new_shortcut_capture(self):
+        for command in self.DEFERRED_COMMANDS:
+            with self.subTest(command=command):
+                _, event, _, action, _ = self._deferred_action(command, native=True)
+                sys.modules['orca'].orca_state.capturingKeys = True
+                self._consume_deferred(event)
+                action.assert_not_called()
+
+    def test_native_dispatcher_keeps_commands_working_after_capture_ends(self):
+        for command in self.DEFERRED_COMMANDS:
+            with self.subTest(command=command):
+                controller, event, _, action, _ = self._deferred_action(
+                    command, native=True, capture=True)
+                sys.modules['orca'].orca_state.capturingKeys = False
+                self._key(controller, self.COMMAND_KEYS[command], True,
+                          extended=command in ('edge', 'arrow'))
+                current = event.__class__(event.event_string, event.hw_code,
+                                          modifiers=event.modifiers)
+                self.assertTrue(current.consume[0])
+                self._consume_deferred(current)
+                action.assert_called_once()
+
+    def test_native_capture_preserves_key_identity_before_binding_lookup(self):
+        for command in self.DEFERRED_COMMANDS:
+            with self.subTest(command=command):
+                controller, event, script, _, _ = self._deferred_action(command, native=True)
+                sys.modules['orca'].orca_state.capturingKeys = True
+                lookup = mock.Mock(wraps=script.keyBindings.getInputHandler)
+                script.keyBindings.getInputHandler = lookup
+                self._key(controller, self.COMMAND_KEYS[command], True,
+                          extended=command in ('edge', 'arrow'))
+                captured = event.__class__(event.event_string, event.hw_code,
+                                           modifiers=event.modifiers)
+                self.assertEqual(captured.consume, (False, 'Capturing keys'))
+                lookup.assert_not_called()
+                self.assertEqual((captured.event_string, captured.hw_code, captured.modifiers),
+                                 (event.event_string, event.hw_code, event.modifiers))
+
+    def test_shortcut_capture_accepts_unsupported_and_shifted_browse_keys(self):
+        cases = (
+            (0x41, 'a', 38, (), 0),
+            (0x37, '&', 17, (0xA0,), self.SHIFT),
+            (0x79, 'F10', 76, (0x2D, 0xA0), self.ORCA | self.SHIFT),
+        )
+        for vk, key, code, modifiers, mask in cases:
+            with self.subTest(key=key):
+                controller, event_class, script = self._native_hooked()
+                script.state['browse'] = False
+                script.utilities.inDocumentContent = lambda: False
+                sys.modules['orca'].orca_state.capturingKeys = True
+                for modifier in modifiers:
+                    self._key(controller, modifier, True, extended=modifier == 0x2D)
+                self._key(controller, vk, True)
+                event = event_class(key, code, modifiers=mask)
+                self.assertEqual(event.consume, (False, 'Capturing keys'))
+                self.assertIsNone(event._handler)
+                self.assertIsNone(event._consumer)
+                self.assertEqual((event.event_string, event.hw_code, event.modifiers),
+                                 (key, code, mask))
+                sys.modules['orca'].orca_state.capturingKeys = False
+                script.state['browse'] = True
+                script.utilities.inDocumentContent = lambda: True
+                local = event_class(key, code, modifiers=mask)
+                self.assertIsNone(local._consumer)
+                self.assertFalse(hasattr(local, '_lrd_navigation_context'))
+
+    def test_capture_does_not_retire_a_claim_for_an_ineligible_earlier_key(self):
+        controller, event_class, _ = self._native_hooked()
+        sys.modules['orca'].orca_state.capturingKeys = True
+        self._key(controller, 0x44, True)
+        # An older Ctrl+D event must not steal the arriving plain D's claim.
+        earlier = event_class('d', self.D_CODE, modifiers=self.CTRL)
+        self.assertEqual(earlier.consume, (False, 'Capturing keys'))
+        self.assertEqual(len(controller._module._LRD_D['pending']), 1)
+        captured = event_class('d', self.D_CODE)
+        self.assertEqual(captured.consume, (False, 'Capturing keys'))
+        self.assertEqual(controller._module._LRD_D['pending'], [])
+        sys.modules['orca'].orca_state.capturingKeys = False
+        local = event_class('d', self.D_CODE)
+        self.assertEqual(local._handler.function, 'live_region')
+        self.assertIsNone(local._consumer)
 
     def test_deferred_browser_actions_refuse_chrome_with_cached_page_caret(self):
         for command in self.DEFERRED_COMMANDS:
