@@ -14,6 +14,10 @@ When investigating NVDA–Orca behavior, consult [Orca source references](ORCA_S
 
 Use [NVDA on Linux behavior contract](NVDA_LINUX_BEHAVIOR.md) to distinguish user expectations from implemented, automated-tested, and live-tested behavior.
 
+## Root Python compatibility wrappers
+
+Follow [Python compatibility wrappers and repository layout](PYTHON_WRAPPERS.md). Keep legacy root wrapper import and CLI paths stable; put new implementation under `linux_rdaccess_core/`. Do not move root wrappers into a `wrappers/` directory as an incidental cleanup.
+
 ## Current development priority
 
 **Next priority:** End-to-end validation of **Orca → Windows NVDA speech and braille**, while preserving NVDA keyboard compatibility.
