@@ -2168,7 +2168,8 @@ LEGACY_COMPAT_MARKER_V109 = "# linux-rdaccess NVDA/Orca input compatibility v109
 LEGACY_COMPAT_MARKER_V110 = "# linux-rdaccess NVDA/Orca input compatibility v110"
 LEGACY_COMPAT_MARKER_V111 = "# linux-rdaccess NVDA/Orca input compatibility v111"
 LEGACY_COMPAT_MARKER_V112 = "# linux-rdaccess NVDA/Orca input compatibility v112"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v113"
+LEGACY_COMPAT_MARKER_V113 = "# linux-rdaccess NVDA/Orca input compatibility v113"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v114"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -3951,7 +3952,8 @@ _LEGACY_HELPERS = '''\
         def set_caret():
             try:
                 if not _adapter.set_semantic_caret(
-                        object_id, offset, expected_context=context):
+                        object_id, offset, expected_context=context,
+                        before_route=lambda: self._linux_rdaccess_stop_braille_speech(routing=True)):
                     log.error("linux-rdaccess: semantic caret rejected")
             except Exception:
                 log.error("linux-rdaccess: semantic caret failed")
@@ -6570,6 +6572,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V113,
                 LEGACY_COMPAT_MARKER_V112,
                 LEGACY_COMPAT_MARKER_V111,
                 LEGACY_COMPAT_MARKER_V110,

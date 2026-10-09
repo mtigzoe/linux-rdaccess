@@ -9,6 +9,8 @@ from unittest import mock
 import orca_adapter
 from tests.shared.test_compat_lifecycle import Harness
 from tests.unit.accessibility import test_say_all_presentation_lifetime as presentation
+from tests.unit.accessibility.test_a11y_model import FakeText
+from tests.unit.braille.test_nvda_native_braille import LegacyAccessible, LegacyText
 
 
 class BrailleRoutingSpeechTests(Harness, unittest.TestCase):
@@ -81,6 +83,183 @@ class BrailleRoutingSpeechTests(Harness, unittest.TestCase):
         stop = c.local_machine.cancel_speech.side_effect
         c.local_machine.cancel_speech.side_effect = lambda: (order.append('stop'), stop())
         return (*runtime, order)
+
+    def make_semantic(self):
+        runtime = list(self.make())
+        c, _, _, _, state, script, contexts, _, _, _ = runtime
+        text = LegacyText('alpha bravo', 2)
+        text.nSelections = 1
+        setter = text.setCaretOffset
+        text.setCaretOffset = mock.Mock(side_effect=setter)
+        text.setSelection = mock.Mock()
+        editor = LegacyAccessible('Editor', 'text', text=text)
+        state.locusOfFocus = editor
+        script._sayAllContexts = [editor]
+        for context in contexts:
+            context.obj = editor
+        runtime[7] = text
+        c._lrd_nvda_native_braille = True
+        payload = orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload()
+        self.assertIsNotNone(payload)
+        self.addCleanup(orca_adapter.OrcaRuntimeAdapter.clear_semantic_focus)
+        return (*runtime, payload['focus_id'])
+
+    @staticmethod
+    def semantic_route(c, object_id, offset=9):
+        c._linux_rdaccess_semantic_caret(version=1, object_id=object_id, offset=offset)
+
+    def test_semantic_routing_stops_before_caret_write_and_expires_native_end(self):
+        c, server, idle, messages, _, script, contexts, text, queue, _, focus_id = self.make_semantic()
+        self.start(server, idle, script, contexts)
+        server._client.queued[0][2]['callback']('end')
+        order = []
+        stop, setter = c.local_machine.cancel_speech.side_effect, text.setCaretOffset.side_effect
+        c.local_machine.cancel_speech.side_effect = lambda: (order.append('stop'), stop())
+        text.setCaretOffset.side_effect = lambda offset: (order.append(('caret', offset)), setter(offset))[-1]
+        self.semantic_route(c, focus_id)
+        self.assertEqual(order, [])
+        self.assertEqual(c.transport.sent, [])
+        self.drain_main(queue)
+        self.assertEqual(order, ['stop', ('caret', 9)])
+        self.assertEqual(c.transport.sent, ['cancel'])
+        self.drain_native(idle)
+        self.assertEqual([m['sequence'] for m in messages], [['FIRST']])
+        text.setCaretOffset.assert_called_once_with(9)
+        text.setSelection.assert_not_called()
+        self.assertEqual(text.caretOffset, 9)
+        self.assertFalse(script._inSayAll)
+
+    def test_semantic_routing_rejects_late_cancel_and_index_mark_caret_updates(self):
+        for event in ('cancel', 'index_marks'):
+            with self.subTest(event=event):
+                c, server, idle, _, _, script, contexts, text, queue, _, focus_id = self.make_semantic()
+                contexts[0].currentOffset = 3
+                self.start(server, idle, script, contexts)
+                callback = server._client.queued[0][2]['callback']
+                self.semantic_route(c, focus_id)
+                self.drain_main(queue)
+                callback(event, **({'index_mark': '1:4'} if event == 'index_marks' else {}))
+                self.drain_native(idle)
+                text.setCaretOffset.assert_called_once_with(9)
+                text.setSelection.assert_not_called()
+                self.assertEqual(text.caretOffset, 9)
+                self.assertFalse(script._inSayAll)
+
+    def test_semantic_routing_before_first_idle_never_starts_old_say_all(self):
+        c, server, idle, messages, _, script, contexts, text, queue, _, focus_id = self.make_semantic()
+        server.sayAll(iter((context, presentation.Voice(gain=5)) for context in contexts),
+                      script._Script__sayAllProgressCallback)
+        self.semantic_route(c, focus_id)
+        self.drain_main(queue)
+        self.drain_native(idle)
+        self.assertEqual(messages, [])
+        self.assertEqual(server._client.queued, [])
+        text.setCaretOffset.assert_called_once_with(9)
+        self.assertEqual(c.transport.sent, ['cancel'])
+        self.assertFalse(script._inSayAll)
+
+    def test_obsolete_semantic_callbacks_do_not_interrupt_a_new_say_all(self):
+        c, server, idle, messages, _, script, contexts, text, queue, _, focus_id = self.make_semantic()
+        self.start(server, idle, script, contexts)
+        old = server._client.queued[0][2]['callback']
+        self.semantic_route(c, focus_id)
+        self.drain_main(queue)
+        self.start(server, idle, script, contexts[1:])
+        old('cancel')
+        old('end')
+        self.drain_native(idle)
+        self.assertTrue(script._inSayAll)
+        self.assertEqual([m['sequence'] for m in messages], [['FIRST'], ['SECOND']])
+        text.setCaretOffset.assert_called_once_with(9)
+        self.assertEqual(c.transport.sent, ['cancel'])
+
+    def test_invalid_or_stale_semantic_routes_do_not_interrupt_current_speech(self):
+        for reason in ('bounds', 'missing_object', 'focus', 'script', 'window', 'session', 'setter'):
+            with self.subTest(reason=reason):
+                c, server, idle, _, state, script, contexts, text, queue, _, focus_id = self.make_semantic()
+                self.start(server, idle, script, contexts)
+                self.semantic_route(c, 'unknown' if reason == 'missing_object' else focus_id,
+                                    12 if reason == 'bounds' else 9)
+                if reason == 'focus':
+                    state.locusOfFocus = object()
+                elif reason == 'script':
+                    state.activeScript = object()
+                elif reason == 'window':
+                    state.activeWindow = object()
+                elif reason == 'session':
+                    c.transport.connected = False
+                elif reason == 'setter':
+                    text.setCaretOffset = None
+                self.drain_main(queue)
+                c.local_machine.cancel_speech.assert_not_called()
+                self.assertEqual(c.transport.sent, [])
+                self.assertEqual(getattr(c, '_lrd_braille_route_epoch', 0), 0)
+                self.assertEqual(text.caretOffset, 2)
+
+    def test_declined_semantic_setter_interrupts_once_without_retrying(self):
+        c, _, _, _, _, _, _, text, queue, _, focus_id = self.make_semantic()
+        text.setCaretOffset.side_effect = lambda offset: False
+        self.semantic_route(c, focus_id)
+        self.drain_main(queue)
+        text.setCaretOffset.assert_called_once_with(9)
+        c.local_machine.cancel_speech.assert_called_once_with()
+        self.assertEqual(c.transport.sent, ['cancel'])
+        self.assertEqual(text.caretOffset, 2)
+
+    def test_semantic_routing_survives_local_speech_stop_failure(self):
+        c, server, idle, messages, _, script, contexts, text, queue, _, focus_id = self.make_semantic()
+        self.start(server, idle, script, contexts)
+        c.local_machine.cancel_speech.side_effect = RuntimeError('private utterance')
+        self.semantic_route(c, focus_id)
+        self.drain_main(queue)
+        server._client.queued[0][2]['callback']('end')
+        self.drain_native(idle)
+        self.assertEqual([m['sequence'] for m in messages], [['FIRST']])
+        text.setCaretOffset.assert_called_once_with(9)
+        self.assertEqual(c.transport.sent, ['cancel'])
+        self.assertFalse(script._inSayAll)
+
+    def test_semantic_routing_interrupts_before_modern_and_property_caret_setters(self):
+        for api in ('modern', 'property'):
+            with self.subTest(api=api):
+                c, _, _, _, state, _, _, _, queue, _, focus_id = self.make_semantic()
+                order = []
+                if api == 'modern':
+                    text = FakeText('alpha bravo', caret=2)
+
+                    def write(offset):
+                        order.append(('caret', offset))
+                        text.caret = offset
+                        return True
+
+                    text.set_caret_offset = write
+                else:
+                    class PropertyText:
+                        characterCount = 11
+                        nSelections = 0
+                        _offset = 2
+
+                        def getText(self, start, end):
+                            return 'alpha bravo'[start:end]
+
+                        @property
+                        def caretOffset(self):
+                            return self._offset
+
+                        @caretOffset.setter
+                        def caretOffset(self, offset):
+                            order.append(('caret', offset))
+                            self._offset = offset
+
+                    text = PropertyText()
+                state.locusOfFocus._text = text
+                self.assertIsNotNone(orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload())
+                stop = c.local_machine.cancel_speech.side_effect
+                c.local_machine.cancel_speech.side_effect = lambda: (order.append('stop'), stop())
+                self.semantic_route(c, focus_id)
+                self.drain_main(queue)
+                self.assertEqual(order, ['stop', ('caret', 9)])
+                self.assertEqual(c.transport.sent, ['cancel'])
 
     @staticmethod
     def home(c):

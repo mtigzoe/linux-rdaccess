@@ -22,6 +22,7 @@ from tests.shared.test_compat_lifecycle import Harness
 from tests.unit.accessibility.test_a11y_model import FakeAccessible, FakeAction, FakeText
 from tests.unit.accessibility import test_customization_say_all_callbacks as say_all_callbacks
 from tests.unit.accessibility import test_say_all_presentation_lifetime as say_all_presentation
+from tests.unit.braille.test_nvda_native_braille import LegacyText
 
 
 CONTROLLER_LIFECYCLE = '''
@@ -406,6 +407,69 @@ class NvdaRemoteLoopbackTests(Harness, unittest.TestCase):
         self.assertEqual(self.session.read_through_barrier(), [])
         text.setCaretOffset.assert_called_once_with(9)
         text.setSelection.assert_not_called()
+        self.assertFalse(script._inSayAll)
+
+    def semantic_say_all_runtime(self):
+        braille, state, button, _, main = self.braille_runtime(queued=True)
+        self.connect()
+        helper = say_all_presentation.SayAllPresentationLifetimeTests()
+        namespace, server, idle, _, native_state, script, contexts, _, _ = helper.runtime()
+        namespace["controller"], namespace["transport"] = self.controller, self.session.transport
+        text = LegacyText("alpha bravo", 2)
+        text.nSelections = 1
+        text.setCaretOffset = mock.Mock(side_effect=text.setCaretOffset)
+        text.setSelection = mock.Mock()
+        editor = FakeAccessible("Editor", "text", button.parent, text_iface=text)
+        editor.queryText = lambda: text
+        for context in contexts:
+            context.obj = editor
+        script._sayAllContexts = [editor]
+        state.activeScript, state.activeWindow = script, native_state.activeWindow
+        state.locusOfFocus = editor
+        state.lastInputEvent = native_state.lastInputEvent
+        type(server).sayAll._linux_rdaccess_original.__globals__["orca_state"] = state
+        script._Script__sayAllProgressCallback.__func__.__globals__["orca_state"] = state
+        self.controller.local_machine.cancel_speech = mock.Mock(
+            side_effect=lambda: namespace["old_stop"](server))
+        self.session.send(type="lrd_a11y_capability", version=1, presentation="nvda")
+        self.session.barrier()
+        main.drain()
+        focus = self.session.read_through_barrier()[0]
+        return helper, server, idle, main, script, contexts, text, focus["focus_id"]
+
+    def test_semantic_routing_cancels_say_all_and_expires_queued_end_over_wire(self):
+        helper, server, idle, main, script, contexts, text, focus_id = self.semantic_say_all_runtime()
+        helper.start(server, idle, script, contexts)
+        self.assertEqual(self.session.read_through_barrier(), [
+            {"type": "speak", "sequence": ["FIRST"]},
+        ])
+        server._client.queued[0][2]["callback"]("end")
+        self.session.send(type="lrd_a11y_caret", version=1, object_id=focus_id, offset=9)
+        self.session.barrier()
+        self.controller.local_machine.cancel_speech.assert_not_called()
+        main.drain()
+        helper.drain(idle)
+        self.assertEqual(self.session.read_through_barrier(), [{"type": "cancel"}])
+        self.controller.local_machine.cancel_speech.assert_called_once_with()
+        text.setCaretOffset.assert_called_once_with(9)
+        text.setSelection.assert_not_called()
+        self.assertEqual(text.caretOffset, 9)
+        self.assertFalse(script._inSayAll)
+
+    def test_semantic_routing_preserves_caret_after_late_native_cancel_over_wire(self):
+        helper, server, idle, main, script, contexts, text, focus_id = self.semantic_say_all_runtime()
+        contexts[0].currentOffset = 3
+        helper.start(server, idle, script, contexts)
+        self.session.read_through_barrier()
+        self.session.send(type="lrd_a11y_caret", version=1, object_id=focus_id, offset=9)
+        self.session.barrier()
+        main.drain()
+        server._client.queued[0][2]["callback"]("cancel")
+        helper.drain(idle)
+        self.assertEqual(text.caretOffset, 9)
+        text.setCaretOffset.assert_called_once_with(9)
+        text.setSelection.assert_not_called()
+        self.assertEqual(self.session.read_through_barrier(), [{"type": "cancel"}])
         self.assertFalse(script._inSayAll)
 
     def test_master_departure_during_elements_lookup_discards_the_key_fallback(self):
