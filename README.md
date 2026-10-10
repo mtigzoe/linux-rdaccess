@@ -1165,6 +1165,9 @@ python3 -m unittest discover -s tests/unit/mcp -p 'test_*.py' -v
 ```
 
 See [read-only MCP diagnostics](docs/read-only-mcp.md) for server setup and usage.
+
+Additional validation commands:
+
     python3 -m compileall -q linux_rdaccess_core diagnostics tools tests
     python3 -m py_compile linux_rdaccess.py linux_rdaccess_windows.py remote_access.py
     bash -n run_braille_bridge.sh
