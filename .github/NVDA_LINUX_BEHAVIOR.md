@@ -37,6 +37,7 @@ Verify actual speech and braille presentation on the Windows NVDA side, includin
 - Braille commands should respect focus/session/display validity. After a control handoff or disconnect, queued routing or panning must not affect the new session.
 - Some native braille operations should interrupt speech (e.g. return-to-focus and routing), while ordinary panning should not unless evidence shows otherwise.
 - Distinguish simulated braille tests from physical braille display validation.
+- Temporary Orca braille messages ("Focus mode", Caps Lock, shortcut announcements) should be available on Windows NVDA braille while semantic braille is active, shown with NVDA's own braille message so NVDA keeps control of focus, caret, routing and panning presentation. Raw Orca cells must not be forwarded for this. Status: **Implemented (code-reviewed)** and **Automated-tested** with loopback and fake NVDA handlers on both sides; **Known issue / not verified** with live Windows NVDA and a physical braille display (see issue #59).
 
 ### Browse mode and Linux apps
 - In Firefox, test headings (including levels), links, forms, tables, landmarks, quick navigation, Elements List, browse/focus switching, and reading versus editing.

@@ -1269,7 +1269,8 @@ class NvdaRemoteLoopbackTests(Harness, unittest.TestCase):
         braille, main = self.message_runtime()
         wire = self.negotiate_semantic(main, message_version=1)
         self.assertEqual([m["type"] for m in wire], ["lrd_a11y_focus"])
-        refreshes = braille.refresh.call_count
+        native_refresh = braille.refresh._linux_rdaccess_original
+        refreshes = native_refresh.call_count
         last_semantic = self.controller._lrd_last_semantic_braille
         result = braille.displayMessage("Focus mode", flashTime=5000)
         self.assertEqual(result, "native display")
@@ -1278,7 +1279,7 @@ class NvdaRemoteLoopbackTests(Harness, unittest.TestCase):
             {"type": "lrd_a11y_message", "version": 1, "text": "Focus mode"},
         ])
         # Semantic focus state is neither refreshed nor changed by a status message.
-        self.assertEqual(braille.refresh.call_count, refreshes)
+        self.assertEqual(native_refresh.call_count, refreshes)
         self.assertEqual(self.controller._lrd_last_semantic_braille, last_semantic)
 
     def test_persistent_and_positional_flash_messages_are_sent(self):

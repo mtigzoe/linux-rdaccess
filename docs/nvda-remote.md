@@ -97,6 +97,16 @@ If the capability response is absent, invalid, disconnected, or semantic snapsho
 
 Semantic braille is session scoped. Reconnect resets capability state and the Linux object registry before a new snapshot is accepted.
 
+### Temporary braille messages
+
+Orca shows short status messages on a braille display for a limited time, for example "Focus mode", Caps Lock and shortcut announcements. While semantic braille is active NVDA owns the display, and raw Orca cells are ignored on the Windows side, so these messages need their own optional message instead of reusing `lrd_a11y_focus` or `display`.
+
+1. A Windows bridge that supports it adds `message_version=1` to `lrd_a11y_capability`. Every capability replaces the previous one, so a peer without the field (an older add-on, or a reconnect to one) has the feature off.
+2. Linux then sends `lrd_a11y_message` with `version=1` and `text` when Orca flashes a braille message (`braille.displayMessage` with a non-zero flash time). Orca's own display, speech and the semantic focus state are not changed.
+3. Windows validates the version and text, sanitizes and bounds it, and presents it with NVDA's own braille message on the main thread. NVDA's "Show messages" setting, message timeout and routing-key dismissal therefore apply, and the semantic focus, caret, routing and panning state is not modified.
+
+Text is limited to 256 characters, control, format and separator characters become spaces, and text is never logged. Messages are not queued: nothing is sent unless the peer has opted in for the current connection, and a message is never replayed after a reconnect, fallback or session change. Messages that are not shown are not lost to speech, which keeps carrying the same announcement.
+
 ## Speech behavior
 
 When Linux is the controlled endpoint, local Orca speech and NVDA speech should not both play.
