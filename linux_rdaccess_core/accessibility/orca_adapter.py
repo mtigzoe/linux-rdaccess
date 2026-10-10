@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import ctypes
 import ctypes.util
+import unicodedata
 from types import SimpleNamespace
 from typing import Any, Callable, Iterable
 
@@ -180,6 +181,29 @@ def _show_guarded_structural_list(
 
 class OrcaRuntimeAdapter:
     """Resolve and invoke the active Orca script without owning Orca state."""
+
+    MAX_BRAILLE_MESSAGE_LENGTH = 256
+
+    @staticmethod
+    def sanitize_braille_message(text: Any) -> str | None:
+        """Return display-safe text for an Orca temporary braille message.
+
+        Message text can be application-generated, so control, format (including
+        bidirectional override) and line/paragraph separator characters become
+        spaces, whitespace is collapsed, and the result is length-bounded. None
+        means nothing presentable. The text must never be logged.
+        """
+        if not isinstance(text, str):
+            return None
+        limit = OrcaRuntimeAdapter.MAX_BRAILLE_MESSAGE_LENGTH
+        # Bound the work done on untrusted input before normalizing it.
+        text = text[:limit * 4]
+        text = "".join(
+            " " if unicodedata.category(char)[0] == "C"
+            or unicodedata.category(char) in ("Zl", "Zp") else char
+            for char in text)
+        text = " ".join(text.split())[:limit].rstrip()
+        return text or None
 
     @staticmethod
     def active_script() -> Any | None:

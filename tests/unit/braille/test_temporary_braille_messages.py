@@ -30,7 +30,9 @@ class SanitizeBrailleMessageTests(unittest.TestCase):
         limit = orca_adapter.OrcaRuntimeAdapter.MAX_BRAILLE_MESSAGE_LENGTH
         self.assertEqual(limit, 256)
         self.assertEqual(sanitize("x" * 100000), "x" * limit)
-        self.assertEqual(len(sanitize("word " * 1000)), limit - 1)
+        self.assertEqual(len(sanitize("word " * 1000)), limit)
+        # A cut that ends on a separator never leaves trailing whitespace.
+        self.assertEqual(sanitize("x" * (limit - 1) + " y"), "x" * (limit - 1))
 
     def test_unicode_braille_and_accents_survive(self):
         self.assertEqual(sanitize("Caps Lock on \u2803 café"), "Caps Lock on \u2803 café")
