@@ -57,6 +57,10 @@ jobs:
           python3 -m linux_rdaccess_core.accessibility.atspi_nvda_braille_bridge --help
           python3 atspi_nvda_bridge.py --help
           python3 atspi_nvda_braille_bridge.py --help
+      - name: Validate MCP diagnostics unit tests
+        run: |
+          python3 -m unittest discover -s tests/unit/mcp -p 'test_*.py' -v
+
       - name: Full suite with Linux accessibility libraries
         run: xvfb-run -a python3 -m unittest discover -s tests -t .
       - name: Run existing diagnostics-related regression tests
