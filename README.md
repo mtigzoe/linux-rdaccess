@@ -1154,7 +1154,17 @@ Additional tools:
 
 ## Tests
 
+Run the full test suite from the repository root:
+
     python3 -m unittest discover -s tests -t .
+
+Run only the read-only MCP diagnostics unit tests:
+
+```bash
+python3 -m unittest discover -s tests/unit/mcp -p 'test_*.py' -v
+```
+
+See [read-only MCP diagnostics](docs/read-only-mcp.md) for server setup and usage.
     python3 -m compileall -q linux_rdaccess_core diagnostics tools tests
     python3 -m py_compile linux_rdaccess.py linux_rdaccess_windows.py remote_access.py
     bash -n run_braille_bridge.sh
