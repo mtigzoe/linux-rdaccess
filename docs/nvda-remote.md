@@ -95,6 +95,8 @@ When a compatible Windows `rdAccess` semantic bridge is present:
 
 If the capability response is absent, invalid, disconnected, or semantic snapshot construction fails, linux-rdaccess keeps the existing raw Orca-cell `display` path. This fail-safe fallback means an unmodified Remote Access installation continues to work exactly as before.
 
+A focused text object longer than 8192 characters is also sent raw while its caret is beyond the first 8192 characters. The snapshot is bounded to that window, so presenting it would show NVDA the document start with no caret instead of the caret line. Orca's own braille follows the caret there; semantic braille resumes when the caret returns inside the window. Long text with no reported caret stays semantic.
+
 Semantic braille is session scoped. Reconnect resets capability state and the Linux object registry before a new snapshot is accepted.
 
 ### Temporary braille messages

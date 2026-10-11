@@ -367,6 +367,12 @@ class OrcaRuntimeAdapter:
                 max_objects=32,
                 object_registry=registry,
             )
+            # A caret beyond the bounded text window cannot be represented. Sending
+            # the document start with no caret would show NVDA the wrong text, so
+            # let the caller use Orca's own braille, which follows the caret.
+            if payload is not None and _a11y_model().caret_beyond_text_window(
+                    registry.get(payload["focus_id"], focus)):
+                payload = None
         except Exception:
             OrcaRuntimeAdapter.clear_semantic_focus()
             return None
