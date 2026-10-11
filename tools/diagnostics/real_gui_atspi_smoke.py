@@ -293,7 +293,21 @@ class Session:
         self.check(label + ": typed text and left-arrow caret match AT-SPI")
         self.check(label + ": semantic routing accepts provider caret setter",
                    set_caret_offset(node, 1))
-        self.wait(lambda: text.get_caret_offset() == 1, label + " routed caret")
+        try:
+            self.wait(lambda: text.get_caret_offset() == 1, label + " routed caret")
+        except AssertionError:
+            # Report provider state without exposing editable text.
+            try:
+                actual = text.get_caret_offset()
+            except Exception as exc:
+                actual = f"unavailable ({type(exc).__name__})"
+            recent_caret_events = [
+                (kind, detail) for kind, detail, source in self.events[-80:]
+                if kind == "object:text-caret-moved" and source == node
+            ]
+            print(f"DIAGNOSTIC {label}: routed caret offset={actual}, "
+                  f"recent target caret events={recent_caret_events[-10:]}", flush=True)
+            raise
         self.check(label + ": routed caret is confirmed by the provider")
         self.key("ctrl+a")
 
