@@ -2173,7 +2173,8 @@ LEGACY_COMPAT_MARKER_V114 = "# linux-rdaccess NVDA/Orca input compatibility v114
 LEGACY_COMPAT_MARKER_V115 = "# linux-rdaccess NVDA/Orca input compatibility v115"
 LEGACY_COMPAT_MARKER_V116 = "# linux-rdaccess NVDA/Orca input compatibility v116"
 LEGACY_COMPAT_MARKER_V117 = "# linux-rdaccess NVDA/Orca input compatibility v117"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v118"
+LEGACY_COMPAT_MARKER_V118 = "# linux-rdaccess NVDA/Orca input compatibility v118"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v119"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -2202,6 +2203,8 @@ _LEGACY_HELPERS = '''\
         "braille_toFocus": "to_focus",
     }
     _LRD_NATIVE_BRAILLE_VERSION = 1
+    _LRD_NATIVE_MESSAGE_VERSION = 1
+    _lrd_native_message_version = 0
     _lrd_nvda_native_braille = False
     _lrd_last_semantic_braille = None
 
@@ -3936,13 +3939,22 @@ _LEGACY_HELPERS = '''\
             log.error("linux-rdaccess: semantic braille offer failed")
 
     def _linux_rdaccess_native_braille_capability(
-            self, version=None, presentation=None, **kwargs):
+            self, version=None, presentation=None, message_version=None, **kwargs):
         """Enable NVDA-owned braille only after the Windows peer opts in."""
         if version != self._LRD_NATIVE_BRAILLE_VERSION or presentation != "nvda":
             return
         self._lrd_nvda_native_braille = True
         self._lrd_last_native_braille_offer = 0.0
         self._lrd_last_semantic_braille = None
+        # Temporary braille messages are an optional feature of this peer. Every
+        # capability replaces the previous one, so an older peer never inherits it.
+        self._lrd_native_message_version = (
+            self._LRD_NATIVE_MESSAGE_VERSION
+            if type(message_version) is int
+            and message_version == self._LRD_NATIVE_MESSAGE_VERSION else 0)
+        if self._lrd_native_message_version:
+            self._linux_rdaccess_run_main(
+                self._linux_rdaccess_install_braille_message_forwarder)
 
         def refresh():
             try:
@@ -3954,6 +3966,64 @@ _LEGACY_HELPERS = '''\
                 log.error("linux-rdaccess: semantic braille refresh failed")
 
         self._linux_rdaccess_run_main(refresh)
+
+    def _linux_rdaccess_install_braille_message_forwarder(self):
+        """Forward Orca temporary braille messages; Orca's own display is unchanged."""
+        try:
+            from orca import braille as _braille
+        except Exception:
+            return
+        current = getattr(_braille, "displayMessage", None)
+        if not callable(current):
+            return
+        attributes = getattr(current, "__dict__", {})
+        if attributes.get("_linux_rdaccess_controller") is self:
+            return
+        # Replace, never stack, a forwarder left by an earlier controller.
+        original = attributes.get("_linux_rdaccess_original", current)
+        controller = self
+
+        def display_message(*args, **kwargs):
+            result = original(*args, **kwargs)
+            try:
+                message = args[0] if args else kwargs.get("message")
+                flash_time = args[2] if len(args) > 2 else kwargs.get("flashTime", 0)
+                controller._linux_rdaccess_send_braille_message(message, flash_time)
+            except Exception:
+                pass
+            return result
+
+        display_message._linux_rdaccess_original = original
+        display_message._linux_rdaccess_controller = self
+        _braille.displayMessage = display_message
+
+    def _linux_rdaccess_send_braille_message(self, message, flash_time):
+        """Send one temporary message to a semantic-braille peer that opted in.
+
+        Nothing is queued or replayed, the semantic focus is never touched, and the
+        message text is never logged.
+        """
+        if (not getattr(self, "_lrd_nvda_native_braille", False)
+                or getattr(self, "_lrd_native_message_version", 0)
+                != self._LRD_NATIVE_MESSAGE_VERSION):
+            return
+        # Orca flashes use a positive time or -1 (persistent); 0 is a permanent display.
+        if type(flash_time) not in (int, float) or flash_time == 0:
+            return
+        transport = getattr(self, "transport", None)
+        if (transport is None or not getattr(transport, "connected", False)
+                or getattr(transport, "connection_type", None) != "slave"):
+            return
+        from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _adapter
+        text = _adapter.sanitize_braille_message(message)
+        if text is None:
+            return
+        try:
+            transport.send(
+                type="lrd_a11y_message", version=self._LRD_NATIVE_MESSAGE_VERSION,
+                text=text)
+        except Exception:
+            log.error("linux-rdaccess: temporary braille message send failed")
 
     def _linux_rdaccess_semantic_action(
             self, version=None, object_id=None, action_index=None, **kwargs):
@@ -6695,6 +6765,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V118,
                 LEGACY_COMPAT_MARKER_V117,
                 LEGACY_COMPAT_MARKER_V116,
                 LEGACY_COMPAT_MARKER_V115,

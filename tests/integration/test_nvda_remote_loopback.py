@@ -1248,5 +1248,142 @@ class NvdaRemoteLoopbackTests(Harness, unittest.TestCase):
         self.assertIsNone(self.session.transport.server_sock)
 
 
+    def message_runtime(self):
+        """Fake Orca braille module whose displayMessage the controller may wrap."""
+        braille, state, button, action, main = self.braille_runtime(queued=True)
+        self.native_display_message = mock.Mock(return_value="native display")
+        braille.displayMessage = self.native_display_message
+        self.connect()
+        return braille, main
+
+    def negotiate_semantic(self, main, **capability):
+        self.session.send(type="lrd_a11y_capability", version=1, presentation="nvda", **capability)
+        self.session.barrier()
+        main.drain()
+        return self.session.read_through_barrier()
+
+    def messages(self):
+        return [m for m in self.session.read_through_barrier() if m["type"] == "lrd_a11y_message"]
+
+    def test_temporary_braille_message_is_sent_after_capability_over_wire(self):
+        braille, main = self.message_runtime()
+        wire = self.negotiate_semantic(main, message_version=1)
+        self.assertEqual([m["type"] for m in wire], ["lrd_a11y_focus"])
+        native_refresh = braille.refresh._linux_rdaccess_original
+        refreshes = native_refresh.call_count
+        last_semantic = self.controller._lrd_last_semantic_braille
+        result = braille.displayMessage("Focus mode", flashTime=5000)
+        self.assertEqual(result, "native display")
+        self.native_display_message.assert_called_once_with("Focus mode", flashTime=5000)
+        self.assertEqual(self.session.read_through_barrier(), [
+            {"type": "lrd_a11y_message", "version": 1, "text": "Focus mode"},
+        ])
+        # Semantic focus state is neither refreshed nor changed by a status message.
+        self.assertEqual(native_refresh.call_count, refreshes)
+        self.assertEqual(self.controller._lrd_last_semantic_braille, last_semantic)
+
+    def test_persistent_and_positional_flash_messages_are_sent(self):
+        braille, main = self.message_runtime()
+        self.negotiate_semantic(main, message_version=1)
+        braille.displayMessage("Caps Lock on", -1, -1)
+        braille.displayMessage(message="Ctrl+O", flashTime=3000)
+        self.assertEqual([m["text"] for m in self.messages()], ["Caps Lock on", "Ctrl+O"])
+
+    def test_permanent_braille_display_is_not_a_temporary_message(self):
+        braille, main = self.message_runtime()
+        self.negotiate_semantic(main, message_version=1)
+        braille.displayMessage("Permanent line")
+        braille.displayMessage("Permanent line", 0, 0)
+        self.assertEqual(self.messages(), [])
+        self.assertEqual(self.native_display_message.call_count, 2)
+
+    def test_message_is_not_sent_without_peer_support(self):
+        braille, main = self.message_runtime()
+        self.negotiate_semantic(main)
+        braille.displayMessage("Focus mode", flashTime=5000)
+        self.assertEqual(self.messages(), [])
+        self.native_display_message.assert_called_once_with("Focus mode", flashTime=5000)
+
+    def test_unsupported_message_versions_withdraw_support(self):
+        braille, main = self.message_runtime()
+        self.negotiate_semantic(main, message_version=1)
+        braille.displayMessage("Supported", flashTime=5000)
+        self.assertEqual([m["text"] for m in self.messages()], ["Supported"])
+        for version in (0, 2, "1", True, 1.0, None):
+            with self.subTest(version=version):
+                # A later capability replaces the previous one, so stale support never lingers.
+                self.negotiate_semantic(main, message_version=1)
+                self.negotiate_semantic(main, message_version=version)
+                braille.displayMessage("Unsupported", flashTime=5000)
+                self.assertEqual(self.messages(), [])
+
+    def test_message_text_is_sanitized_and_bounded(self):
+        braille, main = self.message_runtime()
+        self.negotiate_semantic(main, message_version=1)
+        braille.displayMessage("  Focus\x00 mode\n\u202e!  ", flashTime=5000)
+        braille.displayMessage("x" * 100000, flashTime=5000)
+        braille.displayMessage("\x00\x1b", flashTime=5000)
+        braille.displayMessage(None, flashTime=5000)
+        self.assertEqual([m["text"] for m in self.messages()], ["Focus mode !", "x" * 256])
+
+    def test_message_before_negotiation_is_dropped_and_never_replayed(self):
+        braille, main = self.message_runtime()
+        # The forwarder only exists once the peer opts in; a queued-style replay
+        # after negotiation would show up as an extra wire message here.
+        braille.displayMessage("Old message", flashTime=5000)
+        wire = self.negotiate_semantic(main, message_version=1)
+        self.assertEqual([m["type"] for m in wire], ["lrd_a11y_focus"])
+        self.assertEqual(self.messages(), [])
+
+    def test_reconnect_withdraws_message_support_until_the_new_peer_opts_in(self):
+        braille, main = self.message_runtime()
+        self.negotiate_semantic(main, message_version=1)
+        self.session.send(type="channel_joined", channel="test-only")
+        self.session.barrier()
+        self.assertEqual(self.session.read_through_barrier(), [
+            {"type": "lrd_a11y_hello", "version": 1},
+        ])
+        braille.displayMessage("Before capability", flashTime=5000)
+        self.assertEqual(self.messages(), [])
+        # An older Windows add-on acknowledges semantic braille without the feature.
+        self.negotiate_semantic(main)
+        braille.displayMessage("Older peer", flashTime=5000)
+        self.assertEqual(self.messages(), [])
+        self.negotiate_semantic(main, message_version=1)
+        braille.displayMessage("Newer peer", flashTime=5000)
+        self.assertEqual([m["text"] for m in self.messages()], ["Newer peer"])
+
+    def test_repeated_capability_does_not_stack_forwarders(self):
+        braille, main = self.message_runtime()
+        for _ in range(3):
+            self.negotiate_semantic(main, message_version=1)
+        braille.displayMessage("Focus mode", flashTime=5000)
+        self.assertEqual([m["text"] for m in self.messages()], ["Focus mode"])
+        self.native_display_message.assert_called_once_with("Focus mode", flashTime=5000)
+
+    def test_semantic_fallback_stops_temporary_messages(self):
+        braille, main = self.message_runtime()
+        self.negotiate_semantic(main, message_version=1)
+        self.controller._lrd_nvda_native_braille = False
+        braille.displayMessage("Raw braille owns the display", flashTime=5000)
+        self.assertEqual(self.messages(), [])
+        self.native_display_message.assert_called_once()
+
+    def test_send_failure_keeps_orca_braille_and_never_logs_message_text(self):
+        braille, main = self.message_runtime()
+        self.negotiate_semantic(main, message_version=1)
+        secret = "SECRET-PRIVATE-MESSAGE"
+        log = self.controller._module.log
+        with mock.patch.object(self.controller.transport, "send",
+                               side_effect=RuntimeError(secret)), \
+                mock.patch.object(log, "error") as error, \
+                mock.patch.object(log, "warning") as warning, \
+                mock.patch.object(log, "info") as info:
+            self.assertEqual(braille.displayMessage(secret, flashTime=5000), "native display")
+        self.native_display_message.assert_called_once_with(secret, flashTime=5000)
+        for mocked in (error, warning, info):
+            self.assertNotIn(secret, str(mocked.call_args_list))
+
+
 if __name__ == "__main__":
     unittest.main()
