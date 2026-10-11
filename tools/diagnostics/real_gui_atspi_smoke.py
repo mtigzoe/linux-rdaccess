@@ -296,7 +296,8 @@ class Session:
         try:
             self.wait(lambda: text.get_caret_offset() == 1, label + " routed caret")
         except AssertionError:
-            # Report provider state without exposing editable text.
+            # Diagnose provider timing without dumping editable text, which
+            # may contain private user data outside the isolated CI fixture.
             try:
                 actual = text.get_caret_offset()
             except Exception as exc:
