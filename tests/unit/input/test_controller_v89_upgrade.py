@@ -84,6 +84,32 @@ class ControllerV89UpgradeTests(unittest.TestCase):
                 self.assertEqual(backup.read_text(), original)
                 self.assertFalse(remote_access.patch_legacy_orca_remote_controller(path))
 
+    def test_every_marker_from_v113_to_the_previous_one_upgrades_and_is_idempotent(self):
+        # Derive the range from the current marker so each future bump is covered
+        # without editing this test, and an undetected previous marker fails here.
+        current_version = int(remote_access.LEGACY_COMPAT_MARKER.rsplit(" v", 1)[1])
+        self.assertGreater(current_version, 113)
+        original = (FIXTURES / "controller-upstream.txt").read_text()
+        for version in range(113, current_version):
+            marker = getattr(remote_access, f"LEGACY_COMPAT_MARKER_V{version}", None)
+            with self.subTest(version=version):
+                self.assertIsNotNone(marker, f"missing marker constant for v{version}")
+                with tempfile.TemporaryDirectory() as directory:
+                    path = Path(directory) / "remote_controller.py"
+                    backup = path.with_name(path.name + ".linux-rdaccess-backup")
+                    path.write_text(original)
+                    self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
+                    current = path.read_text()
+                    previous = current.replace(remote_access.LEGACY_COMPAT_MARKER, marker)
+                    self.assertNotEqual(previous, current)
+                    path.write_text(previous)
+                    self.assertFalse(remote_access.legacy_controller_patch_current(previous))
+                    self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
+                    self.assertEqual(path.read_text(), current)
+                    self.assertEqual(backup.read_text(), original)
+                    self.assertFalse(remote_access.patch_legacy_orca_remote_controller(path))
+                    self.assertEqual(path.read_text(), current)
+
     def test_genuine_v89_without_original_backup_is_preserved_and_rejected(self):
         previous = (FIXTURES / "controller-v89.txt").read_text()
         with tempfile.TemporaryDirectory() as directory:
