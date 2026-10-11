@@ -365,6 +365,31 @@ def _selection_offsets(iface) -> tuple[int, int] | None:
     return start, end
 
 
+def caret_beyond_text_window(obj) -> bool:
+    """Whether a text object's real caret lies past the bounded snapshot window.
+
+    _text_snapshot() carries only the first MAX_FOCUS_TEXT_CHARS characters, so a
+    caret beyond them is reported as None. A snapshot of the document start without
+    a caret would not follow the user, so callers can use this to tell that case
+    apart from text that simply has no caret.
+    """
+    iface = _text_iface(obj)
+    if iface is None:
+        return False
+    character_count = _invoke(iface, ("get_character_count", "getCharacterCount"))
+    if character_count is None:
+        character_count = getattr(iface, "characterCount", None)
+    try:
+        if int(character_count) <= MAX_FOCUS_TEXT_CHARS:
+            return False
+        raw_caret = _invoke(iface, ("get_caret_offset", "getCaretOffset"))
+        if raw_caret is None:
+            raw_caret = getattr(iface, "caretOffset", None)
+        return int(raw_caret) > MAX_FOCUS_TEXT_CHARS
+    except Exception:
+        return False
+
+
 def _text_snapshot(obj, *, focused: bool) -> dict[str, Any]:
     empty = {
         "text_supported": False,

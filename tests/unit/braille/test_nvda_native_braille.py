@@ -381,6 +381,72 @@ class SemanticFocusPayloadTests(unittest.TestCase):
             self.assertIsNone(orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload())
 
 
+class SemanticLongTextTests(unittest.TestCase):
+    """A focused text object longer than the snapshot window must not mislead NVDA.
+
+    The snapshot carries at most MAX_FOCUS_TEXT_CHARS characters from the start of
+    the text. When the real caret lies beyond that window the payload would carry
+    the document start and no caret, so Windows NVDA would show the top of the
+    document instead of the caret line. Orca's own braille is correct there, so
+    the controller must use the raw-braille fallback instead.
+    """
+
+    LIMIT = a11y_model.MAX_FOCUS_TEXT_CHARS
+
+    @classmethod
+    def setUpClass(cls):
+        # patch.dict(sys.modules) unloads modules first imported inside it, so
+        # import the GI bindings here, outside any patch.
+        a11y_model._gi_atspi_method(object(), "Text", "get_text", 0, 0)
+
+    def payload(self, count, caret, text_factory=FakeText):
+        focus = FakeAccessible(
+            "Editor", "text", text_iface=text_factory("x" * count, caret=caret))
+        state = types.SimpleNamespace(
+            locusOfFocus=focus, activeScript=object(), activeWindow=object())
+        orca = types.ModuleType("orca")
+        orca.orca_state = state
+        self.addCleanup(orca_adapter.OrcaRuntimeAdapter.clear_semantic_focus)
+        with mock.patch.dict(sys.modules, {"orca": orca}):
+            return orca_adapter.OrcaRuntimeAdapter.semantic_focus_payload()
+
+    @staticmethod
+    def focus_item(payload):
+        return next(item for item in payload["objects"] if item["id"] == payload["focus_id"])
+
+    def test_caret_beyond_the_bounded_window_uses_the_raw_braille_fallback(self):
+        for caret in (self.LIMIT + 1, 15000, 20000):
+            with self.subTest(caret=caret):
+                # Compare against None without echoing an 8 KiB payload on failure.
+                self.assertTrue(self.payload(20000, caret) is None,
+                                "semantic payload sent for a caret outside its text window")
+                self.assertIsNone(orca_adapter.OrcaRuntimeAdapter.semantic_focus_context())
+
+    def test_caret_inside_or_at_the_end_of_the_window_stays_semantic(self):
+        for caret in (0, 100, self.LIMIT):
+            with self.subTest(caret=caret):
+                item = self.focus_item(self.payload(20000, caret))
+                self.assertEqual(len(item["text"]), self.LIMIT)
+                self.assertTrue(item["text_truncated"])
+                self.assertEqual(item["caret_offset"], caret)
+
+    def test_long_text_without_a_usable_caret_stays_semantic(self):
+        class NoCaretText(FakeText):
+            def get_caret_offset(self):
+                raise RuntimeError("provider has no caret")
+
+        for caret, factory in ((-1, FakeText), (0, NoCaretText)):
+            with self.subTest(caret=caret, factory=factory.__name__):
+                item = self.focus_item(self.payload(20000, caret, factory))
+                self.assertEqual(len(item["text"]), self.LIMIT)
+                self.assertIsNone(item["caret_offset"])
+
+    def test_text_that_fits_the_window_is_unchanged(self):
+        item = self.focus_item(self.payload(self.LIMIT, self.LIMIT))
+        self.assertFalse(item["text_truncated"])
+        self.assertEqual(item["caret_offset"], self.LIMIT)
+
+
 class CustomizationSemanticBrailleTests(unittest.TestCase):
     def run_hook(self, *, native=False, semantic=None, offer_available=True,
                  offer_error=None):

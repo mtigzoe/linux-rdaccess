@@ -703,6 +703,41 @@ class NvdaRemoteLoopbackTests(Harness, unittest.TestCase):
         self.assertFalse(self.controller._lrd_nvda_native_braille)
         self.assertFalse(orca_adapter.OrcaRuntimeAdapter.perform_semantic_action(focus["focus_id"], 0))
 
+    def test_long_text_with_the_caret_beyond_the_window_falls_back_then_resumes_semantic(self):
+        braille, state, _, _, _ = self.braille_runtime()
+        self.connect()
+        braille.refresh()
+        self.session.read_through_barrier()
+        self.session.send(type="lrd_a11y_capability", version=1, presentation="nvda")
+        self.session.barrier()
+        self.assertEqual([m["type"] for m in self.session.read_through_barrier()],
+                         ["lrd_a11y_focus"])
+        # The snapshot window holds only the first 8192 characters. A caret past
+        # it must not be presented as the document start with no caret.
+        text = FakeText("x" * 20000, caret=15000)
+        state.locusOfFocus = FakeAccessible("Editor", "text", text_iface=text)
+        braille.refresh()
+        self.assertEqual(self.session.read_through_barrier(), [
+            {"type": "lrd_a11y_fallback", "version": 1},
+            {"type": "display", "cells": [1, 2, 0, 255]},
+        ])
+        self.assertFalse(self.controller._lrd_nvda_native_braille)
+        # With the caret back inside the window the peer is offered semantic
+        # braille again and, once it accepts, receives the text with its caret.
+        text.caret = 100
+        self.controller._lrd_last_native_braille_offer = 0.0
+        braille.refresh()
+        self.assertEqual(self.session.read_through_barrier(), [
+            {"type": "lrd_a11y_hello", "version": 1},
+            {"type": "display", "cells": [1, 2, 0, 255]},
+        ])
+        self.session.send(type="lrd_a11y_capability", version=1, presentation="nvda")
+        self.session.barrier()
+        resumed = self.session.read_through_barrier()
+        self.assertEqual([m["type"] for m in resumed], ["lrd_a11y_focus"])
+        item = next(o for o in resumed[0]["objects"] if o["id"] == resumed[0]["focus_id"])
+        self.assertEqual((len(item["text"]), item["caret_offset"]), (8192, 100))
+
     def braille_help_runtime(self):
         braille, state, _, _, main = self.braille_runtime(queued=True)
         namespace, _ = self.speech()
