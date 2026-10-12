@@ -88,6 +88,8 @@ def probe(*, start: bool = False) -> tuple[dict, int]:
     result["linux_ssh"] = "reachable"
     result["linux_config"] = _flags(raw)
     return result, 0
+
+
 def launch_nvda(path: str) -> tuple[str, str]:
     """Launch a specifically authorized Windows NVDA executable, if needed."""
     if os.name != "nt":
