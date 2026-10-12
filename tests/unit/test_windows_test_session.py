@@ -83,7 +83,9 @@ class SessionLauncherTests(unittest.TestCase):
     def test_nvda_launch_rejects_relative_executable(self):
         with mock.patch.object(session.os, "name", "nt"):
             with mock.patch.object(session, "_windows_nvda", return_value="not_running"):
-                status, _ = session.launch_nvda("nvda.exe")
+                with mock.patch.object(session, "Path") as path:
+                    path.return_value.expanduser.return_value.is_absolute.return_value = False
+                    status, _ = session.launch_nvda("nvda.exe")
         self.assertEqual(status, "invalid_path")
 
     def test_running_nvda_is_never_restarted(self):
