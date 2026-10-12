@@ -107,6 +107,43 @@ class SessionLauncherTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(output.getvalue())["remote_connected"], "unverified")
 
+
+    def test_prepare_requires_both_explicit_authorizations(self):
+        for argv in (
+            ["prepare"],
+            ["prepare", "--confirm-start"],
+            ["prepare", "--confirm-launch", "--nvda-path", "C:/NVDA/nvda.exe"],
+        ):
+            with self.subTest(argv=argv), self.assertRaises(SystemExit):
+                session.main(argv)
+
+    def test_prepare_runs_launch_then_linux_start(self):
+        output = io.StringIO()
+        with mock.patch.object(session, "launch_nvda", return_value=("already_running", "Preserved")) as launch:
+            with mock.patch.object(session, "probe", return_value=({
+                "linux_ssh": "reachable", "windows_remote_connected": "unverified",
+            }, 0)) as probe:
+                with contextlib.redirect_stdout(output):
+                    code = session.main([
+                        "prepare", "--confirm-start", "--confirm-launch",
+                        "--nvda-path", "C:/NVDA/nvda.exe",
+                    ])
+        self.assertEqual(code, 0)
+        launch.assert_called_once_with("C:/NVDA/nvda.exe")
+        probe.assert_called_once_with(start=True)
+        self.assertEqual(json.loads(output.getvalue())["windows_remote_connected"], "unverified")
+
+    def test_prepare_does_not_connect_linux_if_nvda_launch_fails(self):
+        with mock.patch.object(session, "launch_nvda", return_value=("not_found", "Missing")):
+            with mock.patch.object(session, "probe") as probe:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    code = session.main([
+                        "prepare", "--confirm-start", "--confirm-launch",
+                        "--nvda-path", "C:/Missing/nvda.exe",
+                    ])
+        self.assertEqual(code, 1)
+        probe.assert_not_called()
+
     def test_json_doctor_does_not_report_live_validation(self):
         with mock.patch.object(session, "probe", return_value=({
             "windows_remote_connected": "unverified",
