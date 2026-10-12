@@ -77,3 +77,20 @@ python .\\linux_rdaccess_test_session.py start --confirm-start
 
 Do not run `launch-nvda` through a Linux Remote-SSH terminal; this command is
 Windows-only. Nothing here types relay credentials or injects keys.
+
+## Combined preparation command
+
+From **Windows-local** PowerShell, authorize both the Linux connection and
+the launch of NVDA (if it is not already running):
+
+```powershell
+python .\\linux_rdaccess_test_session.py prepare --confirm-start --confirm-launch --nvda-path "C:\\Program Files (x86)\\NVDA\\nvda.exe"
+```
+
+This runs the Windows NVDA launch check first, then invokes the existing
+Linux connect command through SSH. It preserves an already-running NVDA
+process, does not send the channel key, and prints machine-readable JSON.
+**It does not connect the Windows NVDA Remote Access add-on.** The remote
+transport and braille status remain unverified until Stage 2 supplies a
+separately authorized Windows add-on interface. The Linux connect command
+may restart Orca, so run `prepare` only when both actions are authorized.
