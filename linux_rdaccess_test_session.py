@@ -130,6 +130,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "prepare":
         if not args.confirm_launch or not args.nvda_path:
             parser.error("prepare requires --confirm-launch and --nvda-path")
+        # Do not launch NVDA when the Linux SSH destination is not configured.
+        # This is a side-effect-free preflight; probe() performs the actual SSH.
+        try:
+            controller.load_config()
+        except ValueError:
+            print(json.dumps({"mode": "prepare", "linux_ssh": "not_configured",
+                              "nvda_launch": "not_attempted",
+                              "windows_remote_connected": "unverified"}, indent=2))
+            return 2
         state, detail = launch_nvda(args.nvda_path)
         if state not in ("already_running", "launch_requested"):
             print(json.dumps({"mode": "prepare", "nvda_launch": state,
