@@ -46,3 +46,34 @@ connect the Windows side or run live keyboard tests. **Stage 2 is not part of
 this PR.** Desktop Commander, Remote-SSH and terminal access do not themselves
 prove that an AI has GUI input, NVDA speech observation or physical braille
 observation capabilities.
+
+## Optional Windows NVDA launch
+
+From a **Windows-local** PowerShell (not a Remote-SSH Linux terminal), first
+check whether NVDA is already running:
+
+```powershell
+python .\\linux_rdaccess_test_session.py status
+```
+
+If NVDA is not running, the launcher can request a normal launch using an
+explicitly specified installed executable:
+
+```powershell
+python .\\linux_rdaccess_test_session.py launch-nvda --confirm-launch --nvda-path "C:\\Program Files (x86)\\NVDA\\nvda.exe"
+```
+
+Adjust the executable path to match your installation. This will **not**
+terminate, restart, or reconfigure an NVDA process that is already running.
+The process being launched is not proof that the Remote Access add-on is
+connected. You must still connect the Windows add-on manually until the
+separately reviewed opt-in Stage 2 interface is implemented.
+
+To authorize the existing Linux-side connect command (which may restart Orca):
+
+```powershell
+python .\\linux_rdaccess_test_session.py start --confirm-start
+```
+
+Do not run `launch-nvda` through a Linux Remote-SSH terminal; this command is
+Windows-only. Nothing here types relay credentials or injects keys.
