@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""Safe Windows-side readiness probe for AI-assisted linux-rdaccess testing.
-
-Does not control NVDA or claim a live semantic-braille connection.
-"""
+"""Windows readiness and explicitly authorized local NVDA test-session launcher."""
 from __future__ import annotations
 
 import argparse
@@ -66,7 +63,7 @@ def _flags(raw: str) -> dict[str, bool | None]:
 def probe(*, start: bool = False) -> tuple[dict, int]:
     result = {
         "linux_ssh": "unavailable",
-        "linux_config": {field: None for field in STATUS_FLAGS},
+        "linux_config": dict.fromkeys(STATUS_FLAGS),
         "windows_nvda": _windows_nvda(),
         "windows_remote_connected": "unverified",
         "semantic_braille_negotiated": "unverified",
@@ -91,9 +88,6 @@ def probe(*, start: bool = False) -> tuple[dict, int]:
     result["linux_ssh"] = "reachable"
     result["linux_config"] = _flags(raw)
     return result, 0
-
-
-
 def launch_nvda(path: str) -> tuple[str, str]:
     """Launch a specifically authorized Windows NVDA executable, if needed."""
     if os.name != "nt":
@@ -116,13 +110,31 @@ def launch_nvda(path: str) -> tuple[str, str]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("status", "doctor", "start", "launch-nvda", "prepare"))
+    parser.add_argument("command", choices=(
+        "status", "doctor", "start", "launch-nvda", "prepare", "start-all", "nvda-status", "cancel",
+    ))
+    parser.add_argument("--session-file", type=Path,
+                        help="Optional DPAPI-protected NVDA consent file; never a relay key")
     parser.add_argument("--confirm-start", action="store_true",
                         help="Explicit authorization to run Linux connect (may restart Orca)")
     parser.add_argument("--nvda-path", help="Absolute Windows path to nvda.exe")
     parser.add_argument("--confirm-launch", action="store_true",
                         help="Explicitly authorize launching NVDA, without connecting its add-on")
     args = parser.parse_args(argv)
+    if args.command in ("start-all", "nvda-status", "cancel"):
+        if args.confirm_start or args.confirm_launch or args.nvda_path:
+            parser.error("start-all/nvda-status/cancel use NVDA authorization, not launch/restart flags")
+        from linux_rdaccess_core.connection.test_session import start_all, windows_operation
+        if args.command == "start-all":
+            result, code = start_all(probe, path=args.session_file)
+        else:
+            result, code = windows_operation("status" if args.command == "nvda-status" else "cancel",
+                                             args.session_file)
+            result["mode"] = args.command
+        print(json.dumps(result, sort_keys=True, indent=2))
+        return code
+    if args.session_file:
+        parser.error("--session-file applies only to start-all/nvda-status/cancel")
     if args.command in ("start", "prepare") and not args.confirm_start:
         parser.error("start/prepare require --confirm-start; Linux connect may restart Orca")
     if args.command not in ("start", "prepare") and args.confirm_start:
@@ -165,7 +177,7 @@ def main(argv: list[str] | None = None) -> int:
         result["limitations"] = [
             "SSH readiness is not an NVDA Remote connection check",
             "Live keyboard, speech, and physical braille require user confirmation",
-            "Stage 2 Windows add-on local IPC is not implemented",
+            "Stage 2 Windows IPC requires explicit five-minute authorization in NVDA Tools",
         ]
     print(json.dumps(result, sort_keys=True, indent=2))
     return code

@@ -60,4 +60,6 @@ jobs:
       - name: Check Windows entry point and package imports
         run: |
           python linux_rdaccess_windows.py --help
+          python linux_rdaccess_test_session.py --help
+          python -m unittest -v tests.unit.test_windows_test_session tests.unit.windows.test_start_all
           python -m unittest -v tests.unit.windows.test_windows_controller tests.unit.windows.test_vscode_settings_edge_cases tests.unit.transport.test_core_import_compatibility tests.unit.transport.test_installed_layout
