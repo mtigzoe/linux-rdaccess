@@ -34,6 +34,7 @@ from .a11y_model import (
     A11Y_TEXT_EVENTS,
     build_focus_payload,
     build_text_update,
+    caret_beyond_text_window,
     find_focused_object_ex,
     object_id,
     perform_action,
@@ -131,7 +132,11 @@ class Bridge:
                         event.source,
                         object_registry=self._a11y_objects,
                     )
-                    if update is not None:
+                    # A caret past the bounded snapshot would reach NVDA as the document
+                    # start with no caret, so leave the semantic channel quiet instead.
+                    if update is not None and not (
+                        update["text_truncated"] and caret_beyond_text_window(event.source)
+                    ):
                         self.a11y_link.send_text_update(**update)
                 return
 
@@ -144,6 +149,8 @@ class Bridge:
                     coord_type=Atspi.CoordType.SCREEN,
                     object_registry=self._a11y_objects,
                 )
+                if payload is not None and self._caret_beyond_text_window(payload, event.source):
+                    payload = None
                 if payload is not None:
                     self.a11y_link.send_focus(**payload)
             announcement = self.announcer.handle(
@@ -163,6 +170,10 @@ class Bridge:
         if self.braille_link is not None:
             cells = text_to_braille_cells(announcement.text, self.braille_link.num_cells)
             self.braille_link.display(cells)
+
+    def _caret_beyond_text_window(self, payload, fallback) -> bool:
+        """Whether the payload's focus object has a caret outside its bounded text."""
+        return caret_beyond_text_window(self._a11y_objects.get(payload["focus_id"], fallback))
 
     def _find_focus_target(self):
         """Return ``(object_or_None, complete)`` for the live AT-SPI focus.
@@ -203,6 +214,8 @@ class Bridge:
                     coord_type=Atspi.CoordType.SCREEN,
                     object_registry=self._a11y_objects,
                 )
+                if payload is not None and self._caret_beyond_text_window(payload, target):
+                    payload = None
         except GLib.Error as exc:
             log.debug("focus resync failed")
             return
