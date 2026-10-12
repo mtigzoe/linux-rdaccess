@@ -103,5 +103,53 @@ class BridgeLongTextTests(unittest.TestCase):
         self.assertEqual(self.link.cleared, 1)
 
 
+class MovingText(FakeText):
+    """Text whose caret the test can move after the object has been focused."""
+
+    def __init__(self, text, caret):
+        super().__init__(text, caret=caret)
+        self.position = caret
+
+    def get_caret_offset(self):
+        return self.position
+
+
+class BridgeLongTextResumptionTests(unittest.TestCase):
+    """Once the caret returns inside the window NVDA must get the object again.
+
+    A focus snapshot withheld for a caret beyond the window never reached NVDA, so a
+    plain text update for that object would address an object NVDA does not have.
+    """
+
+    setUp = BridgeLongTextTests.setUp
+    focus = BridgeLongTextTests.focus
+    caret_moved = BridgeLongTextTests.caret_moved
+
+    def long_editor(self, caret):
+        text = MovingText("x" * 20000, caret)
+        return FakeAccessible("Editor", "text", text_iface=text), text
+
+    def test_caret_returning_inside_the_window_sends_the_withheld_focus_once(self):
+        node, text = self.long_editor(15000)
+        self.focus(node)
+        self.assertEqual(self.link.focus, [])
+        for position in (100, 200):
+            text.position = position
+            self.caret_moved(node)
+        self.assertEqual(len(self.link.focus), 1, "withheld focus was not sent on resumption")
+        item = next(i for i in self.link.focus[0]["objects"] if i["id"] == self.link.focus[0]["focus_id"])
+        self.assertEqual(item["caret_offset"], 100)
+        self.assertEqual([u["caret_offset"] for u in self.link.updates], [200])
+
+    def test_resync_beyond_the_window_resumes_when_the_caret_returns(self):
+        node, text = self.long_editor(15000)
+        with mock.patch.object(self.bridge, "_find_focus_target", return_value=(node, True)):
+            self.bridge.resync_focus()
+        text.position = 100
+        self.caret_moved(node)
+        self.assertEqual(len(self.link.focus), 1, "withheld focus was not sent on resumption")
+        self.assertEqual(self.link.updates, [])
+
+
 if __name__ == "__main__":
     unittest.main()

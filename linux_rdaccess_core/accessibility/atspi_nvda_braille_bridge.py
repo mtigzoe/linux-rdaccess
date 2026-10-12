@@ -92,6 +92,9 @@ class Bridge:
         self.listener = Atspi.EventListener.new(self._on_event)
         self._registered: list[str] = []
         self._a11y_objects: dict[str, object] = {}
+        # Focus snapshot withheld because its caret was beyond the text window; NVDA
+        # does not have that object until the caret is back inside.
+        self._withheld_focus_id: str | None = None
 
     def start(self) -> None:
         for event_type in LISTEN_TO:
@@ -137,7 +140,7 @@ class Bridge:
                     if update is not None and not (
                         update["text_truncated"] and caret_beyond_text_window(event.source)
                     ):
-                        self.a11y_link.send_text_update(**update)
+                        self._send_text_update(update, event.source)
                 return
 
             if self.a11y_link is not None:
@@ -150,8 +153,10 @@ class Bridge:
                     object_registry=self._a11y_objects,
                 )
                 if payload is not None and self._caret_beyond_text_window(payload, event.source):
+                    self._withheld_focus_id = payload["focus_id"]
                     payload = None
                 if payload is not None:
+                    self._withheld_focus_id = None
                     self.a11y_link.send_focus(**payload)
             announcement = self.announcer.handle(
                 event.type, event.detail1, event.source, any_data
@@ -170,6 +175,22 @@ class Bridge:
         if self.braille_link is not None:
             cells = text_to_braille_cells(announcement.text, self.braille_link.num_cells)
             self.braille_link.display(cells)
+
+    def _send_text_update(self, update, source) -> None:
+        """Send a text update, or the focus snapshot NVDA never received for this object."""
+        if update["object_id"] != self._withheld_focus_id:
+            self.a11y_link.send_text_update(**update)
+            return
+        payload = build_focus_payload(
+            "object:state-changed:focused",
+            1,
+            source,
+            coord_type=Atspi.CoordType.SCREEN,
+            object_registry=self._a11y_objects,
+        )
+        if payload is not None:
+            self._withheld_focus_id = None
+            self.a11y_link.send_focus(**payload)
 
     def _caret_beyond_text_window(self, payload, fallback) -> bool:
         """Whether the payload's focus object has a caret outside its bounded text."""
@@ -215,6 +236,7 @@ class Bridge:
                     object_registry=self._a11y_objects,
                 )
                 if payload is not None and self._caret_beyond_text_window(payload, target):
+                    self._withheld_focus_id = payload["focus_id"]
                     payload = None
         except GLib.Error as exc:
             log.debug("focus resync failed")
@@ -227,6 +249,7 @@ class Bridge:
             self.a11y_link.clear_focus()
             log.debug("focus resync: nothing is focused")
         else:
+            self._withheld_focus_id = None
             self.a11y_link.refresh_focus(**payload)
             log.debug("focus resync completed")
 
