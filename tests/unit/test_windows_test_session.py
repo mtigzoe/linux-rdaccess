@@ -74,6 +74,37 @@ class SessionLauncherTests(unittest.TestCase):
         self.assertEqual(run.call_args.kwargs["timeout"], 35)
         self.assertTrue(run.call_args.kwargs["capture_output"])
 
+
+    def test_nvda_launch_requires_explicit_consent(self):
+        with self.assertRaises(SystemExit) as error:
+            session.main(["launch-nvda", "--nvda-path", "C:/NVDA/nvda.exe"])
+        self.assertEqual(error.exception.code, 2)
+
+    def test_nvda_launch_rejects_relative_executable(self):
+        with mock.patch.object(session.os, "name", "nt"):
+            with mock.patch.object(session, "_windows_nvda", return_value="not_running"):
+                status, _ = session.launch_nvda("nvda.exe")
+        self.assertEqual(status, "invalid_path")
+
+    def test_running_nvda_is_never_restarted(self):
+        with mock.patch.object(session.os, "name", "nt"):
+            with mock.patch.object(session, "_windows_nvda", return_value="running"):
+                with mock.patch.object(session.subprocess, "Popen") as popen:
+                    status, _ = session.launch_nvda("C:/Program Files/NVDA/nvda.exe")
+        self.assertEqual(status, "already_running")
+        popen.assert_not_called()
+
+    def test_nvda_launch_does_not_claim_remote_connection(self):
+        output = io.StringIO()
+        with mock.patch.object(session, "launch_nvda", return_value=("launch_requested", "Started")):
+            with contextlib.redirect_stdout(output):
+                code = session.main([
+                    "launch-nvda", "--confirm-launch",
+                    "--nvda-path", "C:/Program Files/NVDA/nvda.exe",
+                ])
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(output.getvalue())["remote_connected"], "unverified")
+
     def test_json_doctor_does_not_report_live_validation(self):
         with mock.patch.object(session, "probe", return_value=({
             "windows_remote_connected": "unverified",
