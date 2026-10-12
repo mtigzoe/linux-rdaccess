@@ -119,30 +119,47 @@ class SessionLauncherTests(unittest.TestCase):
 
     def test_prepare_runs_launch_then_linux_start(self):
         output = io.StringIO()
-        with mock.patch.object(session, "launch_nvda", return_value=("already_running", "Preserved")) as launch:
-            with mock.patch.object(session, "probe", return_value=({
-                "linux_ssh": "reachable", "windows_remote_connected": "unverified",
-            }, 0)) as probe:
-                with contextlib.redirect_stdout(output):
-                    code = session.main([
-                        "prepare", "--confirm-start", "--confirm-launch",
-                        "--nvda-path", "C:/NVDA/nvda.exe",
-                    ])
+        with mock.patch.object(session.controller, "load_config", return_value={}):
+            with mock.patch.object(session, "launch_nvda", return_value=("already_running", "Preserved")) as launch:
+                with mock.patch.object(session, "probe", return_value=({
+                    "linux_ssh": "reachable", "windows_remote_connected": "unverified",
+                }, 0)) as probe:
+                    with contextlib.redirect_stdout(output):
+                        code = session.main([
+                            "prepare", "--confirm-start", "--confirm-launch",
+                            "--nvda-path", "C:/NVDA/nvda.exe",
+                        ])
         self.assertEqual(code, 0)
         launch.assert_called_once_with("C:/NVDA/nvda.exe")
         probe.assert_called_once_with(start=True)
         self.assertEqual(json.loads(output.getvalue())["windows_remote_connected"], "unverified")
 
     def test_prepare_does_not_connect_linux_if_nvda_launch_fails(self):
-        with mock.patch.object(session, "launch_nvda", return_value=("not_found", "Missing")):
-            with mock.patch.object(session, "probe") as probe:
-                with contextlib.redirect_stdout(io.StringIO()):
-                    code = session.main([
-                        "prepare", "--confirm-start", "--confirm-launch",
-                        "--nvda-path", "C:/Missing/nvda.exe",
-                    ])
+        with mock.patch.object(session.controller, "load_config", return_value={}):
+            with mock.patch.object(session, "launch_nvda", return_value=("not_found", "Missing")):
+                with mock.patch.object(session, "probe") as probe:
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        code = session.main([
+                            "prepare", "--confirm-start", "--confirm-launch",
+                            "--nvda-path", "C:/Missing/nvda.exe",
+                        ])
         self.assertEqual(code, 1)
         probe.assert_not_called()
+
+    def test_prepare_missing_ssh_config_never_launches_nvda(self):
+        output = io.StringIO()
+        with mock.patch.object(session.controller, "load_config", side_effect=ValueError("missing")):
+            with mock.patch.object(session, "launch_nvda") as launch:
+                with mock.patch.object(session, "probe") as probe:
+                    with contextlib.redirect_stdout(output):
+                        code = session.main([
+                            "prepare", "--confirm-start", "--confirm-launch",
+                            "--nvda-path", "C:/NVDA/nvda.exe",
+                        ])
+        self.assertEqual(code, 2)
+        launch.assert_not_called()
+        probe.assert_not_called()
+        self.assertEqual(json.loads(output.getvalue())["nvda_launch"], "not_attempted")
 
     def test_json_doctor_does_not_report_live_validation(self):
         with mock.patch.object(session, "probe", return_value=({
