@@ -116,17 +116,31 @@ def launch_nvda(path: str) -> tuple[str, str]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("status", "doctor", "start", "launch-nvda"))
+    parser.add_argument("command", choices=("status", "doctor", "start", "launch-nvda", "prepare"))
     parser.add_argument("--confirm-start", action="store_true",
                         help="Explicit authorization to run Linux connect (may restart Orca)")
     parser.add_argument("--nvda-path", help="Absolute Windows path to nvda.exe")
     parser.add_argument("--confirm-launch", action="store_true",
                         help="Explicitly authorize launching NVDA, without connecting its add-on")
     args = parser.parse_args(argv)
-    if args.command == "start" and not args.confirm_start:
-        parser.error("start requires --confirm-start; it may restart Orca")
-    if args.command != "start" and args.confirm_start:
-        parser.error("--confirm-start only applies to start")
+    if args.command in ("start", "prepare") and not args.confirm_start:
+        parser.error("start/prepare require --confirm-start; Linux connect may restart Orca")
+    if args.command not in ("start", "prepare") and args.confirm_start:
+        parser.error("--confirm-start only applies to start/prepare")
+    if args.command == "prepare":
+        if not args.confirm_launch or not args.nvda_path:
+            parser.error("prepare requires --confirm-launch and --nvda-path")
+        state, detail = launch_nvda(args.nvda_path)
+        if state not in ("already_running", "launch_requested"):
+            print(json.dumps({"mode": "prepare", "nvda_launch": state,
+                              "detail": detail, "windows_remote_connected": "unverified"}, indent=2))
+            return 1
+        result, code = probe(start=True)
+        result.update({"mode": "prepare", "nvda_launch": state,
+                       "windows_remote_connected": "unverified",
+                       "next_step": "Connect Windows NVDA Remote Access manually; Stage 2 IPC unavailable"})
+        print(json.dumps(result, sort_keys=True, indent=2))
+        return code
     if args.command == "launch-nvda":
         if not args.confirm_launch or not args.nvda_path:
             parser.error("launch-nvda requires --confirm-launch and --nvda-path")
@@ -135,7 +149,7 @@ def main(argv: list[str] | None = None) -> int:
                           "remote_connected": "unverified"}, indent=2))
         return 0 if state in ("already_running", "launch_requested") else 1
     if args.confirm_launch or args.nvda_path:
-        parser.error("--confirm-launch/--nvda-path only apply to launch-nvda")
+        parser.error("--confirm-launch/--nvda-path only apply to launch-nvda/prepare")
     result, code = probe(start=args.command == "start")
     result["mode"] = args.command
     if args.command == "doctor":
