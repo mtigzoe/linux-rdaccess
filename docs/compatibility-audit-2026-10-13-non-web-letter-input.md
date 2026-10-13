@@ -93,17 +93,36 @@ check had briefly seen old and new processes together; only the later stable
 check is evidence of replacement. A relay TCP socket is not proof of
 authenticated Windows Remote Access or active keyboard control.
 
-No Desktop Commander, desktop input, Windows NVDA restart or relay-credential
-change was used. The user was asked for fresh five-minute consent before the
-authenticated connection check and one manually typed `m`. That live key
-result is not yet recorded.
+No Desktop Commander, agent desktop input, Windows NVDA restart or
+relay-credential change was used.
+
+## Limited human typing confirmation after restart
+
+The user confirmed fresh five-minute authorization and reported being able
+to enter `mousepad --disable-server`, the command whose `m` had previously
+blocked preparation. This is a limited human-reported improvement in real
+terminal typing on v120, including the formerly blocked `m`. It is not a
+captured single-key delivery trace or confirmation of speech/key echo.
+
+The authenticated readiness check reported active authorization, connected
+transport, an attached bridge and negotiated semantic braille. At the time
+of the Windows reply it reported local control, while the read-only Linux
+AT-SPI snapshot still showed a focused terminal. Control at the exact typing
+time and a numeric caret change were not captured. After the user was asked
+to return to Linux control and press Enter once on that known command, a
+subsequent read-only snapshot showed application `mousepad`, role `text`,
+and editable/focused states. This verifies that Mousepad is now open and
+its editor focused, without proving the input origin or Windows speech.
+The user was then asked to prepare `alpha bravo charlie` in a new unsaved
+document and leave the caret at the end before any routing gesture.
 
 ## Remaining live work
 
-The fix is **automated-tested and installed with user approval**. Real text
-insertion and speech acceptance still require confirmation in the restarted
-session. The original controller backup is present and saved connection
-settings were preserved.
+The fix is **automated-tested and installed with user approval**, with a
+limited human confirmation that the previously blocked terminal command can
+now be entered. Instrumented text insertion and speech acceptance still
+require verification in the restarted session. The original controller
+backup is present and saved connection settings were preserved.
 
 Test a single known-text typing gesture in the
 terminal or an unsaved editor with active remote control, fresh five-minute
