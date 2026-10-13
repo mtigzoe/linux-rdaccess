@@ -348,9 +348,28 @@ class RemoteAccessSemanticBrailleBridge:
 			self._presentOnMainThread(session, self._lastFocus)
 
 	def _recoverFocusBeforeGesture(self, session: int, generation: int) -> None:
-		if generation != self._controlGeneration:
+		if (
+			not self._isCurrentSession(session)
+			or generation != self._controlGeneration
+			or (self._client is not None and not getattr(self._client, "sendingKeys", False))
+		):
 			return
 		self._replayFocusOnMainThread(session)
+		handler = braille.handler
+		if (
+			handler is None
+			or self._lastFocus is None
+			or getattr(handler, "buffer", None) is not getattr(handler, "mainBuffer", None)
+			or not self._hasRemoteFocusRegion(self._lastFocus.focusId)
+		):
+			return
+		# handleUpdate defers TextInfoRegion.update until NVDA's idle pass.
+		# A same-ID snapshot has already rebound region.obj and invalidated its
+		# old TextInfo sender. Refresh that cached reading range before the
+		# queued coordinate script runs, retaining the normal window handling.
+		refresh = getattr(handler, "_handlePendingUpdate", None)
+		if callable(refresh):
+			refresh()
 
 	def _hasRemoteFocusRegion(self, focusId: str | None) -> bool:
 		mainBuffer = getattr(braille.handler, "mainBuffer", None)
