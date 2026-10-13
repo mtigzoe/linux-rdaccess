@@ -9,6 +9,8 @@ import argparse
 import json
 from pathlib import Path
 
+from linux_rdaccess_core import acceptance_report
+
 CASES = (
     ("keyboard.caps_toggle", 57, "Caps Lock toggles Linux XKB state on and off"),
     ("keyboard.num_toggle", 57, "Num Lock toggles Linux XKB state on and off"),
@@ -75,16 +77,19 @@ def summary(report: dict) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("template", "summary"))
+    parser.add_argument("action", choices=("template", "summary", "session-template", "session-summary"))
     parser.add_argument("--file", type=Path, help="Manual evidence JSON file")
     args = parser.parse_args(argv)
     if args.action == "template":
         result = template()
+    elif args.action == "session-template":
+        result = acceptance_report.template()
     else:
         if not args.file:
-            parser.error("summary requires --file")
+            parser.error(f"{args.action} requires --file")
         try:
-            result = summary(json.loads(args.file.read_text(encoding="utf-8")))
+            report = json.loads(args.file.read_text(encoding="utf-8"))
+            result = acceptance_report.summary(report) if args.action == "session-summary" else summary(report)
         except (OSError, UnicodeError, ValueError) as error:
             parser.error(f"invalid evidence file: {error}")
     print(json.dumps(result, indent=2))

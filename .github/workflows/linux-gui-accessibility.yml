@@ -8,6 +8,8 @@ on:
       - 'tools/diagnostics/**'
       - 'tests/apps/**'
       - 'tests/unit/accessibility/test_real_gui_diagnostics.py'
+      - 'tests/integration/x11/test_routing_observer.py'
+      - 'diagnostics/atspi/observe_routing.py'
       - 'linux_rdaccess_core/**'
       - 'a11y_model.py'
   push:
@@ -17,6 +19,8 @@ on:
       - 'tools/diagnostics/**'
       - 'tests/apps/**'
       - 'tests/unit/accessibility/test_real_gui_diagnostics.py'
+      - 'tests/integration/x11/test_routing_observer.py'
+      - 'diagnostics/atspi/observe_routing.py'
       - 'linux_rdaccess_core/**'
       - 'a11y_model.py'
   workflow_dispatch:
@@ -66,10 +70,31 @@ jobs:
           # Missing desktop dependencies fail CI; --skip is reserved for
           # explicit local exclusions such as VS Code Remote SSH CLI.
           timeout 300s python3 tools/diagnostics/real_gui_atspi_smoke.py 2>&1 | tee real-gui-atspi.log
+      - name: Observe Mousepad caret in a separate private session
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          python3 - <<'PY' 2>&1 | tee routing-observer.log
+          import subprocess
+          import tempfile
+          from pathlib import Path
+          from tools.diagnostics.real_gui_atspi_smoke import isolated_environment
+
+          with tempfile.TemporaryDirectory(prefix="lrd-routing-private-") as private:
+              result = subprocess.run(
+                  ["xvfb-run", "-a", "-s", "-screen 0 1280x900x24",
+                   "dbus-run-session", "--", "python3", "-m", "unittest", "-v",
+                   "tests.integration.x11.test_routing_observer"],
+                  env=isolated_environment(Path(private)), timeout=60,
+              )
+              raise SystemExit(result.returncode)
+          PY
       - name: Preserve real application accessibility results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: real-gui-atspi-results
-          path: real-gui-atspi.log
+          path: |
+            real-gui-atspi.log
+            routing-observer.log
           if-no-files-found: ignore
