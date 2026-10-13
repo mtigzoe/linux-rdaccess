@@ -146,3 +146,30 @@ development add-on, install the prepared companion and restart NVDA, followed by
 a fresh five-minute authorization. Repeat the issue-specific keyboard/speech and
 physical braille checks using an approved supported input path. A connected
 endpoint alone must not be treated as evidence that the intended add-on is active.
+
+## Follow-up authorized handoff check
+
+At approximately 09:25 America/New_York on 2026-10-13, after the user relaunched
+NVDA and authorized another five-minute session, authenticated status reported
+connected transport, remote control active and semantic braille negotiated.
+The installed companion manifest now identified **20261013.0.1**, but the new
+NVDA log again reported the companion inactive because RDAccess provided the
+integration. The consent service and braille callbacks were still owned by
+`globalPlugins.rdAccess`, so these results are **legacy integration** evidence.
+
+A read-only Linux focus probe confirmed the existing `:0` desktop and focused
+GNOME Terminal. No navigation or text input was sent to that terminal. The
+Windows File Explorer input target was observed before each bounded action.
+Two actual `Insert+Alt+Tab` gestures through Windows NVDA Remote changed the
+authenticated control state **remote → local → remote**, preserving the
+connected transport and negotiated semantic braille. NVDA's log showed the
+corresponding queued `Controlling local computer` and `Controlling remote
+computer` announcements. This establishes the observed control-state handoff;
+it does not establish audible sound or physical braille output, held-key
+cleanup, a reconnect, or live acceptance of the companion's corrections.
+
+Remote control was restored to its original state. Approval to disable the
+legacy RDAccess add-on and restart NVDA was requested; no add-on state was
+changed during this check. The previous browser-tool restriction was not
+bypassed: this check used the supported Windows File Explorer target, with no
+browser UI automation.
