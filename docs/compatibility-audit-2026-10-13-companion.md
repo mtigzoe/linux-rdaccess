@@ -173,3 +173,70 @@ legacy RDAccess add-on and restart NVDA was requested; no add-on state was
 changed during this check. The previous browser-tool restriction was not
 bypassed: this check used the supported Windows File Explorer target, with no
 browser UI automation.
+
+## Standalone companion activation after explicit approval
+
+The user explicitly approved disabling legacy RDAccess and restarting NVDA.
+At 09:34 America/New_York on 2026-10-13, the legacy add-on was disabled through
+NVDA's persisted add-on state while NVDA was stopped, then NVDA was started
+again. The state was backed up before replacement; all other add-on state was
+preserved. Two initial shutdown/file-replacement attempts failed before applying
+the change, and NVDA was relaunched with its prior state before the corrected
+replacement succeeded. No forced process termination or security-setting
+change was used.
+
+Verification after startup:
+
+- NVDA **2026.2** is running.
+- RDAccess is in `disabledAddons`, with no pending disable remaining.
+- The companion is enabled and its log reports
+  **`Initialized Linux Remote Access Companion`**, with the initialization
+  callback owned by `globalPlugins.linuxRdAccess`.
+- All **13 installed Python files** match the verified
+  `linuxRdAccess-20261013.0.1.nvda-addon` package byte for byte.
+- `nvda-status` reports **`required_or_expired`**, as expected after restart:
+  the previous consent was not carried forward. A fresh five-minute session
+  was requested before any new remote input or connection action.
+
+This establishes installation and standalone plugin activation, not live
+semantic braille, speech, routing or panning acceptance. Legacy RDAccess's
+RDP/Citrix functionality is disabled until that add-on is re-enabled. Its source
+copy has not been removed from the rdAccess repository by this configuration
+change. The active Orca session and relay credentials were not modified.
+
+## Standalone authorized connection and physical panning follow-up
+
+The user authorized a new session at 09:42:48 America/New_York on 2026-10-13.
+Authenticated status now reported the standalone bridge connected, semantic
+braille negotiated and temporary-message support available. Earlier negotiation
+was pending immediately after restart; no Orca restart or relay-credential
+change was made by the agent to obtain this later state. The log identified
+focus/presentation callbacks from `globalPlugins.linuxRdAccess`, with remote
+focus present, braille enabled and focus tether active.
+
+Read-only Linux observation found Firefox on the existing `:0` desktop. Focus
+changed from a menu to a push button before the planned menu-navigation check.
+One Windows-origin Down Arrow was sent while authenticated remote control was
+active; before/after AT-SPI observations both reported a Firefox push button.
+There was no observed focus change, and no menu-navigation PASS is claimed.
+
+After control was observed local, one actual `Insert+Alt+Tab` enabled remote
+control; authenticated status confirmed the change with connection and semantic
+negotiation retained. A subsequent Tab attempt was interrupted by the
+computer-use helper's concurrent-user-input guard. Its outcome is inconclusive;
+the observed later menu-item focus cannot be attributed to that attempt.
+Automated navigation was paused. Broad log windows contained unrelated Windows
+speech/braille updates and control changes; these were not used as proof of a
+companion defect or end-to-end presentation success. The five-minute
+authorization window elapsed and automated input remained stopped.
+
+The user was then asked to pan one step on the physical display **while
+controlling Linux Firefox**, and directly reported **"Linux Firefox content"**.
+Record this as **Physical-braille-tested: limited PASS for this single panning
+observation**, rather than automated/viewer-only evidence. The exact label,
+direction, device model and cell positions were not recorded, and the result
+does not establish routing, long-line panning/wrapping, caret tracking,
+temporary-message restoration, reconnect, or all applications. Issue #59 and
+the related live acceptance trackers remain open. Later status/CLI responses
+must continue to report physical braille as `unverified`; this human evidence
+does not authorize an automatic physical acceptance claim by the endpoint.
