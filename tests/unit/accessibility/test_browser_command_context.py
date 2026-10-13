@@ -1282,6 +1282,81 @@ class BrowserCommandContextTests(Harness, unittest.TestCase):
                     self.assertEqual(script.heading_calls, [])
                     self.assertEqual(script.form_calls, [])
 
+    def _non_navigation_script(self, gate=None):
+        controller, event_class, script = self._native_hooked()
+        # Orca's base Script starts with the global structural-navigation
+        # preference, even when getEnabledStructuralNavigationTypes() is [].
+        # Such scripts have no single-letter structural handlers.
+        nav = script.structuralNavigation
+        nav.enabled = True
+        nav.enabledObjects = {}
+        nav.functions = []
+        script.keyBindings.table = {}
+        script.useStructuralNavigationModel = gate or (lambda: nav.enabled)
+        script.utilities.inDocumentContent = lambda: False
+        return controller, event_class, script
+
+    def test_empty_orca_navigation_model_preserves_plain_shifted_and_repeated_typing(self):
+        keys = (("a", 0x41, 38), ("f", 0x46, 41), ("m", 0x4D, self.M_CODE),
+                ("n", 0x4E, 57), ("o", 0x4F, 32), ("w", 0x57, 25),
+                ("7", 0x37, 17), ("8", 0x38, 18), ("9", 0x39, 19),
+                ("i", 0x49, 31), ("p", 0x50, 33), ("s", 0x53, 39))
+        for key, vk, code in keys:
+            for shift in (False, True):
+                with self.subTest(key=key, shift=shift):
+                    controller, event_class, script = self._non_navigation_script()
+                    if shift:
+                        self._key(controller, 0xA0, True)
+                    for pressed in (True, True, False):
+                        self._key(controller, vk, pressed)
+                        event = event_class(key.upper() if shift else key, code,
+                                            modifiers=self.SHIFT if shift else 0, pressed=pressed)
+                        self.assertFalse(event.consume[0])
+                        self.assertIsNone(event._consumer)
+                        self.assertEqual(event.hw_code, code)
+                    self.assertEqual(script.form_calls, [])
+                    self.assertEqual(script.heading_calls, [])
+                    self.assertEqual(controller._module._LRD_BROWSE_UNSUPPORTED['held'], {})
+
+    def test_empty_model_refusal_expires_remote_letter_claim(self):
+        controller, event_class, script = self._non_navigation_script()
+        self._key(controller, 0x4D, True)
+        remote = event_class('m', self.M_CODE)
+        self.assertIsNone(remote._consumer)
+        self.assertEqual(controller._module._LRD_BROWSE_UNSUPPORTED['pending'], [])
+        # Activating a navigation model cannot turn the later local key into
+        # the old remote command. Only a fresh remote key may be suppressed.
+        script.structuralNavigation.enabledObjects = {'heading': object()}
+        local = event_class('m', self.M_CODE)
+        self.assertIsNone(local._consumer)
+        self._key(controller, 0x4D, False)
+        self._key(controller, 0x4D, True)
+        fresh = event_class('m', self.M_CODE)
+        self.assertIsNotNone(fresh._consumer)
+
+    def test_actual_orca42_base_gate_preserves_typing_without_navigation_objects(self):
+        path = Path('/usr/lib/python3/dist-packages/orca/script.py')
+        if not path.is_file():
+            self.skipTest('Installed Orca base script is unavailable')
+        tree = ast.parse(path.read_text(encoding='utf-8'))
+        script_node = next(node for node in tree.body
+                           if isinstance(node, ast.ClassDef) and node.name == 'Script')
+        gate = next(node for node in script_node.body
+                    if isinstance(node, ast.FunctionDef) and node.name == 'useStructuralNavigationModel')
+        namespace = {}
+        module = ast.Module(body=[gate], type_ignores=[])
+        ast.fix_missing_locations(module)
+        exec(compile(module, str(path), 'exec'), namespace)
+        for key, vk, code in (('a', 0x41, 38), ('m', 0x4D, self.M_CODE), ('n', 0x4E, 57)):
+            with self.subTest(key=key):
+                controller, event_class, script = self._non_navigation_script()
+                script.useStructuralNavigationModel = types.MethodType(namespace['useStructuralNavigationModel'], script)
+                self.assertTrue(script.useStructuralNavigationModel())
+                self._key(controller, vk, True)
+                event = event_class(key, code)
+                self.assertFalse(event.consume[0])
+                self.assertIsNone(event._consumer)
+
 
 if __name__ == "__main__":
     unittest.main()

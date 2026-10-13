@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "kind": "live-user-routing-observation",
+  "context": {
+    "application": "Mousepad",
+    "requested_public_text": "alpha bravo charlie",
+    "text_captured": false,
+    "requested_gesture": "One user-operated b.note routing key under the first cell of the second word",
+    "expected_caret_if_requested_prefix_matches": 6,
+    "requested_text_end_offset": 19,
+    "observed_start_offset": 21,
+    "braille_model": "Eurobraille b.note",
+    "linux_revision": "dbc5fb740c3dc98b5ee3e6886098dd6efc784fbb; controller v120",
+    "companion_version": "20261013.0.2 (previously verified)"
+  },
+  "windows_readiness_before_observer": {
+    "mode": "nvda-status",
+    "result": "connected",
+    "status": {
+      "bridge_attached": true,
+      "physical_braille": "unverified",
+      "remote_control_active": true,
+      "schema_version": 1,
+      "semantic_braille_negotiated": true,
+      "temporary_message_supported": true,
+      "transport_connected": true
+    },
+    "windows_authorization": "active"
+  },
+  "linux_readiness_before_observer": {
+    "display": ":0",
+    "application": "mousepad",
+    "focus": {
+      "found": true,
+      "name": "[redacted]",
+      "name_present": false,
+      "role": "text",
+      "states": [
+        "editable",
+        "enabled",
+        "focusable",
+        "focused",
+        "has-tooltip",
+        "multi-line",
+        "sensitive",
+        "showing",
+        "visible"
+      ]
+    },
+    "caret_offset": 21
+  },
+  "observer_ready": {
+    "observer": "ready",
+    "source": "linux-atspi",
+    "application": "mousepad",
+    "duration_seconds": 60,
+    "role": "text",
+    "before_caret": 21,
+    "input_sent": false
+  },
+  "linux_observation": {
+    "kind": "linux-atspi-caret-observation",
+    "source": "linux-atspi",
+    "elapsed_ms": 60086.7,
+    "role": "text",
+    "before_caret": 21,
+    "after_caret": 21,
+    "same_initial_focus": true,
+    "focus_changed_during_observation": false,
+    "events": [],
+    "dropped_events": 0,
+    "limitations": "Read-only Linux evidence; input origin, NVDA output and physical braille are unverified",
+    "application": "mousepad"
+  },
+  "user_keypress_during_window": "user-confirmed-one-routing-key",
+  "selected_cell": "user-confirmed-start-of-second-word",
+  "physical_cursor_after_press": "user-confirmed-moved-to-second-word",
+  "assessment": "live-physical-cursor-and-linux-editing-caret-mismatch",
+  "limitations": [
+    "No agent desktop input was sent.",
+    "The user confirms one routing key during the window aligned with the second word and reports the physical cursor moved there. Linux caret remained at the end; the cause is not traced across the protocol.",
+    "Observed starting offset 21 differs from the requested fixture length 19; actual editor text was not read.",
+    "NVDA speech and semantic braille events were not captured. Physical cursor movement is human-confirmed, not captured from a device API. Control was checked before the observer, not at the exact keypress."
+  ],
+  "read_only_source_checks": {
+    "saved_brailleextender_routing_setting": "normal",
+    "installed_normal_route_path": "Delegates to NVDA braille.handler.routeTo",
+    "companion_source": "Includes GlobalCommands.script_braille_routeTo in local coordinate commands",
+    "confirmed_alias_or_emulation_cause": false,
+    "limitation": "Saved setting and source reads do not identify the executed handler or runtime routing target."
+  }
+}

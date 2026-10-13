@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "kind": "single-interaction-layered-evidence",
+  "context": {
+    "application": "Mousepad",
+    "gesture": "One user-operated b.note routing key aligned with the start of the second word",
+    "expected": "The physical braille cursor and Linux editing caret move from the document end to the second word. Requested prefix implies offset 6; actual text was not captured.",
+    "nvda_version": "2026.2 (previously verified)",
+    "orca_version": "42.0-1ubuntu2",
+    "companion_version": "20261013.0.2 (previously verified)",
+    "linux_revision": "dbc5fb740c3dc98b5ee3e6886098dd6efc784fbb; installed controller v120",
+    "braille_model": "Eurobraille b.note",
+    "braille_driver": "unverified",
+    "braille_firmware": "unverified"
+  },
+  "session": {
+    "authorization_before_input": "active",
+    "input_permission": "user-operated",
+    "transport": "connected",
+    "control": "remote"
+  },
+  "layers": [
+    {
+      "id": "keyboard_delivery",
+      "expected": "Windows-origin keyboard input reaches Linux (not applicable to a braille-only gesture)",
+      "status": "not-tested",
+      "source": "unverified",
+      "observed": "Braille-only gesture; no keyboard delivery was tested."
+    },
+    {
+      "id": "linux_focus",
+      "expected": "Linux focus and caret match the intended object and position",
+      "status": "fail",
+      "source": "linux-atspi",
+      "observed": "Mousepad stayed focused throughout the 60-second observer: caret 21 to 21, no caret events. The user confirms one routing press on the second word during the window and a physical cursor move there. Exact numeric target/text and protocol delivery were not captured."
+    },
+    {
+      "id": "nvda_speech",
+      "expected": "Windows NVDA speech events or audible output match the expected feedback",
+      "status": "unverified",
+      "source": "unverified",
+      "observed": "No gesture-specific speech confirmation or Windows speech event was recorded."
+    },
+    {
+      "id": "semantic_braille",
+      "expected": "The current Linux semantic snapshot reaches Windows NVDA",
+      "status": "unverified",
+      "source": "unverified",
+      "observed": "Semantic braille was negotiated at the pre-observer authenticated check, but no gesture-specific semantic event or route request was captured."
+    },
+    {
+      "id": "physical_braille",
+      "expected": "The user confirms the intended content and cursor on the physical display",
+      "status": "pass",
+      "source": "user-confirmation",
+      "observed": "The user confirms the routing key was aligned with the second word and the b.note cursor moved there. This is physical cursor movement only; Linux editing caret synchronization failed in the separate Linux layer."
+    }
+  ]
+}

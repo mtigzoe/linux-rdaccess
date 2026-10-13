@@ -2174,7 +2174,8 @@ LEGACY_COMPAT_MARKER_V115 = "# linux-rdaccess NVDA/Orca input compatibility v115
 LEGACY_COMPAT_MARKER_V116 = "# linux-rdaccess NVDA/Orca input compatibility v116"
 LEGACY_COMPAT_MARKER_V117 = "# linux-rdaccess NVDA/Orca input compatibility v117"
 LEGACY_COMPAT_MARKER_V118 = "# linux-rdaccess NVDA/Orca input compatibility v118"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v119"
+LEGACY_COMPAT_MARKER_V119 = "# linux-rdaccess NVDA/Orca input compatibility v119"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v120"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -5615,8 +5616,13 @@ def _lrd_maybe_suppress_browse(event, keybindings):
                 except ImportError:
                     pass
         return _lrd_prepare_browse_help(event, _LRD_BROWSE_UNSUPPORTED, handler, description)
+    nav = getattr(script, "structuralNavigation", getattr(script, "structural_navigation", None))
+    objects = getattr(nav, "enabledObjects", getattr(nav, "enabled_objects", None))
     gate = getattr(script, "useStructuralNavigationModel", None)
-    if not callable(gate) or not gate():
+    if not isinstance(objects, dict) or not objects or not callable(gate) or not gate():
+        # Orca's base Script gate is just the global enabled preference. It
+        # can be true in terminals/editors with no structural objects at all;
+        # those scripts must receive ordinary typing, including A/M/N.
         # Focus mode, editable controls and the address bar land here: the
         # letter is ordinary typing, so only the refusal and context are kept.
         _lrd_trace_hook("letter_nav", "refused_not_browse", script)
@@ -6765,6 +6771,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V119,
                 LEGACY_COMPAT_MARKER_V118,
                 LEGACY_COMPAT_MARKER_V117,
                 LEGACY_COMPAT_MARKER_V116,

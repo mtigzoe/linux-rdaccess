@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "kind": "single-interaction-layered-evidence",
+  "context": {
+    "application": "Mousepad",
+    "gesture": "User prepares public text alpha bravo charlie in a new unsaved document",
+    "expected": "NVDA reads the entered text and the b.note displays it. Routing and cursor position are outside this interaction's acceptance scope.",
+    "nvda_version": "2026.2 (previously verified)",
+    "orca_version": "42.0-1ubuntu2",
+    "companion_version": "20261013.0.2 (previously verified)",
+    "linux_revision": "dbc5fb740c3dc98b5ee3e6886098dd6efc784fbb; installed controller v120",
+    "braille_model": "Eurobraille b.note",
+    "braille_driver": "unverified",
+    "braille_firmware": "unverified"
+  },
+  "session": {
+    "authorization_before_input": "unverified",
+    "input_permission": "user-operated",
+    "transport": "unverified",
+    "control": "unverified"
+  },
+  "layers": [
+    {
+      "id": "keyboard_delivery",
+      "expected": "Windows-origin keyboard input reaches Linux (not applicable to a braille-only gesture)",
+      "status": "unverified",
+      "source": "unverified",
+      "observed": "No captured Windows key delivery or synchronized Linux insertion trace. Human preparation and output were reported; input-time control was not independently captured."
+    },
+    {
+      "id": "linux_focus",
+      "expected": "Linux focus and caret match the intended object and position",
+      "status": "unverified",
+      "source": "unverified",
+      "observed": "Later read-only Linux snapshot: Mousepad editable/focused text, caret 6. This verifies editor readiness only; insertion-time focus/caret and the cause of offset 6 were not captured."
+    },
+    {
+      "id": "nvda_speech",
+      "expected": "Windows NVDA speech events or audible output match the expected feedback",
+      "status": "pass",
+      "source": "user-confirmation",
+      "observed": "The user reports NVDA reading the prepared test text. Limited readable-text output only: exact transcription, per-key echo, role wording and interruption were not verified."
+    },
+    {
+      "id": "semantic_braille",
+      "expected": "The current Linux semantic snapshot reaches Windows NVDA",
+      "status": "unverified",
+      "source": "unverified",
+      "observed": "Earlier authenticated readiness reported negotiated semantic braille, but no semantic snapshot event was captured for this text-entry interaction. Physical output is recorded separately."
+    },
+    {
+      "id": "physical_braille",
+      "expected": "The user confirms the intended content and cursor on the physical display",
+      "status": "unverified",
+      "source": "unverified",
+      "observed": "Readable content is user-confirmed: the b.note can read the prepared test text. This full layer remains unverified because cursor position, routing and caret tracking were not confirmed."
+    }
+  ]
+}
