@@ -1,7 +1,8 @@
 # VS Code routed-caret CI failure classification — 2026-10-13
 
 **Classification: confirmed pre-existing intermittent VS Code/Electron/AT-SPI
-caret failure; exact upstream trigger unresolved. Not introduced by PR #78.**
+caret failure. One native-editor render race is now captured; other failure
+paths and a reliable fix remain unresolved. Not introduced by PR #78.**
 The routing failure is tracked in [issue #79](https://github.com/mtigzoe/linux-rdaccess/issues/79)
 and remains open. This follow-up improves failure evidence; it
 does not skip VS Code, retry routing, extend the timeout, or claim a routing fix.
@@ -58,6 +59,53 @@ textarea updates. That is a plausible timing factor, **not a complete root-cause
 proof**: the quiet-period failure demonstrates that waiting alone is insufficient.
 The exact failing VS Code/Chromium/native accessibility interaction is still open.
 
+## Follow-up: captured native-editor render overwrite
+
+A private, loopback-only Chromium debugging connection observed the disposable
+renderer while the original AT-SPI routing assertion ran. The actual editor was
+a `DIV.native-edit-context` with native EditContext enabled, rather than a
+textarea. The prior textarea-source timing hypothesis therefore did not fully
+describe this default configuration.
+
+The [preserved metadata trace](vscode-caret-render-trace-2026-10-13.json)
+records the failing sequence relative to the accepted request:
+
+| Time | Observation |
+| --- | --- |
+| -17ms | DOM selection-change event reports caret 12, native EditContext selection 12. |
+| 0ms | AT-SPI accepts the request for caret 1. |
+| +37ms, before render write | DOM anchor/focus are **1**; native EditContext selection remains **12**. |
+| +37ms, after render write | `SimpleScreenReaderContent.updateScreenReaderContent` calls `Selection.setBaseAndExtent(12, 12)`, restoring DOM caret **12**. |
+| +43ms | The next delivered DOM selection-change event reports **12**. |
+| About 18 seconds | AT-SPI readback still reports 12; the assertion fails. |
+
+The stack identifies the native screen-reader content render path. In the
+[installed-revision SimpleScreenReaderContent source](https://raw.githubusercontent.com/microsoft/vscode/2a59476c9bfcb90b3ddc372c36762471b7dfad1c/src/vs/editor/browser/controller/editContext/native/screenReaderContentSimple.ts),
+each focused screen-reader render writes the model selection back to the DOM,
+even when the model selection has not changed. In this captured failure, that
+write overwrote the external DOM caret before its selection-change event could
+update the model. This is direct evidence of one upstream failure mechanism;
+it does not prove every timeout has the same cause.
+
+Native instrumentation reproduced the timeout in the first selection-aware
+run and the first run with a keyboard-continuation check prepared. The initial
+textarea-only observer had recorded no relevant events because it targeted the
+wrong DOM element type; its two passing runs and third failing run were retained.
+Instrumentation can affect timing, so the prior uninstrumented-main reproduction
+remains the independent evidence that this is a real pre-existing defect.
+
+Changing only the **disposable profile** to `editor.editContext=false` produced
+one pass, including Right moving the routed caret from 1 to 2, then a second
+run failed with the original timeout. Disabling native EditContext therefore
+is not a demonstrated fix. No user settings or installed VS Code files changed;
+no retry, profile workaround or renderer patch is shipped by this PR.
+
+Renderer traces contain only fixture metadata, offsets, event types, and
+selection-write stacks. Their times are observations from wall clocks with
+millisecond resolution, not provider event-generation times. Full logs and
+private fixture traces are preserved in the same evidence directory, under
+`selection-trace-*`, `model-trace-*`, and `legacy-model-*`.
+
 ## Diagnostic changes and validation
 
 The runner retains a bounded deque of 80 caret-event timestamps, offsets and
@@ -95,7 +143,8 @@ is under `/tmp/lrd-vscode-review-20261013`. In particular:
 - `fixed-vscode-6.log`: failed experimental quiet period, including 1 → 12.
 - `diagnostic-vscode-4.log`: final timed, focused, target-only failure.
 
-Next work is to isolate the upstream selection/model/AT-SPI trigger and verify
+Next work is to resolve the captured upstream render overwrite and remaining
+selection/model/AT-SPI failure paths, then verify
 real NVDA-origin VS Code routing/caret behavior under fresh consent. Keep the
 focused defect and acceptance issues #59/#60 open. PR #78 remains open and
 unmerged; this classification does not turn its failed GUI check into a pass.
