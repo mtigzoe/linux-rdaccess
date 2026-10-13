@@ -29,7 +29,7 @@ uv run --no-project --python 3.13 python nvda-addon/build.py
 ```
 
 The standard-library builder writes
-`nvda-addon/dist/linuxRdAccess-20261013.0.2.nvda-addon`. It is reproducible and
+`nvda-addon/dist/linuxRdAccess-20261013.0.3.nvda-addon`. It is reproducible and
 includes Python source, documentation, attribution and the full upstream
 license. `buildVars.py` is the source of add-on metadata; `--version` can override
 the three-component numeric development version.
@@ -89,6 +89,16 @@ CI builds and uploads the package and runs these tests on Windows. The normal
 Linux test discovery does not import this separate test environment.
 
 ## Acceptance status
+
+Build **20261013.0.3** refreshes NVDA's pending semantic braille update before
+a queued local coordinate gesture. A same-ID snapshot could otherwise replace
+the object while its cached reading TextInfo still belonged to the invalidated
+snapshot, silently dropping a routing caret request. The new regression fails
+before the fix and passes with it, including an isolated run of the installed
+NVDA 2026.2 update bytecode. Old retained TextInfo remains invalid; local control,
+stale sessions, disconnection and temporary-message buffers skip this refresh.
+This build is **automated-tested, not installed or physically accepted**. See
+the [routing audit](../docs/compatibility-audit-2026-10-13-pending-braille-routing.md).
 
 Build **20261013.0.2** is installed and active in Windows NVDA 2026.2;
 its 13 installed Python files match the tested build.

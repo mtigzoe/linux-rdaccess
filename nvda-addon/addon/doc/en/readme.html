@@ -27,6 +27,9 @@ code operations are unavailable. Existing connections are preserved. Choose
 “Revoke Linux test session” to end authorization immediately. Consent also ends
 on expiry, lock, secure desktop, configuration profile switch or NVDA shutdown.</p>
 <h2>Validation limits</h2>
+<p>Build 20261013.0.3 addresses a reproduced case where routing could use stale
+text information and fail to move the Linux caret. It is automated-tested;
+installation and physical routing/caret acceptance remain pending.</p>
 <p>Automated regressions and Windows kernel tests do not prove audible speech or
 physical braille output. Build 20261013.0.2 is installed and active; its 13 Python
 files match the tested build. Earlier Firefox input and physical panning
