@@ -61,7 +61,7 @@ Linux implementation and legacy root wrappers are unchanged.
 | --- | --- | --- |
 | #57 — Live validation: NVDA keyboard commands and modifier ownership | **Needs live testing** | Existing direct-command/layout/lock tests reviewed. No new confirmed keyboard defect; bounded real keyboard tests were blocked before input. |
 | #58 — Live validation: Windows NVDA speech, interruption and Say All | **Still open** | User reports “Tab” on Tab but not Shift+Tab, and Orca's “push button” wording. Speech still forwards Orca text; Tab's source is unresolved. Interruption/Say All remain unverified. |
-| #59 — Live validation: physical braille routing and Windows NVDA presentation | **Still open: physical failure reported** | Eurobraille b.note left pan still showed a Windows VS Code label. Two further BrailleExtender interactions reproduced and corrected in build .2; installation and physical confirmation are pending. |
+| #59 — Live validation: physical braille routing and Windows NVDA presentation | **Still open; limited physical left-pan PASS** | Eurobraille b.note left pan showed a Windows VS Code label on build .1. Build .2 is installed and active after correcting two reproduced BrailleExtender interactions. The user now reports Linux content after left pan in both Firefox and the Linux terminal; repeated boundary panning and routing/caret acceptance remain incomplete. |
 | #60 — Live validation: Linux Mint application accessibility matrix | **Needs live testing** | Limited Windows-origin Firefox Tab delivery/focus changes observed. Complete application navigation, speech, braille and routed caret acceptance remain incomplete; VS Code failure is tracked in #79. |
 | #61 — Live validation: disconnect, reconnect and stale input lifecycle | **Needs live testing** | Retained outbound object commands now expire. Real handoff/reconnect, held modifiers and physical routing still need acceptance. |
 | #72 — Live NVDA braille acceptance for Linux #69 and Windows rdAccess #9 | **Needs live testing** | Existing temporary-message handling preserved. Physical timeout, panning/routing, local-control and reconnect checklist remains incomplete. |
@@ -340,15 +340,48 @@ formatting changes. `git diff --check` passed.
 
 The prepared package is **linuxRdAccess-20261013.0.2.nvda-addon**, **47,010
 bytes**, SHA-256 **`ca98b226a26e9b74e27723fcc589ec06f2581451a70aa35da0427ed3e4c82691`**. All 17
-archive entries, including 13 Python files, match source/manifest/documentation.
+archive entries, including 13 Python files, match the source/manifest/documentation
+at commit `a479b07`.
 A second Python 3.13 build matched byte for byte. A system-Python cross-interpreter
 comparison had equal archive contents but different compressed bytes;
 cross-interpreter byte reproducibility is not claimed.
 
-Build .2 is **not installed**. Installation/restart require separate approval,
-and all physical routing/panning, temporary-message and reconnect acceptance
-remains open. New GitHub Actions are not monitored or awaited; PR #78 stays open
-and unmerged.
+The user subsequently reported reinstalling build .2 and activating a fresh
+five-minute authorization. Read-only checks verified the installed manifest
+version **20261013.0.2**, all **13 installed Python files** matching the tested
+source, initialization in the current NVDA log, and no inactive legacy-owner
+conflict. The prepared package's SHA-256 still matches the value above. This is
+an **installation PASS**, not physical-device acceptance.
+
+Authenticated status reported authorization **active**, transport **connected**,
+bridge **attached**, remote control **active**, semantic braille **negotiated**,
+and temporary-message support available. The physical-braille status remains
+**unverified**. Read-only AT-SPI observation found the live Linux focus in
+`gnome-terminal-server` on display `:0`; it was not assumed to still be Firefox.
+The user was asked to return to Firefox and report a single physical left pan.
+No agent keyboard input was sent during this installation check, and no add-on
+installation, restart, Orca restart or configuration change was performed by
+the agent. A later authenticated-status attempt returned
+`windows_authorization: required_or_expired`; no input was sent after that
+result.
+
+The user then answered **“It shows Linux content.”** to the single b.note
+left-pan question and clarified **“Both.”** when asked whether this observation
+was in Firefox or the Linux terminal. This is a **limited physical left-pan
+PASS in both applications**, reported by the user, for build .2:
+the reported display content was Linux rather than the previous Windows
+VS Code label. It does not prove repeated panning, line-boundary behavior,
+routing or caret tracking. Read-only focus snapshots before and after the
+asynchronous report both showed a Linux terminal; Firefox participation is the
+user's direct confirmation, not a contemporaneous automated focus capture.
+Exact displayed label/cells
+and pan position were not supplied. The IPC physical-braille field remains
+`unverified`; user confirmation is documented separately from that status.
+
+Physical routing, repeated/boundary panning, temporary-message and reconnect
+acceptance remain open. Only evidence documentation changed in this follow-up;
+the tested `.2` package was not rebuilt. New GitHub Actions are not monitored or
+awaited; PR #78 stays open and unmerged.
 
 ## Speech wording and key echo remain open
 

@@ -90,18 +90,21 @@ Linux test discovery does not import this separate test environment.
 
 ## Acceptance status
 
-Build **20261013.0.1** is installed and active in Windows NVDA 2026.2.
+Build **20261013.0.2** is installed and active in Windows NVDA 2026.2;
+its 13 installed Python files match the tested build.
 Authenticated status, semantic negotiation and bounded Firefox Tab delivery
 have been observed. One physical Firefox pan showed Linux content, but a later
-left-pan report on a Eurobraille b.note still showed a Windows VS Code label.
-Physical panning therefore remains a **Known issue**; complete end-to-end
-acceptance has not been established.
+left-pan report on build .1 with a Eurobraille b.note still showed a Windows
+VS Code label. After reinstalling build .2, the user confirmed Linux content
+after physical left pan in both Firefox and the Linux terminal. This is a
+limited physical PASS; repeated/boundary panning, routing and complete
+end-to-end acceptance remain incomplete.
 
 Build **20261013.0.2** corrects two reproduced BrailleExtender interactions:
 module-qualified focus-context lookup could add Windows ancestry to Linux
 braille, and BrailleExtender's own pan scripts bypassed local semantic recovery.
-These corrections are **Automated-tested**, and the new package awaits
-authorized installation and physical confirmation. Repeat control handoff,
+These corrections are **Automated-tested**, and the user reinstalled the new
+package. Physical left-pan observations showed Linux content; repeat control handoff,
 speech, panning, routing, revocation, expiry and preservation of pre-existing
 connections. Use the
 [acceptance matrix](../docs/nvda-linux-compatibility-matrix.md); viewer output
