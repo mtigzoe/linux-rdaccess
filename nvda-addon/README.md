@@ -29,7 +29,7 @@ uv run --no-project --python 3.13 python nvda-addon/build.py
 ```
 
 The standard-library builder writes
-`nvda-addon/dist/linuxRdAccess-20261013.0.1.nvda-addon`. It is reproducible and
+`nvda-addon/dist/linuxRdAccess-20261013.0.2.nvda-addon`. It is reproducible and
 includes Python source, documentation, attribution and the full upstream
 license. `buildVars.py` is the source of add-on metadata; `--version` can override
 the three-component numeric development version.
@@ -90,20 +90,27 @@ Linux test discovery does not import this separate test environment.
 
 ## Acceptance status
 
-This extraction is **Automated-tested**, with an independently built package.
-It is **not live-tested** as a companion add-on. Previous RDAccess acceptance
-confirmed basic “Search text” speech and physical “Search” braille, expiry and
-explicit revocation. Those observations do not establish companion acceptance.
+Build **20261013.0.1** is installed and active in Windows NVDA 2026.2.
+Authenticated status, semantic negotiation and bounded Firefox Tab delivery
+have been observed. One physical Firefox pan showed Linux content, but a later
+left-pan report on a Eurobraille b.note still showed a Windows VS Code label.
+Physical panning therefore remains a **Known issue**; complete end-to-end
+acceptance has not been established.
 
-The latest upstream optional-command compatibility and Linux focus-context/buffer
-recovery corrections are preserved with their regressions. Physical panning
-remains **Known issue / not verified**: the previous installed RDAccess .4 build
-could display a Windows VS Code label while controlling Linux. The .5 recovery
-correction was automated-tested but not installed for live confirmation.
-After migration, repeat control handoff, speech, panning, routing, revocation,
-expiry and preservation of pre-existing connections. Use the
+Build **20261013.0.2** corrects two reproduced BrailleExtender interactions:
+module-qualified focus-context lookup could add Windows ancestry to Linux
+braille, and BrailleExtender's own pan scripts bypassed local semantic recovery.
+These corrections are **Automated-tested**, and the new package awaits
+authorized installation and physical confirmation. Repeat control handoff,
+speech, panning, routing, revocation, expiry and preservation of pre-existing
+connections. Use the
 [acceptance matrix](../docs/nvda-linux-compatibility-matrix.md); viewer output
 alone is not physical-display proof.
+
+Semantic focus uses NVDA formatting for braille. Speech currently forwards
+Orca's generated wording, including role labels such as “push button”; it does
+not yet provide NVDA-formatted semantic speech. Role wording and the reported
+Tab/Shift+Tab announcement difference remain open under issue #58.
 
 The 20261013.0.1 build also rejects action and caret requests retained from an
 older semantic snapshot, session, or control activation, and refreshes ancestry

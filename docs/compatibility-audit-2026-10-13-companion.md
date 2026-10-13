@@ -60,12 +60,12 @@ Linux implementation and legacy root wrappers are unchanged.
 | Issue and title | Classification | Evidence and remaining work |
 | --- | --- | --- |
 | #57 — Live validation: NVDA keyboard commands and modifier ownership | **Needs live testing** | Existing direct-command/layout/lock tests reviewed. No new confirmed keyboard defect; bounded real keyboard tests were blocked before input. |
-| #58 — Live validation: Windows NVDA speech, interruption and Say All | **Needs live testing** | No speech changes. Audible announcements, Ctrl interruption and Say All still require Windows-side observation. |
-| #59 — Live validation: physical braille routing and Windows NVDA presentation | **Needs live testing** | Two companion defects above fixed with regressions. Prior Windows VS Code context/panning report remains unverified on the physical display. |
-| #60 — Live validation: Linux Mint application accessibility matrix | **Needs live testing** | Ancestry correction covers a deterministic context defect. No new per-application keyboard, speech or braille acceptance was performed. |
+| #58 — Live validation: Windows NVDA speech, interruption and Say All | **Still open** | User reports “Tab” on Tab but not Shift+Tab, and Orca's “push button” wording. Speech still forwards Orca text; Tab's source is unresolved. Interruption/Say All remain unverified. |
+| #59 — Live validation: physical braille routing and Windows NVDA presentation | **Still open: physical failure reported** | Eurobraille b.note left pan still showed a Windows VS Code label. Two further BrailleExtender interactions reproduced and corrected in build .2; installation and physical confirmation are pending. |
+| #60 — Live validation: Linux Mint application accessibility matrix | **Needs live testing** | Limited Windows-origin Firefox Tab delivery/focus changes observed. Complete application navigation, speech, braille and routed caret acceptance remain incomplete; VS Code failure is tracked in #79. |
 | #61 — Live validation: disconnect, reconnect and stale input lifecycle | **Needs live testing** | Retained outbound object commands now expire. Real handoff/reconnect, held modifiers and physical routing still need acceptance. |
 | #72 — Live NVDA braille acceptance for Linux #69 and Windows rdAccess #9 | **Needs live testing** | Existing temporary-message handling preserved. Physical timeout, panning/routing, local-control and reconnect checklist remains incomplete. |
-| #76 — Stage 2: opt-in local NVDA control IPC for AI test sessions | **Still open** | IPC already implemented by Linux PR #75 and merged Windows rdAccess PR #10; PR #78 extracts it. Authenticated status and existing-connection reuse worked through the legacy owner. Standalone integration/review and remaining live acceptance are not established. |
+| #76 — Stage 2: opt-in local NVDA control IPC for AI test sessions | **Still open** | Standalone companion is installed/active; authenticated connected status and expiry were observed. Remaining integration review and end-to-end acceptance are incomplete. |
 
 Do not close these trackers based on the automated results below.
 
@@ -275,3 +275,106 @@ The separate, pre-existing VS Code caret failure is tracked in
 native-render evidence and bounded diagnostics in
 [PR #80](https://github.com/mtigzoe/linux-rdaccess/pull/80). Its failure is not a
 passing acceptance result for PR #78.
+
+## Eurobraille b.note left-pan report and BrailleExtender correction
+
+The user subsequently reported that **left panning still showed a Windows
+VS Code label while controlling Linux Firefox**, and identified the physical
+display as a **Eurobraille b.note**. This is a reported physical failure of
+build `20261013.0.1`; the earlier single “Linux Firefox content” observation
+cannot establish general panning acceptance. Firmware, display size, exact
+cell contents and whether the failure occurs at the line boundary were not
+recorded. The saved display selection is `auto`; the exact loaded driver was
+not established by the model report alone.
+
+Read-only inspection confirmed the standalone companion initialized, without
+the legacy-owner conflict. BrailleExtender is enabled, with installed manifest
+version **26.06.05-eefe85d**. Its installed implementation exposes two concrete
+compatibility paths which the companion's prior tests did not cover:
+
+1. `braille_terminal.make_patched_handle_gain_focus` replaces
+   `BrailleHandler.handleGainFocus` and calls
+   `braille.getFocusContextRegions(...)`. It has neither an unqualified getter
+   in its function globals nor a `__wrapped__` link to the core method. The
+   companion previously scoped only an unqualified getter, then fell back to
+   the replacement unchanged. A regression reproduced **Windows application →
+   Apply changes** regions instead of **Settings → Apply changes**. Left pan can
+   expose that Windows ancestor even though the Linux focus region is present.
+2. BrailleExtender's `GlobalPlugin.script_braille_scrollBack/scrollForward`
+   are distinct bound methods from GlobalCommands' scripts. The companion
+   classified them as remote gestures, forwarding them instead of queuing
+   Linux-region recovery and running NVDA-coordinate panning locally.
+
+The correction scopes both the core function-global getter and the braille
+module export for the synchronous remote-focus call. Other objects still use
+that lookup's original getter. Both lookup paths are restored on success or
+exception, and Windows focus is unchanged. The installed BrailleExtender
+handler remains in place. Its two known bound pan aliases now remain local
+and queue the existing session/control-guarded recovery before the script;
+unrelated and same-named scripts from other add-ons still forward normally.
+No BrailleExtender files or user preferences were modified.
+
+Modified code: `remoteAccessSemanticBraille.py`. Three new regression methods
+cover the replacement context handler, restoration after an exception, and
+local/forwarded pan ownership. Against pre-fix `e50acd4`, they produced **five
+expected failing checks**, including both pan directions; the other tests had
+no errors. With the correction, **56 focused braille tests passed**, and the
+complete native Windows Python 3.13 companion suite passed **203 tests**.
+
+An additional isolated subprocess compiled the actual installed
+BrailleExtender focus factory and both pan method bodies, with NVDA runtime
+leaves stubbed. It confirmed Linux-only ancestry, restoration of ordinary
+Windows context after the scoped call, and both pan methods executing locally.
+The inspected file hashes are:
+
+- `braille_terminal.py`: `360e652f51bb60b04f32ce52c97dd759683f56ba0996bee32bfcf7dda8ac7d76`.
+- `__init__.py`: `3b3727501f1b671aeaa51cc3fe80c6b58283fa496b7c4b7c4af9b73ad7dabf84`.
+
+This is installed-source validation, **not a live physical-device PASS**.
+The temporary harness required bootstrap/stub corrections before completing;
+only its final completed checks are counted. Ruff **0.16.4**, pinned by the
+companion workflow, passed check and format check for all companion sources.
+The first root-level explicit-config invocation flagged an unchanged build-test
+import group; the actual CI-equivalent commands passed without unrelated
+formatting changes. `git diff --check` passed.
+
+The prepared package is **linuxRdAccess-20261013.0.2.nvda-addon**, **47,010
+bytes**, SHA-256 **`ca98b226a26e9b74e27723fcc589ec06f2581451a70aa35da0427ed3e4c82691`**. All 17
+archive entries, including 13 Python files, match source/manifest/documentation.
+A second Python 3.13 build matched byte for byte. A system-Python cross-interpreter
+comparison had equal archive contents but different compressed bytes;
+cross-interpreter byte reproducibility is not claimed.
+
+Build .2 is **not installed**. Installation/restart require separate approval,
+and all physical routing/panning, temporary-message and reconnect acceptance
+remains open. New GitHub Actions are not monitored or awaited; PR #78 stays open
+and unmerged.
+
+## Speech wording and key echo remain open
+
+The user also reported **“Tab”** when pressing Tab, no corresponding **“Tab”**
+on Shift+Tab, and **“push button”** when navigating to a button. These are
+human-reported observations, not an automated audible capture. The user could
+not confirm the physical label following the earlier agent-origin Tab.
+
+The Linux host has Orca package **42.0-1ubuntu2**. Its installed customization
+uses `_linux_rdaccess_speech_sequence` for outbound `speak`; that helper wraps
+scalar text as a sequence and preserves its wording. The companion explicitly
+formats semantic focus for **braille only**, leaving speech with Remote Access.
+Thus forwarding Orca's role wording does not provide NVDA-formatted semantic
+speech. No role-string replacement or new speech protocol is introduced here.
+
+Read-only persisted settings show NVDA `speakCommandKeys=False`, while Orca
+`enableKeyEcho=True` and `enableActionKeys=True`; installed Orca classifies Tab
+as an action key. The saved default Orca profile has modifier echo disabled.
+These are candidate evidence for the announcement difference, not proof of
+its exact source: active runtime profile/utterance origin was not captured.
+Issue #58 remains open for role presentation, key echo, interruption and Say All.
+
+During the fresh consent interval, Shift+Tab reached a Firefox push button,
+with a captured focused event at about 46.3 seconds, then Tab produced a link
+focus snapshot. Other navigation was observed before the agent's gesture, and
+the timed observer ended before the return event. Original-object restoration
+is still not claimed. Consent was checked active before input; after expiry,
+no further input was sent. Speech, physical braille and routing acceptance
+remain separate from these role snapshots.

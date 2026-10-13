@@ -137,6 +137,65 @@ class SemanticBrailleContextTests(SemanticBrailleBridgeTestCase):
 		self.assertEqual(self.eventHandler.events, [])
 		self.assertIs(self.handlerGlobals["getFocusContextRegions"], self.originalGetter)
 
+	def _useModuleQualifiedContextHandler(self):
+		# BrailleExtender's installed replacement calls the module export,
+		# without an unqualified getter or __wrapped__ pointing to NVDA core.
+		namespace = {"braille": braille, "ContextRegion": ContextRegion}
+		exec(
+			"def handleGainFocus(self, obj):\n"
+			"\tself.focused.append(obj)\n"
+			"\tself.mainBuffer.regions = list(braille.getFocusContextRegions(obj, self.mainBuffer.regions))\n"
+			"\tself.mainBuffer.regions.append(ContextRegion(obj))\n",
+			namespace,
+		)
+		handlerClass = type(
+			"ModuleQualifiedContextHandler",
+			(FakeBrailleHandler,),
+			{"handleGainFocus": namespace["handleGainFocus"]},
+		)
+		self.brailleHandler = handlerClass()
+		braille.handler = self.brailleHandler
+		for patcher in (
+			mock.patch.object(braille, "BrailleHandler", handlerClass, create=True),
+			mock.patch.object(braille, "getFocusContextRegions", self.originalGetter, create=True),
+		):
+			patcher.start()
+			self.addCleanup(patcher.stop)
+
+	def test_module_qualified_focus_handler_excludes_windows_context(self):
+		self._useModuleQualifiedContextHandler()
+		localFocus = self.api.focusObject
+		self.negotiate()
+		self.sendFocus()
+		self.assertEqual(
+			[region.obj.name for region in self.brailleHandler.mainBuffer.regions],
+			["Settings", "Apply changes"],
+		)
+		self.assertIs(braille.getFocusContextRegions, self.originalGetter)
+		self.assertIs(self.api.focusObject, localFocus)
+		self.brailleHandler.handleGainFocus(localFocus)
+		self.assertIs(self.brailleHandler.mainBuffer.regions[0].obj, self.windowsAncestor)
+
+	def test_module_qualified_getter_restored_when_focus_handler_raises(self):
+		self._useModuleQualifiedContextHandler()
+		self.negotiate()
+		self.sendFocus()
+		focus = self.brailleHandler.mainBuffer.regions[-1].obj
+		observed = []
+
+		def fail(_focus):
+			observed.extend(braille.getFocusContextRegions(focus))
+			raise RuntimeError("presentation failure")
+
+		with (
+			mock.patch.object(self.brailleHandler, "handleGainFocus", side_effect=fail),
+			self.assertRaises(RuntimeError),
+		):
+			self.bridge._handleRemoteGainFocus(self.brailleHandler, focus)
+		self.assertEqual([region.obj.name for region in observed], ["Settings"])
+		self.assertIs(braille.getFocusContextRegions, self.originalGetter)
+		self.assertEqual(self.core["_cachedFocusAncestorsEnd"], 0)
+
 	def test_local_context_is_rebuilt_after_remote_presentation(self):
 		self.core["_cachedFocusAncestorsEnd"] = 2
 		self.negotiate()

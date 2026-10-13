@@ -239,7 +239,17 @@ class RemoteAccessSemanticBrailleBridge:
 		selectRange = getattr(commands, "script_braille_selectRange", None)
 		if selectRange is not None:
 			localScripts.add(selectRange)
-		if getattr(gesture, "script", None) in localScripts:
+		script = getattr(gesture, "script", None)
+		scriptFunction = getattr(script, "__func__", None)
+		# BrailleExtender binds its own equivalent pan scripts, rather than
+		# GlobalCommands' bound methods. Keep only these known aliases local;
+		# arbitrary same-named scripts must still follow normal forwarding.
+		isBrailleExtenderPan = (
+			scriptFunction is not None
+			and scriptFunction.__module__ == "globalPlugins.brailleExtender"
+			and scriptFunction.__name__ in ("script_braille_scrollBack", "script_braille_scrollForward")
+		)
+		if script in localScripts or isBrailleExtenderPan:
 			# executeGesture queues its script after this decision. Restore Linux
 			# regions first if a local Windows update replaced the shared buffer.
 			# The decider can run on an input thread, so do not touch braille here.
@@ -528,25 +538,34 @@ class RemoteAccessSemanticBrailleBridge:
 
 	def _handleRemoteGainFocus(self, handler, focus) -> None:
 		# Core reads its context getter from the handleGainFocus function's
-		# module globals, including after braille became a package. Limit the
-		# override to this synchronous main-thread presentation and this object.
+		# globals, while replacements such as BrailleExtender call the braille
+		# module export. Scope both lookup paths to this synchronous call and
+		# this remote object; leave the replacement handler and local focus intact.
 		implementation = inspect.unwrap(getattr(braille, "BrailleHandler", type(handler)).handleGainFocus)
-		namespace = getattr(implementation, "__globals__", {})
-		original = namespace.get("getFocusContextRegions")
-		if not callable(original):
+		originals = []
+		for namespace in (getattr(implementation, "__globals__", {}), vars(braille)):
+			original = namespace.get("getFocusContextRegions")
+			if callable(original) and not any(previous is namespace for previous, _getter in originals):
+				originals.append((namespace, original))
+		if not originals:
 			handler.handleGainFocus(focus)
 			return
 
-		def contextRegions(obj, oldFocusRegions=None):
-			if obj is focus:
-				return self._remoteFocusContextRegions(focus, oldFocusRegions)
-			return original(obj, oldFocusRegions=oldFocusRegions)
+		def scopedGetter(original):
+			def contextRegions(obj, oldFocusRegions=None):
+				if obj is focus:
+					return self._remoteFocusContextRegions(focus, oldFocusRegions)
+				return original(obj, oldFocusRegions=oldFocusRegions)
 
-		namespace["getFocusContextRegions"] = contextRegions
+			return contextRegions
+
 		try:
+			for namespace, original in originals:
+				namespace["getFocusContextRegions"] = scopedGetter(original)
 			handler.handleGainFocus(focus)
 		finally:
-			namespace["getFocusContextRegions"] = original
+			for namespace, original in reversed(originals):
+				namespace["getFocusContextRegions"] = original
 			# Remote ancestor indexes must never become cached Windows context.
 			braille.invalidateCachedFocusAncestors(0)
 

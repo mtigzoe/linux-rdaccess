@@ -28,9 +28,14 @@ code operations are unavailable. Existing connections are preserved. Choose
 on expiry, lock, secure desktop, configuration profile switch or NVDA shutdown.</p>
 <h2>Validation limits</h2>
 <p>Automated regressions and Windows kernel tests do not prove audible speech or
-physical braille output. This extracted package has not been installed or
-live-tested. Physical panning still needs validation; previous RDAccess builds
-could show Windows application context while controlling Linux.</p>
+physical braille output. Build 20261013.0.1 is installed and active, with limited
+Firefox input and physical panning observations. A later left-pan test on a
+Eurobraille b.note still showed Windows application context. Build 20261013.0.2
+corrects reproduced BrailleExtender focus-context and pan-script interactions;
+installation and physical confirmation of those corrections are pending.</p>
+<p>NVDA formats semantic braille. Speech currently forwards Orca-generated
+wording, including role names such as “push button”. NVDA-style semantic speech
+and the reported Tab/Shift+Tab announcement difference remain unverified.</p>
 <h2>License and source</h2>
 <p>Derived from RDAccess by Leonard de Ruijter and contributors; licensed under
 GNU GPL version 2 or later. See COPYING.txt and NOTICE.md in the add-on.

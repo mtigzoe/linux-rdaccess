@@ -810,6 +810,56 @@ class BuiltInRemoteAccessTests(unittest.TestCase):
 						self.assertFalse(self.bridge._handleSemanticBrailleGesture(remoteGesture))
 					self.assertEqual(len(self.client.leaderSession.forwarded), 2)
 
+	def test_braille_extender_pan_scripts_stay_local_and_queue_focus_recovery(self):
+		class Commands:
+			def __init__(self):
+				self.scripts = {}
+
+			def __getattr__(self, name):
+				return self.scripts.setdefault(name, object())
+
+		commandsModule = types.ModuleType("globalCommands")
+		commandsModule.commands = Commands()
+		namespace = {"__name__": "globalPlugins.brailleExtender"}
+		exec(
+			"class GlobalPlugin:\n"
+			"\tdef script_braille_scrollBack(self, gesture): pass\n"
+			"\tdef script_braille_scrollForward(self, gesture): pass\n"
+			"\tdef script_unrelated(self, gesture): pass\n",
+			namespace,
+		)
+		plugin = namespace["GlobalPlugin"]()
+		self.transport.parse(b'{"type":"lrd_a11y_hello","version":1}')
+		queueHandler.pumpAll()
+		self.bridge._lastFocus = object()
+		with mock.patch.dict(sys.modules, {"globalCommands": commandsModule}):
+			for script in (plugin.script_braille_scrollBack, plugin.script_braille_scrollForward):
+				with self.subTest(script=script.__name__):
+					queueHandler.queuedFunctions.clear()
+					self.assertTrue(
+						self.bridge._handleSemanticBrailleGesture(types.SimpleNamespace(script=script))
+					)
+					self.assertEqual(self.client.leaderSession.forwarded, [])
+					self.assertEqual(len(queueHandler.queuedFunctions), 1)
+					self.assertEqual(
+						queueHandler.queuedFunctions[0][1], self.bridge._recoverFocusBeforeGesture
+					)
+			queueHandler.queuedFunctions.clear()
+			self.assertFalse(
+				self.bridge._handleSemanticBrailleGesture(
+					types.SimpleNamespace(script=plugin.script_unrelated)
+				),
+			)
+			# A same-named command from another add-on is not this known alias.
+			plugin.script_braille_scrollBack.__func__.__module__ = "globalPlugins.otherAddon"
+			self.assertFalse(
+				self.bridge._handleSemanticBrailleGesture(
+					types.SimpleNamespace(script=plugin.script_braille_scrollBack),
+				),
+			)
+			self.assertEqual(len(self.client.leaderSession.forwarded), 2)
+			self.assertEqual(queueHandler.queuedFunctions, [])
+
 	def test_terminate_restores_original_receiving_braille_method_and_state(self):
 		original = self.bridge._originalSetReceivingBraille
 		self.transport.parse(b'{"type":"lrd_a11y_hello","version":1}')
