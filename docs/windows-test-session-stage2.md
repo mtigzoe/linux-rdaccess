@@ -6,8 +6,11 @@ copy. An older RDAccess PR #10 endpoint remains compatible with this launcher,
 but a development RDAccess build with the Linux integration must be disabled
 before enabling the companion to prevent duplicate handlers and consent menus.
 Installation/reload into a running NVDA session requires separate explicit
-authorization during agent-assisted development. The companion extraction has
-not yet been installed or live-tested.
+authorization during agent-assisted development. Build `20261013.0.1` has been
+installed and activated in Windows NVDA, with authenticated connection/status
+and one user-confirmed physical Firefox panning observation. Broader keyboard,
+speech, routing, caret and lifecycle acceptance remains incomplete; see the
+[live audit](compatibility-audit-2026-10-13-companion.md).
 
 Configure NVDA's built-in Remote Access saved relay settings as **Control
 another computer**. The relay must have a valid certificate or an already
@@ -40,6 +43,21 @@ to close the endpoint and delete the encrypted discovery file. Authorization
 also ends after five minutes, on profile changes, lock, secure-desktop entry,
 or NVDA shutdown. Session-owned connections are cleaned up at that boundary;
 pre-existing connections are preserved.
+
+For bounded live input checks, prepare the read-only observer and select a safe
+Windows input target before asking for fresh consent. Recheck `nvda-status`
+immediately before input: authorization must be active, the transport connected,
+and remote control confirmed. A successful `start-all` does not establish
+keyboard control. Send one gesture, inspect the Linux focus/event result, and
+then choose the next action. If the computer-use helper detects user input,
+refresh its window state and recheck control/consent before one retry. Do not
+attribute a concurrent focus change to a blocked or unknown input attempt.
+
+Avoid broad speech/braille log windows when the user is also navigating Windows:
+they can contain unrelated local output. A timed observer must still be running
+when the gesture is sent; a zero-event trace that ended beforehand does not prove
+the key failed to reach Linux. Stop input when consent expires, even if an
+observer was just prepared, and request a fresh session for further live input.
 
 The discovery file is `%LOCALAPPDATA%\rdaccess-test-session.bin`: user-scoped
 DPAPI ciphertext, created with a protected user-only DACL. It contains an
