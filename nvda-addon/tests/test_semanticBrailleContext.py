@@ -19,7 +19,7 @@ class ContextRegion:
 		self.focusToHardLeft = False
 
 	def update(self):
-		pass
+		self.renderedName = self.obj.name
 
 
 def coreContextNamespace(api):
@@ -153,6 +153,53 @@ class SemanticBrailleContextTests(SemanticBrailleBridgeTestCase):
 			[region.obj.name for region in self.brailleHandler.mainBuffer.regions],
 			["Settings", "Apply changes"],
 		)
+
+	def test_same_focus_with_new_parent_rebuilds_linux_context(self):
+		self.negotiate()
+		self.sendFocus()
+		objects = self._objects()
+		objects[0]["parent_id"] = "other-dialog"
+		objects[1]["id"] = "other-dialog"
+		objects[1]["name"] = "Other settings"
+		self.bridge._onFocus(version=1, focus_id="save", objects=objects)
+		queueHandler.pumpAll()
+		self.assertEqual(
+			[region.obj.name for region in self.brailleHandler.mainBuffer.regions],
+			["Other settings", "Apply changes"],
+		)
+		self.assertEqual(len(self.brailleHandler.focused), 2)
+
+	def test_same_focus_with_removed_parent_removes_old_context(self):
+		self.negotiate()
+		self.sendFocus()
+		objects = self._objects()
+		objects[0]["parent_id"] = None
+		self.bridge._onFocus(version=1, focus_id="save", objects=objects[:1])
+		queueHandler.pumpAll()
+		self.assertEqual(
+			[region.obj.name for region in self.brailleHandler.mainBuffer.regions],
+			["Apply changes"],
+		)
+
+	def test_same_focus_refreshes_changed_ancestor_presentation(self):
+		self.negotiate()
+		self.sendFocus()
+		objects = self._objects()
+		objects[1]["name"] = "Updated settings"
+		self.bridge._onFocus(version=1, focus_id="save", objects=objects)
+		queueHandler.pumpAll()
+		self.assertEqual(self.brailleHandler.mainBuffer.regions[0].renderedName, "Updated settings")
+		self.assertTrue(self.brailleHandler.mainBuffer.regions[0].focusToHardLeft)
+
+	def test_unchanged_context_does_not_rebuild_or_replace_braille_window(self):
+		self.negotiate()
+		self.sendFocus()
+		region = self.brailleHandler.mainBuffer.regions[0]
+		self.brailleHandler.mainBuffer.windowStart = 10
+		self.sendFocus(value="updated")
+		self.assertIs(self.brailleHandler.mainBuffer.regions[0], region)
+		self.assertEqual(self.brailleHandler.mainBuffer.windowStart, 10)
+		self.assertEqual(len(self.brailleHandler.focused), 1)
 
 	def test_cached_remote_focus_replays_after_windows_replaces_buffer(self):
 		self.negotiate()

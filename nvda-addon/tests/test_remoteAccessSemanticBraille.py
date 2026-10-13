@@ -228,6 +228,36 @@ class SemanticBrailleBridgeTests(SemanticBrailleBridgeTestCase):
 			},
 		)
 
+	def test_superseded_objects_cannot_activate_or_route(self):
+		self.negotiate()
+		self.sendFocus(text="hello", caret=1)
+		oldObj = self.brailleHandler.mainBuffer.regions[-1].obj
+		oldTextInfo = oldObj.TextInfo(oldObj)
+		self.sendFocus(text="world", caret=2)
+		before = len(self.transport.sent)
+		oldObj.doAction(0)
+		oldTextInfo._setCaretOffset(3)
+		self.assertEqual(len(self.transport.sent), before)
+		current = self.brailleHandler.mainBuffer.regions[-1].obj
+		current.doAction(0)
+		current.TextInfo(current)._setCaretOffset(3)
+		self.assertEqual(
+			[message["type"] for message in self.transport.sent[before:]],
+			["lrd_a11y_action", "lrd_a11y_caret"],
+		)
+
+	def test_previous_session_objects_cannot_activate_or_route_reused_ids(self):
+		self.negotiate()
+		self.sendFocus(text="hello", caret=1)
+		oldObj = self.brailleHandler.mainBuffer.regions[-1].obj
+		oldTextInfo = oldObj.TextInfo(oldObj)
+		self.bridge._onHello(version=1)
+		self.sendFocus(text="world", caret=2)
+		before = len(self.transport.sent)
+		oldObj.doAction(0)
+		oldTextInfo._setCaretOffset(3)
+		self.assertEqual(len(self.transport.sent), before)
+
 	def test_temporary_message_requires_negotiation_and_preserves_focus(self):
 		callback = self.transport.callback_manager.callbacks["msg_lrd_a11y_message"]
 		callback(version=1, text="Focus mode")
@@ -434,6 +464,63 @@ class BuiltInRemoteAccessTests(unittest.TestCase):
 	def _switchToRemote(self):
 		self.client.sendingKeys = True
 		self.client.setReceivingBraille(True)
+
+	def test_object_input_expires_on_control_or_transport_change(self):
+		for transition in (
+			"local",
+			"handoff",
+			"replacement",
+			"disconnected",
+			"focus",
+			"reconnect",
+			"fallback",
+			"terminate",
+		):
+			with self.subTest(transition=transition):
+				self.client.leaderTransport = self.transport
+				self.client.sendingKeys = True
+				self.transport.connected = True
+				self._startRemoteFocus()
+				self.bridge._onFocus(
+					version=1,
+					focus_id="editor",
+					objects=[
+						{
+							"id": "editor",
+							"actions": ["click"],
+							"text_supported": True,
+							"text": "hello",
+							"caret_offset": 1,
+						}
+					],
+				)
+				queueHandler.pumpAll()
+				oldObj = self.brailleHandler.mainBuffer.regions[-1].obj
+				oldTextInfo = oldObj.TextInfo(oldObj)
+				if transition == "local":
+					self._switchToLocal()
+				elif transition == "handoff":
+					self._switchToLocal()
+					self._switchToRemote()
+					queueHandler.pumpAll()
+				elif transition == "replacement":
+					self.client.leaderTransport = FakeBuiltInTransport()
+				elif transition == "disconnected":
+					self.transport.connected = False
+				elif transition == "focus":
+					self._receiveFocus(nodeId="other")
+					queueHandler.pumpAll()
+				elif transition == "reconnect":
+					self.transport.transportDisconnected.notify()
+					self.bridge._onHello(version=1)
+				elif transition == "fallback":
+					self.bridge._onFallback(version=1)
+				else:
+					self.bridge.terminate()
+				before = len(self.transport.sent)
+				oldObj.doAction(0)
+				oldTextInfo._setCaretOffset(3)
+				self.assertEqual(len(self.transport.sent), before)
 
 	def test_control_resume_restores_cached_focus_without_sender_reply(self):
 		self._startRemoteFocus()

@@ -27,7 +27,7 @@ uv run --no-project --python 3.13 python nvda-addon/build.py
 Then open the generated add-on package for installation:
 
 ```powershell
-Start-Process ".\\nvda-addon\\dist\\linuxRdAccess-20261012.0.1.nvda-addon"
+Start-Process ".\\nvda-addon\\dist\\linuxRdAccess-20261013.0.1.nvda-addon"
 ```
 
 Confirm the installation in NVDA and restart NVDA when prompted. Before

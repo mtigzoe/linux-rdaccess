@@ -29,7 +29,7 @@ uv run --no-project --python 3.13 python nvda-addon/build.py
 ```
 
 The standard-library builder writes
-`nvda-addon/dist/linuxRdAccess-20261012.0.1.nvda-addon`. It is reproducible and
+`nvda-addon/dist/linuxRdAccess-20261013.0.1.nvda-addon`. It is reproducible and
 includes Python source, documentation, attribution and the full upstream
 license. `buildVars.py` is the source of add-on metadata; `--version` can override
 the three-component numeric development version.
@@ -104,6 +104,16 @@ After migration, repeat control handoff, speech, panning, routing, revocation,
 expiry and preservation of pre-existing connections. Use the
 [acceptance matrix](../docs/nvda-linux-compatibility-matrix.md); viewer output
 alone is not physical-display proof.
+
+The 20261013.0.1 build also rejects action and caret requests retained from an
+older semantic snapshot, session, or control activation, and refreshes ancestry
+when the same focused object moves to another dialog or its context changes.
+These corrections are automated-tested; see the
+[issue audit and validation evidence](../docs/compatibility-audit-2026-10-13-companion.md).
+An authenticated `nvda-status` response can come from the legacy RDAccess
+integration: it does not prove that this companion is active. Check NVDA's log
+for `Initialized Linux Remote Access Companion` or its inactive-conflict warning
+before attributing live results to this package.
 
 ## License
 

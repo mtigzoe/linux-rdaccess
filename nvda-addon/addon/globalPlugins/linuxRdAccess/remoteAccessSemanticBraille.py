@@ -508,6 +508,24 @@ class RemoteAccessSemanticBrailleBridge:
 			region.update()
 			yield region
 
+	def _focusContextSignature(self, focus):
+		context = []
+		parent = getattr(focus, "parent", None)
+		while isinstance(parent, RemoteA11yObject):
+			context.append(
+				(
+					parent._node.nodeId,
+					parent.name,
+					parent.role,
+					parent.roleText,
+					parent.states,
+					parent.value,
+					parent.description,
+				)
+			)
+			parent = parent.parent
+		return context
+
 	def _handleRemoteGainFocus(self, handler, focus) -> None:
 		# Core reads its context getter from the handleGainFocus function's
 		# module globals, including after braille became a package. Limit the
@@ -555,6 +573,26 @@ class RemoteAccessSemanticBrailleBridge:
 
 		nodes = {node.nodeId: node for node in message.objects}
 		objects: dict[str, RemoteA11yObject] = {}
+		controlGeneration = self._controlGeneration
+
+		def canSendInput():
+			# NVDA TextInfo and queued braille scripts can retain an old object
+			# after its region is rebound. Never reinterpret its coordinates or
+			# action index against a newer snapshot or control activation.
+			return (
+				self._objects is objects
+				and controlGeneration == self._controlGeneration
+				and self._isCurrentSession(session)
+				and (self._client is None or getattr(self._client, "sendingKeys", False))
+			)
+
+		def sendAction(objectId, actionIndex):
+			if canSendInput():
+				self._sendAction(objectId, actionIndex)
+
+		def sendCaret(objectId, offset):
+			if canSendInput():
+				self._sendCaret(objectId, offset)
 
 		def buildObject(nodeId: str) -> RemoteA11yObject:
 			existing = objects.get(nodeId)
@@ -567,8 +605,8 @@ class RemoteAccessSemanticBrailleBridge:
 				node=node,
 				parentObject=parent,
 				objectMap=objects,
-				actionSender=self._sendAction,
-				caretSender=self._sendCaret,
+				actionSender=sendAction,
+				caretSender=sendCaret,
 				session=session,
 			)
 			objects[nodeId] = obj
@@ -593,8 +631,13 @@ class RemoteAccessSemanticBrailleBridge:
 
 		previousFocusId = self._focusId
 		previousNode = self._lastNode
-		needsGainFocus = previousFocusId != message.focusId or not self._hasRemoteFocusRegion(message.focusId)
-		if previousFocusId == message.focusId:
+		previousFocus = self._objects.get(previousFocusId)
+		needsGainFocus = (
+			previousFocusId != message.focusId
+			or not self._hasRemoteFocusRegion(message.focusId)
+			or self._focusContextSignature(previousFocus) != self._focusContextSignature(focus)
+		)
+		if previousFocusId == message.focusId and not needsGainFocus:
 			# NVDA's handleUpdate finds an existing region by object equality but
 			# updates region.obj, not the new object argument. Rebind semantic
 			# regions to this snapshot so names, values, text and caret state do
