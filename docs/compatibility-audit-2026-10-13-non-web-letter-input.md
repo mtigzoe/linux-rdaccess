@@ -116,12 +116,74 @@ its editor focused, without proving the input origin or Windows speech.
 The user was then asked to prepare `alpha bravo charlie` in a new unsaved
 document and leave the caret at the end before any routing gesture.
 
+## Human speech and physical braille confirmation in Mousepad
+
+The user subsequently reported entering the terminal command, opening a new
+editor, and hearing NVDA announce that the editor opened. In response to the
+public-fixture preparation request, the user reported that NVDA could read
+the text and that the b.note could display it. Record this as a **limited
+human-confirmed PASS for readable Mousepad text in speech and physical
+braille**, not a captured keyboard-delivery trace or proof of native NVDA
+role wording, character echo, interruption, routing or caret tracking.
+The user's spoken-text transcription was not checked against editor text;
+the observer deliberately does not capture text.
+
+A subsequent read-only AT-SPI snapshot found the same target application,
+editable/focused text, and numeric caret offset **6**. This is preparation
+evidence, not a routing result: no routing key had been requested, and the
+cause/time of that position is unknown. The requested fixture would end at
+offset **19**. The user was asked to press Ctrl+End before the next observation.
+At this snapshot's Windows status check, temporary authorization had expired;
+no agent desktop input was sent and fresh consent was requested for the next
+authenticated connection check. See the separate
+[layered text-output report](mousepad-text-output-layered-evidence-2026-10-13.json).
+Its full physical-braille layer stays unverified because its expectation also
+includes cursor position; the readable-content confirmation is preserved
+without promoting it to a cursor/routing PASS.
+
+## First bounded physical-routing observation: inconclusive
+
+After fresh authorization, the authenticated readiness check reported
+connected transport, an attached bridge, negotiated semantic braille and
+active Linux control. A read-only snapshot showed the Mousepad editor
+focused with its caret at **21**, rather than the requested fixture's end
+offset **19**. The actual editor text was not read, so the exact fixture and
+any extra characters remain unverified.
+
+The observer registered Linux focus/caret listeners for 60 seconds and the
+user was asked to press one b.note routing key under the first displayed cell
+of the second word. For the requested `alpha bravo charlie` prefix, this would
+target offset **6**. The user was told not to press if that word was absent or
+not visible. The observer completed normally at **60086.7 ms**, with caret
+**21 to 21**, the same focused object, no focus change, no caret events and
+zero dropped events. No agent desktop input was sent.
+
+The user subsequently confirmed pressing **one routing key during the
+observation**. Its selected cell and the resulting physical cursor position
+have not been confirmed. Unchanged Linux caret after a human-confirmed press
+is a live symptom, but the result remains **INCONCLUSIVE** for the intended
+offset-6 target. The observer stopped, and the user was asked not to press
+again until the next prepared check and to clarify the selected cell/result.
+Numeric evidence and the preceding consent/control readiness are preserved in the
+[routing observation](mousepad-routing-atspi-evidence-2026-10-13.json).
+
+Read-only source/configuration checks found the saved BrailleExtender routing
+setting **normal**. Its installed patch replaces
+`GlobalCommands.script_braille_routeTo`, with the normal path delegating to
+`braille.handler.routeTo`; the companion's local-coordinate script set already
+includes that command. This does not establish the executed runtime handler,
+but neither a missing pan-style alias nor active Windows arrow emulation was
+confirmed as the cause. A bounded Windows log scan found no matching fixed
+semantic-caret send-error line; absence of a log line is not delivery proof.
+No speculative routing change, new companion installation or restart was made.
+
 ## Remaining live work
 
 The fix is **automated-tested and installed with user approval**, with a
 limited human confirmation that the previously blocked terminal command can
 now be entered. Instrumented text insertion and speech acceptance still
-require verification in the restarted session. The original controller
+require verification beyond the limited Mousepad text-output confirmation.
+The original controller
 backup is present and saved connection settings were preserved.
 
 Test a single known-text typing gesture in the
@@ -130,7 +192,7 @@ consent for the authenticated status check, and separate user speech/braille
 confirmation. Verify `m/a/n` text insertion, then use `i` as a control rather
 than claiming it is fixed by this path. Recheck ordinary typing and browser
 navigation separately. Continue Mousepad routing acceptance only after the
-fixture can be prepared.
+fixture is confirmed at its intended starting caret position.
 
 Saved Orca general alphabetic/numeric/punctuation echo and key echo are enabled;
 the saved default profile enables character/word echo. Active runtime settings
