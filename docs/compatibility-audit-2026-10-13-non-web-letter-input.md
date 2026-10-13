@@ -141,7 +141,7 @@ Its full physical-braille layer stays unverified because its expectation also
 includes cursor position; the readable-content confirmation is preserved
 without promoting it to a cursor/routing PASS.
 
-## First bounded physical-routing observation: inconclusive
+## First bounded physical-routing observation: caret mismatch
 
 After fresh authorization, the authenticated readiness check reported
 connected transport, an attached bridge, negotiated semantic braille and
@@ -159,11 +159,15 @@ not visible. The observer completed normally at **60086.7 ms**, with caret
 zero dropped events. No agent desktop input was sent.
 
 The user subsequently confirmed pressing **one routing key during the
-observation**. Its selected cell and the resulting physical cursor position
-have not been confirmed. Unchanged Linux caret after a human-confirmed press
-is a live symptom, but the result remains **INCONCLUSIVE** for the intended
-offset-6 target. The observer stopped, and the user was asked not to press
-again until the next prepared check and to clarify the selected cell/result.
+observation**, aligned with the start of the second word, and reported that
+the **physical braille cursor moved there**. Linux's editing caret remained
+at the end. This is a **live routing/caret synchronization mismatch** for
+that one interaction. The exact text was not read, so the numeric target of
+6 remains conditional on the requested prefix; the discrepancy between
+an earlier word and the Linux end position does not depend on that exact
+target number. The cause has not been traced through Windows and the protocol.
+Control was verified before the observer, not at the exact keypress. The
+observer stopped; no further desktop input was sent by the agent.
 Numeric evidence and the preceding consent/control readiness are preserved in the
 [routing observation](mousepad-routing-atspi-evidence-2026-10-13.json).
 
@@ -175,7 +179,12 @@ includes that command. This does not establish the executed runtime handler,
 but neither a missing pan-style alias nor active Windows arrow emulation was
 confirmed as the cause. A bounded Windows log scan found no matching fixed
 semantic-caret send-error line; absence of a log line is not delivery proof.
-No speculative routing change, new companion installation or restart was made.
+An isolated source-backed regression subsequently reproduced a separate
+confirmed timing defect: same-ID snapshot replacement invalidates the old
+TextInfo while NVDA's region refresh is still pending. A queued route in that
+interval silently drops its caret request. A separate companion fix is being
+prepared; its relationship to this exact physical observation still needs
+a retest. No new companion installation or restart was made.
 
 ## Remaining live work
 

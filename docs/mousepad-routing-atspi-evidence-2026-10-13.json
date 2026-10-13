@@ -73,14 +73,14 @@
     "application": "mousepad"
   },
   "user_keypress_during_window": "user-confirmed-one-routing-key",
-  "selected_cell": "unconfirmed",
-  "physical_cursor_after_press": "unconfirmed",
-  "assessment": "inconclusive-target-and-physical-result-unconfirmed",
+  "selected_cell": "user-confirmed-start-of-second-word",
+  "physical_cursor_after_press": "user-confirmed-moved-to-second-word",
+  "assessment": "live-physical-cursor-and-linux-editing-caret-mismatch",
   "limitations": [
     "No agent desktop input was sent.",
-    "The user confirms one routing key during the window; its selected cell and physical cursor result are unconfirmed. Unchanged Linux caret is a live symptom, not a conclusively targeted routing failure.",
+    "The user confirms one routing key during the window aligned with the second word and reports the physical cursor moved there. Linux caret remained at the end; the cause is not traced across the protocol.",
     "Observed starting offset 21 differs from the requested fixture length 19; actual editor text was not read.",
-    "NVDA speech events, semantic braille events and physical cursor position were not captured for this gesture."
+    "NVDA speech and semantic braille events were not captured. Physical cursor movement is human-confirmed, not captured from a device API. Control was checked before the observer, not at the exact keypress."
   ],
   "read_only_source_checks": {
     "saved_brailleextender_routing_setting": "normal",
