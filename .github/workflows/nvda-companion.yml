@@ -1,0 +1,43 @@
+name: Windows NVDA companion
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  windows-companion:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Checkout NVDA API reference
+        uses: actions/checkout@v4
+        with:
+          repository: nvaccess/nvda
+          ref: 1406f9f8a04eb50f7317af87aba3a9d439c2a772
+          path: nvda-source
+      - name: Install test and source-check dependencies
+        run: python -m pip install -r nvda-addon/requirements-dev.txt
+      - name: Check companion sources
+        run: |
+          python -m ruff check nvda-addon
+          python -m ruff format --check nvda-addon
+      - name: Companion regressions and isolated Windows kernel tests
+        working-directory: nvda-addon
+        env:
+          NVDA_SOURCE_DIR: ${{ github.workspace }}/nvda-source/source
+        run: python -m unittest discover -s tests -t . -v
+      - name: Build companion
+        run: python nvda-addon/build.py
+      - name: Upload review package
+        uses: actions/upload-artifact@v4
+        with:
+          name: linuxRdAccess-nvda-addon
+          path: nvda-addon/dist/*.nvda-addon
+          if-no-files-found: error

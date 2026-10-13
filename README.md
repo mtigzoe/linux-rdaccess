@@ -2,6 +2,12 @@
 
 Experimental Linux accessibility bridge for Windows screen readers.
 
+The Linux-specific Windows NVDA companion is developed in
+[`nvda-addon/`](nvda-addon/README.md), alongside the Linux bridge and AI testing
+launcher. It builds a separate development add-on; see its build, migration and
+validation instructions before installing. General RDP/Citrix functionality
+continues to live in `rdAccess`.
+
 The project now supports two architectural directions:
 
 1. **NVDA Remote + Orca Remote (recommended)** — Linux accessibility output is produced by Orca and transported directly to NVDA Remote on Windows. This avoids depending on an RDP client for accessibility and has already been validated for remote keyboard control, NVDA speech, and braille.

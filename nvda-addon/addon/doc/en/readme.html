@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Linux Remote Access Companion</title>
+<h1>Linux Remote Access Companion</h1>
+<p>This development add-on runs inside Windows NVDA. It presents Linux semantic
+braille received through NVDA Remote Access and provides opt-in local testing.
+NVDA Remote Access remains responsible for the connection, speech and keyboard
+control. This add-on does not include RDP or Citrix drivers.</p>
+<h2>Migration</h2>
+<p>A RDAccess development build may already contain this Linux integration.
+Disable that build through NVDA's add-on manager before enabling the companion,
+or use a RDAccess version without the Linux integration. The companion stays
+inactive while a running RDAccess plugin provides the same bridge. Disabling
+RDAccess also disables its RDP/Citrix functionality until it is re-enabled.</p>
+<p>Installing or restarting NVDA during agent-assisted work requires explicit
+user authorization. Installation does not carry over test consent.</p>
+<h2>Authorize testing</h2>
+<p>Connect Remote Access as “Control another computer” using your existing
+settings. In NVDA Tools choose “Authorize Linux test session...”. Connection
+permission is unchecked by default. Choose “Authorize for five minutes”.
+From the linux-rdaccess repository, run
+<code>python linux_rdaccess_test_session.py start-all</code>.</p>
+<p>Only status, connection using saved settings, and cancellation of a connection
+created by this consent session are supported. Keyboard, clipboard and arbitrary
+code operations are unavailable. Existing connections are preserved. Choose
+“Revoke Linux test session” to end authorization immediately. Consent also ends
+on expiry, lock, secure desktop, configuration profile switch or NVDA shutdown.</p>
+<h2>Validation limits</h2>
+<p>Automated regressions and Windows kernel tests do not prove audible speech or
+physical braille output. This extracted package has not been installed or
+live-tested. Physical panning still needs validation; previous RDAccess builds
+could show Windows application context while controlling Linux.</p>
+<h2>License and source</h2>
+<p>Derived from RDAccess by Leonard de Ruijter and contributors; licensed under
+GNU GPL version 2 or later. See COPYING.txt and NOTICE.md in the add-on.
+Source and development documentation:
+<a href="https://github.com/mtigzoe/linux-rdaccess">linux-rdaccess on GitHub</a>.</p>
+</html>

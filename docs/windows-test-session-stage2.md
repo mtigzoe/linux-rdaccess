@@ -1,8 +1,13 @@
 # Authorized Windows test-session workflow
 
-Install a build of RDAccess PR #10 into your chosen NVDA copy after reviewing
-that PR. Installation/reload into a running NVDA session requires separate
-explicit authorization during agent-assisted development.
+Build and review the [Linux Remote Access Companion](../nvda-addon/README.md)
+maintained in this repository, then install it into your chosen Windows NVDA
+copy. An older RDAccess PR #10 endpoint remains compatible with this launcher,
+but a development RDAccess build with the Linux integration must be disabled
+before enabling the companion to prevent duplicate handlers and consent menus.
+Installation/reload into a running NVDA session requires separate explicit
+authorization during agent-assisted development. The companion extraction has
+not yet been installed or live-tested.
 
 Configure NVDA's built-in Remote Access saved relay settings as **Control
 another computer**. The relay must have a valid certificate or an already
@@ -42,10 +47,12 @@ ephemeral pipe key, never the saved relay password. `--session-file` accepts an
 alternate encrypted descriptor for isolated testing. Do not copy or commit
 descriptor files. Neither endpoint addresses nor keys appear in JSON output.
 
-The IPC client modules in `linux_rdaccess_core/connection/nvda_test_client`
-are vendored verbatim from rdAccess PR #10. Update them together when the wire
-protocol changes. Windows tests in that PR exercise the real kernel transport,
-DPAPI, ACLs and cancellation; orchestration tests here use isolated mocks.
+The IPC modules in `linux_rdaccess_core/connection/nvda_test_client` originated
+in rdAccess PR #10 and are now the authoritative source in this repository.
+The companion build packages those files verbatim. Preserve/version existing
+wire compatibility when changing them. The standalone `nvda-addon/tests` suite
+exercises real Windows kernel transport, DPAPI, ACLs and cancellation in isolated
+temporary endpoints; launcher orchestration tests use isolated mocks.
 
 Legacy NVDARemote connections can be queried/reused when already active.
 Automatic connection of the legacy add-on is unavailable because its API
