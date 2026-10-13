@@ -33,3 +33,11 @@ A future Stage 3 implementation may use a **separately authorized**
 desktop-control interface to drive isolated test fixtures and record objective
 XKB/AT-SPI states. NVDA speech and physical braille always require
 appropriate observation before a check can pass.
+
+For a single controlled interaction, use `session-template` and
+`session-summary --file report.json` to separate keyboard delivery, Linux
+focus/caret, Windows NVDA speech events, semantic braille events and
+user-confirmed physical braille. These commands preserve the existing
+`template` / `summary` matrix and do not infer success across layers. See
+[routing acceptance without Desktop Commander](routing-tests-without-desktop-commander.md)
+for the read-only SSH observer and physical routing procedure.

@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "kind": "single-interaction-layered-evidence",
+  "context": {
+    "application": "Mousepad",
+    "gesture": "Direct AT-SPI fixture caret request for offset 7",
+    "expected": "Linux caret changes from 2 to 7 on the same focused object",
+    "nvda_version": "",
+    "orca_version": "",
+    "companion_version": "",
+    "linux_revision": "7c21b45 plus routing-observer changes",
+    "braille_model": "",
+    "braille_driver": "",
+    "braille_firmware": ""
+  },
+  "session": {
+    "authorization_before_input": "unverified",
+    "input_permission": "unverified",
+    "transport": "unverified",
+    "control": "unverified"
+  },
+  "layers": [
+    {
+      "id": "keyboard_delivery",
+      "expected": "Windows-origin keyboard input reaches Linux (not applicable to a braille-only gesture)",
+      "status": "not-tested",
+      "source": "unverified",
+      "observed": "No Windows-origin keyboard input was sent; the private fixture used AT-SPI."
+    },
+    {
+      "id": "linux_focus",
+      "expected": "Linux focus and caret match the intended object and position",
+      "status": "pass",
+      "source": "isolated-test",
+      "observed": "Private Linux Mousepad: caret 2 to 7, target event at +101.0 ms, same focus, no focus change or dropped events."
+    },
+    {
+      "id": "nvda_speech",
+      "expected": "Windows NVDA speech events or audible output match the expected feedback",
+      "status": "not-tested",
+      "source": "unverified",
+      "observed": "Windows NVDA speech was not observed in the isolated fixture."
+    },
+    {
+      "id": "semantic_braille",
+      "expected": "The current Linux semantic snapshot reaches Windows NVDA",
+      "status": "not-tested",
+      "source": "unverified",
+      "observed": "The isolated fixture did not connect the semantic braille transport."
+    },
+    {
+      "id": "physical_braille",
+      "expected": "The user confirms the intended content and cursor on the physical display",
+      "status": "not-tested",
+      "source": "unverified",
+      "observed": "The b.note was not used in the isolated fixture."
+    }
+  ]
+}

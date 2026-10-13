@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "environment": "isolated-test",
+  "versions": {
+    "python": "3.10.12",
+    "orca": "42.0-1ubuntu2",
+    "mousepad": "0.5.8-1"
+  },
+  "observation": {
+    "kind": "linux-atspi-caret-observation",
+    "source": "linux-atspi",
+    "elapsed_ms": 1058.2,
+    "role": "text",
+    "before_caret": 2,
+    "after_caret": 7,
+    "same_initial_focus": true,
+    "focus_changed_during_observation": false,
+    "events": [
+      {
+        "type": "caret-moved",
+        "same_initial_focus": true,
+        "caret_offset": 7,
+        "elapsed_ms": 101
+      }
+    ],
+    "dropped_events": 0,
+    "limitations": "Read-only Linux evidence; input origin, NVDA output and physical braille are unverified",
+    "application": "mousepad"
+  }
+}
