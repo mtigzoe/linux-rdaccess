@@ -240,3 +240,38 @@ temporary-message restoration, reconnect, or all applications. Issue #59 and
 the related live acceptance trackers remain open. Later status/CLI responses
 must continue to report physical braille as `unverified`; this human evidence
 does not authorize an automatic physical acceptance claim by the endpoint.
+
+## Bounded Firefox Tab follow-up after the CI investigation
+
+The user activated fresh five-minute authorization. Authenticated status
+confirmed connected transport, attached standalone bridge, semantic braille
+negotiation and temporary-message support. Remote control was initially false,
+then observed true before the navigation gestures; no agent-origin handoff
+shortcut was sent during this interval.
+
+Input used Windows File Explorer through the supported computer-use API,
+with the address-bar focus observed before input and unchanged afterward.
+Linux observation reused the existing bounded `Focus` diagnostic on the
+existing `:0` Firefox session and a temporary read-only AT-SPI listener. The
+listener recorded roles and opaque in-memory identities, never control names
+or editable contents. No application launch, text entry, configuration change,
+Orca restart or connection restart was performed.
+
+| Gesture | Evidence | Assessment |
+| --- | --- | --- |
+| First Tab | Observer baseline was Firefox push button, identity 1; a focused event at about 41.7 seconds identified a separator, identity 2. A separate focus snapshot agreed. | **Limited PASS:** this Windows-origin Tab reached Linux and changed accessible focus. |
+| First Shift+Tab | Linux focus snapshot returned to a push button, with authorization/control still active. The 60-second observer had ended before this gesture. | Role restoration observed; original object identity **not verified**. |
+| Repeated Tab | A new observer again recorded push button 1 → separator 2 at about 19 seconds; the separate focus snapshot agreed. | **Limited PASS:** repeated delivery and focus change. |
+| Planned second Shift+Tab | The immediate post-Tab status reported `required_or_expired`. No further input was sent. | **NOT TESTED:** fresh authorization required. |
+
+The second observer completed with separator identity 2 still focused. Thus no
+fully captured Tab/Shift+Tab return to the original object is claimed. Speech
+and physical braille for these gestures await direct user confirmation; these
+AT-SPI/IPC observations do not certify presentation, routing/caret, temporary
+messages or reconnect behavior. All seven acceptance trackers remain open.
+
+The separate, pre-existing VS Code caret failure is tracked in
+[issue #79](https://github.com/mtigzoe/linux-rdaccess/issues/79), with preserved
+native-render evidence and bounded diagnostics in
+[PR #80](https://github.com/mtigzoe/linux-rdaccess/pull/80). Its failure is not a
+passing acceptance result for PR #78.
