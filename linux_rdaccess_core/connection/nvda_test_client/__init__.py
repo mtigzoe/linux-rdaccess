@@ -1,8 +1,9 @@
-"""Windows-only local test IPC client shared with mtigzoe/rdAccess PR #10.
+"""Windows-only local test IPC client, originally from mtigzoe/rdAccess PR #10.
 
-The four localTest modules are vendored verbatim from the Windows add-on so
-framing, DPAPI, schema validation and MAC rules agree. No NVDA runtime imports
-are required by this client. Importing it does not open any endpoint or file.
+The four localTest modules are the authoritative source for the launcher and
+the companion NVDA add-on, whose builder packages them verbatim. See NOTICE.md
+for GPL-2.0-or-later attribution. No NVDA runtime imports are required by this
+client. Importing it does not open any endpoint or file.
 """
 
 from __future__ import annotations
