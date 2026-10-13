@@ -72,8 +72,20 @@ No live keyboard gesture, routing key, message trigger or reconnect was sent by
 the agent. The user was asked to prepare a new unsaved Mousepad fixture with
 `alpha bravo charlie`, start/reconnect NVDA normally if necessary, and authorize
 five minutes before the next authenticated-status/live observation check.
-That preparation has not yet been confirmed. No new physical-routing PASS is
-recorded. Earlier user-confirmed b.note left panning in Firefox and the Linux
+The user subsequently replied ready. Authenticated status confirmed **active
+authorization**, **connected transport**, **attached bridge**, **negotiated
+semantic braille** and temporary-message support, but **remote control was
+false**. After the requested manual handoff/preparation, another status check
+still reported local control. AT-SPI and a separate read-only X11 focused-window
+process check both identified the Linux terminal (`gnome-terminal-server`,
+display `:0`), not Mousepad. No routing gesture was requested under these
+conditions, and the live observer was not started.
+
+The user was given the manual `mousepad --disable-server` preparation command.
+A later status attempt returned **required_or_expired**, with terminal focus
+still observed. The controlled live test remains **not run**, rather than a
+braille failure or PASS. No new physical-routing PASS is recorded. Earlier
+user-confirmed b.note left panning in Firefox and the Linux
 terminal remains limited evidence from build `20261013.0.2`.
 
 Desktop Commander and other desktop-control tools were not used. SSH was used
