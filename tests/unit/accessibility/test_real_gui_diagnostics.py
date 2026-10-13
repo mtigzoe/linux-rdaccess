@@ -1,5 +1,6 @@
 """Isolation and traversal regressions for the real-application GUI runner."""
 from pathlib import Path
+from collections import deque
 from types import SimpleNamespace
 import tempfile
 import unittest
@@ -29,6 +30,40 @@ class Accessible:
 
 
 class RealGuiDiagnosticTests(unittest.TestCase):
+    def test_routed_caret_events_are_target_only_and_relative_to_the_request(self):
+        target, other = object(), object()
+        events = [(9.0, 12, target), (10.01, 7, other), (10.02, 1, target), (10.07, 12, target)]
+        self.assertEqual(smoke.routed_caret_events(events, target, 10.0), [(20.0, 1), (70.0, 12)])
+
+    def test_routed_caret_events_are_bounded_without_reading_labels_or_text(self):
+        class PrivateNode:
+            def get_name(self):
+                raise AssertionError("Diagnostics must not access private labels")
+
+            def get_text_iface(self):
+                raise AssertionError("Diagnostics must not access private text")
+
+        node = PrivateNode()
+        events = [(float(index), index, node) for index in range(30)]
+        self.assertEqual(smoke.routed_caret_events(events, node, 0.0),
+                         [(float(index * 1000), index) for index in range(20, 30)])
+
+    def test_caret_timestamps_are_recorded_only_for_caret_events_and_bounded(self):
+        session = smoke.Session.__new__(smoke.Session)
+        session.events = []
+        session.caret_events = deque(maxlen=80)
+        session.GLib = SimpleNamespace(Error=RuntimeError)
+        source = object()
+        event = SimpleNamespace(type="object:text-caret-moved", detail1=1, source=source)
+        with patch.object(smoke.time, "monotonic", return_value=123.0):
+            for index in range(100):
+                event.detail1 = index
+                session.on_event(event)
+            event.type = "object:state-changed:focused"
+            session.on_event(event)
+        self.assertEqual(len(session.events), 101)
+        self.assertEqual(list(session.caret_events), [(123.0, index, source) for index in range(20, 100)])
+
     def test_walk_keeps_equally_named_sibling_controls_and_their_children(self):
         leaf = Accessible()
         first, second = Accessible(), Accessible(leaf)

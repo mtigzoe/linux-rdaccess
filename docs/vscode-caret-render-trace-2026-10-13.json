@@ -1,0 +1,163 @@
+{
+  "application": "VS Code 1.141.0",
+  "build_commit": "2a59476c9bfcb90b3ddc372c36762471b7dfad1c",
+  "environment": "private Xvfb and private D-Bus; disposable fixture/profile",
+  "clock": "Date.now() renderer observation minus Python wall-clock request timestamp; millisecond resolution",
+  "request": {
+    "offset": 1,
+    "before": 12,
+    "acknowledged": true,
+    "final": 12,
+    "focused": true,
+    "timeout_seconds": 18
+  },
+  "limitations": "Instrumented private renderer; receipt times are not provider event-generation times. This records one failure mechanism and does not establish that all failures share it. No active-desktop or physical-device acceptance.",
+  "events": [
+    {
+      "kind": "keydown",
+      "tag": "DIV",
+      "cls": "native-edit-context",
+      "editContext": true,
+      "anchor": 13,
+      "focus": 13,
+      "anchorType": 3,
+      "focusType": 3,
+      "length": 13,
+      "ecStart": 13,
+      "ecEnd": 13,
+      "key": "ArrowLeft",
+      "trusted": true,
+      "relative_ms": -45
+    },
+    {
+      "kind": "editContext-updateSelection",
+      "tag": "DIV",
+      "cls": "native-edit-context",
+      "editContext": true,
+      "anchor": 13,
+      "focus": 13,
+      "anchorType": 3,
+      "focusType": 3,
+      "length": 13,
+      "ecStart": 13,
+      "ecEnd": 13,
+      "args": [
+        12,
+        12
+      ],
+      "relative_ms": -44
+    },
+    {
+      "kind": "keyup",
+      "tag": "DIV",
+      "cls": "native-edit-context",
+      "editContext": true,
+      "anchor": 13,
+      "focus": 13,
+      "anchorType": 3,
+      "focusType": 3,
+      "length": 13,
+      "ecStart": 12,
+      "ecEnd": 12,
+      "key": "ArrowLeft",
+      "trusted": true,
+      "relative_ms": -42
+    },
+    {
+      "kind": "setBaseAndExtent-before",
+      "tag": "DIV",
+      "cls": "native-edit-context",
+      "editContext": true,
+      "anchor": 13,
+      "focus": 13,
+      "anchorType": 3,
+      "focusType": 3,
+      "length": 13,
+      "ecStart": 12,
+      "ecEnd": 12,
+      "offsets": [
+        12,
+        12
+      ],
+      "stack": "    at Selection.<computed> [as setBaseAndExtent] (<anonymous>:9:123)\n    at K0e.updateScreenReaderContent (vscode-file://vscode-app/usr/share/code/resources/app/out/vs/workbench/workbench.desktop.main.js:268:1574)\n    at G0e.writeScreenReaderContent (vscode-file://vscode-app/usr/share/code/resources/app/out/vs/workbench/workbench.desktop.main.js:269:4662)\n    at G0e.prepareRender (vscode-file://vscode-app/usr/share/code/resources/app/out/vs/workbench/workbench.desktop.main.js:269:3137)",
+      "relative_ms": -42
+    },
+    {
+      "kind": "setBaseAndExtent-after",
+      "tag": "DIV",
+      "cls": "native-edit-context",
+      "editContext": true,
+      "anchor": 12,
+      "focus": 12,
+      "anchorType": 3,
+      "focusType": 3,
+      "length": 13,
+      "ecStart": 12,
+      "ecEnd": 12,
+      "relative_ms": -42
+    },
+    {
+      "kind": "selectionchange",
+      "tag": "DIV",
+      "cls": "native-edit-context",
+      "editContext": true,
+      "anchor": 12,
+      "focus": 12,
+      "anchorType": 3,
+      "focusType": 3,
+      "length": 13,
+      "ecStart": 12,
+      "ecEnd": 12,
+      "trusted": true,
+      "relative_ms": -17
+    },
+    {
+      "kind": "setBaseAndExtent-before",
+      "tag": "DIV",
+      "cls": "native-edit-context",
+      "editContext": true,
+      "anchor": 1,
+      "focus": 1,
+      "anchorType": 3,
+      "focusType": 3,
+      "length": 13,
+      "ecStart": 12,
+      "ecEnd": 12,
+      "offsets": [
+        12,
+        12
+      ],
+      "stack": "    at Selection.<computed> [as setBaseAndExtent] (<anonymous>:9:123)\n    at K0e.updateScreenReaderContent (vscode-file://vscode-app/usr/share/code/resources/app/out/vs/workbench/workbench.desktop.main.js:268:1574)\n    at G0e.writeScreenReaderContent (vscode-file://vscode-app/usr/share/code/resources/app/out/vs/workbench/workbench.desktop.main.js:269:4662)\n    at G0e.prepareRender (vscode-file://vscode-app/usr/share/code/resources/app/out/vs/workbench/workbench.desktop.main.js:269:3137)",
+      "relative_ms": 37
+    },
+    {
+      "kind": "setBaseAndExtent-after",
+      "tag": "DIV",
+      "cls": "native-edit-context",
+      "editContext": true,
+      "anchor": 12,
+      "focus": 12,
+      "anchorType": 3,
+      "focusType": 3,
+      "length": 13,
+      "ecStart": 12,
+      "ecEnd": 12,
+      "relative_ms": 37
+    },
+    {
+      "kind": "selectionchange",
+      "tag": "DIV",
+      "cls": "native-edit-context",
+      "editContext": true,
+      "anchor": 12,
+      "focus": 12,
+      "anchorType": 3,
+      "focusType": 3,
+      "length": 13,
+      "ecStart": 12,
+      "ecEnd": 12,
+      "trusted": true,
+      "relative_ms": 43
+    }
+  ]
+}

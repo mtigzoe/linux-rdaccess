@@ -118,6 +118,12 @@ def desktop_code_binary() -> str | None:
     return None
 
 
+def routed_caret_events(events, node, started_at):
+    """Return bounded target-only offsets/timing, without accessibility text."""
+    return [(round((when - started_at) * 1000, 3), offset)
+            for when, offset, source in events if source == node and when >= started_at][-10:]
+
+
 class Session:
     def __init__(self, root: Path):
         import gi
@@ -147,6 +153,7 @@ class Session:
         self.streams = []
         self.checks = []
         self.events = []
+        self.caret_events = deque(maxlen=80)
         self.listener = Atspi.EventListener.new(self.on_event)
         for kind in ("object:state-changed:focused", "object:text-changed", "object:text-caret-moved"):
             if not self.listener.register(kind):
@@ -155,6 +162,8 @@ class Session:
     def on_event(self, event, _data=None):
         try:
             self.events.append((event.type, event.detail1, event.source))
+            if event.type == "object:text-caret-moved":
+                self.caret_events.append((time.monotonic(), event.detail1, event.source))
         except self.GLib.Error:
             pass
 
@@ -291,6 +300,8 @@ class Session:
         self.key("Left")
         self.wait(lambda: text.get_caret_offset() == len(value) - 1, label + " left-arrow caret")
         self.check(label + ": typed text and left-arrow caret match AT-SPI")
+        route_started = time.monotonic()
+        before_route = text.get_caret_offset()
         self.check(label + ": semantic routing accepts provider caret setter",
                    set_caret_offset(node, 1))
         try:
@@ -302,12 +313,15 @@ class Session:
                 actual = text.get_caret_offset()
             except Exception as exc:
                 actual = f"unavailable ({type(exc).__name__})"
-            recent_caret_events = [
-                (kind, detail) for kind, detail, source in self.events[-80:]
-                if kind == "object:text-caret-moved" and source == node
-            ]
-            print(f"DIAGNOSTIC {label}: routed caret offset={actual}, "
-                  f"recent target caret events={recent_caret_events[-10:]}", flush=True)
+            try:
+                focused = self.state(node, "FOCUSED")
+            except Exception as exc:
+                focused = f"unavailable ({type(exc).__name__})"
+            print(f"DIAGNOSTIC {label}: requested caret=1, before={before_route}, "
+                  f"routed caret offset={actual}, focused={focused}, "
+                  f"elapsed_ms={round((time.monotonic() - route_started) * 1000, 3)}, "
+                  f"target caret events (ms, offset)="
+                  f"{routed_caret_events(self.caret_events, node, route_started)}", flush=True)
             raise
         self.check(label + ": routed caret is confirmed by the provider")
         self.key("ctrl+a")
