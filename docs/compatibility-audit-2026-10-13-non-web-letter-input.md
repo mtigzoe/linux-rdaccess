@@ -67,19 +67,45 @@ keys include plain/Shift presses, repeat and release, plus `i/p/s` as controls.
 - Scoped Ruff 0.16.4 critical checks, Python compilation and
   `git diff --check` passed. Existing source formatting was preserved.
 
-No Desktop Commander, desktop input, user settings changes, running-controller
-installation or Orca/NVDA restart was performed. Linux tests and source reads
-ran over SSH in an isolated temporary checkout.
+Before deployment approval, no Desktop Commander, desktop input, user settings
+changes, running-controller installation or Orca/NVDA restart was performed.
+Linux tests and source reads ran over SSH in an isolated temporary checkout.
+
+## Approved Linux installation and restart
+
+The user explicitly approved applying the fix and restarting Orca. The agent
+verified the clean Linux checkout, fetched the fix branch and required the
+exact tested commit **dbc5fb740c3dc98b5ee3e6886098dd6efc784fbb** before selecting
+`fix/non-web-letter-input`. The former `main` checkout at `ac1dbdb` is retained
+as a branch, and the installed runtime's core matches the tested source.
+
+The active controller upgraded from v119 to **v120** and passed the
+recognized-current check. A separate private pre-update controller copy was
+saved for rollback; the original upstream backup and its hash were preserved.
+Saved customization and autostart hashes were unchanged across installation.
+The actual saved connection file (`remote.json`) and customization hashes were
+also unchanged across restart; the saved configuration remains ready.
+
+The approved `orca --replace` ran on the existing display `:0`. A subsequent
+process check found one live new Orca process, with the previous process gone
+and an established socket to the configured relay port. The immediate launcher
+check had briefly seen old and new processes together; only the later stable
+check is evidence of replacement. A relay TCP socket is not proof of
+authenticated Windows Remote Access or active keyboard control.
+
+No Desktop Commander, desktop input, Windows NVDA restart or relay-credential
+change was used. The user was asked for fresh five-minute consent before the
+authenticated connection check and one manually typed `m`. That live key
+result is not yet recorded.
 
 ## Remaining live work
 
-The fix is **automated-tested**, not yet installed in the user's running Orca.
-Applying it requires updating the Linux checkout/controller and restarting
-Orca, which temporarily interrupts the remote session and requires the user's
-approval under the original live-test instructions. The controller's original
-backup is present. No relay credentials or saved settings need changing.
+The fix is **automated-tested and installed with user approval**. Real text
+insertion and speech acceptance still require confirmation in the restarted
+session. The original controller backup is present and saved connection
+settings were preserved.
 
-After approved installation, test a single known-text typing gesture in the
+Test a single known-text typing gesture in the
 terminal or an unsaved editor with active remote control, fresh five-minute
 consent for the authenticated status check, and separate user speech/braille
 confirmation. Verify `m/a/n` text insertion, then use `i` as a control rather
