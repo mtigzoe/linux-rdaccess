@@ -15,6 +15,38 @@ The project now supports two architectural directions:
 
 The xrdp implementation is being retained for research and future native RDP integration. It is no longer the recommended path for normal use.
 
+## Build and launch the Windows NVDA companion add-on
+
+On Windows, open PowerShell in the `linux-rdaccess` repository root and build
+the standalone `linuxRdAccess` add-on with Python 3.13:
+
+```powershell
+uv run --no-project --python 3.13 python nvda-addon/build.py
+```
+
+Then open the generated add-on package for installation:
+
+```powershell
+Start-Process ".\\nvda-addon\\dist\\linuxRdAccess-20261012.0.1.nvda-addon"
+```
+
+Confirm the installation in NVDA and restart NVDA when prompted. Before
+enabling this companion, **disable any older development RDAccess add-on that
+already provides the Linux integration** to avoid duplicate handlers. Preserve
+the previous installation for rollback. The standalone companion has not yet
+passed live acceptance testing; check speech and physical braille yourself.
+
+To start an authorized test session after installation, use NVDA's Tools menu
+to **Authorize Linux test session** for five minutes, then run:
+
+```powershell
+python .\\linux_rdaccess_test_session.py start-all
+python .\\linux_rdaccess_test_session.py nvda-status
+```
+
+See [the companion instructions](nvda-addon/README.md) for migration, versioning,
+and full testing precautions.
+
 ## Recommended architecture
 
 ```text
