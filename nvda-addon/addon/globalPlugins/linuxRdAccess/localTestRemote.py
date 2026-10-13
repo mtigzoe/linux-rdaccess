@@ -35,6 +35,8 @@ class RemoteConnection:
 		self._leader = "master" if legacy else "leader"
 		self._follower = "slave" if legacy else "follower"
 		self._ownedSession: Any = None
+		# Our own cancelled session stays attached until its cleanup finishes.
+		self._retiredSession: Any = None
 		self._startedAt = 0.0
 		self._connectedOnce = False
 		self._failed = False
@@ -54,6 +56,9 @@ class RemoteConnection:
 		transport = getattr(self.client, self._leader + "Transport", None)
 		if transport is not None and getattr(transport, "connected", False) is True:
 			self._connectedOnce = True
+			if self._ownedSession is None and self._leaderIsForeign():
+				# A connection we do not own supersedes our earlier failure.
+				self._failed = False
 			return "connected"
 		if self._ownedSession is not None:
 			if self._session() is not self._ownedSession:
@@ -65,11 +70,18 @@ class RemoteConnection:
 				self._failed = True
 				return "failed"
 			return "connecting"
+		# Observed foreign state outranks the memory of our last failed attempt.
+		if self._leaderIsForeign() or getattr(self.client, self._follower + "Session", None) is not None:
+			self._failed = False
+			return "busy"
 		if self._failed:
 			return "failed"
-		if self._session() is not None or getattr(self.client, self._follower + "Session", None) is not None:
-			return "busy"
 		return "disconnected"
+
+	def _leaderIsForeign(self) -> bool:
+		"""True for a leader session that is neither ours nor ours awaiting cleanup."""
+		session = self._session()
+		return session is not None and session is not self._retiredSession
 
 	def connect(self) -> str:
 		self._mainThread()
@@ -130,6 +142,7 @@ class RemoteConnection:
 		owned = self._ownedSession
 		self._ownedSession = None
 		if owned is not None and self._available() and self._session() is owned:
+			self._retiredSession = owned
 			# TCPTransport.close joins its send queue. Close network resources
 			# on a worker first; core's closing callbacks use alwaysCallAfter.
 			# Then invoke the supported client API on the GUI thread, rechecking
@@ -182,6 +195,8 @@ class RemoteConnection:
 					wx.CallAfter(finish)
 
 			def finish() -> None:
+				if self._retiredSession is owned:
+					self._retiredSession = None
 				if self._available() and self._session() is owned:
 					getattr(self.client, "disconnectAs" + self._leader.capitalize())()
 

@@ -144,8 +144,42 @@ class RemoteConnectionTests(unittest.TestCase):
 
 	def test_disconnect_and_initial_connection_timeout_cancel_owned_reconnector(self):
 		self.remote.connect()
-		with mock.patch.object(remoteModule.time, "monotonic", return_value=self.remote._startedAt + 30):
+		with mock.patch.object(remoteModule.time, "monotonic", return_value=self.remote._startedAt + 31):
 			self.assertEqual(self.remote.state(), "failed")
+		self.finishCleanup()
+		self.assertEqual(self.remote.state(), "failed")
+
+	def failOwnedAttemptAfterTimeout(self):
+		# Advance past the 30 s limit with margin: (clock + 30) - clock can round to just
+		# under 30 when the monotonic clock is within 30 s below a power of two.
+		self.remote.connect()
+		with mock.patch.object(remoteModule.time, "monotonic", return_value=self.remote._startedAt + 31):
+			self.assertEqual(self.remote.state(), "failed")
+
+	def test_failure_memory_never_masks_a_connection_this_session_does_not_own(self):
+		self.failOwnedAttemptAfterTimeout()
+		self.finishCleanup()
+		# Nothing else exists, so the result of our last attempt still stands.
+		self.assertEqual(self.remote.state(), "failed")
+		# A user's own pending connection is live state, not a stale failure.
+		self.client.leaderSession = object()
+		self.client.leaderTransport = types.SimpleNamespace(connected=False)
+		self.assertEqual(self.remote.state(), "busy")
+		self.client.leaderTransport.connected = True
+		self.assertEqual(self.remote.state(), "connected")
+		# After the user's connection ends nothing is connected or pending.
+		self.client.leaderSession = None
+		self.client.leaderTransport = None
+		self.assertEqual(self.remote.state(), "disconnected")
+		self.client.followerSession = object()
+		self.assertEqual(self.remote.state(), "busy")
+
+	def test_cancelled_session_awaiting_cleanup_is_not_mistaken_for_a_foreign_session(self):
+		self.failOwnedAttemptAfterTimeout()
+		# The retired session is still attached until its cleanup completes.
+		self.assertIsNotNone(self.client.leaderSession)
+		self.assertEqual(self.remote.state(), "failed")
+		self.assertEqual(self.remote.connect(), "busy")
 		self.finishCleanup()
 		self.assertEqual(self.remote.state(), "failed")
 
