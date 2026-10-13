@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "kind": "automated-braille-restoration-evidence",
+  "scope": "Isolated message restoration regressions only; no live or physical acceptance",
+  "context": {
+    "base_linux_rdaccess": "846b0f4528d523381faa24cbef5bcaf777197294",
+    "nvda_source": "1406f9f8a04eb50f7317af87aba3a9d439c2a772",
+    "installed_braille_pyc_sha256": "988b977c3e3286727070136c6b8f9b11a4046fed0e1eb10a64ca59f1712a2d12",
+    "python": "3.13",
+    "platform": "Windows",
+    "candidate_companion": "20261013.0.4"
+  },
+  "regressions": {
+    "original_bridge_restoration_failures": 2,
+    "retained_region_pre_identity_fix_failures": 1,
+    "fixed_focused_passes": 20,
+    "installed_bytecode_isolated_passes": 20,
+    "full_companion_suite_passes": 230
+  },
+  "package": {
+    "bytes": 48031,
+    "entries": 17,
+    "python_files_compiled": 13,
+    "sha256": "65c441d2398fee0708ff4b1a5e481bb059b2e73e6ddb6a765bbc708736771c77",
+    "reproducible": true,
+    "changed_from_03": [
+      "doc/en/readme.html",
+      "globalPlugins/linuxRdAccess/remoteAccessSemanticBraille.py",
+      "manifest.ini"
+    ]
+  },
+  "live": {
+    "installed_03_python_matches": 13,
+    "running_build": "unverified",
+    "authorization_at_start": "required_or_expired",
+    "agent_desktop_input_sent": false,
+    "desktop_commander_used": false,
+    "candidate_installed": false,
+    "linux_caret_acceptance": "not-tested",
+    "audible_speech_acceptance": "not-tested",
+    "physical_braille_acceptance": "not-tested"
+  },
+  "limitations": [
+    "Tests use isolated buffers, timers and presentation dependencies.",
+    "Native post-dismiss notification follows its initial display update; intermediate physical frames were not measured.",
+    "Missing lifecycle hooks permit pre-message repair but cannot repair a replacement made while the message is visible.",
+    "No issue closure or general NVDA/Linux compatibility acceptance follows from these checks."
+  ]
+}
