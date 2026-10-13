@@ -182,9 +182,11 @@ semantic-caret send-error line; absence of a log line is not delivery proof.
 An isolated source-backed regression subsequently reproduced a separate
 confirmed timing defect: same-ID snapshot replacement invalidates the old
 TextInfo while NVDA's region refresh is still pending. A queued route in that
-interval silently drops its caret request. A separate companion fix is being
-prepared; its relationship to this exact physical observation still needs
-a retest. No new companion installation or restart was made.
+interval silently drops its caret request. The separate companion fix in
+[PR #83](https://github.com/mtigzoe/linux-rdaccess/pull/83) passes 210 Windows
+companion tests and prepares build 20261013.0.3. Its relationship to this
+exact physical observation still needs a retest. No new companion
+installation or restart was made.
 
 ## Remaining live work
 

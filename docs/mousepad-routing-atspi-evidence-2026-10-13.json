@@ -86,7 +86,7 @@
     "saved_brailleextender_routing_setting": "normal",
     "installed_normal_route_path": "Delegates to NVDA braille.handler.routeTo",
     "companion_source": "Includes GlobalCommands.script_braille_routeTo in local coordinate commands",
-    "confirmed_code_cause": false,
+    "confirmed_alias_or_emulation_cause": false,
     "limitation": "Saved setting and source reads do not identify the executed handler or runtime routing target."
   }
 }
