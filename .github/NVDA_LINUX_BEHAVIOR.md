@@ -63,6 +63,12 @@ Every compatibility claim and issue should use one of these labels:
 
 Do not turn an automated-tested statement into a live-tested claim. Recent bridge changes have been covered by automated CI, but there has not been comprehensive live NVDA, audible speech and physical braille acceptance for every behavior described here.
 
+The [2026-10-14 acceptance audit for #57 and #72](../docs/acceptance-audit-2026-10-14-issues-57-72.md)
+maps the original keyboard and temporary-message requirements to specific tests,
+limited historical live observations and remaining physical checks. Both issues
+remain **NOT READY** for closure after PR #86; merged code and successful CI do
+not complete their live acceptance.
+
 ## Suggested manual acceptance matrix
 
 For each app/gesture record: NVDA action; expected announcement/braille; observed speech and braille; actual focus/caret; pass/fail; Windows NVDA and Remote Access versions; Linux distro, Orca and bridge versions; device (if any); reproducible steps.
