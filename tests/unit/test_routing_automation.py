@@ -25,6 +25,7 @@ class RoutingAutomationTests(unittest.TestCase):
     def setUp(self):
         self.now = 0
         self.calls = []
+        self.attempts = []
         self.traces = iter([trace(), trace([MESSAGE]), trace([MESSAGE])])
         self.last_trace = trace()
         self.route_result = "queued"
@@ -47,11 +48,13 @@ class RoutingAutomationTests(unittest.TestCase):
         self.now += duration
 
     def run_wait(self):
-        return wait_and_route(self.client, wait_seconds=1, clock=lambda: self.now, sleep=self.sleep)
+        return wait_and_route(self.client, wait_seconds=1, clock=lambda: self.now,
+                              sleep=self.sleep, on_route_attempt=lambda: self.attempts.append(True))
 
     def test_new_message_causes_exactly_one_simulated_route(self):
         result = self.run_wait()
         self.assertEqual(self.calls.count("braille_message_route"), 1)
+        self.assertEqual(self.attempts, [True])
         self.assertTrue(result["simulated"])
         self.assertEqual(result["physical_braille"], "unverified")
 
@@ -61,12 +64,24 @@ class RoutingAutomationTests(unittest.TestCase):
         self.assertEqual(result["outcome"], "no_new_message_no_route_sent")
         self.assertNotIn("braille_message_route", self.calls)
 
-    def test_local_control_or_overflow_prevents_route(self):
-        for invalid in (trace(control=False), trace(drops=1)):
-            self.traces = iter([trace(), invalid])
-            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
-                self.run_wait()
+    def test_overflow_prevents_route(self):
+        self.traces = iter([trace(), trace(drops=1)])
+        with self.assertRaises(ValueError):
+            self.run_wait()
         self.assertNotIn("braille_message_route", self.calls)
+        self.assertEqual(self.attempts, [])
+
+    def test_can_arm_local_then_route_a_new_remote_message(self):
+        self.traces = iter([trace(control=False), trace([MESSAGE])])
+        self.run_wait()
+        self.assertEqual(self.calls.count("braille_message_route"), 1)
+
+    def test_local_control_cannot_consume_the_routing_permission(self):
+        self.traces = iter([trace(control=False), trace([MESSAGE], control=False)])
+        result = self.run_wait()
+        self.assertEqual(result["outcome"], "no_new_message_no_route_sent")
+        self.assertNotIn("braille_message_route", self.calls)
+        self.assertEqual(self.attempts, [])
 
     def test_refused_request_is_not_retried(self):
         self.route_result = "refused"
@@ -189,3 +204,17 @@ class RoutingAutomationTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.client.operation.assert_called_once_with("status")
         self.assertNotIn("PRIVATE", output.getvalue())
+
+    def test_preflight_refusal_is_reported_as_no_route_sent(self):
+        self.client.operation.side_effect = lambda action: trace()
+        ready = {"observer": "ready", "application": "mousepad", "input_sent": False}
+        process = mock.Mock(stdout=io.StringIO(json.dumps(ready)+'\n'))
+        process.poll.return_value = 0
+        output = io.StringIO()
+        with mock.patch.object(coordinator.os, "name", "nt"), \
+                mock.patch.object(coordinator, "AuthorizedClient", return_value=self.client), \
+                mock.patch.object(coordinator.subprocess, "Popen", return_value=process), \
+                mock.patch.object(coordinator, "wait_and_route", side_effect=ValueError("full trace")), \
+                contextlib.redirect_stdout(output):
+            self.assertEqual(coordinator.main(["--execute", "--observer-path", "/reviewed/observe_routing.py"]), 2)
+        self.assertEqual(json.loads(output.getvalue().splitlines()[-1])["route_outcome"], "not_sent")

@@ -98,8 +98,8 @@ def main(argv=None):
     try:
         client = AuthorizedClient()
         status = client.operation("status")
-        if status["result"] != "connected" or not status["status"]["remote_control_active"]:
-            raise ValueError("Linux control required")
+        if status["result"] != "connected" or not status["status"]["semantic_braille_negotiated"]:
+            raise ValueError("Connected semantic session required")
         remote = shlex.join(["python3", "-B", args.observer_path,
                              "--application", "mousepad", "--duration", "45"])
         process = subprocess.Popen(
@@ -131,9 +131,12 @@ def main(argv=None):
                 or ready.get("application") != "mousepad" or ready.get("input_sent") is not False):
             raise ValueError("Linux observer unavailable")
         print(json.dumps({"linux_observer": "ready", **public_observation(ready)}), flush=True)
-        # The wait helper sends at most once. An exception may follow a dispatch.
-        route_may_have_been_sent = True
-        result = wait_and_route(client, emit=lambda item: print(json.dumps(item), flush=True))
+        def attempted():
+            nonlocal route_may_have_been_sent
+            route_may_have_been_sent = True
+
+        result = wait_and_route(client, emit=lambda item: print(json.dumps(item), flush=True),
+                                on_route_attempt=attempted)
         final = records.get(timeout=50)
         if not isinstance(final, dict) or final.get("kind") != "linux-atspi-caret-observation":
             raise ValueError("Linux final observation unavailable")

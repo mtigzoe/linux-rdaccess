@@ -5,10 +5,10 @@ import math
 import time
 
 
-def checked_trace(reply):
+def checked_trace(reply, *, require_control=True):
     status = reply["status"]
     trace = reply["braille_trace"]
-    if (reply["result"] != "connected" or status["remote_control_active"] is not True
+    if (reply["result"] != "connected" or (require_control and status["remote_control_active"] is not True)
             or status["semantic_braille_negotiated"] is not True
             or trace["available"] is not True or trace["dropped"]):
         raise ValueError("Active control and complete numeric diagnostics required")
@@ -16,7 +16,7 @@ def checked_trace(reply):
 
 
 def wait_and_route(client, *, emit=lambda _item: None, wait_seconds=30,
-                   clock=time.monotonic, sleep=time.sleep):
+                   clock=time.monotonic, sleep=time.sleep, on_route_attempt=lambda: None):
     """Wait for a NEW message after arming; send at most one v4 request.
 
     The caller starts the Linux observer first. This function never creates a
@@ -25,7 +25,8 @@ def wait_and_route(client, *, emit=lambda _item: None, wait_seconds=30,
     """
     if not math.isfinite(wait_seconds) or not 1 <= wait_seconds <= 30:
         raise ValueError("Invalid bounded wait")
-    initial = checked_trace(client.operation("braille_trace"))
+    # Arm while Windows is local; do not leave Linux controlled during setup.
+    initial = checked_trace(client.operation("braille_trace"), require_control=False)
     outcomes_before = client.operation("braille_outcomes")["braille_outcomes"]
     if not outcomes_before["available"] or outcomes_before["dropped"]:
         raise ValueError("Complete numeric outcomes required")
@@ -34,12 +35,15 @@ def wait_and_route(client, *, emit=lambda _item: None, wait_seconds=30,
           "routing_index": 0, "simulated": True})
     deadline = clock() + wait_seconds
     while clock() < deadline:
-        trace = checked_trace(client.operation("braille_trace"))
+        reply = client.operation("braille_trace")
+        trace = checked_trace(reply, require_control=False)
         new = trace["events"][previous_count:]
-        if any(event["event"] == "message_shown" and event["linux_owned"]
-               and event["control"] and not event["capture"] for event in new):
+        if (reply["status"]["remote_control_active"] is True
+                and any(event["event"] == "message_shown" and event["linux_owned"]
+                        and event["control"] and not event["capture"] for event in new)):
             started = datetime.now(timezone.utc).isoformat()
             # Exactly one attempt; timeout, refusal and unknown results are final.
+            on_route_attempt()
             route = client.operation("braille_message_route")
             replied = datetime.now(timezone.utc).isoformat()
             if route["message_route"]["outcome"] == "queued":

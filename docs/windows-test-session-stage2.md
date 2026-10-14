@@ -159,8 +159,9 @@ execution or physical output. If a response is lost, the launcher reports
 unknown and does not retry or pretend that no input occurred.
 
 The [Windows coordinator](../diagnostics/nvda/simulate_message_routing.py) starts
-the existing numeric Mousepad observer over verified SSH before arming. It
-waits for a new Linux-owned `message_shown` event, then issues exactly one
+the existing numeric Mousepad observer over verified SSH before arming while
+Windows remains local. It waits for a new Linux-owned `message_shown` event
+with Linux control active, then issues exactly one
 version 4 request and collects both Windows ledgers and Linux caret evidence.
 An agent can create the message using separately approved Windows setup keys;
 the user need not press a routing key. This enters the same guarded message

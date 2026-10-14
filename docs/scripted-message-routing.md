@@ -19,9 +19,10 @@ device output, explain the historical 6→9 movement by itself, or close #59/#72
    previous test grants do not authorize this installation or new input scope.
    No Linux runtime installation or Orca restart is required.
 2. Prepare the existing public Mousepad editor, finish navigation and verify its
-   focus/caret. Use the normal existing Remote Access connection and active
-   Linux control. The previously approved Windows setup keys can be handled by
-   the agent. Do not type, pan or route during the recording.
+   focus/caret. Use the normal existing Remote Access connection, then return
+   to local Windows control before granting consent or starting the recorder.
+   The agent can handle the previously approved setup keys after arming.
+   Do not type, pan or route during the recording.
 3. Manually authorize a fresh five-minute session in NVDA Tools and select the
    new **Allow one simulated routing press on a Linux message (records numeric
    diagnostics)** checkbox. It is unchecked by default. This permission also
@@ -34,9 +35,10 @@ device output, explain the historical 6→9 movement by itself, or close #59/#72
    python diagnostics/nvda/simulate_message_routing.py --execute --ssh-host cyber --observer-path /path/to/linux-rdaccess/diagnostics/atspi/observe_routing.py
    ```
 
-5. Wait for `linux_observer: ready` and `recorder: armed` before creating a new
-   Linux temporary message. The agent can use the already approved NVDA+1 setup
-   gesture. The script watches for a **new**, Linux-owned message for up to
+5. Wait in local Windows control for `linux_observer: ready` and `recorder: armed`.
+   Then the agent can use the approved handoff and NVDA+1 setup gestures to
+   create a new Linux temporary message immediately. The script watches for a
+   **new**, Linux-owned message with active Linux control for up to
    30 seconds and routes its first cell automatically. The user does not press
    any routing key. The observer runs for 45 seconds; no indefinite-message
    setting or timed human response is needed.
@@ -78,8 +80,7 @@ request at most, no reuse of old messages, unknown-on-timeout behavior and
 private-field filtering. These tests do not run the installed NVDA process.
 
 This is test automation requested for the investigation, not a newly claimed
-fix for a reproduced production routing defect. The new build has not been
-installed or run against the live Windows–Linux session. Keep #57/#72's remaining
+fix for a reproduced production routing defect. Keep #57/#72's remaining
 acceptance criteria and independent #59 physical routing open.
 
 Validation on 2026-10-14 (groups overlap):
@@ -90,8 +91,8 @@ Validation on 2026-10-14 (groups overlap):
   DPAPI, DACL and cancellation tests.
 - The eight scripted message-route tests also passed against NVDA 2026.2
   reference `f62c980589d1ac30babf68ad48177e9ad29a2e84`, zero failures/errors/skips.
-- Coordinator/launcher tests: **29 passed** on Windows Python 3.13.13 and
-  separately **29 passed** on WSL Ubuntu 22.04.5/Python 3.10.12, zero
+- Coordinator/launcher tests: **32 passed** on Windows Python 3.13.13 and
+  separately **32 passed** on WSL Ubuntu 22.04.5/Python 3.10.12, zero
   failures/errors/skips. These use simulated SSH/IPC evidence; no live route.
 - Companion Ruff lint/format, shared wire-module lint, package reproducibility,
   packaged standalone imports/AST parsing and diff checks passed.
@@ -114,6 +115,29 @@ git diff --check
 
 Review artifact: `nvda-addon/dist/linuxRdAccess-20261014.0.2.nvda-addon`, SHA-256
 `7bfc7d84dc802fa26c0a7b344df684b3257c3e25e80e9644dac3482c98513d93`.
-It is not installed; running NVDA and the active Linux desktop were not changed
-for these tests. Installation/restart and the new routing permission remain
-separate user decisions. CI results are not polled or awaited.
+The user subsequently reported installing this package and restarting NVDA.
+All **17** installed code/manifest files match the reviewed archive. This is
+an on-disk comparison, not attestation of every loaded module. Installation and
+the one-shot routing grant remain separate decisions. CI is not polled or awaited.
+
+## First live preparation attempt
+
+Fresh status showed authorization active, transport connected, the bridge
+attached and semantic/message support negotiated. The agent used the approved
+Computer Use handoff at **22:37:43.623–22:37:43.929 UTC**, and status changed from
+local to Linux control. The Linux observer became ready at caret **0**.
+
+The coordinator stopped **before arming** because the ledgers had already
+filled. Immediate numeric reads showed trace drops **18** and outcome drops
+**3**. Retained entries include caret/routing activity; their input origin is
+not attributed to the coordinator. It never reached its version 4 route request,
+and the agent never sent NVDA+1. No message-dismissal or caret-preservation PASS
+is claimed from this attempt.
+
+Computer Use rejected a return-to-local shortcut and its one refreshed retry
+because it detected concurrent user input. Follow-up status still showed Linux
+control active. The user was asked for one manual handoff; no further automated
+input was sent. The Python coordinator now arms while Windows remains local,
+then waits for a new message with Linux control active. Preflight refusals are
+also reported as `not_sent`, rather than the previous conservative `unknown`.
+This is a local Python workflow change; no new add-on or restart is required.
