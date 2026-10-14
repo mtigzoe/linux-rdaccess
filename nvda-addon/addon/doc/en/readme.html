@@ -27,10 +27,16 @@ code operations are unavailable. Existing connections are preserved. Choose
 “Revoke Linux test session” to end authorization immediately. Consent also ends
 on expiry, lock, secure desktop, configuration profile switch or NVDA shutdown.</p>
 <h2>Validation limits</h2>
+<p>Build 20261013.0.5 prevents a routing press made on a Linux status message
+from moving the Linux caret if that message expires before the queued command
+executes. This race is automated-reproduced and tested. Build .5 is not yet
+installed or physically accepted; the reported build .4 caret movement still
+needs a correlated live retest.</p>
 <p>Build 20261013.0.4 addresses a reproduced case where dismissing a Linux
 status message could return braille to Windows content instead of Linux.
-It is automated-tested; installation and physical message-restoration
-acceptance remain pending.</p>
+The user confirmed message appearance and timeout restoration in Mousepad.
+Linux caret preservation during routing dismissal and broader physical
+message acceptance remain unresolved.</p>
 <p>Build 20261013.0.3 addresses a reproduced case where routing could use stale
 text information and fail to move the Linux caret. It is automated-tested;
 installation and physical routing/caret acceptance remain pending.</p>

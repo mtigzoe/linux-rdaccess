@@ -9,6 +9,7 @@ import contextlib
 import inspect
 import typing
 import unicodedata
+import weakref
 
 import braille
 import config
@@ -254,6 +255,8 @@ class RemoteAccessSemanticBrailleBridge:
 			and scriptFunction.__name__ in ("script_braille_scrollBack", "script_braille_scrollForward")
 		)
 		if script in localScripts or isBrailleExtenderPan:
+			if script == commands.script_braille_routeTo and self._queueOwnedMessageRoute(gesture):
+				return False
 			# executeGesture queues its script after this decision. Restore Linux
 			# regions first if a local Windows update replaced the shared buffer.
 			# The decider can run on an input thread, so do not touch braille here.
@@ -270,6 +273,61 @@ class RemoteAccessSemanticBrailleBridge:
 		if callable(forward):
 			return forward(gesture)
 		return True
+
+	def _queueOwnedMessageRoute(self, gesture) -> bool:
+		# Preserve NVDA's own input-help and gesture-capture handling. Its
+		# executeGesture checks capture only after the decider runs.
+		if getattr(getattr(inputCore, "manager", None), "_captureFunc", None) is not None:
+			return False
+		owner = self._messageOwner
+		if owner is None:
+			return False
+		handler, session, generation = owner
+		messageBuffer = getattr(handler, "messageBuffer", None)
+		if (
+			handler is not braille.handler
+			or messageBuffer is None
+			or getattr(handler, "buffer", None) is not messageBuffer
+			or not self._isCurrentSession(session)
+			or generation != self._controlGeneration
+			or (self._client is not None and not getattr(self._client, "sendingKeys", False))
+		):
+			return False
+		cells = getattr(gesture, "cellIndexes", None)
+		if cells is not None and not cells:
+			return False
+		index = cells[0] if cells else getattr(gesture, "routingIndex", None)
+		if type(index) is not int or index < 0:
+			return False
+		try:
+			regions = tuple(weakref.ref(region) for region in messageBuffer.regions)
+		except TypeError:
+			# Stock NVDA TextRegion supports weak references. Leave custom
+			# region implementations to their normal native script.
+			return False
+		# Do not mutate braille on the input thread or retain message text.
+		# Suppress the original script: its later buffer lookup could otherwise
+		# route into Linux after this message's timer or another gesture dismisses it.
+		queueHandler.queueFunction(queueHandler.eventQueue, self._routeOwnedMessage, owner, regions, index)
+		return True
+
+	def _routeOwnedMessage(self, owner, regions, index: int) -> None:
+		handler, session, generation = owner
+		messageBuffer = getattr(handler, "messageBuffer", None)
+		if (
+			owner is not self._messageOwner
+			or handler is not braille.handler
+			or not self._isCurrentSession(session)
+			or generation != self._controlGeneration
+			or (self._client is not None and not getattr(self._client, "sendingKeys", False))
+			or messageBuffer is None
+			or getattr(handler, "buffer", None) is not messageBuffer
+		):
+			return
+		current = tuple(messageBuffer.regions)
+		if len(current) != len(regions) or any(ref() is not region for ref, region in zip(regions, current)):
+			return
+		handler.routeTo(index)
 
 	def _installSemanticBrailleInput(self) -> None:
 		if self._semanticBrailleInputInstalled:

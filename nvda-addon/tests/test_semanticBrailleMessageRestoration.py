@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import ast
 import types
+import weakref
 from unittest import mock
 
 import braille
+import inputCore
 import queueHandler
 
 from tests import NVDA_SOURCE
@@ -89,6 +91,25 @@ def coreMessageMethods():
 	)
 	exec(compile(ast.fix_missing_locations(module), str(path), "exec"), namespace)
 	return {name: namespace[name] for name in names}, namespace
+
+
+def coreRouteScript():
+	path = NVDA_SOURCE / "globalCommands.py"
+	tree = ast.parse(path.read_text(encoding="utf-8"))
+	cls = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "GlobalCommands")
+	method = next(
+		node
+		for node in cls.body
+		if isinstance(node, ast.FunctionDef) and node.name == "script_braille_routeTo"
+	)
+	method.decorator_list = []
+	module = ast.Module(
+		body=[ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0), method],
+		type_ignores=[],
+	)
+	namespace = {"braille": braille}
+	exec(compile(ast.fix_missing_locations(module), str(path), "exec"), namespace)
+	return namespace[method.name]
 
 
 class MessageRestorationTests(SemanticBrailleBridgeTestCase):
@@ -176,6 +197,191 @@ class MessageRestorationTests(SemanticBrailleBridgeTestCase):
 		self.assertIs(self.brailleHandler.buffer, self.brailleHandler.mainBuffer)
 		self.assertIsInstance(self.brailleHandler.visibleRegions[-1].obj, self.module.RemoteA11yObject)
 		self.assertEqual(self.transport.sent, before)
+
+	def _prepareRouteableFocus(self):
+		self.sendFocus(text="Alpha Barlio Charlie", caret=6)
+
+		def route(index):
+			obj = self.brailleHandler.mainBuffer.regions[-1].obj
+			obj.TextInfo(obj)._setCaretOffset(index)
+
+		self.brailleHandler.mainBuffer.routeTo = mock.Mock(side_effect=route)
+		self.brailleHandler.messageBuffer.routeTo = mock.Mock()
+
+	def _queueRouteGesture(self, index=13, *, queueScript=True, legacy=False, cellIndexes=None):
+		class Commands:
+			def __getattr__(self, name):
+				return object()
+
+			script_braille_routeTo = coreRouteScript()
+
+		commands = Commands()
+		module = types.ModuleType("globalCommands")
+		module.commands = commands
+		gesture = types.SimpleNamespace(
+			script=commands.script_braille_routeTo,
+			cellIndexes=[index] if cellIndexes is None else cellIndexes,
+			routingIndex=index,
+		)
+		if legacy:
+			del gesture.cellIndexes
+		with mock.patch.dict("sys.modules", {"globalCommands": module}):
+			allowed = self.bridge._handleSemanticBrailleGesture(gesture)
+			if allowed and queueScript:
+				queueHandler.queueFunction(queueHandler.eventQueue, gesture.script, gesture)
+		return allowed
+
+	def test_message_timeout_before_queued_routing_never_routes_underlying_linux_text(self):
+		self._prepareRouteableFocus()
+		self._sendMessage()
+		before = list(self.transport.sent)
+		self._queueRouteGesture()
+		# wx can deliver the timeout after the input-thread decision but before
+		# the queued script. The physical press belonged to the visible message.
+		self.brailleHandler._messageCallLater.callback()
+		queueHandler.pumpAll()
+		self.brailleHandler.mainBuffer.routeTo.assert_not_called()
+		self.assertEqual(self.transport.sent, before)
+
+	def test_visible_owned_message_route_uses_native_dismissal_without_remote_input(self):
+		self._prepareRouteableFocus()
+		self._sendMessage()
+		timer = self.brailleHandler._messageCallLater
+		before = list(self.transport.sent)
+		self.assertFalse(self._queueRouteGesture())
+		queueHandler.pumpAll()
+		self.brailleHandler.messageBuffer.routeTo.assert_called_once_with(13)
+		self.brailleHandler.mainBuffer.routeTo.assert_not_called()
+		self.assertIs(self.brailleHandler.buffer, self.brailleHandler.mainBuffer)
+		self.assertTrue(timer.stopped)
+		self.assertEqual(self.transport.sent, before)
+
+	def test_two_presses_on_visible_message_do_not_route_after_first_dismissal(self):
+		self._prepareRouteableFocus()
+		self._sendMessage()
+		before = list(self.transport.sent)
+		self._queueRouteGesture()
+		self._queueRouteGesture()
+		queueHandler.pumpAll()
+		self.brailleHandler.messageBuffer.routeTo.assert_called_once_with(13)
+		self.brailleHandler.mainBuffer.routeTo.assert_not_called()
+		self.assertEqual(self.transport.sent, before)
+
+	def test_route_pressed_after_timeout_still_routes_current_linux_text(self):
+		self._prepareRouteableFocus()
+		self._sendMessage()
+		self.brailleHandler._messageCallLater.callback()
+		self.assertTrue(self._queueRouteGesture())
+		queueHandler.pumpAll()
+		self.assertEqual(
+			self.transport.sent[-1],
+			{"type": "lrd_a11y_caret", "version": 1, "object_id": "save", "offset": 13},
+		)
+
+	def test_later_linux_message_is_not_dismissed_by_queued_old_message_route(self):
+		self._prepareRouteableFocus()
+		self._sendMessage()
+		self._queueRouteGesture()
+		self.bridge._presentMessageOnMainThread(
+			self.bridge._session, self.bridge._controlGeneration, "New message"
+		)
+		queueHandler.pumpAll()
+		self.assertIs(self.brailleHandler.buffer, self.brailleHandler.messageBuffer)
+		self.assertEqual(self.brailleHandler.messageBuffer.regions[0].text, "New message")
+		self.brailleHandler.messageBuffer.routeTo.assert_not_called()
+		self.brailleHandler.mainBuffer.routeTo.assert_not_called()
+
+	def test_later_windows_message_is_not_dismissed_by_queued_linux_message_route(self):
+		self._prepareRouteableFocus()
+		self._sendMessage()
+		self._queueRouteGesture()
+		self.brailleHandler.message("Windows status")
+		queueHandler.pumpAll()
+		self.assertIs(self.brailleHandler.buffer, self.brailleHandler.messageBuffer)
+		self.assertEqual(self.brailleHandler.messageBuffer.regions[0].text, "Windows status")
+		self.brailleHandler.messageBuffer.routeTo.assert_not_called()
+		self.brailleHandler.mainBuffer.routeTo.assert_not_called()
+
+	def test_region_replacement_without_hooks_expires_queued_route_without_retaining_text(self):
+		self.bridge._removeMessageHooks()
+		self._prepareRouteableFocus()
+		self._sendMessage()
+		oldRegion = weakref.ref(self.brailleHandler.messageBuffer.regions[0])
+		self._queueRouteGesture()
+		self.brailleHandler.message("Windows status")
+		self.assertIsNone(oldRegion(), "Queued routing must not keep expired message content alive")
+		queueHandler.pumpAll()
+		self.assertIs(self.brailleHandler.buffer, self.brailleHandler.messageBuffer)
+		self.brailleHandler.messageBuffer.routeTo.assert_not_called()
+		self.brailleHandler.mainBuffer.routeTo.assert_not_called()
+
+	def test_empty_cell_indexes_keeps_native_no_action_even_with_legacy_index(self):
+		self._prepareRouteableFocus()
+		self._sendMessage()
+		self.assertTrue(self._queueRouteGesture(cellIndexes=[]))
+		queueHandler.pumpAll()
+		self.assertIs(self.brailleHandler.buffer, self.brailleHandler.messageBuffer)
+		self.brailleHandler.messageBuffer.routeTo.assert_not_called()
+		self.brailleHandler.mainBuffer.routeTo.assert_not_called()
+
+	def test_legacy_routing_index_dismisses_owned_message(self):
+		self._prepareRouteableFocus()
+		self._sendMessage()
+		self.assertFalse(self._queueRouteGesture(legacy=True, queueScript=False))
+		queueHandler.pumpAll()
+		self.brailleHandler.messageBuffer.routeTo.assert_called_once_with(13)
+		self.brailleHandler.mainBuffer.routeTo.assert_not_called()
+
+	def test_nvda_input_help_or_gesture_capture_keeps_native_execution(self):
+		self._prepareRouteableFocus()
+		self._sendMessage()
+		manager = types.SimpleNamespace(_captureFunc=object())
+		with mock.patch.object(inputCore, "manager", manager, create=True):
+			self.assertTrue(self._queueRouteGesture(queueScript=False))
+			queueHandler.pumpAll()
+		self.assertIs(self.brailleHandler.buffer, self.brailleHandler.messageBuffer)
+		self.brailleHandler.messageBuffer.routeTo.assert_not_called()
+		self.brailleHandler.mainBuffer.routeTo.assert_not_called()
+
+	def _assertQueuedMessageRouteExpires(self, transition):
+		self._prepareRouteableFocus()
+		self._sendMessage()
+		self._queueRouteGesture()
+		transition()
+		before = list(self.transport.sent)
+		with mock.patch.object(self.brailleHandler, "routeTo", wraps=self.brailleHandler.routeTo) as route:
+			queueHandler.pumpAll()
+		route.assert_not_called()
+		self.brailleHandler.mainBuffer.routeTo.assert_not_called()
+		self.assertEqual(self.transport.sent, before)
+
+	def test_queued_message_route_expires_on_control_handoff(self):
+		self._assertQueuedMessageRouteExpires(lambda: setattr(self.bridge, "_controlGeneration", 1))
+
+	def test_queued_message_route_expires_on_local_control(self):
+		client = types.SimpleNamespace(leaderTransport=self.transport, sendingKeys=False)
+		self._assertQueuedMessageRouteExpires(lambda: setattr(self.bridge, "_client", client))
+
+	def test_queued_message_route_expires_on_new_session(self):
+		self._assertQueuedMessageRouteExpires(lambda: self.bridge._onHello(version=1))
+
+	def test_queued_message_route_expires_on_fallback(self):
+		self._assertQueuedMessageRouteExpires(lambda: self.bridge._onFallback(version=1))
+
+	def test_queued_message_route_expires_on_disconnect(self):
+		self._assertQueuedMessageRouteExpires(lambda: setattr(self.transport, "connected", False))
+
+	def test_queued_message_route_expires_on_transport_replacement(self):
+		client = types.SimpleNamespace(leaderTransport=object(), sendingKeys=True)
+		self._assertQueuedMessageRouteExpires(lambda: setattr(self.bridge, "_client", client))
+
+	def test_queued_message_route_expires_on_handler_replacement(self):
+		self._assertQueuedMessageRouteExpires(
+			lambda: setattr(braille, "handler", type(self.brailleHandler)())
+		)
+
+	def test_queued_message_route_expires_on_termination(self):
+		self._assertQueuedMessageRouteExpires(self.bridge.terminate)
 
 	def test_message_panning_resets_timer_without_moving_linux_window(self):
 		self.brailleHandler.mainBuffer.window = 4
