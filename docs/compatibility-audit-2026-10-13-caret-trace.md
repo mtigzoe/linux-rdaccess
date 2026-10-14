@@ -82,7 +82,7 @@ display timing or the cause of either live movement. Saved BrailleExtender
 configuration said `routingCursorsEditFields = normal`; active profile/runtime
 routing settings were not independently read.
 
-## Prepared companion .6 diagnostics
+## Companion .6 diagnostics
 
 Build **20261013.0.6** retains the .5 queue fix and adds a separate, unchecked
 numeric-routing checkbox in the existing five-minute authorization dialog.
@@ -112,11 +112,54 @@ display timestamps. A `caret_sent` event means the send call returned, not that
 Linux applied the offset. Delegated raw routes, other add-ons' emulation, native
 Orca writes and incomplete traces require additional evidence.
 
-The .6 package has **not been installed or physically tested**. Installation
-and NVDA reload require separate explicit authorization under the test-session
-workflow; the agent has prepared the source/package for that review. Keep #59
-and #72 open. The next useful check pairs this opt-in trace with the numeric
-Linux observer and one two-press message-dismissal interaction.
+The user chose to install .6 and restart NVDA themselves, then reported ready.
+The installed manifest and **all fourteen packaged Python files matched .6**.
+The running endpoint accepted the version 2 diagnostic read and returned
+`available: true`; this confirms the diagnostic feature is active, although the
+status schema still does not independently report the loaded build number.
+Connection, bridge attachment and semantic message support were confirmed.
+
+Two preparation sessions filled the twelve-record limit before an instructed
+gesture test. Their reads reported **168** and **132** dropped records. Linux
+initially had a terminal focused, so no test prompt was issued. A later bounded
+read confirmed the exact twenty-character Mousepad public fixture, caret **20**.
+No .6 routing or message-dismissal acceptance is claimed from these incomplete
+preparation traces. Preparation must finish before recording is authorized;
+revoking the existing session and granting new consent clears the trace. Trying
+to authorize again while it is still active returns busy and does not reset it.
+
+After a later fresh grant, authorization, connected transport and active Linux
+control were confirmed before the test prompt. The trace contained three setup
+records and no drops; the Linux observer started at caret **20**. Its first
+**60.134 s** window ended at 20 with no caret events. A read after that window
+still contained only the three setup records. A second observation window was
+started for the same requested interaction, explicitly without asking the user
+to repeat any presses. The windows had a gap; this was not continuous capture.
+
+The second **60.077 s** window retained the original focus and recorded
+**20 → 18 → 15 → 13 → 9 → 5 → 2 → 6**, with zero dropped Linux events. Windows
+retained three routing decisions, for indices **19**, **12**, and **74**. Each
+decision recorded `buffer: main`, `linux_owned: false`, `capture: false`,
+`control: true` and `route_native`. The last retained route was followed by
+`caret_sent` with offset **18**. The Linux offset-18 event is close in time under
+approximate clock alignment; this correlates a main-buffer semantic request
+with a Linux movement, without proving delivery solely from the send call.
+No accepted Linux-message `message_shown` record precedes these retained routes.
+The final Windows snapshot reported **29 dropped records**, so later routing
+and message behavior cannot be reconstructed from it.
+
+The user said the instructions were unclear and confirmed **arrow keys,
+panning and routing** during this recording. This is mixed navigation, not an
+isolated two-press reproduction or a physical message-dismissal acceptance.
+A later bounded read found caret **15**; the unrecorded 6 → 15 transition has no
+assigned cause. An earlier **60.128 s** idle window at 20 had no gesture prompt
+because Windows authorization was inactive, and establishes no gesture result.
+
+Keep #59 and #72 open. The next check should use a single ordinary physical
+route to the public fixture's C at offset 13 after input-help-off preparation.
+For #72, first capture message entry/timeout alone and verify Linux message
+ownership before attempting routing dismissal. No agent installation, NVDA
+restart or test input was performed.
 
 ## Validation
 
@@ -132,5 +175,13 @@ Linux observer and one two-press message-dismissal interaction.
   modules, 52,585 bytes**; archive CRC and unique-path checks passed.
   SHA-256: `e144784afbc46ad0341cd6c7d15936b3fece17f948380e9ce5dd6baa9c7a64b5`.
 
-Linux behavior was not changed or retested as a suite. No GitHub Actions polling
-or merge. No live .6, audible-speech or physical-device acceptance is claimed.
+Linux behavior was not changed or retested as a suite. The former Linux checkout
+path `/home/miriam/linux-rdaccess` was absent during this follow-up, so its
+previous revision is not a current installed-runtime verification. A repeat of
+the temporary AST comparison could not read its fixture at that missing path;
+the earlier successful comparison remains historical evidence only.
+
+Only documentation changed during this installation/live follow-up;
+`git diff --check` passed, and unchanged successful suites were not repeated.
+No GitHub Actions polling or merge. No isolated .6 gesture, audible-speech or
+physical-message acceptance is claimed.

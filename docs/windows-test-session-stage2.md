@@ -56,6 +56,22 @@ an incomplete trace cannot prove that no request was sent. Expiry, revocation,
 profile/desktop transitions and shutdown clear the trace. New consent starts an
 empty trace and requires selecting the checkbox again.
 
+For a fresh routing recording, finish Linux focus/navigation setup first and
+return to local Windows control. If authorization is still active, choose
+**Revoke Linux test session** before opening the authorization dialog again.
+Authorizing an already active/ending session returns busy; it does not extend
+consent or clear the trace. Select the diagnostic checkbox in the new dialog,
+wait for the authorization announcement, and leave Linux untouched until the
+observer's gesture prompt. Setup navigation can otherwise fill the twelve
+records before the test begins.
+
+Keep physical checks to one action per prompt when possible. First confirm input
+help is off and the public editor fixture is ready as preparation. Test ordinary
+physical routing separately from temporary messages. For message behavior,
+record entry/timeout alone and confirm a Linux-owned message in the trace before
+combining message creation with a routing press. If extra navigation occurs,
+document it as a mixed trace and keep the isolated acceptance check open.
+
 The diagnostic read uses the argument-free **version 2 `braille_trace`** local
 operation. Existing version 1 status/connect/cancel requests and responses stay
 unchanged. The new operation cannot enable collection, connect, cancel, send
