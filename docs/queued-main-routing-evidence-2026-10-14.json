@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-14",
+  "base_revision": "f247d771e6b522f5fec8bde0c31eb7f928d0d42d",
+  "scope": "Independent automated investigation; no active Windows/Linux desktop input, installation, runtime restart or settings changes",
+  "confirmed_defect": {
+    "trigger": "Native document-routing gesture queued while semantic focus A is visible; focus/snapshot/control/handler changes before NVDA executes it",
+    "baseline_tests": 5,
+    "baseline_passes": 1,
+    "baseline_failures": 4,
+    "baseline_errors": 0,
+    "baseline_skips": 0,
+    "failures": [
+      "replacement focus receives old route",
+      "same-ID changed text receives old coordinates",
+      "control-generation change does not cancel native route",
+      "replacement handler receives old route"
+    ],
+    "fix": "Guard per-gesture executeScript; keep original native script and input pipeline; validate original handler, main buffer, focus snapshot, session/control before recovery and execution"
+  },
+  "tests": [
+    {
+      "group": "Full companion",
+      "platform": "Windows/Python 3.13.13",
+      "passed": 354,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "nvda_reference": "1406f9f8a04eb50f7317af87aba3a9d439c2a772",
+      "runtime": "Selected native NVDA methods with fake display/transport; real isolated Windows kernel pipe/DPAPI/DACL/cancellation tests"
+    },
+    {
+      "group": "Message and pending-routing modules",
+      "platform": "Windows/Python 3.13.13",
+      "passed": 61,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "nvda_reference": "f62c980589d1ac30babf68ad48177e9ad29a2e84",
+      "overlaps_full_companion": true,
+      "runtime": "NVDA 2026.2 selected source methods, fake display/transport; no installed NVDA execution"
+    },
+    {
+      "group": "Linux input discovery plus speech/braille lifecycle modules",
+      "platform": "Linux Mint/Python 3.10.12",
+      "passed": 299,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "discovery": "tests/unit/input",
+      "additional_modules": [
+        "tests.unit.accessibility.test_speech_lifecycle",
+        "tests.unit.accessibility.test_say_all_presentation_lifetime",
+        "tests.unit.accessibility.test_customization_say_all_callbacks",
+        "tests.unit.accessibility.test_customization_speech_sequence",
+        "tests.unit.braille.test_braille_routing_speech",
+        "tests.unit.braille.test_braille_display_lifecycle",
+        "tests.unit.transport.test_speech_link"
+      ]
+    },
+    {
+      "group": "Real Linux GUI applications",
+      "platform": "Linux Mint/private Xvfb and D-Bus",
+      "passed_checks": 48,
+      "failed_checks": 0,
+      "explicitly_excluded_apps": [
+        "vscode"
+      ],
+      "checks": [
+        "xfce4-settings-manager: named application and dialog window",
+        "xfce4-settings-manager: X11 window activation",
+        "xfce4-settings-manager: Tab changes focus to panel",
+        "xfce4-settings-manager: keyboard focus emits AT-SPI event",
+        "xfce4-settings-manager: Shift+Tab restores previous control",
+        "Settings search: typed text and left-arrow caret match AT-SPI",
+        "Settings search: semantic routing accepts provider caret setter",
+        "Settings search: routed caret is confirmed by the provider",
+        "Settings search: semantic text snapshot tracks keyboard selection",
+        "Settings Manager: search has accessible name and editable text",
+        "thunar: named application and frame window",
+        "thunar: X11 window activation",
+        "Thunar: Ctrl+L exposes focused location text with current path",
+        "Thunar: Ctrl+A selects all three named fixture rows through AT-SPI",
+        "Thunar: table exposes named files and keyboard Down changes AT-SPI selected row",
+        "mousepad: named application and frame window",
+        "mousepad: X11 window activation",
+        "Mousepad editor: typed text and left-arrow caret match AT-SPI",
+        "Mousepad editor: semantic routing accepts provider caret setter",
+        "Mousepad editor: routed caret is confirmed by the provider",
+        "Mousepad editor: semantic text snapshot tracks keyboard selection",
+        "thunar: X11 window activation",
+        "mousepad: X11 window activation",
+        "Mousepad: window switching restores editor focus",
+        "Open File: Tab changes focus to push button",
+        "Open File: keyboard focus emits AT-SPI event",
+        "Open File: Shift+Tab restores previous control",
+        "Mousepad: Ctrl+O dialog, Escape dismissal and editor focus restoration",
+        "xfce4-terminal: named application and frame window",
+        "xfce4-terminal: X11 window activation",
+        "XFCE Terminal: typed shell command exposes output through AT-SPI terminal text",
+        "XFCE Terminal: F10 menu, arrow navigation and Escape restore terminal focus",
+        "xfce4-panel: named application and frame window",
+        "XFCE clock: named toggle exposes calendar action",
+        "XFCE calendar: opening popup exposes calendar role and keyboard focus",
+        "XFCE clock: keyboard Escape dismisses accessible calendar popup",
+        "firefox: named application and frame window",
+        "Firefox: X11 window activation",
+        "Firefox input: typed text and left-arrow caret match AT-SPI",
+        "Firefox input: semantic routing accepts provider caret setter",
+        "Firefox input: routed caret is confirmed by the provider",
+        "Firefox input: semantic text snapshot tracks keyboard selection",
+        "Firefox: Tab reaches named HTML button",
+        "Firefox: Shift+Tab restores HTML input focus",
+        "Firefox: Ctrl+L exposes named location control",
+        "Firefox: Escape restores document focus",
+        "Firefox: DOM replacement has a new semantic object identity",
+        "Firefox: dynamic snapshot names and focuses the replacement control"
+      ],
+      "limitations": [
+        "Clock keyboard activation unavailable; fixture uses pointer to open calendar",
+        "Calendar provider exposes no selected-date semantics",
+        "These checks bypass Windows NVDA Remote and do not attest speech or physical braille"
+      ]
+    }
+  ],
+  "linux_source": {
+    "revision": "470a222989121a19041388a4417116ddc759eafe",
+    "tracked_clean": true,
+    "normalized_hashes": {
+      "tools/diagnostics/real_gui_atspi_smoke.py": "433aa62407ad3c2e8872d6110839aa171bd2fe5be973704386fcac5873088b6d",
+      "linux_rdaccess_core/accessibility/a11y_model.py": "399401fe88777c28f2de4d17712b0690bde039661f34750cd8550c178bb7a9ba"
+    },
+    "orca_version": "42.0",
+    "code_version": [
+      "1.141.0",
+      "2a59476c9bfcb90b3ddc372c36762471b7dfad1c",
+      "x64"
+    ],
+    "orca_process_ids": [
+      254068
+    ],
+    "matches_current_main_sources": true
+  },
+  "vscode_reproduction": {
+    "issue": 79,
+    "code_version": "1.141.0",
+    "code_revision": "2a59476c9bfcb90b3ddc372c36762471b7dfad1c",
+    "source_revision": "470a222989121a19041388a4417116ddc759eafe",
+    "runner_and_model_match_main": true,
+    "exit_code": 1,
+    "requested_caret": 1,
+    "before_caret": 12,
+    "final_caret": 12,
+    "provider_setter_accepted": true,
+    "focused_at_failure": true,
+    "elapsed_ms": 18010.64,
+    "post_request_target_caret_events": [],
+    "status": "Confirmed failure remains unresolved; not suppressed or retried"
+  },
+  "package": {
+    "version": "20261014.0.3",
+    "sha256": "b07bd08dfe26bb888ee9339849f7c5cbb7b7e0a6b08e708f37b196eac4947ba6",
+    "packaged_python_files": 15,
+    "reproducible": true,
+    "zip_integrity_valid": true,
+    "all_python_syntax_valid": true,
+    "installed": false,
+    "includes_unmerged_pr89": false
+  },
+  "checks": {
+    "ruff_lint": "pass",
+    "ruff_format": "pass",
+    "diff_check": "pass",
+    "ci_polled": false
+  },
+  "physical_braille": "unverified",
+  "historical_6_to_9_cause": "unverified",
+  "all_live_acceptance_issues_still_open": true
+}

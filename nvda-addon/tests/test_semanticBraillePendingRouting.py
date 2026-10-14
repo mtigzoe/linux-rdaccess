@@ -14,6 +14,7 @@ from tests.test_remoteAccessSemanticBraille import (
 	FakeBrailleHandler,
 	SemanticBrailleBridgeTestCase,
 )
+from tests.test_semanticBrailleMessageRestoration import coreQueuedGestureMethods
 
 
 class PendingRegion:
@@ -139,9 +140,11 @@ class PendingRoutingTests(SemanticBrailleBridgeTestCase):
 		module = types.ModuleType("globalCommands")
 		module.commands = commands
 		gesture = types.SimpleNamespace(script=commands.script_braille_routeTo, routingIndex=offset)
+		execute, queued = coreQueuedGestureMethods()
+		gesture.executeScript = types.MethodType(execute, gesture)
 		with mock.patch.dict(sys.modules, {"globalCommands": module}):
 			self.assertTrue(self.bridge._handleSemanticBrailleGesture(gesture))
-			queueHandler.queueFunction(queueHandler.eventQueue, gesture.script, gesture)
+			queueHandler.queueFunction(queueHandler.eventQueue, queued, gesture.script, gesture)
 			queueHandler.pumpAll()
 
 	def test_routing_between_same_id_snapshot_and_idle_refresh_sends_current_caret(self):

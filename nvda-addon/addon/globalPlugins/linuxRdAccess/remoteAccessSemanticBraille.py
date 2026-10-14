@@ -392,6 +392,13 @@ class RemoteAccessSemanticBrailleBridge:
 				self._traceOutcome("native_delegated", gesture=gesture)
 				if getattr(getattr(inputCore, "manager", None), "_captureFunc", None) is not None:
 					self._traceOutcome("outcome_unknown", gesture=gesture)
+				handler = braille.handler
+				if (
+					self._lastFocus is not None
+					and handler is not None
+					and getattr(handler, "buffer", None) is getattr(handler, "mainBuffer", None)
+				):
+					return self._guardQueuedMainRoute(gesture, handler)
 			# executeGesture queues its script after this decision. Restore Linux
 			# regions first if a local Windows update replaced the shared buffer.
 			# The decider can run on an input thread, so do not touch braille here.
@@ -415,6 +422,46 @@ class RemoteAccessSemanticBrailleBridge:
 			return forward(gesture)
 		if isRoute:
 			self._traceOutcome("outcome_unknown", gesture=gesture)
+		return True
+
+	def _guardQueuedMainRoute(self, gesture, handler) -> bool:
+		"""Bind a native routing script to the focus/control visible at input."""
+		execute = getattr(gesture, "executeScript", None)
+		if not callable(execute):
+			# Native InputGesture provides this hook. Do not let an unsupported
+			# gesture fall through to an unguarded route against a later buffer.
+			self._traceOutcome("route_discarded", gesture=gesture)
+			return False
+		session, generation, focus = self._session, self._controlGeneration, self._lastFocus
+		mainBuffer = handler.mainBuffer
+
+		def current():
+			return (
+				self._isCurrentSession(session)
+				and generation == self._controlGeneration
+				and self._lastFocus is focus
+				and braille.handler is handler
+				and getattr(handler, "mainBuffer", None) is mainBuffer
+				and getattr(handler, "buffer", None) is mainBuffer
+				and (self._client is None or getattr(self._client, "sendingKeys", False))
+			)
+
+		def executeCurrent(script):
+			if current():
+				self._recoverFocusBeforeGesture(session, generation, observeRouting=True)
+				if current():
+					return execute(script)
+			self._traceRouting("route_discarded", gesture=gesture)
+			self._traceOutcome("route_discarded", gesture=gesture)
+
+		try:
+			# Keep gesture.script unchanged: NVDA still owns speech effects,
+			# input help, capture, script metadata and queue ordering. Its queued
+			# callback enters executeScript only if those stages allow execution.
+			gesture.executeScript = executeCurrent
+		except Exception:
+			self._traceOutcome("route_discarded", gesture=gesture)
+			return False
 		return True
 
 	def _queueOwnedMessageRoute(self, gesture) -> bool:
