@@ -132,3 +132,37 @@ these separately and leaves physical braille `unverified`. Use the normal
 Remote Access control shortcut yourself when ready; keyboard injection is
 never an IPC action. End-to-end NVDA/Orca/physical braille acceptance remains
 separate consented live testing.
+
+## Optional one-shot simulated message route (20261014.0.2)
+
+Version 4 adds exactly one argument-free operation, `braille_message_route`,
+exposed as `python linux_rdaccess_test_session.py nvda-route-message`.
+Versions 1–3 and their response schemas are unchanged. This operation requires
+the new, separate, unchecked **Allow one simulated routing press on a Linux
+message (records numeric diagnostics)** checkbox. Previous status, connection,
+diagnostic or desktop-setup authorization does not grant this new permission.
+Installing the new companion/restarting NVDA still requires separate approval.
+
+Each fresh grant permits at most one attempt, consumed before the callback,
+including refusals and ambiguous errors. It routes only cell 0 of the currently
+owned Linux temporary message with active built-in remote control, semantic
+input and diagnostics. Capture, NVDA input help, local control, missing/stale
+messages, custom message regions and legacy clients are refused. Queued execution rechecks both the
+original ownership and the exact authorization descriptor, expiry and desktop
+permission. It cannot fall back to routing underlying Linux text. No arbitrary
+indices, keyboard input, text, script names or executable code are accepted.
+
+The response contains only normal status and fixed `message_route` metadata:
+`simulated: true`, `routing_index: 0`, and an outcome of `queued`, `refused`,
+`not_authorized`, `already_attempted` or `unavailable`. `queued` does not prove
+execution or physical output. If a response is lost, the launcher reports
+unknown and does not retry or pretend that no input occurred.
+
+The [Windows coordinator](../diagnostics/nvda/simulate_message_routing.py) starts
+the existing numeric Mousepad observer over verified SSH before arming. It
+waits for a new Linux-owned `message_shown` event, then issues exactly one
+version 4 request and collects both Windows ledgers and Linux caret evidence.
+An agent can create the message using separately approved Windows setup keys;
+the user need not press a routing key. This enters the same guarded message
+branch used by routing, while bypassing the hardware, driver and global gesture
+deciders. Follow the [scripted test procedure](scripted-message-routing.md).

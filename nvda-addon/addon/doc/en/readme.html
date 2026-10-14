@@ -42,6 +42,18 @@ Version 1 and 2 operations remain unchanged; the outcome read uses version 3.
 An activation/caret attempt or a successful send call does not establish a
 Linux caret movement. Unknown/custom routing remains explicitly unknown.</p>
 <h2>Validation limits</h2>
+<p>Build 20261014.0.2 adds the separate unchecked permission “Allow one simulated
+routing press on a Linux message (records numeric diagnostics)”. The command
+<code>python linux_rdaccess_test_session.py nvda-route-message</code> makes at
+most one attempt to route cell 0 of a visible Linux temporary message. It
+rechecks consent when the queued action executes and never routes document
+text if that message has disappeared or changed. Ordinary status/diagnostic
+permission does not authorize a press. Keyboard and arbitrary code injection
+remain unavailable.</p>
+<p>The software press enters the companion's guarded message-routing branch,
+bypassing the physical button, driver and global gesture-decider chain.
+It does not certify b.note hardware behavior. Build 20261014.0.2 is a review
+package; it has not been installed or tested in running NVDA.</p>
 <p>Build 20261014.0.1 adds diagnostics without changing routing policy.
 It is prepared for review and has not been installed or physically tested.
 The user previously installed .6; its fourteen Python files matched disk.

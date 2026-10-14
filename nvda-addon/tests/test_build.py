@@ -93,6 +93,7 @@ class BuildTests(unittest.TestCase):
 					"localTestService",
 					"localTestStatus",
 					"remoteAccessSemanticBraille",
+					"scriptedMessageRouting",
 					*build.WIRE_MODULES,
 				):
 					imported = importlib.import_module(f"{name}.{child}")

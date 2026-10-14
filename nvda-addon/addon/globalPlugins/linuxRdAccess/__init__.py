@@ -72,6 +72,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._notifyLocalTestSession,
 			routingTrace=self.getLocalRoutingTrace,
 			routingOutcomes=self.getLocalRoutingOutcomes,
+			messageRoute=self.queueLocalMessageRoute,
 		)
 		assert gui.mainFrame is not None
 		tray = gui.mainFrame.sysTrayIcon
@@ -147,8 +148,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				self._localTestService.start(
 					allowConnect=dialog.allowConnect.GetValue(),
 					remote=findRemoteConnection(getattr(globalPluginHandler, "runningPlugins", ())),
+					allowMessageRoute=dialog.allowMessageRoute.GetValue(),
 				)
-				self._routingTrace.start(enabled=dialog.recordRouting.GetValue() is True)
+				self._routingTrace.start(
+					enabled=(
+						dialog.recordRouting.GetValue() is True or dialog.allowMessageRoute.GetValue() is True
+					)
+				)
 			except LocalTestSessionBusyError:
 				self._notifyLocalTestSession("busy")
 			except Exception as error:
@@ -192,6 +198,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def getLocalRoutingOutcomes(self):
 		return self._routingTrace.snapshotOutcomes()
+
+	def queueLocalMessageRoute(self, permitted):
+		from .scriptedMessageRouting import queueMessageRoute
+
+		return queueMessageRoute(self._remoteAccessSemanticBraille, permitted)
 
 	def handleLocalTestRequest(self, request):
 		localTestRequest.validateRequest(request)

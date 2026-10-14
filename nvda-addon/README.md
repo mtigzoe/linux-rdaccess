@@ -13,6 +13,8 @@ Included components:
 - An explicit five-minute consent dialog and same-user authenticated local test
   service supporting `status`, `connect` using saved settings, `cancel`, and
   separately opted-in, read-only `braille_trace` diagnostics.
+- A separate, unchecked, one-shot permission to simulate routing cell 0 of a
+  visible Linux temporary message. It cannot route the underlying document.
 - Metadata-only test status, preserving `physical_braille: unverified`.
 
 NVDA Remote Access continues to own speech, keyboard control and relay settings.
@@ -30,7 +32,7 @@ uv run --no-project --python 3.13 python nvda-addon/build.py
 ```
 
 The standard-library builder writes
-`nvda-addon/dist/linuxRdAccess-20261014.0.1.nvda-addon`. It is reproducible and
+`nvda-addon/dist/linuxRdAccess-20261014.0.2.nvda-addon`. It is reproducible and
 includes Python source, documentation, attribution and the full upstream
 license. `buildVars.py` is the source of add-on metadata; `--version` can override
 the three-component numeric development version.
@@ -48,6 +50,15 @@ Build **20261014.0.1** adds the argument-free version 3 `braille_outcomes` read,
 available as `nvda-braille-outcomes`. Versions 1 and 2 are unchanged. The same
 unchecked diagnostics checkbox enables two independent ledgers of at most
 twelve records each; each ledger discloses its own drops and clears with consent.
+
+Build **20261014.0.2** adds argument-free version 4 `braille_message_route`,
+available as `nvda-route-message`. It requires the separate unchecked
+**Allow one simulated routing press on a Linux message** option, which also
+enables numeric diagnostics. The permission is consumed before the first
+attempt, including a refusal or uncertain failure. Status/diagnostic consent
+alone cannot authorize it. The queued action rechecks consent and message
+ownership; it never falls back to a document route. Versions 1–3 are unchanged.
+See [scripted routing and SSH recording](../docs/scripted-message-routing.md).
 
 ## Install and migrate
 

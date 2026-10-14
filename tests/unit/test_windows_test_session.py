@@ -9,6 +9,24 @@ import linux_rdaccess_test_session as session
 
 
 class SessionLauncherTests(unittest.TestCase):
+    def test_simulated_message_route_is_a_distinct_action(self):
+        from linux_rdaccess_core.connection import test_session as orchestration
+        with mock.patch.object(orchestration, "windows_operation", return_value=({}, 0)) as run:
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(session.main(["nvda-route-message"]), 0)
+        run.assert_called_once_with("braille_message_route", None)
+
+    def test_ambiguous_route_failure_is_not_retried_or_reported_as_no_input(self):
+        from linux_rdaccess_core.connection import test_session as orchestration
+        client = mock.Mock()
+        client.operation.side_effect = TimeoutError("PRIVATE")
+        with mock.patch.object(orchestration, "AuthorizedClient", return_value=client):
+            result, code = orchestration.windows_operation("braille_message_route")
+        self.assertEqual(code, 2)
+        self.assertEqual(result["message_route"]["outcome"], "unknown")
+        client.operation.assert_called_once_with("braille_message_route")
+        self.assertNotIn("PRIVATE", str(result))
+
     def test_parse_only_allowlisted_boolean_status(self):
         output = ("host: relay.example\nkey_configured: True\nready: False\n"
                   "command_installed: True\npassword: sensitive\n")

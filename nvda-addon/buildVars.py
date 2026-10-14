@@ -2,7 +2,7 @@
 
 NAME = "linuxRdAccess"
 SUMMARY = "Linux Remote Access Companion"
-VERSION = "20261014.0.1"
+VERSION = "20261014.0.2"
 MINIMUM_NVDA = "2026.1.0"
 LAST_TESTED_NVDA = "2026.2.0"
 AUTHOR = "linux-rdaccess contributors; derived from RDAccess by Leonard de Ruijter"

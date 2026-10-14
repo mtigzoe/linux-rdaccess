@@ -417,7 +417,7 @@ class RemoteAccessSemanticBrailleBridge:
 			self._traceOutcome("outcome_unknown", gesture=gesture)
 		return True
 
-	def _queueOwnedMessageRoute(self, gesture) -> bool:
+	def _queueOwnedMessageRoute(self, gesture, *, testPermit=None) -> bool:
 		# Preserve NVDA's own input-help and gesture-capture handling. Its
 		# executeGesture checks capture only after the decider runs.
 		if getattr(getattr(inputCore, "manager", None), "_captureFunc", None) is not None:
@@ -452,10 +452,31 @@ class RemoteAccessSemanticBrailleBridge:
 		# Suppress the original script: its later buffer lookup could otherwise
 		# route into Linux after this message's timer or another gesture dismisses it.
 		self._traceRouting("route_guarded", index=index)
-		queueHandler.queueFunction(queueHandler.eventQueue, self._routeOwnedMessage, owner, regions, index)
+		if testPermit is None:
+			queueHandler.queueFunction(
+				queueHandler.eventQueue, self._routeOwnedMessage, owner, regions, index
+			)
+		else:
+			queueHandler.queueFunction(
+				queueHandler.eventQueue,
+				self._routeOwnedMessage,
+				owner,
+				regions,
+				index,
+				testPermit,
+			)
 		return True
 
-	def _routeOwnedMessage(self, owner, regions, index: int) -> None:
+	def _routeOwnedMessage(self, owner, regions, index: int, testPermit=None) -> None:
+		if testPermit is not None:
+			try:
+				permitted = testPermit() is True
+			except Exception:
+				permitted = False
+			if not permitted:
+				self._traceRouting("route_discarded", index=index)
+				self._traceOutcome("route_discarded", index=index)
+				return
 		handler, session, generation = owner
 		messageBuffer = getattr(handler, "messageBuffer", None)
 		if (

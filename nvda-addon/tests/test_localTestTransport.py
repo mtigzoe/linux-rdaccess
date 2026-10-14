@@ -29,6 +29,35 @@ serviceModule = importlib.import_module(f"{PACKAGE}.localTestService")
 
 
 class AuthenticationTests(unittest.TestCase):
+	def test_message_route_version_and_metadata_are_strict_and_separate(self):
+		operation = {"version": 4, "action": "braille_message_route"}
+		self.assertEqual(transport.validateOperation(operation), "braille_message_route")
+		for bad in (
+			{**operation, "index": 1},
+			{**operation, "version": 1},
+			{**operation, "action": "key"},
+			{"version": 4, "action": "status"},
+		):
+			with self.subTest(bad=bad), self.assertRaises(ValueError):
+				transport.validateOperation(bad)
+		reply = {
+			"result": "connected",
+			"status": validStatus(),
+			"message_route": {"outcome": "queued", "simulated": True, "routing_index": 0},
+		}
+		self.assertEqual(transport.sanitizeMessageRouteReply(reply), reply)
+		for bad in (
+			{"routing_index": True},
+			{"routing_index": 1},
+			{"simulated": False},
+			{"outcome": "private"},
+			{"text": "private"},
+		):
+			with self.subTest(bad=bad), self.assertRaises(ValueError):
+				transport.sanitizeMessageRouteReply(
+					{**reply, "message_route": {**reply["message_route"], **bad}}
+				)
+
 	def test_each_action_and_response_authenticated_and_direction_bound(self):
 		key = secrets.token_bytes(32)
 		payload = {"version": 1, "action": "status"}
@@ -140,8 +169,8 @@ class WindowsTransportTests(unittest.TestCase):
 		self.assertTrue(condition(), "Bounded integration wait timed out")
 		self.pump()
 
-	def start(self, *, allowConnect=False, remote=None):
-		self.service.start(allowConnect=allowConnect, remote=remote)
+	def start(self, *, allowConnect=False, remote=None, allowMessageRoute=False):
+		self.service.start(allowConnect=allowConnect, remote=remote, allowMessageRoute=allowMessageRoute)
 		self.until(lambda: "started" in self.notifications or "failed" in self.notifications)
 		self.assertIn("started", self.notifications)
 		return transport.loadDescriptor(self.path)
@@ -171,6 +200,46 @@ class WindowsTransportTests(unittest.TestCase):
 		remote.state.return_value = "disconnected"
 		self.assertEqual(self.call(address, key, "status")["status"], validStatus())
 		self.assertEqual(self.statusCalls, 2)
+
+	def test_message_route_needs_separate_grant_and_is_one_shot(self):
+		calls = []
+
+		def route(permit):
+			self.assertIs(threading.current_thread(), threading.main_thread())
+			self.assertTrue(permit())
+			calls.append(permit)
+			return "queued"
+
+		self.service._messageRoute = route
+		address, key = self.start()
+		self.assertEqual(
+			self.call(address, key, "braille_message_route")["message_route"]["outcome"], "not_authorized"
+		)
+		self.assertEqual(calls, [])
+		self.service.stop()
+		self.until(lambda: not self.service.worker.is_alive())
+		self.notifications.clear()
+		address, key = self.start(allowMessageRoute=True)
+		self.assertEqual(
+			self.call(address, key, "braille_message_route")["message_route"]["outcome"], "queued"
+		)
+		self.assertEqual(
+			self.call(address, key, "braille_message_route")["message_route"]["outcome"], "already_attempted"
+		)
+		self.assertEqual(len(calls), 1)
+		self.service.stop()
+		self.assertFalse(calls[0]())
+
+	def test_message_route_exception_consumes_permission_without_retry(self):
+		self.service._messageRoute = mock.Mock(side_effect=RuntimeError("PRIVATE"))
+		address, key = self.start(allowMessageRoute=True)
+		reply = self.call(address, key, "braille_message_route")
+		self.assertEqual(reply["message_route"]["outcome"], "unavailable")
+		self.assertNotIn("PRIVATE", str(reply))
+		self.assertEqual(
+			self.call(address, key, "braille_message_route")["message_route"]["outcome"], "already_attempted"
+		)
+		self.service._messageRoute.assert_called_once()
 
 	def test_real_authenticated_trace_is_read_only_and_default_is_unavailable(self):
 		remote = mock.Mock()
