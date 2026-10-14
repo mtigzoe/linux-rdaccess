@@ -128,7 +128,7 @@ writer trace cannot exclude an Orca caret write. The historical 6→9 and .5
 20→7 reports remain unisolated; input-help/native Say All cancellation is a
 source-backed alternative mechanism, not a live diagnosis.
 
-## Read-only environment check
+## Read-only environment check before deployment
 
 | Component | Observed on this audit | Limit |
 | --- | --- | --- |
@@ -140,10 +140,57 @@ source-backed alternative mechanism, not a live diagnosis.
 | Message/display settings | b.note model is user-reported from previous tests. No literal saved Orca flash setting was found by the fixed-name customization AST inventory. | Orca runtime enableFlashMessages/brailleFlashTime, Remote/add-on active versions, driver/firmware/cells/contraction and active NVDA profile remain to record. Defaults are not inferred. |
 | Desktop Commander | Requested availability-only account inventory: Windows and Cyber devices both report **offline**. | No device filesystem, process, input or desktop operation used it. Investigation/tests used terminal, SSH and private WSL instead. |
 
-No installation, deployment, NVDA/Orca restart, remote connection change, active
-application action or agent desktop input occurred. The consent endpoint was
+During this initial read-only phase, no installation, deployment, NVDA/Orca
+restart, remote connection change, active application action or agent desktop
+input occurred. The consent endpoint was
 not probed without a fresh test-session grant. No credentials, private document
 text, general speech log or customization-file contents were published.
+
+## Approved Linux deployment follow-up
+
+After the initial audit, the user explicitly approved installing merged
+**f247d77**'s Linux v121 components and restarting Orca **once**, preserving
+backups/settings. This approval did not include Windows installation, an NVDA
+restart, settings changes or desktop input.
+
+The approved public repository revision was fetched on Cyber and pinned to
+`f247d771e6b522f5fec8bde0c31eb7f928d0d42d`. Before touching the active files,
+the real v120 controller and original upstream backup were copied into a private
+staging directory. The production patcher upgraded that candidate to recognized
+current v121; compilation and a second, no-change patch invocation succeeded.
+The original upstream backup's contents stayed unchanged.
+
+The existing runtime was updated with `install_runtime_files`, and the
+controller plus standalone adapter, AT-SPI model and diagnostic helper were
+installed. All declared runtime files and all three helpers match the pinned
+source. The supported doctor reports **current** for input shim, Orca API
+adapter, semantic model and caret diagnostics. The customization-updating
+`connect` operation was not used. Private rollback copies are retained on Cyber
+under `~/.local/state/linux-rdaccess/v121-approved-2zkbxmf_/` (mode 0700).
+
+Exactly **one** `restart_orca()` / `orca --replace` was launched using the
+supported owned-XFCE-session discovery for display **:0**. The old process's
+initial `/proc` environment did not expose the graphical keys, so it did not
+attest the session; the complete owned desktop tuple was discovered instead.
+Post-restart read-only verification found old Orca PID **1852** gone and one
+stable new Orca PID **254068**, owned by the same user. That process owns an
+established TCP socket to the configured relay port. This is not proof of
+authenticated Windows Remote Access, active Linux key control, or exact loaded
+Python module contents.
+
+Hashes remain unchanged **after restart** for saved `remote.json`, customization
+and its backup, autostart, Orca user settings, the original controller backup,
+local-machine module and callback-manager module. No settings or credentials
+were rewritten. Windows NVDA and companion installation were untouched.
+
+A separate one-second read-only Mousepad observer readiness check succeeded:
+text role, caret **7→7**, same focus, no caret/focus events and zero dropped
+events. This validates readiness only; no test gesture was requested or sent
+for that probe and no message/routing/physical PASS follows from it.
+
+Fresh five-minute Windows diagnostic consent has been requested for the next
+isolated check. Both issues remain **NOT READY**; approval to install/restart
+does not authorize arbitrary desktop control or complete physical acceptance.
 
 ## Fresh automated results and exact commands
 
@@ -269,11 +316,9 @@ explicit five-minute grant permits only the documented status/trace/outcome
 operations, not arbitrary execution or desktop control. Opt-in diagnostics
 remain unchecked by default, bounded and consent-scoped; do not auto-renew.
 
-For complete Linux reason evidence, install merged **f247d77**'s v121 controller,
-updated adapter/model and standalone diagnostics helper using the supported
-backup-preserving installer, then restart Orca once. This briefly interrupts
-Linux accessibility/Remote access and needs explicit approval before execution.
-Windows .1 files already match; do not reinstall or restart NVDA merely to
+The approved Linux v121 installation and single Orca restart are now complete
+as recorded above; do not repeat them for test setup. Windows .1 files already
+match; do not reinstall or restart NVDA merely to
 obtain a disk match. If loaded .1 cannot be established through supported
 evidence/user confirmation, a separate authorized NVDA reload is required.
 
@@ -321,6 +366,6 @@ No new behavior fix is proposed because this audit found no new reproducible
 production defect. P82–P85's confirmed automated defects are fixed in source;
 historical physical caret-preservation failure and all incomplete matrix cells
 remain acceptance work. Both issues are **NOT READY**, rather than universally
-BLOCKED: independent automation and source investigation were possible, while
-current physical completion awaits consent, deployed diagnostics where needed,
-and the user's short hardware-operated checks.
+BLOCKED: independent automation and source investigation were possible, and the
+approved Linux diagnostic deployment is complete. Current physical completion
+awaits fresh consent and the user's short hardware-operated checks.
