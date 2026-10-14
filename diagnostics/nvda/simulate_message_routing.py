@@ -6,24 +6,24 @@ key, SSH server on Windows, keyboard injection or active-desktop Linux input.
 """
 
 import argparse
-from datetime import datetime, timezone
 import json
 import math
 import os
-from pathlib import Path, PurePosixPath
 import queue
 import re
 import shlex
 import subprocess
 import sys
 import threading
+from datetime import datetime, timezone
+from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from linux_rdaccess_core.connection.nvda_test_client import AuthorizedClient
-from linux_rdaccess_core.routing_automation import wait_and_route
+from linux_rdaccess_core.connection.nvda_test_client import AuthorizedClient  # noqa: E402
+from linux_rdaccess_core.routing_automation import wait_and_route  # noqa: E402
 
 
 def public_observation(value):
@@ -65,8 +65,9 @@ def software_check(result):
         if type(linux["before_caret"]) is not int or type(linux["after_caret"]) is not int:
             return "inconclusive"
         started = datetime.fromisoformat(result["request_started_utc"])
+        linux_final = datetime.fromisoformat(result["linux_final_received_utc"])
         if not (datetime.fromisoformat(result["linux_ready_received_utc"]) <= started
-                <= datetime.fromisoformat(result["linux_final_received_utc"])):
+                <= linux_final <= datetime.fromisoformat(result["windows_final_received_utc"])):
             return "inconclusive"
         fresh = outcomes["events"][len(result["outcomes_before"]["events"]):]
         forbidden = {"caret_attempted", "caret_rejected", "caret_send_returned",
@@ -144,6 +145,15 @@ def main(argv=None):
         result["linux_ready_received_utc"] = ready_received_utc
         result["linux_final_received_utc"] = datetime.now(timezone.utc).isoformat()
         result["linux_observer_exit_code"] = process.wait(timeout=5)
+        # The early queue snapshot cannot cover delayed actions during the
+        # remaining Linux observation. Preserve it, then collect both ledgers
+        # after the observer finishes before classifying the whole trial.
+        for ledger in ("trace", "outcomes"):
+            key = ledger + "_after"
+            if key in result:
+                result[ledger + "_after_dispatch"] = result[key]
+            result[key] = client.operation("braille_" + ledger)["braille_" + ledger]
+        result["windows_final_received_utc"] = datetime.now(timezone.utc).isoformat()
         result["software_check"] = software_check(result)
         print(json.dumps(result), flush=True)
         return {"pass": 0, "fail": 1, "inconclusive": 2}[result["software_check"]]

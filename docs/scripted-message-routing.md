@@ -47,7 +47,10 @@ device output, explain the historical 6→9 movement by itself, or close #59/#72
    into the guarded queue, not successful dismissal. The coordinator reports
    a software `pass` only with logical dismissal, no observed remote caret/action
    attempt, unchanged Linux caret/focus and complete diagnostic windows.
-   Missing/dropped evidence is inconclusive. Movement away and back is a failure.
+   Both Windows ledgers are read again after the Linux observer finishes; the
+   early queue snapshots are retained separately as `*_after_dispatch`.
+   A Windows final timestamp must cover the Linux observation. Missing/dropped
+   evidence is inconclusive. Movement away and back is a failure.
    Physical braille remains `unverified` regardless of software outcome.
 
 The one-shot permission is consumed before the first attempt, including refusal
@@ -91,8 +94,8 @@ Validation on 2026-10-14 (groups overlap):
   DPAPI, DACL and cancellation tests.
 - The eight scripted message-route tests also passed against NVDA 2026.2
   reference `f62c980589d1ac30babf68ad48177e9ad29a2e84`, zero failures/errors/skips.
-- Coordinator/launcher tests: **32 passed** on Windows Python 3.13.13 and
-  separately **32 passed** on WSL Ubuntu 22.04.5/Python 3.10.12, zero
+- Coordinator/launcher tests: **35 passed** on Windows Python 3.13.13 and
+  separately **35 passed** on WSL Ubuntu 22.04.5/Python 3.10.12, zero
   failures/errors/skips. These use simulated SSH/IPC evidence; no live route.
 - Companion Ruff lint/format, shared wire-module lint, package reproducibility,
   packaged standalone imports/AST parsing and diff checks passed.
@@ -141,3 +144,38 @@ input was sent. The Python coordinator now arms while Windows remains local,
 then waits for a new message with Linux control active. Preflight refusals are
 also reported as `not_sent`, rather than the previous conservative `unknown`.
 This is a local Python workflow change; no new add-on or restart is required.
+
+## Scripted route and recorder timing correction
+
+The next grant armed successfully while Windows was local. Approved setup
+shortcuts enabled Linux control and created a new message. At
+**22:49:08.984 UTC**, the coordinator made exactly one version 4, cell-0
+request. The companion accepted it and recorded `route_guarded` followed by
+Linux-owned `message_dismissed`. Its immediate snapshots had no drops or
+caret/action attempts. The 45-second Linux observer reported caret **27 → 27**,
+no caret events, no focus change and zero dropped events.
+
+The old coordinator emitted `pass`, but a subsequent Windows read showed
+additional caret/routing activity and **25 trace drops**. Outcomes include a
+same-offset caret attempt after the early snapshot; the activity's source has
+not been established. The whole trial is therefore **inconclusive**. The
+immediate guarded dismissal is evidence of that software operation, not a
+clean full-window or physical acceptance result. The Windows test surface
+also changed from 0 to 2 characters during handoff, with source unestablished;
+no `type_text` action was used and its contents were left intact.
+
+This revealed a confirmed recorder defect: Windows outcomes were read only
+about 0.3 seconds after queueing, before the Linux observer finished. Three
+regressions reproduced false PASS results for early snapshots, later caret
+attempts and later overflow. The coordinator now reads both Windows ledgers
+after the observer completes, preserves early snapshots separately, and
+requires final Windows evidence to cover the Linux interval. The fix passed
+the 35 focused tests on each platform; it has not yet had a new live trial.
+No new companion installation or restart is needed.
+
+Computer Use blocked the return-to-local shortcut and one refreshed retry
+because it detected input. Status remained Linux-active, so a manual handoff
+was requested and automated input stopped. Sanitized numeric evidence is in
+[`scripted-message-routing-live-evidence-2026-10-14.json`](scripted-message-routing-live-evidence-2026-10-14.json).
+The simulation bypasses the physical driver/global gesture deciders; #57/#72
+remain NOT READY, and the historical 6→9 movement and #59 remain unresolved.

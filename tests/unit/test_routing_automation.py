@@ -1,15 +1,15 @@
 """The coordinator waits for new evidence and never retries a route."""
 
-import unittest
 import contextlib
 import io
 import json
 import shlex
+import unittest
 from unittest import mock
 
-from linux_rdaccess_core.routing_automation import wait_and_route
-from diagnostics.nvda.simulate_message_routing import public_observation, software_check
 from diagnostics.nvda import simulate_message_routing as coordinator
+from diagnostics.nvda.simulate_message_routing import public_observation, software_check
+from linux_rdaccess_core.routing_automation import wait_and_route
 
 
 def trace(events=(), *, drops=0, control=True):
@@ -125,6 +125,7 @@ class RoutingAutomationTests(unittest.TestCase):
                 "request_started_utc": "2026-10-14T22:00:05+00:00",
                 "linux_ready_received_utc": "2026-10-14T22:00:00+00:00",
                 "linux_final_received_utc": "2026-10-14T22:00:45+00:00",
+                "windows_final_received_utc": "2026-10-14T22:00:46+00:00",
                 "linux_observation": {"dropped_events": 0, "same_initial_focus": True,
                                       "focus_changed_during_observation": False,
                                       "before_caret": 11, "after_caret": 11, "caret_events": []}}
@@ -153,6 +154,62 @@ class RoutingAutomationTests(unittest.TestCase):
         result = self.result_fixture()
         result["linux_final_received_utc"] = "2026-10-14T22:00:01+00:00"
         self.assertEqual(software_check(result), "inconclusive")
+
+    def test_windows_snapshot_before_linux_final_cannot_pass(self):
+        result = self.result_fixture()
+        result["windows_final_received_utc"] = "2026-10-14T22:00:06+00:00"
+        self.assertEqual(software_check(result), "inconclusive")
+        del result["windows_final_received_utc"]
+        self.assertEqual(software_check(result), "inconclusive")
+
+    def run_with_late_windows_evidence(self, *, drops=0, late_events=()):
+        early = self.result_fixture()
+        ready = {"observer": "ready", "application": "mousepad", "input_sent": False}
+        final = {"kind": "linux-atspi-caret-observation", **early["linux_observation"]}
+        final["events"] = []
+        process = mock.Mock(stdout=io.StringIO(json.dumps(ready)+'\n'+json.dumps(final)+'\n'))
+        process.poll.return_value = 0
+        process.wait.return_value = 0
+        reads = []
+
+        def operation(action):
+            reads.append((action, process.wait.called))
+            if action == "status":
+                return trace()
+            if action == "braille_trace":
+                return {"braille_trace": {"available": True, "dropped": drops, "events": []}}
+            if action == "braille_outcomes":
+                return {"braille_outcomes": {"available": True, "dropped": 0,
+                        "events": [{"event": "message_dismissed"}, *late_events]}}
+            self.fail("Unexpected operation")
+
+        self.client.operation.side_effect = operation
+        output = io.StringIO()
+        fixed_times = [coordinator.datetime.fromisoformat(early[key]) for key in (
+            "linux_ready_received_utc", "linux_final_received_utc", "windows_final_received_utc")]
+        with mock.patch.object(coordinator.os, "name", "nt"), \
+                mock.patch.object(coordinator, "AuthorizedClient", return_value=self.client), \
+                mock.patch.object(coordinator.subprocess, "Popen", return_value=process), \
+                mock.patch.object(coordinator, "wait_and_route", return_value=early), \
+                mock.patch.object(coordinator, "datetime", wraps=coordinator.datetime) as dates, \
+                contextlib.redirect_stdout(output):
+            dates.now.side_effect = fixed_times
+            code = coordinator.main(["--execute", "--observer-path", "/reviewed/observe_routing.py"])
+        return code, json.loads(output.getvalue().splitlines()[-1]), reads
+
+    def test_late_caret_attempt_after_early_dismissal_prevents_pass(self):
+        code, result, reads = self.run_with_late_windows_evidence(
+            late_events=[{"event": "caret_attempted", "offset": 11}])
+        self.assertEqual(code, 1)
+        self.assertEqual(result["software_check"], "fail")
+        self.assertIn(("braille_outcomes", True), reads)
+        self.assertEqual(result["outcomes_after_dispatch"]["events"], [{"event": "message_dismissed"}])
+
+    def test_late_trace_overflow_after_early_dismissal_prevents_pass(self):
+        code, result, reads = self.run_with_late_windows_evidence(drops=1)
+        self.assertEqual(code, 2)
+        self.assertEqual(result["software_check"], "inconclusive")
+        self.assertIn(("braille_trace", True), reads)
 
     def test_complete_coordinator_wires_ssh_ready_before_one_route(self):
         original = self.client.operation.side_effect
