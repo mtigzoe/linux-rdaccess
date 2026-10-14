@@ -53,7 +53,7 @@ application/navigation rows below implement the requested audit scope.
 | Requirement | Classification and specific evidence | Still needed for acceptance |
 | --- | --- | --- |
 | NVDA+T / title | **Automated PASS only.** K `test_title_and_status_use_direct_orca_apis_without_keypad_sequences`; B current-activation/expiry tests. Adapter calls Orca `presentTitle`, not a time/date/keypad substitute. | Actual Windows title announcement, focused public Linux window, no stray `t`, in each intended layout/modifier configuration. |
-| NVDA+1 toggles input help | **Confirmed live PASS, limited older-build observation.** P85's .5 follow-up records individually requested on/off gestures and user announcements; automation B `test_input_help_toggle_still_exits_and_fresh_commands_execute` and W `test_wire_input_help_toggle_respects_receive_and_dispatch_capture` passes. | Current loaded-build/session attribution and the separate command-description check below. No latest-build speech claim. |
+| NVDA+1 toggles input help | **Confirmed live PASS, limited.** P85's .5 follow-up records individually requested on/off announcements. The current [input-help follow-up](#current-input-help-message-follow-up) adds user-confirmed **on** under authenticated Linux control with .1 matching disk and v3 diagnostics available; exact loaded modules are not attested. B `test_input_help_toggle_still_exits_and_fresh_commands_execute` and W `test_wire_input_help_toggle_respects_receive_and_dispatch_capture` also pass. | Latest-build off transition, exact gesture correlation and the separate command-description check below; no full keyboard acceptance. |
 | Command description without action during input help | **Automated PASS only.** B `test_direct_commands_describe_native_help_without_executing`, `test_input_help_describes_browse_commands_without_executing_them`, native description preferences and expired callbacks. | One harmless command in learn mode, Windows speech/braille description, unchanged Linux target. |
 | NVDA+F7 in Linux Firefox | **Automated PASS only; intentionally different UI.** E, K `test_elements_list_prefers_native_orca_list_without_synthetic_keys`, B document/chrome/capture checks, W master-departure test. [`show_elements_list`](../linux_rdaccess_core/accessibility/orca_adapter.py) chooses Links/Headings/Form fields/Buttons/Landmarks, then delegates to Orca's structural list; if the chooser is unavailable, the controlled fallback is Headings. This is an equivalent entry point, not NVDA's Windows elements dialog or complete feature parity. | Public Firefox document: category, actual result list, Windows announcement, navigation/activation and cancellation. |
 | Insert+N / NVDA menu | **Unsupported or intentionally different.** K `test_nvda_n_is_consumed_without_opening_unrelated_orca_preferences`, `test_capslock_nvda_n_is_consumed_without_toggling_capslock`. In Linux control the bridge suppresses the forwarded chord; it opens neither Orca preferences nor the Windows menu. Return to local Windows control to use NVDA's menu. | Human confirmation of that local-control sequence; do not call suppression a menu PASS. |
@@ -99,7 +99,7 @@ release gate. The independent companion now contains the relevant receiver.
 | --- | --- | --- |
 | Firefox focus/browse temporary messages | **Automated PASS only.** S `test_temporary_message_requires_negotiation_and_preserves_focus`; W `test_temporary_braille_message_is_sent_after_capability_over_wire`; K/B mode command mapping. | NVDA+Space in a public Firefox page, actual b.note status text and restored semantic line/cursor. |
 | Caps Lock / Num Lock transient status and key state | **Automated PASS only.** X real XKB state, mocked status presentation; W message feature; K lock commands. | Each real remote lock toggle, exact public status on b.note and correct key state, then restore initial state. |
-| Input-help message appearance | **Confirmed live PASS, limited on .4.** P85 records user's yes to appearance/restoration on b.note, plus Linux caret 6 before/after; exact wording/time were not captured. | Repeat on an attested current receiver with a short isolated action. |
+| Input-help message appearance | **Confirmed live PASS, limited.** In addition to P85's .4 observation, the current [follow-up](#current-input-help-message-follow-up) records user-confirmed input help **on**, physical message appearance and Linux line return on b.note, with authenticated Linux control and .1 matching disk. | Exact message wording/duration, loaded-module attribution and independent cursor/timing acceptance. |
 | Input help plus a shortcut's expected braille description | **Automated PASS only for the full original item.** B help-without-execution and W semantic/raw help description tests. The appearance-only observation above does not accept shortcut wording. | Separately prompted harmless command while help is on, physical description and no application action. |
 | Timeout follows NVDA settings; original line/caret returns | **Automated PASS only for configured timing.** M `test_message_timeout_restores_linux_when_windows_replaced_main_buffer`, `test_message_timeout_restores_linux_when_windows_replaces_buffer_while_visible`, retained-current-snapshot test. The .4 appearance/return observation is a limited physical restoration PASS, not a measured four-second timer. | Current NVDA setting and actual elapsed time; same Linux caret, readable semantic line and physical cursor after timeout. |
 | Pan during message; appropriate timer and unchanged semantic window | **Automated PASS only.** M `test_message_panning_resets_timer_without_moving_linux_window`, `test_intact_linux_region_and_pan_window_are_preserved`. Earlier ordinary Linux left-pan PASS on .2 did not pan a temporary message. | One physical pan while visible, timer behavior and same semantic panning window/focus after dismissal. |
@@ -191,6 +191,53 @@ for that probe and no message/routing/physical PASS follows from it.
 Fresh five-minute Windows diagnostic consent has been requested for the next
 isolated check. Both issues remain **NOT READY**; approval to install/restart
 does not authorize arbitrary desktop control or complete physical acceptance.
+
+## Current input-help message follow-up
+
+The user subsequently authorized fresh five-minute diagnostics. Supported
+Windows reads confirmed connected transport, active Linux control, attached
+bridge, negotiated semantic braille and temporary-message support. Version 3
+outcomes were available in the running endpoint; exact loaded companion module
+contents were not attested. Companion .1 disk equality and the approved Linux
+v121 deployment are recorded above.
+
+After the recorder prompt requested one **NVDA+1** and ten seconds without
+Linux input, the user reported: **“NVDA announced input help on; a message
+appeared and the Linux line returned.”** This is a **limited current physical
+PASS for message appearance/line return**, and a user-confirmed input-help-on
+announcement. It does not confirm exact message text, elapsed timeout or
+physical cursor preservation. The [sanitized evidence](input-help-message-evidence-2026-10-14.json)
+preserves the report, status, recording limits and numeric caret events.
+
+Both Windows ledgers had already overflowed before this prompt. Across the
+34 documented read-only snapshots, the trace drop count rose **48→80** and
+the outcomes drop count **6→20**, each retaining only its first twelve records.
+Those retained routing attempts predate the test prompt. They cannot identify
+the later gesture's full path or prove absence of an extra caret/action send.
+
+The 60-second Linux window retained Mousepad text focus, recorded twelve caret
+events and changed **37→43**, with zero dropped Linux events. Its last event
+was at +22,988.4 ms, followed by no further caret events in that window. The
+exact human gesture time was not captured; neither that movement nor the later
+quiet interval can be conclusively attributed to NVDA+1, routing or additional
+navigation. Do not turn the movement into a diagnosed new defect, or the quiet
+interval into an isolated caret-preservation PASS. The current text was not
+captured or verified as the original 20-character fixture.
+
+An earlier setup recording included user-acknowledged arrows and routing; it
+does not supersede this later physical report or the historical .4 user's
+explicit no-other-caret-moves statement. The user also reported a local-control
+announcement after a requested handoff, but its subsequent endpoint read had
+expired; later renewed status reported Linux control. That provides human
+handoff evidence, not a complete independently verified transition/release test.
+
+No physical routing-dismissal test has been accepted. To avoid a four-second
+message expiring between separate chat prompts, specific permission has been
+requested for the **user** to temporarily choose Braille settings → **Show
+messages: Show indefinitely**, then restore their previous setting. The exact
+labels were checked against NVDA 2026.2's `ShowMessages` enum and settings UI.
+No setting change, desktop input, extra restart or consent renewal was performed
+by the agent. Both issues remain **NOT READY**.
 
 ## Fresh automated results and exact commands
 
