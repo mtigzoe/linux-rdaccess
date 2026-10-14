@@ -31,6 +31,12 @@ class LocalTestAuthorizationDialog(wx.Dialog):
 			label=_("Allow connection using saved Remote Access relay settings"),
 		)
 		sizer.Add(self.allowConnect, flag=wx.ALL, border=12)
+		# Translators: Optional numeric diagnostics, unchecked by default; no text is recorded.
+		self.recordRouting = wx.CheckBox(
+			self,
+			label=_("Record numeric braille routing diagnostics (no text)"),
+		)
+		sizer.Add(self.recordRouting, flag=wx.ALL, border=12)
 		buttons = self.CreateButtonSizer(wx.OK | wx.CANCEL)
 		# Translators: Confirms temporary authorization; this is not persistent configuration.
 		self.FindWindowById(wx.ID_OK).SetLabel(_("Authorize for five minutes"))

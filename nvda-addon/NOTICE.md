@@ -24,9 +24,11 @@ The entry point defers activation until NVDA has initialized its plugins and
 declines ownership when a running RDAccess development plugin still provides
 the Linux integration. No add-on is automatically disabled or uninstalled.
 
-The four IPC wire modules are not duplicated in this directory. `build.py`
+The four original IPC wire modules are not duplicated in this directory. `build.py`
 packages their authoritative sources from
 `linux_rdaccess_core/connection/nvda_test_client/`. They retain the original
 GPL-2.0-or-later licensing and are included in the companion under that license.
+The additional `localTestRoutingTrace.py` is project-authored, licensed under
+GPL-2.0-or-later, and packaged from the same authoritative source directory.
 The distribution includes readable Python source, this notice, and the complete
 license. It does not contain NVDA source, binaries, relay keys, or user data.

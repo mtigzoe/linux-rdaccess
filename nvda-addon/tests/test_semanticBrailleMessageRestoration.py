@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import ast
+import importlib
+import json
 import types
 import weakref
 from unittest import mock
@@ -112,6 +114,23 @@ def coreRouteScript():
 	return namespace[method.name]
 
 
+def coreLocalMessageMethods():
+	path = NVDA_SOURCE / "_remoteClient" / "localMachine.py"
+	tree = ast.parse(path.read_text(encoding="utf-8"))
+	cls = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "LocalMachine")
+	names = {"_handleShowBrailleMessage", "_handleDismissBrailleMessage", "_dismissLocalBrailleMessage"}
+	methods = [node for node in cls.body if isinstance(node, ast.FunctionDef) and node.name in names]
+	if {node.name for node in methods} != names:
+		raise AssertionError("NVDA Remote message API changed")
+	namespace = {"braille": braille}
+	module = ast.Module(
+		body=[ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0), *methods],
+		type_ignores=[],
+	)
+	exec(compile(ast.fix_missing_locations(module), str(path), "exec"), namespace)
+	return {name: namespace[name] for name in names}
+
+
 class MessageRestorationTests(SemanticBrailleBridgeTestCase):
 	def setUp(self):
 		super().setUp()
@@ -162,6 +181,114 @@ class MessageRestorationTests(SemanticBrailleBridgeTestCase):
 	def _sendMessage(self):
 		self.transport.callback_manager.callbacks["msg_lrd_a11y_message"](version=1, text="Focus mode")
 		queueHandler.pumpAll()
+
+	def _startRoutingTrace(self):
+		module = importlib.import_module(f"{self.module.__package__}.localTestRoutingTrace")
+		self.routingTrace = module.RoutingTraceRecorder(lambda: True)
+		self.routingTrace.start(enabled=True)
+		self.bridge._routingTrace = self.routingTrace
+
+	def test_routing_trace_distinguishes_guarded_dismissal_from_a_caret_request(self):
+		self._startRoutingTrace()
+		self._prepareRouteableFocus()
+		self._sendMessage()
+		self._queueRouteGesture()
+		queueHandler.pumpAll()
+		events = self.routingTrace.snapshot()["events"]
+		self.assertIn("route_guarded", [event["event"] for event in events])
+		self.assertIn("message_dismissed", [event["event"] for event in events])
+		self.assertNotIn("caret_sent", [event["event"] for event in events])
+		route = next(event for event in events if event["event"] == "route_received")
+		self.assertEqual(route["buffer"], "message")
+		self.assertTrue(route["linux_owned"])
+		encoded = json.dumps(self.routingTrace.snapshot())
+		self.assertNotIn("Alpha Barlio Charlie", encoded)
+		self.assertNotIn("Focus mode", encoded)
+
+	def test_routing_trace_reports_expired_guard_as_discarded_without_a_caret_request(self):
+		self._startRoutingTrace()
+		self._prepareRouteableFocus()
+		self._sendMessage()
+		self._queueRouteGesture()
+		self.brailleHandler._messageCallLater.callback()
+		queueHandler.pumpAll()
+		events = [event["event"] for event in self.routingTrace.snapshot()["events"]]
+		self.assertIn("route_discarded", events)
+		self.assertNotIn("caret_sent", events)
+
+	def test_routing_trace_reports_a_fresh_native_route_after_message_expiry(self):
+		self._startRoutingTrace()
+		self._prepareRouteableFocus()
+		self._sendMessage()
+		self.brailleHandler._messageCallLater.callback()
+		self._queueRouteGesture()
+		queueHandler.pumpAll()
+		events = self.routingTrace.snapshot()["events"]
+		self.assertIn("route_native", [event["event"] for event in events])
+		caret = next(event for event in events if event["event"] == "caret_sent")
+		self.assertEqual(caret["offset"], 13)
+
+	def test_broken_diagnostics_cannot_change_native_message_routing(self):
+		self.bridge._routingTrace = mock.Mock()
+		self.bridge._routingTrace.active.side_effect = RuntimeError("PRIVATE diagnostic failure")
+		self._prepareRouteableFocus()
+		self._sendMessage()
+		before = list(self.transport.sent)
+		self._queueRouteGesture()
+		queueHandler.pumpAll()
+		self.assertIs(self.brailleHandler.buffer, self.brailleHandler.mainBuffer)
+		self.assertEqual(self.transport.sent, before)
+
+	def _observeNativeRemoteDismissal(self):
+		machine = type("Machine", (), coreLocalMessageMethods())()
+		machine.receivingBraille = False
+		machine._showingLocalUiMessage = False
+		machine._lastCells = []
+		machine.display = mock.Mock()
+		for name, callback in (
+			("_pre_showBrailleMessage", machine._handleShowBrailleMessage),
+			("_post_dismissBrailleMessage", machine._handleDismissBrailleMessage),
+		):
+			self.core[name].register(callback)
+			self.addCleanup(self.core[name].unregister, callback)
+		client = types.SimpleNamespace(
+			leaderTransport=self.transport,
+			localMachine=machine,
+			sendingKeys=True,
+			setReceivingBraille=mock.Mock(),
+			leaderSession=None,
+		)
+		original = machine._dismissLocalBrailleMessage
+		with mock.patch.object(self.module, "_builtinRemoteState", return_value=(client, self.transport)):
+			self.bridge._installBuiltInBrailleOwnership()
+		return machine, original
+
+	def test_trace_identifies_native_remote_dismissal_before_an_unguarded_route(self):
+		machine, original = self._observeNativeRemoteDismissal()
+		self._prepareRouteableFocus()
+		self._startRoutingTrace()
+		self._sendMessage()
+		machine._dismissLocalBrailleMessage()
+		self._queueRouteGesture(index=9)
+		queueHandler.pumpAll()
+		events = self.routingTrace.snapshot()["events"]
+		names = [event["event"] for event in events]
+		self.assertLess(names.index("remote_dismiss_called"), names.index("route_received"))
+		before = next(event for event in events if event["event"] == "remote_dismiss_called")
+		self.assertEqual(before["buffer"], "message")
+		self.assertTrue(before["linux_owned"])
+		self.assertIn("route_native", names)
+		self.assertEqual(next(event for event in events if event["event"] == "caret_sent")["offset"], 9)
+		self.bridge.terminate()
+		self.assertIs(machine._dismissLocalBrailleMessage.__func__, original.__func__)
+		self.assertIs(machine._dismissLocalBrailleMessage.__self__, original.__self__)
+
+	def test_ending_observation_preserves_a_later_remote_message_wrapper(self):
+		machine, _original = self._observeNativeRemoteDismissal()
+		later = mock.Mock()
+		machine._dismissLocalBrailleMessage = later
+		self.bridge.terminate()
+		self.assertIs(machine._dismissLocalBrailleMessage, later)
 
 	def test_message_timeout_restores_linux_when_windows_replaced_main_buffer(self):
 		self.brailleHandler.handleGainFocus(HostObject(4242))

@@ -22,6 +22,7 @@ from winAPI.secureDesktop import post_secureDesktopStateChange
 from winAPI.sessionTracking import isLockScreenModeActive
 
 from . import localTestIpc, localTestRequest, localTestStatus
+from .localTestRoutingTrace import RoutingTraceRecorder
 from .localTestService import LocalTestService, LocalTestSessionBusyError
 from .localTestSession import LocalStatusSession
 from .remoteAccessSemanticBraille import RemoteAccessSemanticBrailleBridge, findRemoteAccessTransport
@@ -36,6 +37,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._remoteAccessSemanticBrailleStopped = False
 		self._remoteAccessSemanticBraille = None
 		self._localTestSession = LocalStatusSession()
+		self._routingTrace = RoutingTraceRecorder(self._localTestSession.active)
 		self._localTestService = None
 		self._refreshTimer = None
 		self._legacyConflict = False
@@ -68,6 +70,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			wx.CallAfter,
 			self._testSessionPermitted,
 			self._notifyLocalTestSession,
+			routingTrace=self.getLocalRoutingTrace,
 		)
 		assert gui.mainFrame is not None
 		tray = gui.mainFrame.sysTrayIcon
@@ -105,6 +108,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		)
 
 	def _notifyLocalTestSession(self, outcome):
+		if outcome in ("failed", "stopped"):
+			self._routingTrace.clear()
 		log.info("Local test session outcome: %s", outcome)
 		if not self._testSessionPermitted():
 			return
@@ -142,6 +147,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					allowConnect=dialog.allowConnect.GetValue(),
 					remote=findRemoteConnection(getattr(globalPluginHandler, "runningPlugins", ())),
 				)
+				self._routingTrace.start(enabled=dialog.recordRouting.GetValue() is True)
 			except LocalTestSessionBusyError:
 				self._notifyLocalTestSession("busy")
 			except Exception as error:
@@ -151,6 +157,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		gui.runScriptModalDialog(dialog, callback=complete)
 
 	def _revokeLocalTestSession(self, _event=None, **_kwargs):
+		self._routingTrace.clear()
 		if self._localTestSession.active():
 			log.info("Revoking local test authorization after explicit request or desktop transition")
 		if self._localTestService is not None:
@@ -178,6 +185,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def getLocalTestStatus(self):
 		return localTestStatus.snapshot(self._remoteAccessSemanticBraille)
+
+	def getLocalRoutingTrace(self):
+		return self._routingTrace.snapshot()
 
 	def handleLocalTestRequest(self, request):
 		localTestRequest.validateRequest(request)
@@ -211,6 +221,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				self._remoteAccessSemanticBraille = None
 			if transport is not None:
 				self._remoteAccessSemanticBraille = RemoteAccessSemanticBrailleBridge(transport)
+				self._remoteAccessSemanticBraille._routingTrace = self._routingTrace
 				log.info("Attached NVDA-native linux-rdaccess braille presentation")
 		except Exception:
 			log.debugWarning("Could not attach linux-rdaccess semantic braille", exc_info=True)

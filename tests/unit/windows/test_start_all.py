@@ -98,3 +98,27 @@ class StartAllTests(unittest.TestCase):
         client._address = "private-address"
         client._key = b"test-key-value"
         self.assertNotIn("test-key-value", repr(client))
+
+    def test_trace_cli_uses_only_the_authorized_read_only_operation(self):
+        payload = {"windows_authorization": "active", "braille_trace": {"available": False}}
+        with mock.patch.object(orchestration, "windows_operation", return_value=(payload, 0)) as operation:
+            with mock.patch.object(launcher, "probe") as probe:
+                output = io.StringIO()
+                with contextlib.redirect_stdout(output):
+                    self.assertEqual(launcher.main(["nvda-braille-trace"]), 0)
+                operation.assert_called_once_with("braille_trace", None)
+                probe.assert_not_called()
+                self.assertEqual(json.loads(output.getvalue())["mode"], "nvda-braille-trace")
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            launcher.main(["nvda-braille-trace", "--confirm-start"])
+
+    def test_older_endpoint_trace_failure_reports_supported_status_without_reconnecting(self):
+        client = mock.Mock()
+        client.operation.side_effect = [EOFError("PRIVATE DETAILS"), reply("connected")]
+        with mock.patch.object(orchestration, "AuthorizedClient", return_value=client):
+            result, code = orchestration.windows_operation("braille_trace")
+        self.assertEqual(code, 2)
+        self.assertEqual(result["windows_authorization"], "active")
+        self.assertEqual(result["routing_trace"], "unavailable_or_unsupported")
+        self.assertEqual(client.operation.call_args_list, [mock.call("braille_trace"), mock.call("status")])
+        self.assertNotIn("PRIVATE", json.dumps(result))

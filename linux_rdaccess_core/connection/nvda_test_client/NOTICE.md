@@ -13,3 +13,7 @@ these four files verbatim, without maintaining a second source copy. Wire
 changes must preserve or explicitly version compatibility with existing
 consented RDAccess endpoints. See
 [`nvda-addon/NOTICE.md`](../../../nvda-addon/NOTICE.md) for upstream revisions.
+
+`localTestRoutingTrace.py` is an additional project-authored GPL-2.0-or-later
+module, packaged verbatim by the companion builder. Its optional diagnostic
+read is explicitly versioned separately from the original version 1 operations.

@@ -99,6 +99,8 @@ class RemoteAccessSemanticBrailleBridge:
 		self._semanticBrailleInputInstalled = False
 		self._messageOwner: tuple[typing.Any, int, int] | None = None
 		self._messageHooks = []
+		self._routingTrace = None
+		self._dismissObservation = None
 
 		if self._manager is not None and callable(getattr(self._manager, "register_callback", None)):
 			self._manager.register_callback(_HELLO_CALLBACK, self._onHello)
@@ -217,6 +219,80 @@ class RemoteAccessSemanticBrailleBridge:
 			return None
 		return getattr(client, "leaderSession", None)
 
+	def _traceRouting(self, event, *, gesture=None, index=None, offset=None, sameFocus=None) -> None:
+		"""Record only typed routing metadata when separately opted-in consent is active."""
+		recorder = None
+		try:
+			recorder = self._routingTrace
+			if recorder is None or not recorder.active():
+				return
+			if self._terminated or not self._isCurrentTransport():
+				return
+			handler = braille.handler
+			buffer = getattr(handler, "buffer", None)
+			main = getattr(handler, "mainBuffer", None)
+			message = getattr(handler, "messageBuffer", None)
+			kind = "unavailable" if handler is None else "other"
+			if message is not None and buffer is message:
+				kind = "message"
+			elif main is not None and buffer is main:
+				kind = "main"
+			if gesture is not None:
+				cells = getattr(gesture, "cellIndexes", None)
+				if cells is not None:
+					index = cells[0] if cells else None
+				else:
+					index = getattr(gesture, "routingIndex", None)
+			index = index if type(index) is int and 0 <= index <= 1023 else None
+			offset = offset if type(offset) is int and 0 <= offset <= 8192 else None
+			owner = self._messageOwner
+			if (
+				event == "message_dismissed"
+				and owner is None
+				and getattr(self._client, "sendingKeys", None) is not True
+			):
+				return
+			recorder.record(
+				event,
+				buffer=kind,
+				linux_owned=bool(
+					owner is not None
+					and owner[0] is handler
+					and owner[1] == self._session
+					and owner[2] == self._controlGeneration
+				),
+				control=getattr(self._client, "sendingKeys", None) is True,
+				capture=getattr(getattr(inputCore, "manager", None), "_captureFunc", None) is not None,
+				semantic_input=self._semanticBrailleInputInstalled is True,
+				index=index,
+				offset=offset,
+				same_focus=sameFocus if type(sameFocus) is bool else None,
+			)
+		except Exception:
+			# Diagnostics must never change a gesture or log arbitrary exception data.
+			if recorder is not None:
+				with contextlib.suppress(Exception):
+					recorder.noteDropped()
+
+	def _traceRouteReceived(self, gesture, *, native: bool) -> bool:
+		try:
+			if self._routingTrace is None or not self._routingTrace.active():
+				return False
+			isRoute = (
+				native
+				or type(getattr(gesture, "routingIndex", None)) is int
+				or bool(
+					getattr(gesture, "cellIndexes", None),
+				)
+			)
+			if isRoute:
+				self._traceRouting("route_received", gesture=gesture)
+			return isRoute
+		except Exception:
+			with contextlib.suppress(Exception):
+				self._routingTrace.noteDropped()
+			return False
+
 	def _handleSemanticBrailleGesture(self, gesture) -> bool:
 		"""Keep NVDA-coordinate braille commands local; forward other gestures."""
 		try:
@@ -245,6 +321,7 @@ class RemoteAccessSemanticBrailleBridge:
 		if selectRange is not None:
 			localScripts.add(selectRange)
 		script = getattr(gesture, "script", None)
+		isRoute = self._traceRouteReceived(gesture, native=script == commands.script_braille_routeTo)
 		scriptFunction = getattr(script, "__func__", None)
 		# BrailleExtender binds its own equivalent pan scripts, rather than
 		# GlobalCommands' bound methods. Keep only these known aliases local;
@@ -257,6 +334,8 @@ class RemoteAccessSemanticBrailleBridge:
 		if script in localScripts or isBrailleExtenderPan:
 			if script == commands.script_braille_routeTo and self._queueOwnedMessageRoute(gesture):
 				return False
+			if script == commands.script_braille_routeTo:
+				self._traceRouting("route_native", gesture=gesture)
 			# executeGesture queues its script after this decision. Restore Linux
 			# regions first if a local Windows update replaced the shared buffer.
 			# The decider can run on an input thread, so do not touch braille here.
@@ -271,6 +350,8 @@ class RemoteAccessSemanticBrailleBridge:
 		session = self._leaderSession()
 		forward = getattr(session, "handleDecideExecuteGesture", None)
 		if callable(forward):
+			if isRoute:
+				self._traceRouting("route_delegated", gesture=gesture)
 			return forward(gesture)
 		return True
 
@@ -308,6 +389,7 @@ class RemoteAccessSemanticBrailleBridge:
 		# Do not mutate braille on the input thread or retain message text.
 		# Suppress the original script: its later buffer lookup could otherwise
 		# route into Linux after this message's timer or another gesture dismisses it.
+		self._traceRouting("route_guarded", index=index)
 		queueHandler.queueFunction(queueHandler.eventQueue, self._routeOwnedMessage, owner, regions, index)
 		return True
 
@@ -323,9 +405,11 @@ class RemoteAccessSemanticBrailleBridge:
 			or messageBuffer is None
 			or getattr(handler, "buffer", None) is not messageBuffer
 		):
+			self._traceRouting("route_discarded", index=index)
 			return
 		current = tuple(messageBuffer.regions)
 		if len(current) != len(regions) or any(ref() is not region for ref, region in zip(regions, current)):
+			self._traceRouting("route_discarded", index=index)
 			return
 		handler.routeTo(index)
 
@@ -365,12 +449,42 @@ class RemoteAccessSemanticBrailleBridge:
 			return
 		self._client = client
 		self._originalSetReceivingBraille = original
+		try:
+			localMachine = getattr(client, "localMachine", None)
+			dismiss = getattr(localMachine, "_dismissLocalBrailleMessage", None)
+		except Exception:
+			localMachine, dismiss = None, None
+		if callable(dismiss):
+
+			def observeDismiss(*args, **kwargs):
+				try:
+					showing = (
+						self._routingTrace is not None
+						and self._routingTrace.active()
+						and getattr(localMachine, "_showingLocalUiMessage", False) is True
+					)
+				except Exception:
+					showing = False
+				if showing:
+					self._traceRouting("remote_dismiss_called")
+				result = dismiss(*args, **kwargs)
+				if showing:
+					self._traceRouting("remote_dismiss_returned")
+				return result
+
+			try:
+				localMachine._dismissLocalBrailleMessage = observeDismiss
+			except Exception:
+				pass
+			else:
+				self._dismissObservation = (localMachine, dismiss, observeDismiss)
 
 		def setReceivingBraille(state):
 			if self._negotiated and getattr(client, "leaderTransport", None) is self._transport:
 				localMachine = getattr(client, "localMachine", None)
 				if localMachine is not None:
 					self._controlGeneration += 1
+					self._traceRouting("control_changed")
 					if state:
 						self._installSemanticBrailleInput()
 						# A capability ACK doubles as a safe refresh request on Linux.
@@ -537,6 +651,7 @@ class RemoteAccessSemanticBrailleBridge:
 		self._messageOwner = None
 
 	def _onMessageDismissed(self, **_kwargs) -> None:
+		self._traceRouting("message_dismissed")
 		owner = self._messageOwner
 		self._messageOwner = None
 		if owner is None:
@@ -597,6 +712,7 @@ class RemoteAccessSemanticBrailleBridge:
 				and (self._client is None or getattr(self._client, "sendingKeys", False))
 			):
 				self._messageOwner = (handler, session, generation)
+				self._traceRouting("message_shown")
 				# Native message dismissal restores mainBuffer. Repair any local
 				# Windows replacement underneath the visible Linux message first.
 				# Doing this after message() also respects disabled/speech-only mode.
@@ -790,6 +906,16 @@ class RemoteAccessSemanticBrailleBridge:
 
 		# Keep only the latest valid snapshot, including changes received while
 		# control is local. Temporary messages are never cached or replayed.
+		if focus._node.caretOffset is not None and (
+			self._lastNode is None
+			or self._lastNode.caretOffset != focus._node.caretOffset
+			or self._focusId != message.focusId
+		):
+			self._traceRouting(
+				"caret_received",
+				offset=focus._node.caretOffset,
+				sameFocus=self._focusId == message.focusId,
+			)
 		self._lastFocus = message
 		if self._client is not None and not getattr(self._client, "sendingKeys", False):
 			return
@@ -863,12 +989,20 @@ class RemoteAccessSemanticBrailleBridge:
 				object_id=objectId,
 				offset=offset,
 			)
+			self._traceRouting("caret_sent", offset=offset, sameFocus=objectId == self._focusId)
 		except Exception:
 			log.error("Failed to send linux-rdaccess semantic caret")
 
 	def terminate(self) -> None:
 		if self._terminated:
 			return
+		if self._dismissObservation is not None:
+			machine, original, installed = self._dismissObservation
+			with contextlib.suppress(Exception):
+				if getattr(machine, "_dismissLocalBrailleMessage", None) is installed:
+					machine._dismissLocalBrailleMessage = original
+			self._dismissObservation = None
+		self._routingTrace = None
 		self._removeMessageHooks()
 		self._restoreRawBraille()
 		self._removeSemanticBrailleInput(restoreStock=False)

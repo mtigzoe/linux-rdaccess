@@ -11,7 +11,13 @@ import buildVars
 
 ROOT = Path(__file__).resolve().parent
 WIRE_ROOT = ROOT.parent / "linux_rdaccess_core/connection/nvda_test_client"
-WIRE_MODULES = ("localTestIpc", "localTestRequest", "localTestTransport", "localTestWindows")
+WIRE_MODULES = (
+	"localTestIpc",
+	"localTestRequest",
+	"localTestRoutingTrace",
+	"localTestTransport",
+	"localTestWindows",
+)
 
 
 def entries(version: str) -> dict[str, bytes]:

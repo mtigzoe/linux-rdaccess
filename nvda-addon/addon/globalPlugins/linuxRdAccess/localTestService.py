@@ -14,8 +14,15 @@ from typing import Any
 
 from .localTestIpc import waitForMainThreadStatus
 from .localTestRemote import RemoteConnection
+from .localTestRoutingTrace import emptyTrace
 from .localTestSession import LocalStatusSession
-from .localTestTransport import descriptorPath, publishDescriptor, sanitizeReply, serveConnection
+from .localTestTransport import (
+	descriptorPath,
+	publishDescriptor,
+	sanitizeReply,
+	sanitizeTraceReply,
+	serveConnection,
+)
 
 # NVDA filters INFO records from differently named dependency loggers.
 _log = logging.getLogger("nvda")
@@ -37,6 +44,7 @@ class LocalTestService:
 		notify: Callable[[str], None],
 		*,
 		path: Path | None = None,
+		routingTrace: Callable[[], dict[str, Any]] | None = None,
 	):
 		self.session = session
 		self._status = status
@@ -44,6 +52,7 @@ class LocalTestService:
 		self._permitted = permitted
 		self._notify = notify
 		self._path = path
+		self._routingTrace = routingTrace
 		self.worker: threading.Thread | None = None
 		self._remote: RemoteConnection | None = None
 		self._connectAllowed = False
@@ -160,9 +169,15 @@ class LocalTestService:
 				result = remote.cancel() if remote is not None else "cancelled"
 			else:
 				result = remote.state() if remote is not None else "unavailable"
-			return {"result": result, "status": self._status()}
+			reply = {"result": result, "status": self._status()}
+			if action == "braille_trace":
+				reply["braille_trace"] = (
+					self._routingTrace() if self._routingTrace is not None else emptyTrace()
+				)
+			return reply
 
-		return waitForMainThreadStatus(execute, self._dispatch, cancelled=cancelled, sanitize=sanitizeReply)
+		sanitize = sanitizeTraceReply if action == "braille_trace" else sanitizeReply
+		return waitForMainThreadStatus(execute, self._dispatch, cancelled=cancelled, sanitize=sanitize)
 
 	def _watchConnection(self, descriptor: Any, remote: RemoteConnection) -> None:
 		if not self.session.isCurrent(descriptor) or not self._permitted():

@@ -2,7 +2,9 @@
 
 Related: #59 (physical routing) and #72 (temporary-message acceptance).
 Baseline: `01e79f1`, companion **20261013.0.4**.
-Prepared fix: companion **20261013.0.5**, **not installed or physically retested**.
+Prepared fix: companion **20261013.0.5**, **not installed during this initial audit**.
+Later user installation, follow-up observations and the prepared .6 diagnostics
+are recorded in the [caret trace audit](compatibility-audit-2026-10-13-caret-trace.md).
 
 ## Live evidence on .4
 

@@ -44,6 +44,28 @@ also ends after five minutes, on profile changes, lock, secure-desktop entry,
 or NVDA shutdown. Session-owned connections are cleaned up at that boundary;
 pre-existing connections are preserved.
 
+Companion **20261013.0.6** adds an optional **Record numeric braille routing
+diagnostics (no text)** checkbox to this dialog. It is unchecked by default and
+applies only to that five-minute session. With it selected, use
+`python .\linux_rdaccess_test_session.py nvda-braille-trace` to read at most twelve
+in-memory records: relative event/snapshot timing, routing cell/caret offsets, message-buffer
+ownership, control/input-help capture flags, and routing decisions. No message
+text, object identifiers, gesture identifiers, credentials or arbitrary keyboard
+input is retained. `dropped` counts overflow and unrecordable diagnostic events;
+an incomplete trace cannot prove that no request was sent. Expiry, revocation,
+profile/desktop transitions and shutdown clear the trace. New consent starts an
+empty trace and requires selecting the checkbox again.
+
+The diagnostic read uses the argument-free **version 2 `braille_trace`** local
+operation. Existing version 1 status/connect/cancel requests and responses stay
+unchanged. The new operation cannot enable collection, connect, cancel, send
+input or execute code. An older companion rejects it; the launcher then makes
+one read-only status query and reports `unavailable_or_unsupported` if that
+authorized query succeeds. A returned `caret_sent` record means the companion's
+semantic send call returned, not that Linux applied it. Raw delegated routes,
+other add-ons' key emulation and native Orca speech-cancellation writes still
+need separate evidence. See the [follow-up audit](compatibility-audit-2026-10-13-caret-trace.md).
+
 For bounded live input checks, prepare the read-only observer and select a safe
 Windows input target before asking for fresh consent. Recheck `nvda-status`
 immediately before input: authorization must be active, the transport connected,

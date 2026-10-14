@@ -11,7 +11,8 @@ Included components:
 - Remote Access transport extension negotiation, temporary braille messages and
   cleanup across transport/control changes.
 - An explicit five-minute consent dialog and same-user authenticated local test
-  service supporting only `status`, `connect` using saved settings, and `cancel`.
+  service supporting `status`, `connect` using saved settings, `cancel`, and
+  separately opted-in, read-only `braille_trace` diagnostics.
 - Metadata-only test status, preserving `physical_braille: unverified`.
 
 NVDA Remote Access continues to own speech, keyboard control and relay settings.
@@ -29,17 +30,20 @@ uv run --no-project --python 3.13 python nvda-addon/build.py
 ```
 
 The standard-library builder writes
-`nvda-addon/dist/linuxRdAccess-20261013.0.4.nvda-addon`. It is reproducible and
+`nvda-addon/dist/linuxRdAccess-20261013.0.6.nvda-addon`. It is reproducible and
 includes Python source, documentation, attribution and the full upstream
 license. `buildVars.py` is the source of add-on metadata; `--version` can override
 the three-component numeric development version.
 
-The four wire modules in
+The five wire/diagnostic modules in
 `linux_rdaccess_core/connection/nvda_test_client/` are the authoritative IPC
 source for both the launcher and companion. The build packages those files
 verbatim into the add-on. Do not create another copy in `addon/`.
 The existing discovery filename and protocol remain compatible with the launcher
-and previously reviewed RDAccess test endpoints.
+and previously reviewed RDAccess test endpoints for version 1 operations.
+The optional diagnostic read uses an argument-free version 2 operation; older
+endpoints reject it, and the launcher reports unavailable/unsupported after a
+read-only status check.
 
 ## Install and migrate
 
@@ -90,14 +94,31 @@ Linux test discovery does not import this separate test environment.
 
 ## Acceptance status
 
+Build **20261013.0.6** retains .5's guarded queued-message routing and adds an
+unchecked **Record numeric braille routing diagnostics (no text)** consent
+option. It records at most twelve in-memory routing/message events and clears
+them at the consent boundary. Read with `nvda-braille-trace`; this command cannot
+enable collection or send input. The diagnostic package is prepared for review,
+not installed or physically accepted. See the
+[follow-up audit](../docs/compatibility-audit-2026-10-13-caret-trace.md).
+
+The user installed **20261013.0.5**; all thirteen packaged Python files matched
+the installed files. A user-confirmed, isolated input-help entry retained Linux
+caret 20. Two later tests included extra navigation and cannot isolate routing.
+A simplified two-press test reported visible-message dismissal and recorded
+20 to 7 after the prompt. Its cause, and the original .4 movement from 6 to 9,
+remain unconfirmed. Keep #59 and #72 open.
+
 Build **20261013.0.4** repairs Linux focus underneath a displayed Linux status
 message and restores that focus on native message dismissal if Windows replaced
 the main buffer while the message was visible. Recovery requires the current
 remote session/control generation and does not take ownership of later Windows
 messages. Retained same-ID regions must match the current snapshot object.
 Disabled messages and speech-only mode stay under NVDA's native policy.
-This correction is **automated-tested, not installed or physically accepted**;
-see the [message restoration audit](../docs/compatibility-audit-2026-10-13-message-restoration.md).
+This correction is **automated-tested**. The user later confirmed message
+appearance and timeout restoration in Mousepad; routing/caret acceptance remains
+incomplete. The initial preparation is described in
+the [message restoration audit](../docs/compatibility-audit-2026-10-13-message-restoration.md).
 
 Build **20261013.0.3** refreshes NVDA's pending semantic braille update before
 a queued local coordinate gesture. A same-ID snapshot could otherwise replace
@@ -107,7 +128,7 @@ before the fix and passes with it, including an isolated run of the installed
 NVDA 2026.2 update bytecode. Old retained TextInfo remains invalid; local control,
 stale sessions, disconnection and temporary-message buffers skip this refresh.
 The .3 build is installed on disk and its 13 Python files match the package;
-the running version and physical routing retest remain unverified. See
+the running version at that check and physical routing retest were unverified. See
 the [routing audit](../docs/compatibility-audit-2026-10-13-pending-braille-routing.md).
 
 Build **20261013.0.2** was installed and active in Windows NVDA 2026.2;
