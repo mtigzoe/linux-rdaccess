@@ -84,7 +84,8 @@ jobs:
               result = subprocess.run(
                   ["xvfb-run", "-a", "-s", "-screen 0 1280x900x24",
                    "dbus-run-session", "--", "python3", "-m", "unittest", "-v",
-                   "tests.integration.x11.test_routing_observer"],
+                   "tests.integration.x11.test_routing_observer",
+                   "tests.integration.x11.test_caret_diagnostics"],
                   env=isolated_environment(Path(private)), timeout=60,
               )
               raise SystemExit(result.returncode)

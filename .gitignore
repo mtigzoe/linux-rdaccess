@@ -5,3 +5,6 @@ __pycache__/
 
 # Local live-accessibility observations may contain sensitive content.
 acceptance.json
+
+# Isolated upstream source, packages and evidence for routing diagnostics work.
+/tmp/braille-routing-outcomes/

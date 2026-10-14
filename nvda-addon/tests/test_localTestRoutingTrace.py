@@ -42,6 +42,63 @@ class RoutingTraceTests(unittest.TestCase):
 			self.recorder.record("route_received", **fields())
 			self.assertEqual(self.recorder.snapshot(), trace.emptyTrace())
 
+	def test_outcomes_are_separate_from_exact_legacy_trace(self):
+		self.recorder.start(enabled=True)
+		self.recorder.record("route_received", **fields())
+		legacy = self.recorder.snapshot()
+		self.recorder.recordOutcome("outside_buffer", **fields())
+		self.assertEqual(self.recorder.snapshot(), legacy)
+		outcomes = self.recorder.snapshotOutcomes()
+		self.assertEqual([e["event"] for e in outcomes["events"]], ["outside_buffer"])
+		trace.sanitizeRoutingOutcomes(outcomes)
+		with self.assertRaises(ValueError):
+			trace.sanitizeRoutingTrace(outcomes)
+
+	def test_outcome_cap_privacy_faults_and_revocation_are_independent(self):
+		self.recorder.start(enabled=True)
+		self.recorder.recordOutcome("PRIVATE", **fields())
+		self.recorder.recordOutcome("outside_buffer", **{**fields(), "filename": "PRIVATE"})
+		for _ in range(trace.TRACE_LIMIT + 2):
+			self.recorder.recordOutcome("caret_send_returned", **fields())
+		self.assertEqual(self.recorder.snapshotOutcomes()["dropped"], 4)
+		self.assertEqual(self.recorder.snapshot()["dropped"], 0)
+		self.assertNotIn("PRIVATE", json.dumps(self.recorder.snapshotOutcomes()))
+		self.allowed = False
+		self.assertEqual(self.recorder.snapshotOutcomes(), trace.emptyTrace())
+		self.allowed = True
+		self.recorder.start(enabled=False)
+		self.recorder.recordOutcome("outside_buffer", **fields())
+		self.assertEqual(self.recorder.snapshotOutcomes(), trace.emptyTrace())
+
+	def test_version_three_is_read_only_and_legacy_operations_unchanged(self):
+		self.assertEqual(
+			transport.validateOperation({"version": 3, "action": "braille_outcomes"}), "braille_outcomes"
+		)
+		for value in (
+			{"version": 2, "action": "braille_outcomes"},
+			{"version": 3, "action": "braille_trace"},
+			{"version": 3, "action": "connect"},
+			{"version": 3, "action": "braille_outcomes", "enable": True},
+		):
+			with self.subTest(value=value), self.assertRaises(ValueError):
+				transport.validateOperation(value)
+		self.recorder.start(enabled=True)
+		self.now += 299
+		for _ in range(trace.TRACE_LIMIT):
+			self.recorder.recordOutcome("activation_attempted", **{**fields(), "index": 1023, "offset": 8192})
+		reply = {
+			"result": "already_connected",
+			"status": ipcTests.LocalIpcTests.valid_status(),
+			"braille_outcomes": self.recorder.snapshotOutcomes(),
+		}
+		self.assertEqual(transport.sanitizeOutcomesReply(reply), reply)
+		wire = transport.sign(
+			secrets.token_bytes(32),
+			{"challenge": "a" * 64, "nonce": "b" * 64, "response": reply},
+			direction=b"response:",
+		)
+		self.assertLessEqual(len(wire), 4096)
+
 	def test_opt_in_captures_only_typed_metadata_and_returns_detached_copies(self):
 		self.recorder.start(enabled=True)
 		self.now += 0.125

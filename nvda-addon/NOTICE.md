@@ -30,5 +30,7 @@ packages their authoritative sources from
 GPL-2.0-or-later licensing and are included in the companion under that license.
 The additional `localTestRoutingTrace.py` is project-authored, licensed under
 GPL-2.0-or-later, and packaged from the same authoritative source directory.
+`routingOutcomes.py` is also project-authored GPL-2.0-or-later code. It observes
+native calls without copying upstream NVDA implementations into the add-on.
 The distribution includes readable Python source, this notice, and the complete
 license. It does not contain NVDA source, binaries, relay keys, or user data.

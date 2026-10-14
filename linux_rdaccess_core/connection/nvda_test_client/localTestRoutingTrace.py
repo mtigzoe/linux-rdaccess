@@ -27,6 +27,20 @@ _EVENTS = frozenset(
 	}
 )
 _BUFFERS = frozenset({"main", "message", "other", "unavailable"})
+_OUTCOMES = frozenset(
+	{
+		"native_delegated",
+		"outside_buffer",
+		"activation_attempted",
+		"caret_attempted",
+		"caret_rejected",
+		"caret_send_returned",
+		"caret_send_failed",
+		"message_dismissed",
+		"route_discarded",
+		"outcome_unknown",
+	}
+)
 _FIELDS = frozenset(
 	{
 		"seq",
@@ -57,6 +71,15 @@ def emptyTrace() -> dict[str, Any]:
 
 def sanitizeRoutingTrace(value: Any) -> dict[str, Any]:
 	"""Reject unknown fields and strings before authenticated serialization."""
+	return _sanitizeTrace(value, _EVENTS)
+
+
+def sanitizeRoutingOutcomes(value: Any) -> dict[str, Any]:
+	"""The v3 outcome ledger is separate from the unchanged v2 event schema."""
+	return _sanitizeTrace(value, _OUTCOMES)
+
+
+def _sanitizeTrace(value: Any, allowedEvents: frozenset[str]) -> dict[str, Any]:
 	if type(value) is not dict or set(value) != {
 		"schema_version",
 		"available",
@@ -96,7 +119,7 @@ def sanitizeRoutingTrace(value: Any) -> dict[str, Any]:
 			or type(event["elapsed_ms"]) is not int
 			or not previousTime <= event["elapsed_ms"] <= value["snapshot_ms"]
 			or type(event["event"]) is not str
-			or event["event"] not in _EVENTS
+			or event["event"] not in allowedEvents
 			or type(event["buffer"]) is not str
 			or event["buffer"] not in _BUFFERS
 		):
@@ -127,12 +150,16 @@ class RoutingTraceRecorder:
 		self._started = 0.0
 		self._events: list[dict[str, Any]] = []
 		self._dropped = 0
+		self._outcomes: list[dict[str, Any]] = []
+		self._outcomeDropped = 0
 
 	def clear(self) -> None:
 		with self._lock:
 			self._enabled = False
 			self._events.clear()
 			self._dropped = 0
+			self._outcomes.clear()
+			self._outcomeDropped = 0
 
 	def start(self, *, enabled: bool) -> None:
 		with self._lock:
@@ -156,16 +183,23 @@ class RoutingTraceRecorder:
 			return live
 
 	def record(self, event: str, **fields: Any) -> None:
+		self._record(event, fields, outcomes=False)
+
+	def recordOutcome(self, event: str, **fields: Any) -> None:
+		self._record(event, fields, outcomes=True)
+
+	def _record(self, event: str, fields: dict[str, Any], *, outcomes: bool) -> None:
 		with self._lock:
 			if not self.active():
 				return
-			if len(self._events) >= TRACE_LIMIT:
-				self.noteDropped()
+			events = self._outcomes if outcomes else self._events
+			if len(events) >= TRACE_LIMIT:
+				self.noteDropped(outcomes=outcomes)
 				return
 			try:
 				elapsed = round((self._clock() - self._started) * 1000)
 				candidate = {
-					"seq": len(self._events) + 1,
+					"seq": len(events) + 1,
 					"elapsed_ms": elapsed,
 					"event": event,
 					**fields,
@@ -175,23 +209,32 @@ class RoutingTraceRecorder:
 					"available": True,
 					"snapshot_ms": elapsed,
 					"limit": TRACE_LIMIT,
-					"dropped": self._dropped,
-					"events": [*self._events, candidate],
+					"dropped": self._outcomeDropped if outcomes else self._dropped,
+					"events": [*events, candidate],
 				}
-				sanitizeRoutingTrace(snapshot)
+				_sanitizeTrace(snapshot, _OUTCOMES if outcomes else _EVENTS)
 			except Exception:
-				self.noteDropped()
+				self.noteDropped(outcomes=outcomes)
 				return
 			if self.active():
-				self._events.append(candidate)
+				events.append(candidate)
 
-	def noteDropped(self) -> None:
+	def noteDropped(self, *, outcomes: bool = False) -> None:
 		"""Disclose overflow or an unrecordable event without retaining exception data."""
 		with self._lock:
 			if self.active():
-				self._dropped = min(self._dropped + 1, _MAX_COUNT)
+				if outcomes:
+					self._outcomeDropped = min(self._outcomeDropped + 1, _MAX_COUNT)
+				else:
+					self._dropped = min(self._dropped + 1, _MAX_COUNT)
 
 	def snapshot(self) -> dict[str, Any]:
+		return self._snapshot(outcomes=False)
+
+	def snapshotOutcomes(self) -> dict[str, Any]:
+		return self._snapshot(outcomes=True)
+
+	def _snapshot(self, *, outcomes: bool) -> dict[str, Any]:
 		with self._lock:
 			if not self.active():
 				return emptyTrace()
@@ -204,13 +247,14 @@ class RoutingTraceRecorder:
 				return emptyTrace()
 			if not self.active():
 				return emptyTrace()
-			return sanitizeRoutingTrace(
+			return _sanitizeTrace(
 				{
 					"schema_version": 1,
 					"available": True,
 					"snapshot_ms": elapsed,
 					"limit": TRACE_LIMIT,
-					"dropped": self._dropped,
-					"events": self._events,
-				}
+					"dropped": self._outcomeDropped if outcomes else self._dropped,
+					"events": self._outcomes if outcomes else self._events,
+				},
+				_OUTCOMES if outcomes else _EVENTS,
 			)

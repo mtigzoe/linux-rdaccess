@@ -19,6 +19,7 @@ from .localTestSession import LocalStatusSession
 from .localTestTransport import (
 	descriptorPath,
 	publishDescriptor,
+	sanitizeOutcomesReply,
 	sanitizeReply,
 	sanitizeTraceReply,
 	serveConnection,
@@ -45,6 +46,7 @@ class LocalTestService:
 		*,
 		path: Path | None = None,
 		routingTrace: Callable[[], dict[str, Any]] | None = None,
+		routingOutcomes: Callable[[], dict[str, Any]] | None = None,
 	):
 		self.session = session
 		self._status = status
@@ -53,6 +55,7 @@ class LocalTestService:
 		self._notify = notify
 		self._path = path
 		self._routingTrace = routingTrace
+		self._routingOutcomes = routingOutcomes
 		self.worker: threading.Thread | None = None
 		self._remote: RemoteConnection | None = None
 		self._connectAllowed = False
@@ -174,9 +177,17 @@ class LocalTestService:
 				reply["braille_trace"] = (
 					self._routingTrace() if self._routingTrace is not None else emptyTrace()
 				)
+			elif action == "braille_outcomes":
+				reply["braille_outcomes"] = (
+					self._routingOutcomes() if self._routingOutcomes is not None else emptyTrace()
+				)
 			return reply
 
-		sanitize = sanitizeTraceReply if action == "braille_trace" else sanitizeReply
+		sanitize = (
+			sanitizeOutcomesReply
+			if action == "braille_outcomes"
+			else (sanitizeTraceReply if action == "braille_trace" else sanitizeReply)
+		)
 		return waitForMainThreadStatus(execute, self._dispatch, cancelled=cancelled, sanitize=sanitize)
 
 	def _watchConnection(self, descriptor: Any, remote: RemoteConnection) -> None:

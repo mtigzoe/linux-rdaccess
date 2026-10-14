@@ -294,22 +294,44 @@ def _text_iface(obj):
     return _invoke(obj, ("get_text_iface", "queryText"))
 
 
-def set_caret_offset(obj, offset: int, *, before_action: Callable[[], Any] | None = None) -> bool:
+def _report_caret_diagnostic(diagnostic, value: str) -> None:
+    """Optional diagnostics must not become a dependency of native caret writes."""
+    if diagnostic is None:
+        return
+    try:
+        if __package__:
+            from ..caret_diagnostics import CaretReason, report_caret_reason
+        else:
+            from linux_rdaccess_caret_diagnostics import (
+                CaretReason,
+                report_caret_reason,
+            )
+        report_caret_reason(diagnostic, CaretReason(value))
+    except Exception:
+        pass
+
+
+def set_caret_offset(obj, offset: int, *, before_action: Callable[[], Any] | None = None,
+                     diagnostic=None) -> bool:
     """Move one current semantic text object's caret to a bounded character offset."""
-    if type(offset) is not int or offset < 0 or offset > MAX_FOCUS_TEXT_CHARS:
+    def rejected(reason):
+        _report_caret_diagnostic(diagnostic, reason)
         return False
+
+    if type(offset) is not int or offset < 0 or offset > MAX_FOCUS_TEXT_CHARS:
+        return rejected("invalid_offset")
     iface = _text_iface(obj)
     if iface is None:
-        return False
+        return rejected("text_interface_unavailable")
     character_count = _invoke(iface, ("get_character_count", "getCharacterCount"))
     if character_count is None:
         character_count = getattr(iface, "characterCount", None)
     try:
         character_count = int(character_count)
     except (TypeError, ValueError):
-        return False
+        return rejected("character_count_unavailable")
     if character_count < 0 or offset > character_count:
-        return False
+        return rejected("offset_out_of_range")
     for name in ("set_caret_offset", "setCaretOffset"):
         method = getattr(iface, name, None)
         if not callable(method):
@@ -317,20 +339,27 @@ def set_caret_offset(obj, offset: int, *, before_action: Callable[[], Any] | Non
         try:
             if before_action is not None:
                 before_action()
-            return method(offset) is not False
         except Exception:
-            # A provider failure is an unsuccessful operation, not evidence
-            # that another alias or a Python attribute can move its caret.
-            return False
+            return rejected("before_route_error")
+        try:
+            accepted = method(offset) is not False
+        except Exception:
+            return rejected("provider_error")
+        _report_caret_diagnostic(diagnostic, "setter_returned" if accepted else "provider_refused")
+        return accepted
     descriptor = getattr(type(iface), "caretOffset", None)
     if not isinstance(descriptor, property) or descriptor.fset is None:
-        return False
+        return rejected("setter_unavailable")
     try:
         if before_action is not None:
             before_action()
+    except Exception:
+        return rejected("before_route_error")
+    try:
         iface.caretOffset = offset
     except Exception:
-        return False
+        return rejected("provider_error")
+    _report_caret_diagnostic(diagnostic, "setter_returned")
     return True
 
 

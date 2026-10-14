@@ -30,7 +30,7 @@ uv run --no-project --python 3.13 python nvda-addon/build.py
 ```
 
 The standard-library builder writes
-`nvda-addon/dist/linuxRdAccess-20261013.0.6.nvda-addon`. It is reproducible and
+`nvda-addon/dist/linuxRdAccess-20261014.0.1.nvda-addon`. It is reproducible and
 includes Python source, documentation, attribution and the full upstream
 license. `buildVars.py` is the source of add-on metadata; `--version` can override
 the three-component numeric development version.
@@ -41,9 +41,13 @@ source for both the launcher and companion. The build packages those files
 verbatim into the add-on. Do not create another copy in `addon/`.
 The existing discovery filename and protocol remain compatible with the launcher
 and previously reviewed RDAccess test endpoints for version 1 operations.
-The optional diagnostic read uses an argument-free version 2 operation; older
+The legacy diagnostic read uses an argument-free version 2 operation; older
 endpoints reject it, and the launcher reports unavailable/unsupported after a
 read-only status check.
+Build **20261014.0.1** adds the argument-free version 3 `braille_outcomes` read,
+available as `nvda-braille-outcomes`. Versions 1 and 2 are unchanged. The same
+unchecked diagnostics checkbox enables two independent ledgers of at most
+twelve records each; each ledger discloses its own drops and clears with consent.
 
 ## Install and migrate
 
@@ -94,12 +98,21 @@ Linux test discovery does not import this separate test environment.
 
 ## Acceptance status
 
-Build **20261013.0.6** retains .5's guarded queued-message routing and adds an
+Build **20261014.0.1** adds diagnostics only: stock out-of-buffer no-ops,
+activation/caret attempts, send return/failure, message dismissal, discarded
+message routes and unknown outcomes. It does not change routing policy.
+The package is prepared for review, **not installed or physically accepted**.
+Linux reason logging separately requires controller v121 and the updated adapter,
+model and diagnostic helper. See the
+[outcome audit and single-gesture test](../docs/compatibility-audit-2026-10-14-routing-outcomes.md).
+
+Build **20261013.0.6** retained .5's guarded queued-message routing and added an
 unchecked **Record numeric braille routing diagnostics (no text)** consent
 option. It records at most twelve in-memory routing/message events and clears
 them at the consent boundary. Read with `nvda-braille-trace`; this command cannot
-enable collection or send input. The diagnostic package is prepared for review,
-not installed or physically accepted. See the
+enable collection or send input. The user installed .6; its fourteen packaged
+Python files matched disk in the earlier follow-up. Its mixed navigation trace
+does not establish isolated routing or message acceptance. See the
 [follow-up audit](../docs/compatibility-audit-2026-10-13-caret-trace.md).
 
 The user installed **20261013.0.5**; all thirteen packaged Python files matched

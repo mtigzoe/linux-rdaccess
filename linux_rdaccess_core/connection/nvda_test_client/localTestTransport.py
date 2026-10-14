@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from .localTestIpc import decodeJson, encodeJson, sanitizeStatus, validatePipeAddress
-from .localTestRoutingTrace import sanitizeRoutingTrace
+from .localTestRoutingTrace import sanitizeRoutingOutcomes, sanitizeRoutingTrace
 
 _ACTIONS = frozenset({"status", "connect", "cancel"})
 _RESULTS = frozenset(
@@ -46,6 +46,7 @@ def validateOperation(request: Any) -> str:
 		or not (
 			(request["version"] == 1 and request["action"] in _ACTIONS)
 			or (request["version"] == 2 and request["action"] == "braille_trace")
+			or (request["version"] == 3 and request["action"] == "braille_outcomes")
 		)
 	):
 		raise ValueError("Invalid local test operation")
@@ -68,6 +69,19 @@ def sanitizeTraceReply(reply: Any) -> dict[str, Any]:
 		raise ValueError("Invalid routing trace response")
 	base = sanitizeReply({"result": reply["result"], "status": reply["status"]})
 	return {**base, "braille_trace": sanitizeRoutingTrace(reply["braille_trace"])}
+
+
+def sanitizeOutcomesReply(reply: Any) -> dict[str, Any]:
+	if type(reply) is not dict or set(reply) != {"result", "status", "braille_outcomes"}:
+		raise ValueError("Invalid routing outcomes response")
+	base = sanitizeReply({"result": reply["result"], "status": reply["status"]})
+	return {**base, "braille_outcomes": sanitizeRoutingOutcomes(reply["braille_outcomes"])}
+
+
+def _replySanitizer(action: str):
+	if action == "braille_outcomes":
+		return sanitizeOutcomesReply
+	return sanitizeTraceReply if action == "braille_trace" else sanitizeReply
 
 
 def _nonce(value: Any) -> str:
@@ -113,7 +127,7 @@ def request(
 ) -> dict[str, Any]:
 	validatePipeAddress(address)
 	_key(key)
-	operation = {"version": 2 if action == "braille_trace" else 1, "action": action}
+	operation = {"version": {"braille_trace": 2, "braille_outcomes": 3}.get(action, 1), "action": action}
 	validateOperation(operation)
 	from .localTestWindows import Pipe
 
@@ -131,7 +145,7 @@ def request(
 			reply["challenge"] != payload["challenge"] or reply["nonce"] != nonce
 		):
 			raise PermissionError("Local test response does not match request")
-		sanitize = sanitizeTraceReply if action == "braille_trace" else sanitizeReply
+		sanitize = _replySanitizer(action)
 		response = sanitize(reply["response"])
 		# DisconnectNamedPipe discards unread response bytes. A bounded ACK
 		# proves the client drained them without a blocking FlushFileBuffers.
@@ -156,7 +170,7 @@ def serveConnection(
 	action = validateOperation(payload["request"])
 	if cancelled.is_set():
 		raise CancelledError("Local test session revoked")
-	sanitize = sanitizeTraceReply if action == "braille_trace" else sanitizeReply
+	sanitize = _replySanitizer(action)
 	response = sanitize(callback(action))
 	if cancelled.is_set():
 		raise CancelledError("Local test session revoked")

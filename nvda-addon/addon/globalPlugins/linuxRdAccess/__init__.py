@@ -71,6 +71,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._testSessionPermitted,
 			self._notifyLocalTestSession,
 			routingTrace=self.getLocalRoutingTrace,
+			routingOutcomes=self.getLocalRoutingOutcomes,
 		)
 		assert gui.mainFrame is not None
 		tray = gui.mainFrame.sysTrayIcon
@@ -188,6 +189,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def getLocalRoutingTrace(self):
 		return self._routingTrace.snapshot()
+
+	def getLocalRoutingOutcomes(self):
+		return self._routingTrace.snapshotOutcomes()
 
 	def handleLocalTestRequest(self, request):
 		localTestRequest.validateRequest(request)

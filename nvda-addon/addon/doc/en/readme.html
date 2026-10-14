@@ -34,10 +34,20 @@ authorization ends. Text, object/gesture identifiers and ordinary typing are
 not recorded. Read the trace with
 <code>python linux_rdaccess_test_session.py nvda-braille-trace</code>.
 Collection requires the checkbox; the read command cannot enable it.</p>
+<p>Build 20261014.0.1 adds a separate outcome ledger, read with
+<code>python linux_rdaccess_test_session.py nvda-braille-outcomes</code>.
+The same unchecked diagnostics option enables both ledgers, each limited to
+twelve records with independent dropped counts. Both clear when consent ends.
+Version 1 and 2 operations remain unchanged; the outcome read uses version 3.
+An activation/caret attempt or a successful send call does not establish a
+Linux caret movement. Unknown/custom routing remains explicitly unknown.</p>
 <h2>Validation limits</h2>
-<p>Build 20261013.0.6 retains the .5 queued-message routing fix and adds
-automated-tested diagnostics. It is prepared for review and has not been
-installed or physically tested. The user installed .5; its thirteen packaged
+<p>Build 20261014.0.1 adds diagnostics without changing routing policy.
+It is prepared for review and has not been installed or physically tested.
+The user previously installed .6; its fourteen Python files matched disk.
+Its mixed routing trace does not establish physical message acceptance.</p>
+<p>Build 20261013.0.6 retained the .5 queued-message routing fix and added
+automated-tested diagnostics. The user installed .5; its thirteen packaged
 Python files matched the installed files. A later two-press message check
 reported line restoration but recorded Linux caret movement from 20 to 7.
 The exact cause, including the earlier .4 movement from 6 to 9, remains

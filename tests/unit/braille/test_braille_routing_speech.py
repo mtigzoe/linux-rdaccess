@@ -1,9 +1,9 @@
 """Braille routing and return-to-focus must interrupt remote Say All."""
 
-from pathlib import Path
 import sys
-from types import MethodType, ModuleType, SimpleNamespace
 import unittest
+from pathlib import Path
+from types import MethodType, ModuleType, SimpleNamespace
 from unittest import mock
 
 import orca_adapter
@@ -686,6 +686,80 @@ class BrailleRoutingSpeechTests(Harness, unittest.TestCase):
                 self.drain_main(queue)
                 c.local_machine.cancel_speech.assert_not_called()
                 self.assertEqual(c.transport.sent, [])
+
+
+    def test_semantic_rejection_log_contains_only_fixed_reason(self):
+        c, _, _, _, _, _, _, text, queue, _, focus_id = self.make_semantic()
+        text.setCaretOffset.side_effect = lambda offset: False
+        log = c._linux_rdaccess_semantic_caret.__func__.__globals__["log"]
+        with mock.patch.object(log, "error") as error:
+            self.semantic_route(c, focus_id)
+            self.drain_main(queue)
+        error.assert_called_once_with("linux-rdaccess: semantic caret rejected reason=%s", "provider_refused")
+        self.assertNotIn(focus_id, str(error.call_args_list))
+        text.setCaretOffset.assert_called_once_with(9)
+
+    def test_stale_semantic_session_reports_without_cancelling_or_writing(self):
+        c, _, _, _, _, _, _, text, queue, _, focus_id = self.make_semantic()
+        log = c._linux_rdaccess_semantic_caret.__func__.__globals__["log"]
+        self.semantic_route(c, focus_id)
+        c.transport.connected = False
+        with mock.patch.object(log, "debug") as debug:
+            self.drain_main(queue)
+        self.assertIn(mock.call("linux-rdaccess: semantic caret outcome=%s", "stale_session"), debug.call_args_list)
+        text.setCaretOffset.assert_not_called()
+        c.local_machine.cancel_speech.assert_not_called()
+
+    def test_input_help_reason_does_not_claim_a_caret_write(self):
+        c, _, _, _, state, script, _, text, queue, _, focus_id = self.make_semantic()
+        state.learnModeEnabled = True
+        script.presentMessage = mock.Mock()
+        log = c._linux_rdaccess_semantic_caret.__func__.__globals__["log"]
+        with mock.patch.object(log, "debug") as debug:
+            self.semantic_route(c, focus_id)
+            self.drain_main(queue)
+        self.assertIn(mock.call("linux-rdaccess: semantic caret outcome=%s", "input_help"), debug.call_args_list)
+        text.setCaretOffset.assert_not_called()
+
+    def test_older_adapter_without_diagnostic_capability_is_not_retried(self):
+        c, _, _, _, _, _, _, _, queue, _, focus_id = self.make_semantic()
+        with mock.patch.object(orca_adapter.OrcaRuntimeAdapter, "CARET_DIAGNOSTICS_VERSION", 0):
+            with mock.patch.object(orca_adapter.OrcaRuntimeAdapter, "set_semantic_caret", return_value=True) as setter:
+                self.semantic_route(c, focus_id)
+                self.drain_main(queue)
+        setter.assert_called_once()
+        self.assertNotIn("diagnostic", setter.call_args.kwargs)
+
+    def test_missing_optional_reason_module_preserves_controller_routing(self):
+        for accepted in (True, False):
+            with self.subTest(accepted=accepted):
+                c, _, _, _, _, _, _, text, queue, _, focus_id = self.make_semantic()
+                text.setCaretOffset.side_effect = lambda offset: accepted
+                log = c._linux_rdaccess_semantic_caret.__func__.__globals__["log"]
+                with mock.patch.dict(sys.modules, {"linux_rdaccess_core.caret_diagnostics": None,
+                                                  "linux_rdaccess_caret_diagnostics": None}):
+                    with mock.patch.object(log, "error") as error:
+                        self.semantic_route(c, focus_id)
+                        self.drain_main(queue)
+                text.setCaretOffset.assert_called_once_with(9)
+                c.local_machine.cancel_speech.assert_called_once_with()
+                if accepted:
+                    error.assert_not_called()
+                else:
+                    error.assert_called_once_with("linux-rdaccess: semantic caret rejected")
+
+    def test_faulty_optional_diagnostic_module_and_logger_do_not_retry(self):
+        c, _, _, _, _, _, _, text, queue, _, focus_id = self.make_semantic()
+        text.setCaretOffset.side_effect = lambda offset: False
+        broken = ModuleType("linux_rdaccess_caret_diagnostics")
+        broken.CaretReason = lambda value: object()
+        log = c._linux_rdaccess_semantic_caret.__func__.__globals__["log"]
+        with mock.patch.dict(sys.modules, {"linux_rdaccess_caret_diagnostics": broken}):
+            with mock.patch.object(log, "error", side_effect=RuntimeError("PRIVATE")):
+                self.semantic_route(c, focus_id)
+                self.drain_main(queue)
+        text.setCaretOffset.assert_called_once_with(9)
+        c.local_machine.cancel_speech.assert_called_once_with()
 
 
 if __name__ == "__main__":
