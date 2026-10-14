@@ -10,6 +10,9 @@ on:
       - 'tests/unit/accessibility/test_real_gui_diagnostics.py'
       - 'tests/integration/x11/test_routing_observer.py'
       - 'diagnostics/atspi/observe_routing.py'
+      - 'diagnostics/atspi/simulate_routing.py'
+      - 'tests/unit/test_routing_simulator.py'
+      - 'tests/integration/x11/test_routing_simulator.py'
       - 'linux_rdaccess_core/**'
       - 'a11y_model.py'
   push:
@@ -21,6 +24,9 @@ on:
       - 'tests/unit/accessibility/test_real_gui_diagnostics.py'
       - 'tests/integration/x11/test_routing_observer.py'
       - 'diagnostics/atspi/observe_routing.py'
+      - 'diagnostics/atspi/simulate_routing.py'
+      - 'tests/unit/test_routing_simulator.py'
+      - 'tests/integration/x11/test_routing_simulator.py'
       - 'linux_rdaccess_core/**'
       - 'a11y_model.py'
   workflow_dispatch:
@@ -61,6 +67,7 @@ jobs:
         run: |
           python3 -m py_compile tools/diagnostics/gtk_atspi_smoke.py tools/diagnostics/real_gui_atspi_smoke.py
           python3 -m unittest tests.unit.accessibility.test_real_gui_diagnostics -v
+          python3 -m unittest tests.unit.test_routing_simulator tests.unit.test_routing_observer -v
       - name: Run GTK controls and AT-SPI semantic event checks
         run: |
           timeout 180s python3 tools/diagnostics/gtk_atspi_smoke.py
@@ -90,6 +97,12 @@ jobs:
               )
               raise SystemExit(result.returncode)
           PY
+      - name: Simulate one caret route in a separate private session
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 tools/diagnostics/run_routing_simulation.py 2>&1 | tee routing-simulation.log
       - name: Preserve real application accessibility results
         if: always()
         uses: actions/upload-artifact@v4
@@ -98,4 +111,5 @@ jobs:
           path: |
             real-gui-atspi.log
             routing-observer.log
+            routing-simulation.log
           if-no-files-found: ignore

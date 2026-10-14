@@ -6,6 +6,7 @@ import math
 import time
 
 APPLICATIONS = {
+    "gtk-fixture": ("accessibility_smoke_app.py",),
     "firefox": ("firefox",),
     "mousepad": ("mousepad",),
     "terminal": ("gnome-terminal-server", "xfce4-terminal"),
