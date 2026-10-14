@@ -5,16 +5,16 @@ from __future__ import annotations
 
 import argparse
 import ast
-from dataclasses import asdict, dataclass
 import json
 import os
-from pathlib import Path
 import re
 import secrets
 import shutil
 import sys
 import tempfile
 import textwrap
+from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Literal
 
 from ..installation.files import orca_runtime_sources
@@ -2000,7 +2000,7 @@ def update_legacy_orca_customizations(
     if transport_path.exists():
         try:
             _patch_legacy_transport_logging(transport_path)
-        except (ValueError, OSError) as exc:
+        except (ValueError, OSError):
             print("warning: transport logging patch not applied; repair required", file=sys.stderr)
 
     callback_path = path.parent / "orca-scripts" / "callback_manager.py"
@@ -2029,11 +2029,14 @@ def update_legacy_orca_customizations(
         model_target = remote_controller.parent / "linux_rdaccess_a11y_model.py"
         if model_source.exists():
             shutil.copy2(model_source, model_target)
+        diagnostic_source = orca_runtime_sources()["caret_diagnostics"]
+        if diagnostic_source.exists():
+            shutil.copy2(diagnostic_source, remote_controller.parent / "linux_rdaccess_caret_diagnostics.py")
         # The input shim is an enhancement: a changed upstream layout must not
         # stop the connection settings above from being applied.
         try:
             patch_legacy_orca_remote_controller(remote_controller)
-        except (ValueError, OSError) as exc:
+        except (ValueError, OSError):
             print(
                 "warning: NVDA input compatibility patch not applied; repair required",
                 file=sys.stderr,
@@ -2042,7 +2045,7 @@ def update_legacy_orca_customizations(
     if local_machine.exists():
         try:
             patch_legacy_orca_local_machine(local_machine)
-        except (ValueError, OSError) as exc:
+        except (ValueError, OSError):
             print(
                 "warning: low-latency key injection patch not applied; repair required",
                 file=sys.stderr,
@@ -2175,7 +2178,8 @@ LEGACY_COMPAT_MARKER_V116 = "# linux-rdaccess NVDA/Orca input compatibility v116
 LEGACY_COMPAT_MARKER_V117 = "# linux-rdaccess NVDA/Orca input compatibility v117"
 LEGACY_COMPAT_MARKER_V118 = "# linux-rdaccess NVDA/Orca input compatibility v118"
 LEGACY_COMPAT_MARKER_V119 = "# linux-rdaccess NVDA/Orca input compatibility v119"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v120"
+LEGACY_COMPAT_MARKER_V120 = "# linux-rdaccess NVDA/Orca input compatibility v120"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v121"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -4060,36 +4064,85 @@ _LEGACY_HELPERS = '''\
     def _linux_rdaccess_semantic_caret(
             self, version=None, object_id=None, offset=None, **kwargs):
         """Move the current semantic text caret using NVDA braille coordinates."""
+        reason = "unknown"
+
+        def observe(value):
+            nonlocal reason
+            if isinstance(value, str):
+                reason = getattr(value, "value", value)
+
         if (not getattr(self, "_lrd_nvda_native_braille", False)
                 or version != self._LRD_NATIVE_BRAILLE_VERSION):
+            value = "invalid_version" if getattr(self, "_lrd_nvda_native_braille", False) else "semantic_unavailable"
+            self._linux_rdaccess_caret_diagnostic(value)
             return
         if (not isinstance(object_id, str) or not object_id or len(object_id) > 256
                 or type(offset) is not int or not 0 <= offset <= 8192):
+            value = "invalid_offset" if type(offset) is not int or not 0 <= offset <= 8192 else "invalid_object"
+            self._linux_rdaccess_caret_diagnostic(value)
             return
         try:
             from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as _adapter
             context = _adapter.semantic_focus_context()
         except Exception:
+            self._linux_rdaccess_caret_diagnostic("adapter_error")
             return
         if context is None:
+            self._linux_rdaccess_caret_diagnostic("no_context")
             return
         received_help = _lrd_learn_mode_enabled()
+        diagnostics = {"diagnostic": observe} if getattr(_adapter, "CARET_DIAGNOSTICS_VERSION", 0) == 1 else {}
 
         def set_caret():
             try:
                 if self._linux_rdaccess_semantic_braille_help(
-                        object_id, context, received_help):
+                        object_id, context, received_help, **diagnostics):
+                    self._linux_rdaccess_caret_diagnostic(reason)
                     return
                 if not _adapter.set_semantic_caret(
                         object_id, offset, expected_context=context,
-                        before_route=lambda: self._linux_rdaccess_stop_braille_speech(routing=True)):
-                    log.error("linux-rdaccess: semantic caret rejected")
+                        before_route=lambda: self._linux_rdaccess_stop_braille_speech(routing=True),
+                        **diagnostics):
+                    self._linux_rdaccess_caret_diagnostic(reason, failure="rejected")
             except Exception:
-                log.error("linux-rdaccess: semantic caret failed")
+                self._linux_rdaccess_caret_diagnostic("adapter_error", failure="failed")
 
-        self._linux_rdaccess_run_main(set_caret)
+        if self._linux_rdaccess_run_main(set_caret, on_stale=lambda:
+                self._linux_rdaccess_caret_diagnostic("stale_session")) is False:
+            self._linux_rdaccess_caret_diagnostic("schedule_failed")
 
-    def _linux_rdaccess_semantic_braille_help(self, object_id, context, received_help):
+    def _linux_rdaccess_caret_diagnostic(self, value, *, failure=None):
+        # Validate through the fixed enum immediately before logging. Missing
+        # optional diagnostics or a failing logger cannot change input handling.
+        try:
+            try:
+                from linux_rdaccess_caret_diagnostics import CaretReason
+            except ImportError:
+                from linux_rdaccess_core.caret_diagnostics import CaretReason
+        except Exception:
+            try:
+                if failure == "rejected":
+                    log.error("linux-rdaccess: semantic caret rejected")
+                elif failure == "failed":
+                    log.error("linux-rdaccess: semantic caret failed")
+            except Exception:
+                pass
+            return
+        try:
+            value = CaretReason(value).value
+        except Exception:
+            value = "unknown"
+        try:
+            if failure == "rejected":
+                log.error("linux-rdaccess: semantic caret rejected reason=%s", value)
+            elif failure == "failed":
+                log.error("linux-rdaccess: semantic caret failed reason=%s", value)
+            else:
+                log.debug("linux-rdaccess: semantic caret outcome=%s", value)
+        except Exception:
+            pass
+
+    def _linux_rdaccess_semantic_braille_help(self, object_id, context, received_help, diagnostic=None):
         """Consume semantic routing help before any AT-SPI action or caret write."""
         help_now = _lrd_learn_mode_enabled()
         if not (received_help or help_now):
@@ -4097,7 +4150,8 @@ _LEGACY_HELPERS = '''\
         from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter as adapter
         # Help belongs to the same presentation as the action it replaces.
         # Validate on Orca's main loop before cancelling speech or presenting.
-        if adapter._semantic_target(object_id, context) is None:
+        options = {"diagnostic": diagnostic} if diagnostic is not None and getattr(adapter, "CARET_DIAGNOSTICS_VERSION", 0) == 1 else {}
+        if adapter._semantic_target(object_id, context, **options) is None:
             return True
         script = adapter.active_script()
         handler = _lrd_browse_help_handler(script, "processRoutingKeyHandler")
@@ -4113,6 +4167,15 @@ _LEGACY_HELPERS = '''\
                 # Say All cancellation placement instead of expiring its route.
                 self._linux_rdaccess_stop_braille_speech()
                 present(description)
+        if diagnostic is not None:
+            # The adapter's optional reporter validates the enum and contains
+            # callback/import failures; absence leaves the result unclassified.
+            reporter = getattr(adapter, "report_caret_diagnostic", None)
+            if callable(reporter):
+                try:
+                    reporter(diagnostic, "input_help")
+                except Exception:
+                    pass
         return True
 
     def _linux_rdaccess_handle_braille_info(self, num_cells):
@@ -4319,7 +4382,7 @@ _LEGACY_HELPERS = '''\
         except OSError:
             pass
 
-    def _linux_rdaccess_run_main(self, func):
+    def _linux_rdaccess_run_main(self, func, *, on_stale=None):
         self._linux_rdaccess_sync_state()
         generation = getattr(self, "_lrd_generation", 0)
         self._lrd_trace_scheduled = ticket = getattr(self, "_lrd_trace_scheduled", 0) + 1
@@ -4339,6 +4402,11 @@ _LEGACY_HELPERS = '''\
             else:
                 self._linux_rdaccess_trace(
                     "main", ticket=ticket, state="stale_skipped", sched_gen=generation)
+                if on_stale is not None:
+                    try:
+                        on_stale()
+                    except Exception:
+                        pass
             return False
 
         try:

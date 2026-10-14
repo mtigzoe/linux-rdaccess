@@ -183,6 +183,33 @@ class WindowsTransportTests(unittest.TestCase):
 		remote.cancel.assert_not_called()
 		self.assertEqual(set(self.call(address, key, "status")), {"result", "status"})
 
+	def test_real_outcomes_read_is_authenticated_main_thread_and_read_only(self):
+		from . import test_localTestRoutingTrace as routingTests
+
+		recorder = routingTests.trace.RoutingTraceRecorder(self.session.active)
+
+		def snapshot():
+			self.assertIs(threading.current_thread(), threading.main_thread())
+			return recorder.snapshotOutcomes()
+
+		self.service._routingOutcomes = snapshot
+		remote = mock.Mock()
+		remote.state.return_value = "connected"
+		address, key = self.start(allowConnect=True, remote=remote)
+		self.assertFalse(self.call(address, key, "braille_outcomes")["braille_outcomes"]["available"])
+		recorder.start(enabled=True)
+		recorder.recordOutcome("outside_buffer", **routingTests.fields())
+		self.assertEqual(
+			self.call(address, key, "braille_outcomes")["braille_outcomes"]["events"][0]["event"],
+			"outside_buffer",
+		)
+		remote.connect.assert_not_called()
+		remote.cancel.assert_not_called()
+		self.service._routingOutcomes = lambda: {"text": "PRIVATE"}
+		with self.assertRaises((OSError, EOFError)):
+			self.call(address, key, "braille_outcomes")
+		self.assertEqual(set(self.call(address, key, "status")), {"result", "status"})
+
 	def test_real_trace_snapshot_runs_on_main_thread_and_cannot_expose_text(self):
 		from . import test_localTestRoutingTrace as routingTests
 

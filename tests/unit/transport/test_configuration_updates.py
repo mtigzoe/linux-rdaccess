@@ -1,13 +1,13 @@
 """Regression tests for safe configuration updates and installation."""
 from __future__ import annotations
 
-from pathlib import Path
-import os
 import contextlib
 import io
 import logging
+import os
 import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 import linux_rdaccess
@@ -152,6 +152,18 @@ def private_fallback(text):
             self.assertEqual(
                 dict(linux_rdaccess.patch_status(path)).get(label), 'outdated - run: linux-rdaccess connect')
             model.write_text((Path(linux_rdaccess.__file__).parent / 'accessibility/a11y_model.py').read_text())
+            self.assertEqual(dict(linux_rdaccess.patch_status(path)).get(label), 'current')
+
+    def test_doctor_reports_the_installed_caret_diagnostic_helper(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'orca-customizations.py'
+            helper = path.parent / 'orca-scripts/linux_rdaccess_caret_diagnostics.py'
+            label = 'Caret diagnostics (linux_rdaccess_caret_diagnostics.py)'
+            self.assertEqual(dict(linux_rdaccess.patch_status(path)).get(label), 'missing')
+            helper.parent.mkdir()
+            helper.write_text('# stale helper\n')
+            self.assertEqual(dict(linux_rdaccess.patch_status(path)).get(label), 'outdated - run: linux-rdaccess connect')
+            helper.write_text((Path(linux_rdaccess.__file__).parent / 'caret_diagnostics.py').read_text())
             self.assertEqual(dict(linux_rdaccess.patch_status(path)).get(label), 'current')
 
     def test_connection_update_removes_transport_constructor_channel_log(self):

@@ -86,8 +86,14 @@ class RemoteA11yTextInfo(NVDAObjects.NVDAObjectTextInfo):
 			or type(offset) is not int
 			or not 0 <= offset <= len(obj._node.text)
 		):
+			obj._observeRouting("caret_rejected")
 			raise NotImplementedError
+		obj._observeRouting("caret_attempted", offset=offset)
 		obj._caretSender(obj._node.nodeId, offset)
+
+	def activate(self):
+		self._remoteObj._observeRouting("activation_attempted")
+		return super().activate()
 
 	def allowMoveToUnitOffsetPastEnd(self, unit: str) -> bool:  # noqa: ARG002
 		return self._remoteObj._node.textSupported
@@ -109,6 +115,7 @@ class RemoteA11yObject(NVDAObjects.NVDAObject):
 		objectMap: dict[str, RemoteA11yObject],
 		actionSender: typing.Callable[[str, int], None],
 		caretSender: typing.Callable[[str, int], None] | None = None,
+		routingObserver: typing.Callable[..., None] | None = None,
 		session: int = 0,
 	):
 		super().__init__()
@@ -119,8 +126,16 @@ class RemoteA11yObject(NVDAObjects.NVDAObject):
 		self._objectMap = objectMap
 		self._actionSender = actionSender
 		self._caretSender = caretSender
+		self._routingObserver = routingObserver
 		self.remoteBounds = node.bounds
 		self.remoteTextTruncated = node.textTruncated
+
+	def _observeRouting(self, event, **fields):
+		try:
+			if self._routingObserver is not None:
+				self._routingObserver(event, **fields)
+		except Exception:
+			pass
 
 	def _get_processID(self) -> int:
 		return self._remoteProcessID
@@ -232,6 +247,7 @@ class RemoteA11yObject(NVDAObjects.NVDAObject):
 
 	def doAction(self, index=None):
 		actionIndex = self._normalizeActionIndex(index)
+		self._observeRouting("activation_attempted")
 		self._actionSender(self._node.nodeId, actionIndex)
 
 	def _get_location(self):

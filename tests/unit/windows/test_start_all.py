@@ -122,3 +122,17 @@ class StartAllTests(unittest.TestCase):
         self.assertEqual(result["routing_trace"], "unavailable_or_unsupported")
         self.assertEqual(client.operation.call_args_list, [mock.call("braille_trace"), mock.call("status")])
         self.assertNotIn("PRIVATE", json.dumps(result))
+
+    def test_outcomes_cli_and_unsupported_endpoint_are_read_only(self):
+        with mock.patch.object(orchestration, "windows_operation", return_value=({}, 0)) as operation:
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(launcher.main(["nvda-braille-outcomes"]), 0)
+            operation.assert_called_once_with("braille_outcomes", None)
+        client = mock.Mock()
+        client.operation.side_effect = [EOFError("PRIVATE"), reply("connected")]
+        with mock.patch.object(orchestration, "AuthorizedClient", return_value=client):
+            result, code = orchestration.windows_operation("braille_outcomes")
+        self.assertEqual(code, 2)
+        self.assertEqual(result["windows_authorization"], "active")
+        self.assertEqual(client.operation.call_args_list, [mock.call("braille_outcomes"), mock.call("status")])
+        self.assertNotIn("PRIVATE", json.dumps(result))

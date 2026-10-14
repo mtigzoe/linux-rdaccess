@@ -45,24 +45,39 @@ import linux_rdaccess_orca_adapter as adapter
 assert "a11y_model" not in sys.modules
 payload = adapter.OrcaRuntimeAdapter.semantic_focus_payload()
 names = {} if payload is None else {o["id"]: o["name"] for o in payload["objects"]}
-print(json.dumps({"ok": payload is not None, "focus": names.get(payload and payload["focus_id"])}))
+orca_state.locusOfFocus.get_text_iface = lambda: types.SimpleNamespace(
+    get_character_count=lambda: 3, set_caret_offset=lambda offset: True)
+reasons = []
+caret_result = adapter.OrcaRuntimeAdapter.set_semantic_caret(payload["focus_id"], 1, diagnostic=reasons.append)
+print(json.dumps({"ok": payload is not None, "focus": names.get(payload and payload["focus_id"]),
+                  "caret_result": caret_result, "caret_reasons": [reason.value for reason in reasons]}))
 '''
 
 
 class InstalledLayoutTests(unittest.TestCase):
-    def test_installed_adapter_finds_its_renamed_model(self):
+    def probe(self, *, helper=True):
         with tempfile.TemporaryDirectory() as directory:
             scripts = Path(directory)
-            # Exactly the two files update_legacy_orca_customizations installs.
+            # Standalone runtime files, with no repository package on sys.path.
             shutil.copy2(ROOT / "linux_rdaccess_core/accessibility/orca_adapter.py", scripts / "linux_rdaccess_orca_adapter.py")
             shutil.copy2(ROOT / "linux_rdaccess_core/accessibility/a11y_model.py", scripts / "linux_rdaccess_a11y_model.py")
+            if helper:
+                shutil.copy2(ROOT / "linux_rdaccess_core/caret_diagnostics.py", scripts / "linux_rdaccess_caret_diagnostics.py")
             result = subprocess.run(
                 [sys.executable, "-c", PROBE],
                 cwd=scripts, capture_output=True, text=True, timeout=30,
                 env={"PATH": "/usr/bin:/bin", "PYTHONPATH": ""},
             )
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(json.loads(result.stdout), {"ok": True, "focus": "Apply changes"})
+            return json.loads(result.stdout)
+
+    def test_installed_adapter_finds_its_renamed_model(self):
+        self.assertEqual(self.probe(), {"ok": True, "focus": "Apply changes",
+                         "caret_result": True, "caret_reasons": ["setter_returned"]})
+
+    def test_missing_optional_helper_preserves_standalone_caret_behavior(self):
+        self.assertEqual(self.probe(helper=False), {"ok": True, "focus": "Apply changes",
+                         "caret_result": True, "caret_reasons": []})
 
 
 if __name__ == "__main__":

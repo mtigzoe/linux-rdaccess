@@ -4,11 +4,10 @@ Kept independent of the command-line entry point to avoid circular imports.
 """
 from __future__ import annotations
 
-from pathlib import Path
-import shutil
 import shlex
+import shutil
 import sys
-
+from pathlib import Path
 
 RUNTIME_FILES = (
     "linux_rdaccess.py", "remote_access.py", "nvda_remote_check.py",
@@ -18,7 +17,7 @@ RUNTIME_FILES = (
 )
 
 RUNTIME_PACKAGE_FILES = (
-    "__init__.py", "cli.py",
+    "__init__.py", "cli.py", "caret_diagnostics.py",
     "accessibility/__init__.py", "accessibility/announcer.py",
     "accessibility/a11y_model.py", "accessibility/orca_adapter.py",
     "accessibility/atspi_nvda_bridge.py", "accessibility/atspi_nvda_braille_bridge.py",
@@ -39,7 +38,8 @@ def source_bundle_root() -> Path:
 def orca_runtime_sources() -> dict[str, Path]:
     """The standalone implementations Orca loads under its historical filenames."""
     directory = Path(__file__).resolve().parents[1] / "accessibility"
-    return {name: directory / f"{name}.py" for name in ("orca_adapter", "a11y_model")}
+    return {**{name: directory / f"{name}.py" for name in ("orca_adapter", "a11y_model")},
+            "caret_diagnostics": directory.parent / "caret_diagnostics.py"}
 
 
 def install_runtime_files(source_dir: Path, *, share_dir: Path, bin_path: Path) -> None:

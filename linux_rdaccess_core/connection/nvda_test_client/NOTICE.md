@@ -17,3 +17,4 @@ consented RDAccess endpoints. See
 `localTestRoutingTrace.py` is an additional project-authored GPL-2.0-or-later
 module, packaged verbatim by the companion builder. Its optional diagnostic
 read is explicitly versioned separately from the original version 1 operations.
+Its legacy event read remains version 2; the separate outcome read is version 3.

@@ -82,6 +82,18 @@ semantic send call returned, not that Linux applied it. Raw delegated routes,
 other add-ons' key emulation and native Orca speech-cancellation writes still
 need separate evidence. See the [follow-up audit](compatibility-audit-2026-10-13-caret-trace.md).
 
+Companion **20261014.0.1** adds `nvda-braille-outcomes`, an argument-free version 3
+read under the same optional diagnostic consent. It returns a separate ledger
+of at most twelve records, with its own `dropped` count. The version 2 trace and
+version 1 operations retain their exact schemas. Both ledgers clear together;
+neither read can enable, extend or reset collection. The new ledger distinguishes
+observed native no-ops, activation/caret attempts, send return/failure, logical
+message dismissal, discarded message routes and unknown outcomes. Neither an
+attempt nor a send return proves Linux application. See the
+[outcome audit](compatibility-audit-2026-10-14-routing-outcomes.md) for the enum
+definitions and a one-gesture physical test. Read both ledgers promptly before
+expiry; never repeat a physical press to fill missing or dropped diagnostics.
+
 For bounded live input checks, prepare the read-only observer and select a safe
 Windows input target before asking for fresh consent. Recheck `nvda-status`
 immediately before input: authorization must be active, the transport connected,

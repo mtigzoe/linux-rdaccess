@@ -15,7 +15,7 @@ def windows_operation(action: str, path: Path | None = None) -> tuple[dict, int]
         client = AuthorizedClient(path)
         reply = client.operation(action)
     except (OSError, ValueError, ImportError, EOFError, TimeoutError):
-        if action == "braille_trace" and client is not None:
+        if action in ("braille_trace", "braille_outcomes") and client is not None:
             try:
                 status = client.operation("status")
             except (OSError, ValueError, ImportError, EOFError, TimeoutError):

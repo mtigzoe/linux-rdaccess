@@ -16,8 +16,6 @@ from types import SimpleNamespace
 from typing import Any, Callable, Iterable
 
 
-
-
 def _a11y_model():
     """Use the package model, or its standalone copy in Orca's scripts directory."""
     if __package__:
@@ -25,6 +23,14 @@ def _a11y_model():
     else:
         import linux_rdaccess_a11y_model as a11y_model
     return a11y_model
+
+
+def _report_caret_diagnostic(diagnostic, value: str) -> None:
+    if diagnostic is not None:
+        try:
+            _a11y_model()._report_caret_diagnostic(diagnostic, value)
+        except Exception:
+            pass
 
 
 ELEMENT_LIST_TYPES = (
@@ -182,7 +188,12 @@ def _show_guarded_structural_list(
 class OrcaRuntimeAdapter:
     """Resolve and invoke the active Orca script without owning Orca state."""
 
+    CARET_DIAGNOSTICS_VERSION = 1
     MAX_BRAILLE_MESSAGE_LENGTH = 256
+
+    @staticmethod
+    def report_caret_diagnostic(diagnostic, value: str) -> None:
+        _report_caret_diagnostic(diagnostic, value)
 
     @staticmethod
     def sanitize_braille_message(text: Any) -> str | None:
@@ -420,12 +431,13 @@ class OrcaRuntimeAdapter:
         return _REMOTE_SEMANTIC_CONTEXT
 
     @staticmethod
-    def _semantic_target(object_id: str, expected_context: object | None):
+    def _semantic_target(object_id: str, expected_context: object | None, *, diagnostic=None):
         """Validate snapshot and live activation on Orca's main loop before acting."""
         context = _REMOTE_SEMANTIC_CONTEXT
         if (_REMOTE_SEMANTIC_FOCUS_ID is None or context is None
                 or (expected_context is not None
                     and expected_context is not context)):
+            _report_caret_diagnostic(diagnostic, "no_context" if context is None else "stale_context")
             return None
         try:
             from orca import orca_state
@@ -438,9 +450,13 @@ class OrcaRuntimeAdapter:
                 window = getattr(orca_state, "active_window", None)
             if (focus is not None and _a11y_model().object_id(focus) == context[0]
                     and script is context[1] and window == context[2]):
-                return _REMOTE_SEMANTIC_OBJECTS.get(object_id)
+                target = _REMOTE_SEMANTIC_OBJECTS.get(object_id)
+                if target is None:
+                    _report_caret_diagnostic(diagnostic, "unknown_object")
+                return target
+            _report_caret_diagnostic(diagnostic, "stale_focus")
         except Exception:
-            pass
+            _report_caret_diagnostic(diagnostic, "target_unavailable")
         OrcaRuntimeAdapter.clear_semantic_focus()
         return None
 
@@ -464,21 +480,27 @@ class OrcaRuntimeAdapter:
     @staticmethod
     def set_semantic_caret(object_id: str, offset: int, *,
                            expected_context: object | None = None,
-                           before_route: Callable[[], Any] | None = None) -> bool:
+                           before_route: Callable[[], Any] | None = None,
+                           diagnostic=None) -> bool:
         """Route NVDA's semantic text position back to the current AT-SPI object."""
         if not isinstance(object_id, str) or not object_id or len(object_id) > 256:
+            _report_caret_diagnostic(diagnostic, "invalid_object")
             return False
         if type(offset) is not int or not 0 <= offset <= 8192:
+            _report_caret_diagnostic(diagnostic, "invalid_offset")
             return False
-        obj = OrcaRuntimeAdapter._semantic_target(object_id, expected_context)
+        options = {"diagnostic": diagnostic} if diagnostic is not None else {}
+        obj = OrcaRuntimeAdapter._semantic_target(object_id, expected_context, **options)
         if obj is None:
             return False
         try:
             set_caret_offset = _a11y_model().set_caret_offset
+            options = {"diagnostic": diagnostic} if diagnostic is not None else {}
             if before_route is not None:
-                return bool(set_caret_offset(obj, offset, before_action=before_route))
-            return bool(set_caret_offset(obj, offset))
+                return bool(set_caret_offset(obj, offset, before_action=before_route, **options))
+            return bool(set_caret_offset(obj, offset, **options))
         except Exception:
+            _report_caret_diagnostic(diagnostic, "adapter_error")
             return False
 
     @staticmethod
@@ -525,8 +547,8 @@ class OrcaRuntimeAdapter:
         converts its display characters to dot patterns; it preserves both
         those positions and cursor-expanded words.
         """
-        from orca import braille
         import louis
+        from orca import braille
 
         width = braille._displaySize[0]
         if type(width) is not int or not 0 < width <= 1024:

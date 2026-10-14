@@ -7,18 +7,17 @@ import argparse
 import json
 import os
 import re
-from pathlib import Path
 import shutil
 import subprocess
 import sys
-
-from .installation.files import orca_runtime_sources, source_bundle_root
+from pathlib import Path
 
 from .connection.remote_access import (
     CUSTOMIZATION_EVENT_API_MARKER,
     CUSTOMIZATION_RECONNECT_MARKER,
-    CUSTOMIZATION_SPEECH_SEQUENCE_MARKER,
     CUSTOMIZATION_SAY_ALL_CALLBACK_MARKER,
+    CUSTOMIZATION_SPEECH_SEQUENCE_MARKER,
+    DEFAULT_CONFIG,
     LEGACY_COMPAT_MARKER,
     LEGACY_COMPAT_MARKER_V1,
     LEGACY_LOCAL_MACHINE_RELATIVE,
@@ -34,20 +33,20 @@ from .connection.remote_access import (
     TRANSPORT_CLEANUP_MARKER_V5,
     TRANSPORT_CLEANUP_MARKER_V6,
     TRANSPORT_PENDING_CONNECT_MARKER,
-    DEFAULT_CONFIG,
+    _legacy_transport_cleanup_v7_current,
     disable_legacy_orca_connection,
-    load_config,
     legacy_controller_patch_current,
     legacy_customization_event_api_patch_current,
     legacy_customization_reconnect_patch_current,
-    legacy_customization_speech_sequence_patch_current,
     legacy_customization_say_all_callback_patch_current,
+    legacy_customization_speech_sequence_patch_current,
     legacy_local_machine_patch_current,
     legacy_transport_cleanup_patch_current,
-    _legacy_transport_cleanup_v7_current,
+    load_config,
     print_status,
     update_legacy_orca_customizations,
 )
+from .installation.files import orca_runtime_sources, source_bundle_root
 
 APP_NAME = "linux-rdaccess"
 DEFAULT_ORCA_CONFIG = Path("~/.local/share/orca/orca-customizations.py").expanduser()
@@ -463,6 +462,18 @@ def patch_status(orca_config: Path) -> list[tuple[str, str]]:
             expected = orca_runtime_sources()["a11y_model"].read_text(encoding="utf-8")
         except OSError:
             rows.append((label, "unknown - CLI model source missing"))
+        else:
+            rows.append((label, "current" if installed == expected else "outdated - run: linux-rdaccess connect"))
+    label = "Caret diagnostics (linux_rdaccess_caret_diagnostics.py)"
+    try:
+        installed = (base / "orca-scripts/linux_rdaccess_caret_diagnostics.py").read_text(encoding="utf-8")
+    except OSError:
+        rows.append((label, "missing"))
+    else:
+        try:
+            expected = orca_runtime_sources()["caret_diagnostics"].read_text(encoding="utf-8")
+        except OSError:
+            rows.append((label, "unknown - CLI diagnostic source missing"))
         else:
             rows.append((label, "current" if installed == expected else "outdated - run: linux-rdaccess connect"))
     return rows
