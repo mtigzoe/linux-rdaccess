@@ -113,7 +113,7 @@ def launch_nvda(path: str) -> tuple[str, str]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=(
-        "status", "doctor", "start", "launch-nvda", "prepare", "start-all", "nvda-status", "cancel",
+        "status", "doctor", "start", "launch-nvda", "prepare", "start-all", "nvda-status", "nvda-braille-trace", "cancel",
     ))
     parser.add_argument("--session-file", type=Path,
                         help="Optional DPAPI-protected NVDA consent file; never a relay key")
@@ -123,20 +123,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--confirm-launch", action="store_true",
                         help="Explicitly authorize launching NVDA, without connecting its add-on")
     args = parser.parse_args(argv)
-    if args.command in ("start-all", "nvda-status", "cancel"):
+    if args.command in ("start-all", "nvda-status", "nvda-braille-trace", "cancel"):
         if args.confirm_start or args.confirm_launch or args.nvda_path:
-            parser.error("start-all/nvda-status/cancel use NVDA authorization, not launch/restart flags")
-        from linux_rdaccess_core.connection.test_session import start_all, windows_operation
+            parser.error("NVDA test commands use NVDA authorization, not launch/restart flags")
+        from linux_rdaccess_core.connection.test_session import (
+            start_all,
+            windows_operation,
+        )
         if args.command == "start-all":
             result, code = start_all(probe, path=args.session_file)
         else:
-            result, code = windows_operation("status" if args.command == "nvda-status" else "cancel",
-                                             args.session_file)
+            action = {"nvda-status": "status", "nvda-braille-trace": "braille_trace", "cancel": "cancel"}[args.command]
+            result, code = windows_operation(action, args.session_file)
             result["mode"] = args.command
         print(json.dumps(result, sort_keys=True, indent=2))
         return code
     if args.session_file:
-        parser.error("--session-file applies only to start-all/nvda-status/cancel")
+        parser.error("--session-file applies only to NVDA test commands")
     if args.command in ("start", "prepare") and not args.confirm_start:
         parser.error("start/prepare require --confirm-start; Linux connect may restart Orca")
     if args.command not in ("start", "prepare") and args.confirm_start:

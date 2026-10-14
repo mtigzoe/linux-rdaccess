@@ -21,22 +21,43 @@ settings. In NVDA Tools choose “Authorize Linux test session...”. Connection
 permission is unchecked by default. Choose “Authorize for five minutes”.
 From the linux-rdaccess repository, run
 <code>python linux_rdaccess_test_session.py start-all</code>.</p>
-<p>Only status, connection using saved settings, and cancellation of a connection
+<p>Supported operations are status, optionally selected numeric routing diagnostics,
+connection using saved settings, and cancellation of a connection
 created by this consent session are supported. Keyboard, clipboard and arbitrary
 code operations are unavailable. Existing connections are preserved. Choose
 “Revoke Linux test session” to end authorization immediately. Consent also ends
 on expiry, lock, secure desktop, configuration profile switch or NVDA shutdown.</p>
+<p>Build 20261013.0.6 adds the unchecked option “Record numeric braille routing
+diagnostics (no text)” to the authorization dialog. It collects at most twelve
+in-memory routing/message events during that session and clears them when
+authorization ends. Text, object/gesture identifiers and ordinary typing are
+not recorded. Read the trace with
+<code>python linux_rdaccess_test_session.py nvda-braille-trace</code>.
+Collection requires the checkbox; the read command cannot enable it.</p>
 <h2>Validation limits</h2>
+<p>Build 20261013.0.6 retains the .5 queued-message routing fix and adds
+automated-tested diagnostics. It is prepared for review and has not been
+installed or physically tested. The user installed .5; its thirteen packaged
+Python files matched the installed files. A later two-press message check
+reported line restoration but recorded Linux caret movement from 20 to 7.
+The exact cause, including the earlier .4 movement from 6 to 9, remains
+unconfirmed. The new trace is intended to distinguish message ownership,
+Remote Access dismissal, and outgoing semantic caret requests.</p>
+<p>Build 20261013.0.5 prevents a routing press made on a Linux status message
+from moving the Linux caret if that message expires before the queued command
+executes. This race is automated-reproduced and tested. The physical
+caret-preservation check remains unresolved despite user installation of .5.</p>
 <p>Build 20261013.0.4 addresses a reproduced case where dismissing a Linux
 status message could return braille to Windows content instead of Linux.
-It is automated-tested; installation and physical message-restoration
-acceptance remain pending.</p>
+The user confirmed message appearance and timeout restoration in Mousepad.
+Linux caret preservation during routing dismissal and broader physical
+message acceptance remain unresolved.</p>
 <p>Build 20261013.0.3 addresses a reproduced case where routing could use stale
 text information and fail to move the Linux caret. It is automated-tested;
 installation and physical routing/caret acceptance remain pending.</p>
 <p>Automated regressions and Windows kernel tests do not prove audible speech or
-physical braille output. Build 20261013.0.2 is installed and active; its 13 Python
-files match the tested build. Earlier Firefox input and physical panning
+physical braille output. An earlier installation of build 20261013.0.2 had all
+13 Python files matching the tested build. Earlier Firefox input and physical panning
 observations were limited. A later left-pan test on build .1 with a Eurobraille
 b.note still showed Windows application context. Build .2 corrects reproduced
 BrailleExtender focus-context and pan-script interactions. After reinstalling

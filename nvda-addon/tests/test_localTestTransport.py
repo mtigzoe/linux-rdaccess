@@ -172,6 +172,38 @@ class WindowsTransportTests(unittest.TestCase):
 		self.assertEqual(self.call(address, key, "status")["status"], validStatus())
 		self.assertEqual(self.statusCalls, 2)
 
+	def test_real_authenticated_trace_is_read_only_and_default_is_unavailable(self):
+		remote = mock.Mock()
+		remote.state.return_value = "connected"
+		address, key = self.start(allowConnect=True, remote=remote)
+		reply = self.call(address, key, "braille_trace")
+		self.assertFalse(reply["braille_trace"]["available"])
+		self.assertEqual(reply["braille_trace"]["events"], [])
+		remote.connect.assert_not_called()
+		remote.cancel.assert_not_called()
+		self.assertEqual(set(self.call(address, key, "status")), {"result", "status"})
+
+	def test_real_trace_snapshot_runs_on_main_thread_and_cannot_expose_text(self):
+		from . import test_localTestRoutingTrace as routingTests
+
+		recorder = routingTests.trace.RoutingTraceRecorder(self.session.active)
+
+		def snapshot():
+			self.assertIs(threading.current_thread(), threading.main_thread())
+			return recorder.snapshot()
+
+		self.service._routingTrace = snapshot
+		address, key = self.start()
+		recorder.start(enabled=True)
+		recorder.record("route_received", **routingTests.fields())
+		reply = self.call(address, key, "braille_trace")
+		self.assertTrue(reply["braille_trace"]["available"])
+		self.assertEqual(reply["braille_trace"]["events"][0]["index"], 7)
+		self.service._routingTrace = lambda: {"text": "PRIVATE TEXT"}
+		with self.assertRaises((OSError, EOFError)):
+			self.call(address, key, "braille_trace")
+		self.assertEqual(set(self.call(address, key, "status")), {"result", "status"})
+
 	def test_idle_accept_revocation_closes_endpoint_and_removes_credentials(self):
 		address, key = self.start()
 		self.assertNotIn(key.hex().encode(), self.path.read_bytes())

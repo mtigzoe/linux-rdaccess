@@ -76,8 +76,9 @@ class PluginTests(unittest.TestCase):
 		self.module.RemoteAccessSemanticBrailleBridge = mock.Mock()
 		remote = sys.modules[f"{name}.localTestRemote"]
 		remote.findRemoteConnection = mock.Mock(return_value=mock.sentinel.remote)
-		self.dialog = types.SimpleNamespace(allowConnect=mock.Mock())
+		self.dialog = types.SimpleNamespace(allowConnect=mock.Mock(), recordRouting=mock.Mock())
 		self.dialog.allowConnect.GetValue.return_value = False
+		self.dialog.recordRouting.GetValue.return_value = False
 		sys.modules[f"{name}.localTestDialog"] = types.SimpleNamespace(
 			LocalTestAuthorizationDialog=lambda _parent: self.dialog,
 		)
@@ -163,6 +164,46 @@ class PluginTests(unittest.TestCase):
 			plugin._showLocalTestAuthorization()
 			self.dialogs.call_args.kwargs["callback"](1)
 			self.service.start.assert_called_with(allowConnect=allowed, remote=mock.sentinel.remote)
+
+	def test_routing_diagnostics_require_their_checkbox_and_active_consent(self):
+		plugin = self.create()
+		with mock.patch.object(plugin._routingTrace, "_authorized", return_value=True):
+			for enabled in (False, True):
+				self.dialog.recordRouting.GetValue.return_value = enabled
+				plugin._showLocalTestAuthorization()
+				self.dialogs.call_args.kwargs["callback"](1)
+				self.assertEqual(plugin.getLocalRoutingTrace()["available"], enabled)
+		plugin._revokeLocalTestSession()
+		self.assertFalse(plugin.getLocalRoutingTrace()["available"])
+
+	def test_failed_or_ended_consent_clears_routing_diagnostics(self):
+		plugin = self.create()
+		with mock.patch.object(plugin._routingTrace, "_authorized", return_value=True):
+			for outcome in ("failed", "stopped"):
+				plugin._routingTrace.start(enabled=True)
+				plugin._notifyLocalTestSession(outcome)
+				self.assertFalse(plugin.getLocalRoutingTrace()["available"])
+
+	def test_duplicate_consent_cannot_change_existing_routing_permission(self):
+		plugin = self.create()
+		with mock.patch.object(plugin._routingTrace, "_authorized", return_value=True):
+			plugin._routingTrace.start(enabled=True)
+			self.service.start.side_effect = self.module.LocalTestSessionBusyError()
+			plugin._showLocalTestAuthorization()
+			self.dialogs.call_args.kwargs["callback"](1)
+			self.assertTrue(plugin.getLocalRoutingTrace()["available"])
+
+	def test_profile_lock_and_secure_desktop_clear_opted_in_routing_permission(self):
+		plugin = self.create()
+		with mock.patch.object(plugin._routingTrace, "_authorized", return_value=True):
+			for revoke in (
+				self.profileEvent.notify,
+				lambda: self.lockEvent.notify(isNowLocked=True),
+				lambda: self.secureEvent.notify(isSecureDesktop=True),
+			):
+				plugin._routingTrace.start(enabled=True)
+				revoke()
+				self.assertFalse(plugin.getLocalRoutingTrace()["available"])
 
 	def test_locked_or_secure_desktop_rejects_pending_dialog_confirmation(self):
 		plugin = self.create()
