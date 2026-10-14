@@ -30,7 +30,7 @@ uv run --no-project --python 3.13 python nvda-addon/build.py
 ```
 
 The standard-library builder writes
-`nvda-addon/dist/linuxRdAccess-20261014.0.1.nvda-addon`. It is reproducible and
+`nvda-addon/dist/linuxRdAccess-20261014.0.3.nvda-addon`. It is reproducible and
 includes Python source, documentation, attribution and the full upstream
 license. `buildVars.py` is the source of add-on metadata; `--version` can override
 the three-component numeric development version.
@@ -97,6 +97,17 @@ CI builds and uploads the package and runs these tests on Windows. The normal
 Linux test discovery does not import this separate test environment.
 
 ## Acceptance status
+
+Build **20261014.0.3** binds queued native document-routing presses to their
+original semantic snapshot, control activation and braille handler. If focus,
+text, control, session, handler or the visible message buffer changes before
+execution, the old press is discarded. Fresh presses still use NVDA's native
+script and gesture execution pipeline, including input help and capture.
+This is automated-tested; it does not establish physical routing acceptance
+or explain the historical 6→9 movement. See the
+[queued routing audit](../docs/compatibility-audit-2026-10-14-queued-main-routing.md).
+This review candidate is based on merged main; it does not include the separate,
+unmerged PR #89 one-shot automation. It has not been installed or deployed.
 
 Build **20261014.0.1** adds diagnostics only: stock out-of-buffer no-ops,
 activation/caret attempts, send return/failure, message dismissal, discarded

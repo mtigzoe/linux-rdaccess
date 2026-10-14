@@ -131,6 +131,66 @@ def coreLocalMessageMethods():
 	return {name: namespace[name] for name in names}
 
 
+def coreQueuedGestureMethods():
+	"""Use NVDA's real gesture execution entry and queued script callback."""
+	namespace = {
+		"scriptHandler": types.SimpleNamespace(executeScript=lambda script, gesture: script(gesture)),
+		"_numScriptsQueued": 1,
+		"_numIncompleteInterceptedCommandScripts": 0,
+		"_isInterceptedCommandScript": lambda script: False,
+	}
+	for filename, className, methodName in (
+		("inputCore.py", "InputGesture", "executeScript"),
+		("scriptHandler.py", None, "_queueScriptCallback"),
+	):
+		path = NVDA_SOURCE / filename
+		tree = ast.parse(path.read_text(encoding="utf-8"))
+		body = tree.body
+		if className:
+			body = next(
+				node for node in body if isinstance(node, ast.ClassDef) and node.name == className
+			).body
+		method = next(node for node in body if isinstance(node, ast.FunctionDef) and node.name == methodName)
+		module = ast.Module(body=[method], type_ignores=[])
+		exec(compile(ast.fix_missing_locations(module), str(path), "exec"), namespace)
+	return namespace["executeScript"], namespace["_queueScriptCallback"]
+
+
+def coreInputManagerExecute():
+	path = NVDA_SOURCE / "inputCore.py"
+	tree = ast.parse(path.read_text(encoding="utf-8"))
+	cls = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "InputManager")
+	method = next(
+		node for node in cls.body if isinstance(node, ast.FunctionDef) and node.name == "executeGesture"
+	)
+	_, queued = coreQueuedGestureMethods()
+
+	def queue(eventQueue, function, *args, **kwargs):
+		kwargs.pop("_immediate", None)
+		queueHandler.queueFunction(eventQueue, function, *args, **kwargs)
+
+	namespace = {
+		"watchdog": types.SimpleNamespace(isAttemptingRecovery=False),
+		"decide_executeGesture": types.SimpleNamespace(decide=lambda **kwargs: True),
+		"api": types.SimpleNamespace(getFocusObject=lambda: types.SimpleNamespace(sleepMode=0, SLEEP_FULL=2)),
+		"sayAll": types.SimpleNamespace(SayAllHandler=types.SimpleNamespace(isRunning=lambda: False)),
+		"speech": types.SimpleNamespace(cancelSpeech=mock.Mock()),
+		"queueHandler": types.SimpleNamespace(queueFunction=queue, eventQueue=queueHandler.eventQueue),
+		"systemUtils": types.SimpleNamespace(preventSystemIdle=mock.Mock()),
+		"log": types.SimpleNamespace(isEnabledFor=lambda level: False, IO=1),
+		"config": types.SimpleNamespace(conf={"keyboard": {"speakCommandKeys": False}}),
+		"scriptHandler": types.SimpleNamespace(
+			_numIncompleteInterceptedCommandScripts=0,
+			queueScript=lambda script, gesture: queue(queueHandler.eventQueue, queued, script, gesture),
+		),
+	}
+	exec(
+		compile(ast.fix_missing_locations(ast.Module(body=[method], type_ignores=[])), str(path), "exec"),
+		namespace,
+	)
+	return namespace["executeGesture"], namespace
+
+
 class MessageRestorationTests(SemanticBrailleBridgeTestCase):
 	def setUp(self):
 		super().setUp()
@@ -350,13 +410,125 @@ class MessageRestorationTests(SemanticBrailleBridgeTestCase):
 			cellIndexes=[index] if cellIndexes is None else cellIndexes,
 			routingIndex=index,
 		)
+		execute, queued = coreQueuedGestureMethods()
+		gesture.executeScript = types.MethodType(execute, gesture)
+		self.routeGesture, self.routeOriginalScript = gesture, gesture.script
 		if legacy:
 			del gesture.cellIndexes
 		with mock.patch.dict("sys.modules", {"globalCommands": module}):
 			allowed = self.bridge._handleSemanticBrailleGesture(gesture)
 			if allowed and queueScript:
-				queueHandler.queueFunction(queueHandler.eventQueue, gesture.script, gesture)
+				queueHandler.queueFunction(queueHandler.eventQueue, queued, gesture.script, gesture)
 		return allowed
+
+	def test_queued_main_route_still_routes_unchanged_focus(self):
+		self._prepareRouteableFocus()
+		self.assertTrue(self._queueRouteGesture(index=9))
+		queueHandler.pumpAll()
+		self.brailleHandler.mainBuffer.routeTo.assert_called_once_with(9)
+		self.assertEqual(self.transport.sent[-1]["offset"], 9)
+
+	def test_queued_main_route_does_not_route_a_replacement_focus(self):
+		self._prepareRouteableFocus()
+		objects = self._objects(text="replacement text", caret=1)
+		objects[0]["id"] = "replacement"
+		objects[1]["child_ids"] = ["replacement"]
+		self.bridge._onFocus(version=1, focus_id="replacement", objects=objects)
+		before = list(self.transport.sent)
+		self.assertTrue(self._queueRouteGesture(index=9))
+		queueHandler.pumpAll()
+		self.assertEqual(self.bridge._focusId, "replacement")
+		self.brailleHandler.mainBuffer.routeTo.assert_not_called()
+		self.assertEqual(self.transport.sent, before)
+		self._queueRouteGesture(index=2)
+		queueHandler.pumpAll()
+		self.assertEqual(self.transport.sent[-1]["object_id"], "replacement")
+		self.assertEqual(self.transport.sent[-1]["offset"], 2)
+
+	def test_queued_main_route_does_not_reinterpret_new_same_id_text(self):
+		self._prepareRouteableFocus()
+		self.bridge._onFocus(version=1, focus_id="save", objects=self._objects(text="new text", caret=1))
+		before = list(self.transport.sent)
+		self._queueRouteGesture(index=4)
+		queueHandler.pumpAll()
+		self.brailleHandler.mainBuffer.routeTo.assert_not_called()
+		self.assertEqual(self.transport.sent, before)
+
+	def test_queued_main_route_expires_on_control_handoff(self):
+		self._prepareRouteableFocus()
+		self._queueRouteGesture(index=9)
+		self.bridge._controlGeneration += 1
+		queueHandler.pumpAll()
+		self.brailleHandler.mainBuffer.routeTo.assert_not_called()
+
+	def test_queued_main_route_does_not_touch_a_replacement_handler(self):
+		self._prepareRouteableFocus()
+		self._queueRouteGesture(index=9)
+		other = type(self.brailleHandler)()
+		other.mainBuffer.routeTo = mock.Mock()
+		braille.handler = other
+		queueHandler.pumpAll()
+		other.mainBuffer.routeTo.assert_not_called()
+		self.assertEqual(other.focused, [])
+
+	def test_queued_main_route_does_not_dismiss_a_later_message(self):
+		self._prepareRouteableFocus()
+		self._queueRouteGesture(index=9)
+		self.brailleHandler.message("Later Windows status")
+		queueHandler.pumpAll()
+		self.assertIs(self.brailleHandler.buffer, self.brailleHandler.messageBuffer)
+		self.brailleHandler.mainBuffer.routeTo.assert_not_called()
+
+	def test_queued_main_route_expires_on_disconnect(self):
+		self._prepareRouteableFocus()
+		self._queueRouteGesture(index=9)
+		self.transport.connected = False
+		queueHandler.pumpAll()
+		self.brailleHandler.mainBuffer.routeTo.assert_not_called()
+
+	def test_queued_main_route_expires_on_new_session(self):
+		self._prepareRouteableFocus()
+		self._queueRouteGesture(index=9)
+		self.bridge._onHello(version=1)
+		queueHandler.pumpAll()
+		self.brailleHandler.mainBuffer.routeTo.assert_not_called()
+
+	def test_queued_main_route_expires_on_termination(self):
+		self._prepareRouteableFocus()
+		self._queueRouteGesture(index=9)
+		self.bridge.terminate()
+		queueHandler.pumpAll()
+		self.brailleHandler.mainBuffer.routeTo.assert_not_called()
+
+	def test_native_input_pipeline_preserves_capture_and_speech_effects(self):
+		self._prepareRouteableFocus()
+		self._queueRouteGesture(index=9, queueScript=False)
+		gesture = self.routeGesture
+		self.assertIs(gesture.script, self.routeOriginalScript)
+		gesture.isModifier = False
+		gesture.speechEffectWhenExecuted = gesture.SPEECHEFFECT_CANCEL = 1
+		gesture.SPEECHEFFECT_PAUSE, gesture.SPEECHEFFECT_RESUME = 2, 3
+		gesture.shouldPreventSystemIdle = True
+		gesture.shouldReportAsCommand = False
+		gesture.reportExtra = mock.Mock()
+		self.brailleHandler.suppressClearBrailleRegions = lambda script: lambda callback: callback
+		execute, namespace = coreInputManagerExecute()
+		manager = types.SimpleNamespace(
+			lastModifierWasInSayAll=False, _captureFunc=mock.Mock(return_value=False)
+		)
+		execute(manager, gesture)
+		queueHandler.pumpAll()
+		manager._captureFunc.assert_called_once_with(gesture)
+		self.brailleHandler.mainBuffer.routeTo.assert_not_called()
+		namespace["speech"].cancelSpeech.assert_called_once_with()
+		namespace["systemUtils"].preventSystemIdle.assert_called_once_with()
+		# When capture permits execution, the same original native script and
+		# queue callback still enter the guarded gesture execution hook.
+		manager._captureFunc.return_value = True
+		execute(manager, gesture)
+		queueHandler.pumpAll()
+		self.brailleHandler.mainBuffer.routeTo.assert_called_once_with(9)
+		self.assertIs(gesture.script, self.routeOriginalScript)
 
 	def test_message_timeout_before_queued_routing_never_routes_underlying_linux_text(self):
 		self._prepareRouteableFocus()
@@ -442,13 +614,19 @@ class MessageRestorationTests(SemanticBrailleBridgeTestCase):
 		self.brailleHandler.messageBuffer.routeTo.assert_not_called()
 		self.brailleHandler.mainBuffer.routeTo.assert_not_called()
 
-	def test_empty_cell_indexes_keeps_native_no_action_even_with_legacy_index(self):
+	def test_empty_cell_indexes_keeps_native_api_behavior(self):
 		self._prepareRouteableFocus()
 		self._sendMessage()
 		self.assertTrue(self._queueRouteGesture(cellIndexes=[]))
 		queueHandler.pumpAll()
-		self.assertIs(self.brailleHandler.buffer, self.brailleHandler.messageBuffer)
-		self.brailleHandler.messageBuffer.routeTo.assert_not_called()
+		if "cellIndexes" in coreRouteScript().__code__.co_names:
+			self.assertIs(self.brailleHandler.buffer, self.brailleHandler.messageBuffer)
+			self.brailleHandler.messageBuffer.routeTo.assert_not_called()
+		else:
+			# NVDA 2026.2's native script uses routingIndex and does not read
+			# cellIndexes. Preserve that API rather than imposing a newer no-op.
+			self.assertIs(self.brailleHandler.buffer, self.brailleHandler.mainBuffer)
+			self.brailleHandler.messageBuffer.routeTo.assert_called_once_with(13)
 		self.brailleHandler.mainBuffer.routeTo.assert_not_called()
 
 	def test_legacy_routing_index_dismisses_owned_message(self):
