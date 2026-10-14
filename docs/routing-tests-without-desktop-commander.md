@@ -183,6 +183,15 @@ AT-SPI provider in its private desktop: caret 2→7, matching event/readback,
 same focus, no dropped events. Neither result is a live NVDA, running Orca or
 b.note acceptance result. No live Mousepad route was sent for this validation.
 
+The same published revision `470a222` also passed **one native test over SSH on
+Cyber** (Python 3.10.12, GTK 3.24.33, AT-SPI 2.44.0), using a separate checkout
+and the runner's private desktop. The actual CLI recorded caret **2→7**, a
+matching event at **7.5 ms**, final readback, same focus and zero dropped events;
+the stale apply was refused. The existing Orca process and all four installed
+controller/helper hashes were unchanged before/after. No live Mousepad route,
+runtime installation or restart was performed. See the
+[sanitized SSH evidence](routing-simulation-ssh-evidence-2026-10-14.json).
+
 ## Automated observer validation
 
 The native integration test reuses the existing GUI runner's Xvfb, disposable
