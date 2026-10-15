@@ -559,10 +559,20 @@ class BrailleTraceTests(TraceCase):
         self.send(c, space=True, id='bk:space', identifiers=['bk:space'])
         rows = self.records('braille')
         self.assertEqual([r['cls'] for r in rows], ['keyboard', 'keyboard'])
-        text = self.trace_path.read_text()
-        for secret in ('dot1', 'bk:', 'dots', 'identifiers', '1011'):
-            self.assertNotIn(secret, text)
-        self.assertEqual({r['record'] for r in rows}, {'braille-keyboard-input'})
+        # Check structured fields: a digit sequence can appear coincidentally
+        # in the session timestamp without containing the braille dot mask.
+        for row in rows:
+            self.assertEqual(
+                set(row),
+                {'kind', 'record', 'cls', 'emulated', 'gen', 'seq', 't'},
+            )
+            self.assertIsNone(row['emulated'])
+            self.assertEqual(row['record'], 'braille-keyboard-input')
+        for record in self.records():
+            for field in ('dots', 'space', 'id', 'identifiers', 'routingIndex'):
+                self.assertNotIn(field, record)
+        for secret in ('dot1', 'bk:', 'identifiers'):
+            self.assertNotIn(secret, self.trace_path.read_text())
 
     def test_emulated_navigation_key_reports_its_canonical_name_only(self):
         self.enable()
