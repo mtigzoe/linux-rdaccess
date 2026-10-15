@@ -7,6 +7,43 @@ from tools.diagnostics import vscode_selection_experiment as experiment
 
 
 class NativeKeyboardMatrixTests(unittest.TestCase):
+    def test_first_selection_read_failure_keeps_strict_failure_evidence(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+
+        class AtspiError(Exception):
+            pass
+
+        glib = SimpleNamespace(Error=AtspiError)
+        atspi = SimpleNamespace(
+            Text=SimpleNamespace(
+                get_selection=Mock(
+                    return_value=SimpleNamespace(start_offset=1, end_offset=3)
+                )
+            )
+        )
+        text = SimpleNamespace(get_n_selections=Mock(return_value=1))
+        self.assertEqual(
+            matrix.observe_first_selection(text, atspi, glib),
+            (1, [1, 3], None),
+        )
+        atspi.Text.get_selection.side_effect = AtspiError("no selection")
+        self.assertEqual(
+            matrix.observe_first_selection(text, atspi, glib),
+            (1, None, "AtspiError"),
+        )
+        text.get_n_selections.side_effect = AtspiError("count unavailable")
+        self.assertEqual(
+            matrix.observe_first_selection(text, atspi, glib),
+            (None, None, "AtspiError"),
+        )
+        text.get_n_selections.side_effect = None
+        text.get_n_selections.return_value = 0
+        self.assertEqual(
+            matrix.observe_first_selection(text, atspi, glib),
+            (0, None, None),
+        )
+
     def test_selection_observation_intervals_require_monotonic_order(self):
         self.assertEqual(matrix.selection_read_intervals(100, 125, 200), (25, 100))
         self.assertEqual(matrix.selection_read_intervals(100, 100, 100), (0, 0))
