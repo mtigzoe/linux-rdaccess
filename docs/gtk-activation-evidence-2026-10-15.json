@@ -1,0 +1,222 @@
+{
+  "date_local": "2026-10-15",
+  "failed_ci_run": {
+    "url": "https://github.com/mtigzoe/linux-rdaccess/actions/runs/38777751586/job/116569703410",
+    "head": "2f2a43bdec051778458da24732039b4c23cd90e9",
+    "gtk_step": "failure",
+    "real_application_step": "skipped",
+    "routing_observer_step": "success",
+    "observer_tests_passed": 2,
+    "exception": "AssertionError: Timed out: GTK window activation by window manager",
+    "activation_wait_seconds": 15,
+    "code_79_xfail_was_mock_unit_fixture": true,
+    "native_code_79_classifier_exercised": false,
+    "wm_stderr_preserved": false,
+    "exact_environment_cause_established": false
+  },
+  "prior_passing_ci": {
+    "url": "https://github.com/mtigzoe/linux-rdaccess/actions/runs/38758120277",
+    "head": "54a43e4ea9cdb50b635442016ae098bdc83b0abf",
+    "gtk_checks": 38,
+    "real_application_checks": 53,
+    "expected_failures": 0,
+    "right": 2,
+    "left": 1
+  },
+  "ci_environment_both_runs": {
+    "os": "Ubuntu 22.04.5",
+    "runner_image": "20261004.315.1",
+    "xfwm4": "4.16.1-1",
+    "xdotool": "1:3.20160805.1-4",
+    "at_spi2_core": "2.44.0-3",
+    "code": "1.142.0-1792035033",
+    "code_revision": "6d62b1d5dace93a33b3a6d3eca1317bd5e15bcb1",
+    "firefox": "158.0"
+  },
+  "unchanged_between_passing_and_failed_heads": [
+    "tools/diagnostics/gtk_atspi_smoke.py",
+    "tools/diagnostics/real_gui_atspi_smoke.py",
+    "tests/apps/accessibility_smoke_app.py",
+    ".github/workflows/linux-gui-accessibility.yml"
+  ],
+  "native_environment": {
+    "os": "Linux Mint 21.3",
+    "installed_xfwm4": "4.18.0-1~bpo22.04",
+    "private_test_xfwm4": "4.16.1-1",
+    "xdotool": "1:3.20160805.1-4",
+    "gtk": "3.24.33-1ubuntu2.2",
+    "xvfb": "2:21.1.4-2ubuntu1.7~22.04.16",
+    "ci_package_installed": false
+  },
+  "native_baseline_installed_wm": {
+    "checks": 38,
+    "event_count": 57,
+    "roles": {
+      "calendar": "calendar",
+      "choice-radio": "radio button",
+      "dialog-button": "push button",
+      "feature-checkbox": "check box",
+      "file-menu": "menu",
+      "items-list": "table",
+      "mode-combo": "combo box",
+      "multiline-editor": "text",
+      "primary-button": "push button",
+      "progress": "progress bar",
+      "settings-tabs": "page tab list",
+      "single-entry": "text",
+      "status": "label",
+      "volume-slider": "slider"
+    },
+    "status": "PASS"
+  },
+  "native_baseline_ci_wm": {
+    "checks": 38,
+    "event_count": 57,
+    "roles": {
+      "calendar": "calendar",
+      "choice-radio": "radio button",
+      "dialog-button": "push button",
+      "feature-checkbox": "check box",
+      "file-menu": "menu",
+      "items-list": "table",
+      "mode-combo": "combo box",
+      "multiline-editor": "text",
+      "primary-button": "push button",
+      "progress": "progress bar",
+      "settings-tabs": "page tab list",
+      "single-entry": "text",
+      "status": "label",
+      "volume-slider": "slider"
+    },
+    "status": "PASS"
+  },
+  "native_fixed_ci_wm": {
+    "checks": 38,
+    "event_count": 57,
+    "roles": {
+      "calendar": "calendar",
+      "choice-radio": "radio button",
+      "dialog-button": "push button",
+      "feature-checkbox": "check box",
+      "file-menu": "menu",
+      "items-list": "table",
+      "mode-combo": "combo box",
+      "multiline-editor": "text",
+      "primary-button": "push button",
+      "progress": "progress bar",
+      "settings-tabs": "page tab list",
+      "single-entry": "text",
+      "status": "label",
+      "volume-slider": "slider"
+    },
+    "status": "PASS"
+  },
+  "native_fixed_delayed_ci_wm": {
+    "checks": 38,
+    "event_count": 58,
+    "roles": {
+      "calendar": "calendar",
+      "choice-radio": "radio button",
+      "dialog-button": "push button",
+      "feature-checkbox": "check box",
+      "file-menu": "menu",
+      "items-list": "table",
+      "mode-combo": "combo box",
+      "multiline-editor": "text",
+      "primary-button": "push button",
+      "progress": "progress bar",
+      "settings-tabs": "page tab list",
+      "single-entry": "text",
+      "status": "label",
+      "volume-slider": "slider"
+    },
+    "status": "PASS"
+  },
+  "native_fixed_all_seven_apps_ci_wm": {
+    "checks": 59,
+    "event_count": 228,
+    "expected_failures": [],
+    "skipped": [],
+    "status": "PASS"
+  },
+  "native_routing_observer_tests": {
+    "passed": 2,
+    "failed": 0,
+    "skipped": 0
+  },
+  "focused_linux_unit_tests": {
+    "passed": 29,
+    "failed": 0,
+    "skipped": 0
+  },
+  "activation_diagnostics": {
+    "ci": [
+      {
+        "wm": 4195126,
+        "wm_self": 4195126,
+        "supports_activation": true,
+        "managed": [
+          6291463
+        ],
+        "visible_candidates": [
+          6291463
+        ],
+        "target": 6291463,
+        "active": 6291463,
+        "activation_sent": true,
+        "success": true
+      }
+    ],
+    "delayed": [
+      {
+        "wm": 8389430,
+        "wm_self": 8389430,
+        "supports_activation": true,
+        "managed": [
+          4194311
+        ],
+        "visible_candidates": [
+          4194311
+        ],
+        "target": 4194311,
+        "active": 4194311,
+        "activation_sent": true,
+        "success": true
+      }
+    ],
+    "missing": [
+      {
+        "wm": 0,
+        "wm_self": 0,
+        "supports_activation": false,
+        "managed": [],
+        "visible_candidates": [],
+        "target": 0,
+        "active": 0,
+        "activation_sent": false,
+        "success": false,
+        "error": "AssertionError"
+      }
+    ]
+  },
+  "controlled_missing_wm": {
+    "original_exit": 1,
+    "fixed_exit": 1,
+    "original_same_ci_timeout_signature": true,
+    "not_proof_of_original_ci_cause": true,
+    "fixed_wm_log": "CONTROLLED fixture: window manager unavailable",
+    "fixed_artifact_exit": 1
+  },
+  "installed_code_hashes_after": {
+    "native": "f36c0ef83163bb3c7b99c5860ce98a5d4055dd6b69d3a4d393d7563e499d3456",
+    "bundle": "631c1d79c4f3af9177ca23a70cfe0cf2586a692678bd897af6c869324160d905"
+  },
+  "limitations": {
+    "active_desktop_input": false,
+    "live_nvda": false,
+    "physical_braille": false,
+    "chromium_source_build": false,
+    "upstream_gtests_run": false,
+    "new_ci_result_observed": false
+  }
+}

@@ -8,6 +8,7 @@ on:
       - 'tools/diagnostics/**'
       - 'tests/apps/**'
       - 'tests/unit/accessibility/test_real_gui_diagnostics.py'
+      - 'tests/unit/accessibility/test_x11_window_activation.py'
       - 'tests/integration/x11/test_routing_observer.py'
       - 'diagnostics/atspi/observe_routing.py'
       - 'linux_rdaccess_core/**'
@@ -19,6 +20,7 @@ on:
       - 'tools/diagnostics/**'
       - 'tests/apps/**'
       - 'tests/unit/accessibility/test_real_gui_diagnostics.py'
+      - 'tests/unit/accessibility/test_x11_window_activation.py'
       - 'tests/integration/x11/test_routing_observer.py'
       - 'diagnostics/atspi/observe_routing.py'
       - 'linux_rdaccess_core/**'
@@ -39,7 +41,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq \
-            xvfb xauth dbus-x11 xfwm4 xdotool \
+            xvfb xauth dbus-x11 xfwm4 xdotool x11-utils \
             python3-gi gir1.2-atspi-2.0 gir1.2-gtk-3.0 \
             at-spi2-core libatk-adaptor thunar mousepad \
             xfce4-settings xfce4-terminal xfce4-panel \
@@ -59,15 +61,19 @@ jobs:
           code --version
       - name: Compile GUI tests
         run: |
-          python3 -m py_compile tools/diagnostics/gtk_atspi_smoke.py tools/diagnostics/real_gui_atspi_smoke.py
-          python3 -m unittest tests.unit.accessibility.test_real_gui_diagnostics -v
+          python3 -m py_compile tools/diagnostics/gtk_atspi_smoke.py tools/diagnostics/real_gui_atspi_smoke.py tools/diagnostics/x11_window_activation.py
+          python3 -m unittest tests.unit.accessibility.test_real_gui_diagnostics tests.unit.accessibility.test_x11_window_activation -v
       - name: Run GTK controls and AT-SPI semantic event checks
+        shell: bash
+        env:
+          LRD_SMOKE_ARTIFACTS: ${{ github.workspace }}/gtk-smoke-evidence
         run: |
-          timeout 180s python3 tools/diagnostics/gtk_atspi_smoke.py
+          set -o pipefail
+          timeout 180s python3 tools/diagnostics/gtk_atspi_smoke.py 2>&1 | tee gtk-atspi.log
       - name: Run all seven real application keyboard and AT-SPI checks
         shell: bash
         env:
-          # Opt-in only for the precisely recognized Code 1.141.0 issue #79 signature.
+          # Opt-in only for issue #79 signatures verified on the exact Code version.
           LRD_EXPECT_VSCODE_79: "1"
         run: |
           # Missing desktop dependencies fail CI; --skip is reserved for
@@ -78,6 +84,7 @@ jobs:
         if: ${{ !cancelled() }}
         shell: bash
         run: |
+          set -o pipefail
           python3 - <<'PY' 2>&1 | tee routing-observer.log
           import subprocess
           import tempfile
@@ -100,6 +107,8 @@ jobs:
         with:
           name: real-gui-atspi-results
           path: |
+            gtk-atspi.log
+            gtk-smoke-evidence/
             real-gui-atspi.log
             routing-observer.log
           if-no-files-found: ignore

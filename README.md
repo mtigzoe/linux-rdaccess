@@ -578,7 +578,9 @@ width and gesture ownership, focus restoration fixes, and the remaining live che
 The [October 8 pre-live audit](docs/compatibility-audit-2026-10-08.md) records
 Insert recovery, raw braille fallback, relay cancellation, SSH session discovery,
 and actual Mint GTK focus checks. Run `python3 tools/diagnostics/gtk_atspi_smoke.py` on Linux
-for its isolated GTK/AT-SPI regression smoke test.
+for its isolated GTK/AT-SPI regression smoke test. The private GUI runners require
+`xprop` from `x11-utils` to verify window-manager readiness and actual activation;
+see the [GTK activation investigation](docs/compatibility-audit-2026-10-15-gtk-activation.md).
 The [Remote SSH follow-up audit](docs/compatibility-followup-2026-10-08.md)
 records graphical-session discovery and braille hook reload fixes, stronger
 real-application keyboard checks, and the isolated NVDA Remote protocol harness.

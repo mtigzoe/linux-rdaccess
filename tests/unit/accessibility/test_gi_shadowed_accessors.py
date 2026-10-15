@@ -82,6 +82,20 @@ class ShadowedAccessorTests(unittest.TestCase):
         result = a11y_model._text_snapshot(ShadowedAccessible(), focused=True)
         self.assertEqual((result["selection_start"], result["selection_end"]), (2, 5))
 
+    def test_unicode_gi_selection_offsets_are_preserved_verbatim(self):
+        from gi.repository import Atspi
+        obj = ShadowedAccessible()
+        obj.text = "a🙂 café omega"
+        # Cover both GI range properties and the tuple spelling. A provider
+        # endpoint of 12 is a real partial selection, not a UTF-16 hint.
+        for end in (12, 13):
+            for selection in ((0, end), types.SimpleNamespace(start_offset=0, end_offset=end)):
+                with self.subTest(end=end, selection_type=type(selection).__name__), patch.object(
+                        Atspi.Text, "get_selection", return_value=selection):
+                    result = a11y_model._text_snapshot(obj, focused=True)
+                self.assertEqual(result["text"], obj.text)
+                self.assertEqual((result["selection_start"], result["selection_end"]), (0, end))
+
     def test_value_uses_value_interface_instead_of_accessible_alias(self):
         self.assertEqual(a11y_model._value(ShadowedAccessible()), "42")
 

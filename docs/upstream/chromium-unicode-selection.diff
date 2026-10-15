@@ -1,0 +1,118 @@
+--- a/ui/accessibility/platform/ax_platform_node_auralinux.cc
++++ b/ui/accessibility/platform/ax_platform_node_auralinux.cc
+@@ -4795,12 +4795,12 @@
+       return nullptr;
+     }
+ 
+-    selection_start = find_in_page_result->start_offset;
+-    selection_end = find_in_page_result->end_offset;
+-  }
+-
+-  selection_start = UTF16ToUnicodeOffsetInText(selection_start);
+-  selection_end = UTF16ToUnicodeOffsetInText(selection_end);
++    // Ordinary selection extents are already Unicode character offsets.
++    // Find-in-page results still need conversion from UTF-16.
++    selection_start =
++        UTF16ToUnicodeOffsetInText(find_in_page_result->start_offset);
++    selection_end = UTF16ToUnicodeOffsetInText(find_in_page_result->end_offset);
++  }
+   if (selection_start < 0 || selection_end < 0 ||
+       selection_start == selection_end) {
+     return nullptr;
+--- a/ui/accessibility/platform/ax_platform_node_auralinux_unittest.cc
++++ b/ui/accessibility/platform/ax_platform_node_auralinux_unittest.cc
+@@ -2751,6 +2751,94 @@
+   g_object_unref(root_atk_object);
+ }
+ 
++TEST_F(AXPlatformNodeAuraLinuxTest, TestAtkTextGetSelectionUnicodeOffsets) {
++  const char kText[] = "a\xf0\x9f\x99\x82 caf\xc3\xa9 omega";
++  AXTreeUpdate update = BuildTextField();
++  update.nodes[0].SetValue(kText);
++  Init(update);
++  AtkObject* object = GetRootAtkObject();
++  ASSERT_TRUE(ATK_IS_TEXT(object));
++  AtkText* text = ATK_TEXT(object);
++  EXPECT_EQ(13, atk_text_get_character_count(text));
++
++  const struct {
++    int anchor;
++    int focus;
++    int start;
++    int end;
++    const char* value;
++  } cases[] = {
++      {0, 13, 0, 13, kText},
++      {2, 13, 2, 13, " caf\xc3\xa9 omega"},
++      {1, 2, 1, 2, "\xf0\x9f\x99\x82"},
++      {13, 2, 2, 13, " caf\xc3\xa9 omega"},
++  };
++  for (const auto& test : cases) {
++    SCOPED_TRACE(test.anchor);
++    SCOPED_TRACE(test.focus);
++    ASSERT_TRUE(atk_text_set_selection(text, 0, test.anchor, test.focus));
++    int start = -1;
++    int end = -1;
++    gchar* selected = atk_text_get_selection(text, 0, &start, &end);
++    EXPECT_EQ(test.start, start);
++    EXPECT_EQ(test.end, end);
++    EXPECT_STREQ(test.value, selected);
++    g_free(selected);
++  }
++}
++
++TEST_F(AXPlatformNodeAuraLinuxTest, TestAtkTextGetSelectionTwoSupplementaryChars) {
++  const char kText[] =
++      "a\xf0\x9f\x99\x82\xf0\x9f\x99\x82 caf\xc3\xa9 omega";
++  AXTreeUpdate update = BuildTextField();
++  update.nodes[0].SetValue(kText);
++  Init(update);
++  AtkObject* object = GetRootAtkObject();
++  ASSERT_TRUE(ATK_IS_TEXT(object));
++  AtkText* text = ATK_TEXT(object);
++  EXPECT_EQ(14, atk_text_get_character_count(text));
++  ASSERT_TRUE(atk_text_set_selection(text, 0, 0, 14));
++  int start = -1;
++  int end = -1;
++  gchar* selected = atk_text_get_selection(text, 0, &start, &end);
++  EXPECT_EQ(0, start);
++  EXPECT_EQ(14, end);
++  EXPECT_STREQ(kText, selected);
++  g_free(selected);
++}
++
++TEST_F(AXPlatformNodeAuraLinuxTest, TestAtkTextFindInPageUnicodeOffsets) {
++  const char kText[] = "a\xf0\x9f\x99\x82 caf\xc3\xa9 omega";
++  AXNodeData document;
++  document.id = 1;
++  document.role = ax::mojom::Role::kRootWebArea;
++  document.child_ids = {2};
++  AXNodeData content;
++  content.id = 2;
++  content.role = ax::mojom::Role::kStaticText;
++  content.SetName(kText);
++  AXTreeUpdate update;
++  update.root_id = document.id;
++  update.nodes = {document, content};
++  Init(update);
++  AtkObject* object = GetRootAtkObject();
++  ASSERT_TRUE(ATK_IS_TEXT(object));
++  AtkText* text = ATK_TEXT(object);
++  EXPECT_EQ(13, atk_text_get_character_count(text));
++
++  // Find-in-page stores UTF-16 offsets, unlike GetSelectionExtents().
++  GetRootPlatformNode()->ActivateFindInPageResult(0, 14);
++  EXPECT_EQ(1, atk_text_get_n_selections(text));
++  int start = -1;
++  int end = -1;
++  gchar* selected = atk_text_get_selection(text, 0, &start, &end);
++  EXPECT_EQ(0, start);
++  EXPECT_EQ(13, end);
++  EXPECT_STREQ(kText, selected);
++  g_free(selected);
++  GetRootPlatformNode()->TerminateFindInPage();
++}
++
+ TEST_F(AXPlatformNodeAuraLinuxTest, TestAtkTextTextFieldGetSelection) {
+   Init(BuildTextField());
+   AtkObject* root_atk_object(GetRootAtkObject());

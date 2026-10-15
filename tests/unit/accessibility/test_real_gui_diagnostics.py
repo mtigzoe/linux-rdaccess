@@ -1,6 +1,8 @@
 """Isolation and traversal regressions for the real-application GUI runner."""
 from pathlib import Path
 from collections import deque
+from contextlib import redirect_stdout
+from io import StringIO
 from types import SimpleNamespace
 import tempfile
 import unittest
@@ -65,8 +67,9 @@ class RealGuiDiagnosticTests(unittest.TestCase):
 
     def test_known_code_79_signature_is_typed_not_silenced(self):
         session, node, state = self.continuation_fixture(12)
-        with self.assertRaisesRegex(smoke.KnownUpstreamCaretMismatch, "Right=13"):
+        with self.assertRaisesRegex(smoke.KnownUpstreamCaretMismatch, "Right=13") as caught:
             session.verify_routed_caret_continuation(node, 1)
+        self.assertEqual(caught.exception.signature, "right-13")
         self.assertEqual(state["keys"], ["Right"])
         self.assertEqual(state["visible"], 13)
 
@@ -100,13 +103,69 @@ class RealGuiDiagnosticTests(unittest.TestCase):
             binary = root / "code"
             binary.touch()
             for version, accepted in (("1.141.0", True), ("1.141.2", True),
-                                      ("1.141.3", False), ("1.142.0", False)):
+                                      ("1.141.3", False), ("1.142.0", True),
+                                      ("1.142.1", False), ("1.143.0", False)):
                 package.write_text('{"version": "' + version + '"}')
-                self.assertFalse(smoke.allow_known_vscode_79(str(binary), enabled=False))
-                self.assertEqual(
-                    smoke.allow_known_vscode_79(str(binary), enabled=True),
-                    accepted,
+                mismatch = smoke.KnownUpstreamCaretMismatch("fixture", signature="right-13")
+                with self.subTest(version=version):
+                    self.assertFalse(smoke.allow_known_vscode_79(str(binary), enabled=False,
+                                                                  mismatch=mismatch))
+                    self.assertEqual(
+                        smoke.allow_known_vscode_79(str(binary), enabled=True, mismatch=mismatch),
+                        accepted,
+                    )
+
+    def test_code_142_expected_failure_requires_its_verified_signature(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package = root / "resources" / "app" / "package.json"
+            package.parent.mkdir(parents=True)
+            package.write_text('{"version": "1.142.0"}')
+            binary = root / "code"
+            binary.touch()
+            for mismatch in (
+                smoke.KnownUpstreamCaretMismatch("fixture", signature="stuck-readback-12"),
+                smoke.KnownUpstreamCaretMismatch("fixture", signature="unknown"),
+                AssertionError("Right=13"),
+            ):
+                with self.subTest(mismatch=mismatch):
+                    self.assertFalse(smoke.allow_known_vscode_79(str(binary), enabled=True,
+                                                                  mismatch=mismatch))
+
+    def test_vscode_check_classifies_only_verified_142_signature_with_opt_in(self):
+        for signature, enabled, accepted in (
+            ("right-13", "1", True),
+            ("right-13", "0", False),
+            ("stuck-readback-12", "1", False),
+            ("unknown", "1", False),
+        ):
+            with self.subTest(signature=signature, enabled=enabled), \
+                    tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                package = root / "resources" / "app" / "package.json"
+                package.parent.mkdir(parents=True)
+                package.write_text('{"version": "1.142.0"}')
+                binary = root / "code"
+                binary.touch()
+                mismatch = smoke.KnownUpstreamCaretMismatch("fixture", signature=signature)
+                session = SimpleNamespace(
+                    root=root, launch=lambda *args: None, application=lambda *args: None,
+                    activate=lambda *args: None, key=lambda *args: None,
+                    wait=lambda *args: object(), check=lambda *args: None,
+                    state=lambda *args: True,
                 )
+                with patch.object(smoke, "desktop_code_binary", return_value=str(binary)), \
+                        patch.dict(smoke.os.environ, {"LRD_EXPECT_VSCODE_79": enabled}), \
+                        patch.object(session, "text_edit", create=True, side_effect=mismatch):
+                    if accepted:
+                        output = StringIO()
+                        with redirect_stdout(output):
+                            self.assertEqual(smoke.vscode_check(session), "xfail-vscode-79")
+                        self.assertIn("XFAIL VS Code #79:", output.getvalue())
+                    else:
+                        with self.assertRaises(smoke.KnownUpstreamCaretMismatch) as caught:
+                            smoke.vscode_check(session)
+                        self.assertIs(caught.exception, mismatch)
 
     def test_routed_caret_events_are_target_only_and_relative_to_the_request(self):
         target, other = object(), object()

@@ -33,7 +33,7 @@ jobs:
       - name: Install test desktop dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq xvfb xauth libx11-6 libxtst6 python3-gi python3-louis orca gir1.2-atspi-2.0 gir1.2-gtk-3.0 libatk-adaptor at-spi2-core dbus-x11 xfwm4 xdotool
+          sudo apt-get install -y -qq xvfb xauth libx11-6 libxtst6 python3-gi python3-louis orca gir1.2-atspi-2.0 gir1.2-gtk-3.0 libatk-adaptor at-spi2-core dbus-x11 xfwm4 xdotool x11-utils
       - name: Check all diagnostic scripts compile
         run: |
           python3 -m compileall -q diagnostics
@@ -48,8 +48,22 @@ jobs:
         run: |
           xvfb-run -a sh -c 'python3 diagnostics/x11/live_x11.py --display "$DISPLAY"'
       - name: Verify real GTK controls and AT-SPI focus events
+        shell: bash
+        env:
+          LRD_SMOKE_ARTIFACTS: ${{ github.workspace }}/gtk-smoke-evidence
         run: |
-          timeout 150s python3 tools/diagnostics/gtk_atspi_smoke.py
+          set -o pipefail
+          timeout 150s python3 tools/diagnostics/gtk_atspi_smoke.py 2>&1 | tee gtk-atspi.log
+
+      - name: Preserve GTK activation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gtk-diagnostic-results
+          path: |
+            gtk-atspi.log
+            gtk-smoke-evidence/
+          if-no-files-found: ignore
 
       - name: Check package and legacy bridge entry points with system AT-SPI
         run: |
