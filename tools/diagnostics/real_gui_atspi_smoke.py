@@ -5,6 +5,7 @@ Run ``python3 tools/diagnostics/real_gui_atspi_smoke.py --skip vscode`` when
 only VS Code's Remote SSH CLI is available. Without --skip every application
 is required. The runner owns a private Xvfb display, D-Bus and app settings;
 calling it from an existing dbus-run-session/xvfb-run is also safe.
+Window activation requires xprop (the x11-utils package).
 """
 from __future__ import annotations
 
@@ -25,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from linux_rdaccess_core.accessibility.a11y_model import (
     build_focus_payload, build_text_update, object_id, set_caret_offset,
 )
+from tools.diagnostics.x11_window_activation import activate_window
 
 APPLICATIONS = ("settings", "thunar", "mousepad", "terminal", "calendar", "firefox", "vscode")
 BINARIES = dict(zip(APPLICATIONS, ("xfce4-settings-manager", "thunar", "mousepad",
@@ -266,15 +268,16 @@ class Session:
             # the browser PID. The display contains only our test processes.
             result = subprocess.run(["xdotool", "search", "--onlyvisible", "--class",
                                      re.escape(app.get_name())], capture_output=True, text=True, timeout=5)
-            return result.stdout.splitlines() or None
-        ids = self.wait(windows, f"{app.get_name()} visible X11 window")
-        def activate():
-            result = subprocess.run(["xdotool", "windowactivate", "--sync", ids[-1]],
-                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3)
-            return result.returncode == 0
-        self.wait(activate, "window activation")
-        active = subprocess.check_output(["xdotool", "getactivewindow"], text=True).strip()
-        self.check(f"{app.get_name()}: X11 window activation", active == ids[-1])
+            return result.stdout.splitlines()
+
+        def diagnostic(data):
+            with (self.root / "window-activation.jsonl").open("a") as stream:
+                stream.write(json.dumps(data) + "\n")
+            if not data["success"]:
+                print("X11_ACTIVATION " + json.dumps(data, sort_keys=True), flush=True)
+
+        activate_window(windows, self.wait, label="window activation", diagnostic=diagnostic)
+        self.check(f"{app.get_name()}: X11 window activation")
 
     def tab_round_trip(self, app, initial):
         self.focus(initial)

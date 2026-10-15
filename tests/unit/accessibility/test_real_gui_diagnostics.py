@@ -1,6 +1,8 @@
 """Isolation and traversal regressions for the real-application GUI runner."""
 from pathlib import Path
 from collections import deque
+from contextlib import redirect_stdout
+from io import StringIO
 from types import SimpleNamespace
 import tempfile
 import unittest
@@ -156,7 +158,10 @@ class RealGuiDiagnosticTests(unittest.TestCase):
                         patch.dict(smoke.os.environ, {"LRD_EXPECT_VSCODE_79": enabled}), \
                         patch.object(session, "text_edit", create=True, side_effect=mismatch):
                     if accepted:
-                        self.assertEqual(smoke.vscode_check(session), "xfail-vscode-79")
+                        output = StringIO()
+                        with redirect_stdout(output):
+                            self.assertEqual(smoke.vscode_check(session), "xfail-vscode-79")
+                        self.assertIn("XFAIL VS Code #79:", output.getvalue())
                     else:
                         with self.assertRaises(smoke.KnownUpstreamCaretMismatch) as caught:
                             smoke.vscode_check(session)

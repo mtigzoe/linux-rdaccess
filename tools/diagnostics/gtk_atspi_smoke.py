@@ -2,7 +2,7 @@
 """Check actual GTK controls and semantic snapshots in a disposable Xvfb session.
 
 Run ``python3 tools/diagnostics/gtk_atspi_smoke.py`` on Linux with GTK3/AT-SPI, Xvfb,
-dbus-run-session, xfwm4 and xdotool installed. The runner creates a private
+dbus-run-session, xfwm4, xdotool and xprop (x11-utils) installed. The runner creates a private
 display, session bus and settings directories; it does not use the desktop.
 The optional first argument selects another source checkout to test.
 """
@@ -11,6 +11,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -19,6 +20,7 @@ import time
 root = Path(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]).resolve()
 sys.path.insert(0, str(root))
 from linux_rdaccess_core.accessibility.a11y_model import build_focus_payload, build_text_update, find_focused_object_ex, object_id
+from tools.diagnostics.x11_window_activation import activate_window
 
 private = Path(os.environ.get("LRD_SMOKE_PRIVATE", "")) if "--inner" in sys.argv else Path(
     tempfile.mkdtemp(prefix="linux-rdaccess-gtk-smoke-"))
@@ -41,8 +43,18 @@ for variable, name in (("XDG_CONFIG_HOME", "config"), ("XDG_DATA_HOME", "data"),
 
 if "--inner" not in sys.argv:
     print("ISOLATED_LOG_DIR", private, flush=True)
-    raise SystemExit(subprocess.call(["xvfb-run", "-a", "dbus-run-session", "--", sys.executable,
-                                     str(Path(__file__).resolve()), str(root), "--inner"]))
+    code = subprocess.call(["xvfb-run", "-a", "dbus-run-session", "--", sys.executable,
+                            str(Path(__file__).resolve()), str(root), "--inner"])
+    # Keep the short /tmp runtime path; only copy public-fixture evidence into
+    # CI's artifact directory after the private session has completed.
+    if destination := os.environ.get("LRD_SMOKE_ARTIFACTS"):
+        destination = Path(destination)
+        destination.mkdir(parents=True, exist_ok=True)
+        for name in ("wm.log", "atspi.log", "application.log", "window-activation.jsonl"):
+            if (private / name).is_file():
+                shutil.copyfile(private / name, destination / name)
+        (destination / "session.json").write_text(json.dumps({"exit_code": code}))
+    raise SystemExit(code)
 
 # Refuse keyboard injection if the inner invocation is pointed at a desktop.
 display = re.fullmatch(r":(\d+)(?:\.\d+)?", os.environ.get("DISPLAY", ""))
@@ -141,18 +153,20 @@ try:
                                       stdout=stream, stderr=stream))
     primary = wait(lambda: named("Apply changes", "push button"), "GTK AT-SPI application startup")
     title = "linux-rdaccess accessibility smoke test"
-    window_ids = subprocess.check_output(["xdotool", "search", "--name", title], text=True).splitlines()
-    # xfwm4 can still be claiming the session when the GTK window first appears.
-    # Retry activation instead of treating that transient X11 race as a failure.
-    def activate_window():
-        result = subprocess.run(
-            ["xdotool", "windowactivate", "--sync", window_ids[-1]],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            timeout=3, check=False,
-        )
-        return result.returncode == 0
+    def visible_windows():
+        result = subprocess.run(["xdotool", "search", "--onlyvisible", "--name", title],
+                                capture_output=True, text=True, timeout=3, check=False)
+        return result.stdout.splitlines()
 
-    wait(activate_window, "GTK window activation by window manager", timeout=15)
+    def activation_diagnostic(data):
+        with (private / "window-activation.jsonl").open("a") as stream:
+            stream.write(json.dumps(data) + "\n")
+        if not data["success"]:
+            print("X11_ACTIVATION " + json.dumps(data, sort_keys=True), flush=True)
+
+    activate_window(visible_windows, lambda predicate, label: wait(predicate, label, timeout=15),
+                    label="GTK window activation by window manager",
+                    diagnostic=activation_diagnostic)
     check("GTK window activation")
     controls = {}
     roles = {}
