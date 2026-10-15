@@ -73,6 +73,21 @@ def selection_read_intervals(dom_ready_ns, first_read_ns, later_read_ns):
     return first, later
 
 
+def observe_first_selection(text, atspi, glib):
+    """Observe once. A failed provider read must remain a strict failure."""
+    try:
+        count = text.get_n_selections()
+    except (glib.Error, AttributeError, TypeError) as error:
+        return None, None, type(error).__name__
+    if not count:
+        return count, None, None
+    try:
+        result = atspi.Text.get_selection(text, 0)
+        return count, [result.start_offset, result.end_offset], None
+    except (glib.Error, AttributeError, TypeError) as error:
+        return count, None, type(error).__name__
+
+
 def observe_post_clipboard_selection(text, atspi, glib):
     """Capture a secondary diagnostic read without changing first-read acceptance."""
     try:
@@ -402,15 +417,9 @@ def main():
                     dom_ready_ns = time.monotonic_ns()
                     lo, hi = sorted((anchor, focus))
                     selected = value[lo:hi]
-                    provider_count = text.get_n_selections()
-                    provider_selection = None
-                    provider_error = None
-                    if provider_count:
-                        try:
-                            raw = self.Atspi.Text.get_selection(text, 0)
-                            provider_selection = [raw.start_offset, raw.end_offset]
-                        except (self.GLib.Error, AttributeError, TypeError) as error:
-                            provider_error = type(error).__name__
+                    provider_count, provider_selection, provider_error = (
+                        observe_first_selection(text, self.Atspi, self.GLib)
+                    )
                     first_provider_read_ns = time.monotonic_ns()
                     update = smoke.build_text_update(
                         "object:text-selection-changed",
