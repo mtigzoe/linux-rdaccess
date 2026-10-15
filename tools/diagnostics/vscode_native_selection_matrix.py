@@ -77,12 +77,15 @@ def observe_post_clipboard_selection(text, atspi, glib):
     """Capture a secondary diagnostic read without changing first-read acceptance."""
     try:
         count = text.get_n_selections()
-        if not count:
-            return count, None, None
+    except (glib.Error, AttributeError, TypeError) as error:
+        return None, None, type(error).__name__
+    if not count:
+        return count, None, None
+    try:
         result = atspi.Text.get_selection(text, 0)
         return count, [result.start_offset, result.end_offset], None
     except (glib.Error, AttributeError, TypeError) as error:
-        return None, None, type(error).__name__
+        return count, None, type(error).__name__
 
 
 def sample_passes(sample):
