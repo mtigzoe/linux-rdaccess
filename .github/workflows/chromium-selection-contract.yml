@@ -52,7 +52,10 @@ jobs:
           git -C "$CONTRACT_ROOT/full-candidate" apply --check "$GITHUB_WORKSPACE/docs/upstream/chromium-unicode-selection.diff" \
             2>&1 | tee "$CONTRACT_ROOT/evidence/patch-check.log"
           git -C "$CONTRACT_ROOT/full-candidate" apply "$GITHUB_WORKSPACE/docs/upstream/chromium-unicode-selection.diff"
-          python3 -m unittest -v tests.unit.accessibility.test_chromium_selection_contract \
+          python3 -m unittest -v \
+            tests.unit.accessibility.test_chromium_selection_contract \
+            tests.unit.accessibility.test_vscode_native_selection_matrix \
+            tests.unit.accessibility.test_electron_native_find_probe \
             2>&1 | tee "$CONTRACT_ROOT/evidence/unit.log"
           python3 tools/diagnostics/chromium_selection_contract.py \
             --source "$CONTRACT_ROOT/source/ui/accessibility/platform/ax_platform_node_auralinux.cc" \
