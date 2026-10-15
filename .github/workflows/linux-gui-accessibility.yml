@@ -66,9 +66,13 @@ jobs:
           timeout 180s python3 tools/diagnostics/gtk_atspi_smoke.py
       - name: Run all seven real application keyboard and AT-SPI checks
         shell: bash
+        env:
+          # Opt-in only for the precisely recognized Code 1.141.0 issue #79 signature.
+          LRD_EXPECT_VSCODE_79: "1"
         run: |
           # Missing desktop dependencies fail CI; --skip is reserved for
           # explicit local exclusions such as VS Code Remote SSH CLI.
+          set -o pipefail
           timeout 300s python3 tools/diagnostics/real_gui_atspi_smoke.py 2>&1 | tee real-gui-atspi.log
       - name: Observe Mousepad caret in a separate private session
         if: ${{ !cancelled() }}
