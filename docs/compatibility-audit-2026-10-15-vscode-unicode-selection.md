@@ -1,5 +1,10 @@
 # VS Code CI classification and Unicode selection — 2026-10-15
 
+Subsequent [native compiled-method experiments](compatibility-audit-2026-10-15-native-chromium-selection.md)
+add private application evidence for the correction. The earlier results below
+remain unchanged; a full Chromium source build and accessibility-device
+acceptance are still outstanding.
+
 Based on `origin/main` at `93c3818` (merged PR #91). Issue
 [#79](https://github.com/mtigzoe/linux-rdaccess/issues/79) remains open.
 This investigation used SSH to Linux Mint and private Xvfb/D-Bus sessions.

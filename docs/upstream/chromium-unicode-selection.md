@@ -1,5 +1,9 @@
 # Chromium Unicode selection candidate
 
+The later [private native experiment](../compatibility-audit-2026-10-15-native-chromium-selection.md)
+tests a compiled-method counterpart to the correction. It adds native
+application evidence; the full source build and upstream gtests remain unrun.
+
 `chromium-unicode-selection.diff` is an **unsubmitted upstream candidate** for
 Chromium `150.0.7871.250`. Chromium source and patch context are covered by the
 included [BSD license](Chromium-LICENSE.txt). This repository does not build or

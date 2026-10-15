@@ -139,10 +139,10 @@ The Chromium Authors under the accompanying [BSD license](Chromium-LICENSE.txt).
 
 The candidate converts ordinary selection offsets once and preserves the
 separate UTF-16 conversion needed by find-in-page. Apply it only to a
-disposable checkout of that exact Chromium tag. This repository does not
-build, install or inject a Chromium binary. Native validation of the candidate,
-the full upstream build/gtest suite and real NVDA/physical braille acceptance
-remain outstanding. See the follow-up audit for evidence and limitations.
+disposable checkout of that exact Chromium tag. No candidate is installed.
+The full source build/gtest suite and real NVDA/physical braille acceptance
+remain outstanding. The separate private native experiment below tests the
+compiled counterpart of the correction; see its audit for the distinction.
 
 The [source-extraction contract](chromium-unicode-selection.md) compiles the
 actual two Chromium selection methods with explicit ATK/delegate/conversion
@@ -162,3 +162,57 @@ python3 tools/diagnostics/chromium_selection_contract.py --source /tmp/lrd-chrom
 
 The tool verifies the exact source SHA-256 and preserves numeric JSONL,
 summary, extracted C++, and executable evidence. It does not access a GUI.
+
+## Private native compiled-method experiment
+
+The [native follow-up](../compatibility-audit-2026-10-15-native-chromium-selection.md)
+tests a reviewed branch correction in a fresh private Code executable. It
+does not compile the Chromium source candidate. The runner pins the exact
+Microsoft Electron executable and all edited instruction sites, rejects
+linked/unowned/outside targets and verifies original/candidate integrity.
+There is no in-place patch or installation command. Only the reviewed
+Code 1.141.0 / Microsoft Electron 43.7.7 build is supported.
+
+With the renderer synchronization source prepared above:
+
+```sh
+python3 tools/diagnostics/vscode_native_selection_experiment.py --execute --output /tmp/code-native-unicode --source "$TREE/$SOURCE" --case unicode
+python3 tools/diagnostics/vscode_native_selection_experiment.py --execute --selection-probe --output /tmp/code-native-probe --source "$TREE/$SOURCE"
+```
+
+The first command runs the unchanged strict routing, selection, clipboard and
+focus-return assertions. The second collects separate DOM/AT-SPI/semantic
+measurements. Each path must be new; failure exit codes remain nonzero.
+
+For the 23-case keyboard matrix, use independently prepared original and
+candidate executables under `/tmp`:
+
+```sh
+python3 tools/diagnostics/vscode_native_selection_matrix.py --binary /tmp/code-unicode-candidate/code/code --output /tmp/code-matrix-baseline
+python3 tools/diagnostics/vscode_native_selection_matrix.py --binary /tmp/code-native-unicode/code/code --output /tmp/code-matrix-native-candidate
+```
+
+The baseline path above is the earlier renderer-only candidate, whose native
+executable is unchanged. Matrix completion is diagnostic; inspect all
+per-case provider/semantic endpoints and pass fields.
+
+The separate Electron fixture tests real `webContents.findInPage` while DOM
+selection stays empty. It prepares a new private runtime with its own small
+application, either with the unchanged executable or the exact native candidate:
+
+```sh
+python3 tools/diagnostics/electron_native_find_probe.py --prepare --runtime /tmp/electron-find-original
+python3 tools/diagnostics/electron_native_find_probe.py --prepare --runtime /tmp/electron-find-candidate --candidate-binary /tmp/code-native-unicode/code/code
+python3 tools/diagnostics/electron_native_find_probe.py --runtime /tmp/electron-find-original --output /tmp/electron-find-original-emoji --fixture astral
+python3 tools/diagnostics/electron_native_find_probe.py --runtime /tmp/electron-find-candidate --output /tmp/electron-find-candidate-emoji --fixture astral
+```
+
+Also run separate new output paths with `--fixture bmp` and
+`--fixture two_astral`. The runtime and output paths must be private/new; the
+installed executable is never edited. The finalized fixture uses
+`findNext: true` for an initial request, as specified by the pinned
+[Electron API](https://github.com/electron/electron/blob/v43.7.7/docs/api/web-contents.md#contentsfindinpagetext-options),
+binds result acknowledgements to request IDs and checks expected match counts.
+
+These private tests add automated native evidence. They do not establish a
+full source build, native upstream gtest success or NVDA/device acceptance.
