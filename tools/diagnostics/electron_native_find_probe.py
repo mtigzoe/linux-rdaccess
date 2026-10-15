@@ -49,7 +49,7 @@ app.whenReady().then(async()=>{
  });
  await win.loadURL('data:text/html;charset=utf-8,'+encodeURIComponent(
    '<!doctype html><meta charset=utf-8><title>LRD private native selection</title>'+ 
-   '<p>'+fs.readFileSync(path.join(root,'fixture.txt'),'utf8')+'</p>'));
+   '<p style="white-space:pre-wrap">'+fs.readFileSync(path.join(root,'fixture.txt'),'utf8')+'</p>'));
  await ack(0,{ready:true});
  setInterval(async()=>{
    let command;try{command=JSON.parse(fs.readFileSync(path.join(root,'command.json'),'utf8'));}catch{return;}
@@ -88,6 +88,43 @@ def selection_observations_match(observations, expected, dom, fixture):
     )
 
 
+def find_cases(value):
+    """Search visible line text while expecting document code-point offsets."""
+    if "\n" in value:
+        lines = value.split("\n")
+        second_start = len(lines[0]) + 1
+        return [
+            ("first_line", lines[0], 0, len(lines[0])),
+            ("second_line", lines[1], second_start, second_start + len(lines[1])),
+            (
+                "second_line_supplementary",
+                lines[1][1:2],
+                second_start + 1,
+                second_start + 2,
+            ),
+        ]
+    return [
+        ("full", value, 0, len(value)),
+        ("suffix", value[2:], 2, len(value)),
+        ("one_character", value[1:2], 1, 2),
+    ]
+
+
+def find_result_passes(result, value):
+    expected = {"initial_no_selection"} | {
+        prefix + name
+        for name, *_ in find_cases(value)
+        for prefix in ("find_", "clear_")
+    }
+    samples = result.get("samples", [])
+    observed = [sample.get("case") for sample in samples]
+    return (
+        len(observed) == len(expected)
+        and set(observed) == expected
+        and all(sample.get("passed") is True for sample in samples)
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -107,9 +144,12 @@ def main():
     )
     parser.add_argument("--output", type=Path)
     parser.add_argument(
-        "--fixture", choices=("bmp", "astral", "two_astral"), default="astral"
+        "--fixture",
+        choices=("bmp", "astral", "two_astral", "distinct_astral", "multiline_astral"),
+        default="astral",
     )
     parser.add_argument("--inner", action="store_true")
+    parser.add_argument("--require-correct-selection", action="store_true")
     args = parser.parse_args()
     if not sys.platform.startswith("linux"):
         parser.error("Linux private Xvfb/D-Bus fixture required")
@@ -187,7 +227,11 @@ def main():
         or (runtime / "resources/app/main.cjs").read_text() != APP
     ):
         raise ValueError("Reviewed native executable and exact fixture required")
-    value = probe.CASES[args.fixture]
+    value = (
+        probe.CASES[args.fixture]
+        if args.fixture in probe.CASES
+        else native.experiment.CASES[args.fixture]
+    )
     if not args.inner:
         args.output.mkdir(mode=0o700)
         (args.output / "fixture.txt").write_text(value)
@@ -214,6 +258,8 @@ def main():
             args.fixture,
             "--inner",
         ]
+        if args.require_correct_selection:
+            command.append("--require-correct-selection")
         with (args.output / "probe.log").open("w") as stream:
             process = subprocess.Popen(
                 command,
@@ -347,11 +393,7 @@ def main():
 
         measure("initial_no_selection", None, initial)
         number = 0
-        for case, query, start, end in [
-            ("full", value, 0, len(value)),
-            ("suffix", value[2:], 2, len(value)),
-            ("one_character", value[1:2], 1, 2),
-        ]:
+        for case, query, start, end in find_cases(value):
             number += 1
             (root / "command.json").write_text(
                 json.dumps({"id": number, "action": "find", "query": query})
@@ -391,6 +433,9 @@ def main():
     finally:
         result["passed"] = sum(item["passed"] for item in result["samples"])
         result["sample_count"] = len(result["samples"])
+        if args.require_correct_selection and not find_result_passes(result, value):
+            code = 1
+            result["status"] = "selection_failure"
         (root / "matrix.json").write_text(json.dumps(result, indent=2) + "\n")
         session.close()
     return code

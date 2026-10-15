@@ -18,6 +18,72 @@ from pathlib import Path
 SOURCE_SHA256 = "1d50dc6645c011e6fa2f036c2b08f7bb35967a60dbda12d52d55e901e8dd731f"
 SOURCE_PATH = Path("ui/accessibility/platform/ax_platform_node_auralinux.cc")
 
+# Independent numeric oracle: preserve each case, not merely aggregate totals.
+CASE_EXTENTS = {
+    "bmp_full": (0, 12),
+    "emoji_full": (0, 13),
+    "emoji_suffix": (2, 13),
+    "emoji_only": (1, 2),
+    "emoji_reverse": (2, 13),
+    "two_emoji_full": (0, 14),
+    "find_emoji_full": (0, 13),
+    "find_emoji_suffix": (2, 13),
+    "no_selection": (0, 0),
+    "ascii_full": (0, 13),
+    "bmp_suffix": (2, 12),
+    "combining_full": (0, 10),
+    "two_emoji_second": (2, 3),
+    "two_distinct_supplementary_full": (0, 14),
+    "multiline_full": (0, 13),
+    "multiline_middle": (3, 7),
+    "multiline_cross_line": (2, 9),
+    "multiline_reverse": (2, 13),
+    "find_two_emoji_full": (0, 14),
+    "find_two_emoji_second": (2, 3),
+    "find_multiline_cross_line": (2, 9),
+    "ordinary_selection_before_find": (1, 2),
+    "find_for_another_node": (0, 0),
+    "collapsed_after_emoji": (0, 0),
+    "find_multiline_prefix": (0, 3),
+}
+BASELINE_FAILURE_EXTENTS = {
+    "emoji_full": (0, 12),
+    "emoji_suffix": (-1, -1),
+    "emoji_only": (-1, -1),
+    "emoji_reverse": (-1, -1),
+    "two_emoji_full": (0, 12),
+    "two_emoji_second": (-1, -1),
+    "two_distinct_supplementary_full": (0, 12),
+    "multiline_full": (0, 11),
+    "multiline_middle": (2, 6),
+    "multiline_cross_line": (-1, -1),
+    "multiline_reverse": (-1, -1),
+    "ordinary_selection_before_find": (-1, -1),
+}
+
+
+def verify_case_evidence(records: list[dict], *, original: bool) -> bool:
+    """Require exact cases, extents, text checks and pass/fail identities."""
+    if len(records) != len(CASE_EXTENTS):
+        return False
+    observed = {record.get("case"): record for record in records}
+    if set(observed) != set(CASE_EXTENTS):
+        return False
+    for name, expected in CASE_EXTENTS.items():
+        failed = original and name in BASELINE_FAILURE_EXTENTS
+        actual = BASELINE_FAILURE_EXTENTS[name] if failed else expected
+        if observed[name] != {
+            "case": name,
+            "expected_start": expected[0],
+            "expected_end": expected[1],
+            "observed_start": actual[0],
+            "observed_end": actual[1],
+            "selected_text_equal": not failed,
+            "passed": not failed,
+        }:
+            return False
+    return True
+
 
 def extract_method(source: str, name: str) -> str:
     """Extract the complete named method, retaining its actual C++ body."""
@@ -121,6 +187,8 @@ int main() {
     int raw_start, raw_end, start, end;
     std::u16string selected;
     bool find = false;
+    bool ordinary_with_find = false;
+    bool foreign_find = false;
   };
   const Case cases[] = {
     {"bmp_full", u"a caf\u00e9 omega", 0, 12, 0, 12, u"a caf\u00e9 omega"},
@@ -139,15 +207,51 @@ int main() {
     {"find_emoji_suffix", u"a\U0001f642 caf\u00e9 omega", 3, 14, 2, 13,
      u" caf\u00e9 omega", true},
     {"no_selection", u"a\U0001f642 caf\u00e9 omega", 0, 0, 0, 0, u""},
+    {"ascii_full", u"a plain omega", 0, 13, 0, 13, u"a plain omega"},
+    {"bmp_suffix", u"a caf\u00e9 omega", 2, 12, 2, 12, u"caf\u00e9 omega"},
+    // Combining marks remain separate code points, not grapheme clusters.
+    {"combining_full", u"a e\u0301 omega", 0, 10, 0, 10, u"a e\u0301 omega"},
+    {"two_emoji_second", u"a\U0001f642\U0001f642 caf\u00e9 omega", 3, 5, 2, 3,
+     u"\U0001f642"},
+    {"two_distinct_supplementary_full", u"a\U0001f642\U0001d11e caf\u00e9 omega",
+     0, 16, 0, 14, u"a\U0001f642\U0001d11e caf\u00e9 omega"},
+    {"multiline_full", u"a\U0001f642\ncaf\u00e9\n\U0001d11e end",
+     0, 15, 0, 13, u"a\U0001f642\ncaf\u00e9\n\U0001d11e end"},
+    {"multiline_middle", u"a\U0001f642\ncaf\u00e9\n\U0001d11e end",
+     4, 8, 3, 7, u"caf\u00e9"},
+    {"multiline_cross_line", u"a\U0001f642\ncaf\u00e9\n\U0001d11e end",
+     3, 11, 2, 9, u"\ncaf\u00e9\n\U0001d11e"},
+    {"multiline_reverse", u"a\U0001f642\ncaf\u00e9\n\U0001d11e end",
+     15, 3, 2, 13, u"\ncaf\u00e9\n\U0001d11e end"},
+    {"find_two_emoji_full", u"a\U0001f642\U0001f642 caf\u00e9 omega",
+     0, 16, 0, 14, u"a\U0001f642\U0001f642 caf\u00e9 omega", true},
+    {"find_two_emoji_second", u"a\U0001f642\U0001f642 caf\u00e9 omega",
+     3, 5, 2, 3, u"\U0001f642", true},
+    {"find_multiline_cross_line", u"a\U0001f642\ncaf\u00e9\n\U0001d11e end",
+     3, 11, 2, 9, u"\ncaf\u00e9\n\U0001d11e", true},
+    {"ordinary_selection_before_find", u"a\U0001f642 caf\u00e9 omega",
+     1, 3, 1, 2, u"\U0001f642", false, true},
+    {"find_for_another_node", u"a\U0001f642 caf\u00e9 omega",
+     0, 14, 0, 0, u"", true, false, true},
+    {"collapsed_after_emoji", u"a\U0001f642 caf\u00e9 omega",
+     14, 14, 0, 0, u""},
+    {"find_multiline_prefix", u"a\U0001f642\ncaf\u00e9\n\U0001d11e end",
+     0, 4, 0, 3, u"a\U0001f642\n", true},
   };
   int failures = 0;
   for (const auto& test : cases) {
     AXPlatformNodeAuraLinux node;
     node.text = test.text;
+    AtkObject other_object = {nullptr};
     if (test.find) {
-      node.find = FindInPageResultInfo{&node.object, test.raw_start, test.raw_end};
+      node.find = FindInPageResultInfo{
+          test.foreign_find ? &other_object : &node.object,
+          test.raw_start, test.raw_end};
     } else {
       node.selection = {test.raw_start, test.raw_end};
+      if (test.ordinary_with_find) {
+        node.find = FindInPageResultInfo{&node.object, 0, 14};
+      }
     }
     int start = -1, end = -1;
     gchar* selected = node.GetSelectionWithText(&start, &end);
@@ -222,12 +326,24 @@ def run_contract(source: Path, patch: Path, output: Path, compiler: str) -> dict
         if result.stderr:
             raise RuntimeError(result.stderr)
         records = [json.loads(line) for line in result.stdout.splitlines()]
-        summary[name] = {**records[-1], "exit_code": result.returncode}
+        summary[name] = {
+            **records[-1],
+            "exit_code": result.returncode,
+            "case_evidence_verified": verify_case_evidence(
+                records[:-1], original=name == "original"
+            ),
+        }
     summary["expected_result"] = summary["original"] == {
-        "passed": 4,
-        "failed": 5,
+        "passed": 13,
+        "failed": 12,
         "exit_code": 1,
-    } and summary["candidate"] == {"passed": 9, "failed": 0, "exit_code": 0}
+        "case_evidence_verified": True,
+    } and summary["candidate"] == {
+        "passed": 25,
+        "failed": 0,
+        "exit_code": 0,
+        "case_evidence_verified": True,
+    }
     (output / "summary.json").write_text(
         json.dumps(summary, indent=2) + "\n", encoding="utf-8"
     )

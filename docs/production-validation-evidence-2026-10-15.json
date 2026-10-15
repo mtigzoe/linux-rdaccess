@@ -1,0 +1,107 @@
+{
+  "date_local": "2026-10-15",
+  "base_commit": "7b0f95927da16f6d552a687f8867d3ace67e5961",
+  "existing_ci_inspection": {
+    "gui_run": "https://github.com/mtigzoe/linux-rdaccess/actions/runs/38787265199",
+    "conclusion": "success",
+    "application_status": "PASS_WITH_XFAIL",
+    "checks": 48,
+    "expected_failures": ["#79: verified Code version/signature stale editor selection"],
+    "code_readback": 1,
+    "code_right": 13,
+    "remaining_code_checks_executed": false,
+    "companion_conclusion_at_inspection": "success",
+    "nvda_orca_contracts_conclusion_at_inspection": "success",
+    "linux_diagnostics_status_at_inspection": "in_progress",
+    "full_unittest_status_at_inspection": "in_progress",
+    "new_branch_ci_polled": false,
+    "raw_gui_log": "tmp/braille-routing-outcomes/main-7b0f959-gui.log"
+  },
+  "source_workflow_local_shell_check": {
+    "kind": "workflow_shell_steps_on_mint_not_github_actions",
+    "output": "/tmp/lrd-chromium-ci-shell-20261015-qpdmv7n3",
+    "steps": [
+      {"name": "Fetch and verify both pinned Chromium files", "exit_code": 0},
+      {"name": "Check full candidate application and run extracted-source contract", "exit_code": 0}
+    ],
+    "all_passed": true,
+    "initial_fixture_failure": {
+      "output": "/tmp/lrd-chromium-ci-shell-20261015-7ipxz3yo",
+      "exit_code": 1,
+      "cause": "Partial local archive lacked root remote_access import dependency; full source fixture corrected invocation",
+      "workflow_or_product_assertions_changed": false
+    }
+  },
+  "windows_companion": {
+    "python": "3.13",
+    "nvda_source_commit": "1406f9f8a04eb50f7317af87aba3a9d439c2a772",
+    "configobj": "5.0.9",
+    "tests": 359,
+    "failures": 0,
+    "errors": 0,
+    "new_unicode_boundary_tests": 5,
+    "status": "PASS",
+    "raw_log": "tmp/braille-routing-outcomes/unicode-companion-windows-py313.log",
+    "initial_environment_failure": {
+      "python": "3.14",
+      "tests": 356,
+      "errors": 1,
+      "exception": "ModuleNotFoundError: No module named 'configobj'",
+      "raw_log": "tmp/braille-routing-outcomes/unicode-companion-windows.log"
+    },
+    "initial_new_fixture_error": {
+      "test_methods": 5,
+      "failing_subcases": 5,
+      "exception": "ValueError: unsupported accessibility message type",
+      "cause": "Test fixture used a11y_caret rather than existing a11y_text message type",
+      "evidence": "Initial execution output recorded in task transcript",
+      "production_change": false
+    },
+    "provider_and_nvda_base_are_doubles": true,
+    "installed_nvda_operated": false
+  },
+  "linux_bridge_loopback": {
+    "tests": 170,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "status": "PASS",
+    "scope": "Private Xvfb/D-Bus mocked bridge and real socket loopback; no real NVDA or braille device",
+    "modules": [
+      "tests.unit.braille.test_nvda_native_braille",
+      "tests.unit.braille.test_braille_cell_alignment",
+      "tests.unit.braille.test_braille_routing_speech",
+      "tests.unit.braille.test_braille_input_help",
+      "tests.unit.braille.test_temporary_braille_messages",
+      "tests.integration.test_nvda_remote_loopback"
+    ],
+    "evidence_root": "/tmp/lrd-nvda-acceptance-20261015-66Rth4",
+    "passing_log": "bridge-loopback-isolated.log",
+    "initial_failed_log": "bridge-loopback.log",
+    "initial_failure": {
+      "tests_run": 166,
+      "failures": 1,
+      "errors": 1,
+      "cause": "GI enum re-registration during mocked imports; downstream empty text snapshot",
+      "correction": "Private environment wrapper preimports real GI modules before test mocks",
+      "product_or_assertions_changed": false
+    }
+  },
+  "source_evidence": "chromium-source-validation-evidence-2026-10-15.json",
+  "native_evidence": "native-unicode-production-evidence-2026-10-15.json",
+  "issue_79": {
+    "initial_state": "CLOSED",
+    "action": "Reopened according to explicit user instruction",
+    "final_intended_state": "OPEN"
+  },
+  "limitations": {
+    "full_chromium_source_build": false,
+    "upstream_gtests_executed": false,
+    "production_integration": false,
+    "live_nvda_input_or_speech": false,
+    "physical_bnote_80_acceptance": false,
+    "active_desktop_input": false,
+    "installed_application_or_device_settings_changed": false,
+    "pr_merged": false
+  }
+}

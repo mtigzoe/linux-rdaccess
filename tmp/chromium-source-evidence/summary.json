@@ -1,0 +1,17 @@
+{
+  "source_sha256": "1d50dc6645c011e6fa2f036c2b08f7bb35967a60dbda12d52d55e901e8dd731f",
+  "kind": "extracted_cpp_methods_with_test_dependencies",
+  "original": {
+    "passed": 13,
+    "failed": 12,
+    "exit_code": 1,
+    "case_evidence_verified": true
+  },
+  "candidate": {
+    "passed": 25,
+    "failed": 0,
+    "exit_code": 0,
+    "case_evidence_verified": true
+  },
+  "expected_result": true
+}

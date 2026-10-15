@@ -1,0 +1,4295 @@
+{
+  "collected_utc": "2026-10-15T18:54:16.856582+00:00",
+  "remote_private_root": "/tmp/lrd-unicode-production-20261015-4wbkdpg4",
+  "kind": "private_compiled_method_counterpart_not_source_build",
+  "installed_version": "1.141.0",
+  "installed_native_sha256": "f36c0ef83163bb3c7b99c5860ce98a5d4055dd6b69d3a4d393d7563e499d3456",
+  "installed_renderer_sha256": "631c1d79c4f3af9177ca23a70cfe0cf2586a692678bd897af6c869324160d905",
+  "active_desktop_input": false,
+  "physical_braille": "unverified",
+  "unicode_acceptance": "not_established",
+  "strict_runs": [
+    {
+      "name": "strict-distinct",
+      "metadata": {
+        "original_root": "/usr/share/code",
+        "original_sha256": "631c1d79c4f3af9177ca23a70cfe0cf2586a692678bd897af6c869324160d905",
+        "private_binary": "/tmp/lrd-unicode-production-20261015-4wbkdpg4/strict-distinct/code/code",
+        "source_sha256": "b9f82337d145b955028e393bbe9f2829b0ede7432212213cc85b2d72500d3d09",
+        "node": "24.21.0",
+        "typescript": "6.0.3",
+        "private_sha256": "02f7853f04a4fad8796e5710fc87044e046e68f1dc84e51e17a2cddba8883b83",
+        "native_original_sha256": "f36c0ef83163bb3c7b99c5860ce98a5d4055dd6b69d3a4d393d7563e499d3456",
+        "native_candidate_sha256": "851b6cbe2a980344d09a1de58e451dc7a91116ea7bae5ef465abc1f5ee1799ad",
+        "native_experiment": "compiled_method_bypass_not_source_build",
+        "native_selection_probe": false
+      },
+      "runs": [
+        {
+          "case": "distinct_astral",
+          "caret_requests": 1,
+          "readback": 1,
+          "after_right": 2,
+          "after_left": 1,
+          "clipboard": true,
+          "focus_return_continuation": true,
+          "fixture_input_method": "private_x11_clipboard",
+          "before": 14,
+          "requested": 1,
+          "request_utc": "2026-10-15T18:44:36.693203+00:00",
+          "accepted": true,
+          "clipboard_paste": true,
+          "clipboard_undo": true,
+          "clipboard_cut": true,
+          "fixture_final_caret_before_cleanup": 15,
+          "provider_character_count": 15,
+          "expected_codepoints": 15,
+          "expected_utf16_units": 18,
+          "observed_codepoints": 15,
+          "observed_utf16_units": 18,
+          "observed_equals_fixture": true,
+          "semantic_text_length": 15,
+          "semantic_selection": [
+            null,
+            null
+          ],
+          "status": "pass",
+          "run": 1,
+          "exit_code": 0,
+          "evidence_directory": "l79-cumpy_1s"
+        }
+      ],
+      "installed_bundle_unchanged": true,
+      "integrity": {
+        "installed_native_unchanged": true
+      }
+    },
+    {
+      "name": "strict-multiline",
+      "metadata": {
+        "original_root": "/usr/share/code",
+        "original_sha256": "631c1d79c4f3af9177ca23a70cfe0cf2586a692678bd897af6c869324160d905",
+        "private_binary": "/tmp/lrd-unicode-production-20261015-4wbkdpg4/strict-multiline/code/code",
+        "source_sha256": "b9f82337d145b955028e393bbe9f2829b0ede7432212213cc85b2d72500d3d09",
+        "node": "24.21.0",
+        "typescript": "6.0.3",
+        "private_sha256": "02f7853f04a4fad8796e5710fc87044e046e68f1dc84e51e17a2cddba8883b83",
+        "native_original_sha256": "f36c0ef83163bb3c7b99c5860ce98a5d4055dd6b69d3a4d393d7563e499d3456",
+        "native_candidate_sha256": "851b6cbe2a980344d09a1de58e451dc7a91116ea7bae5ef465abc1f5ee1799ad",
+        "native_experiment": "compiled_method_bypass_not_source_build",
+        "native_selection_probe": false
+      },
+      "runs": [
+        {
+          "case": "multiline_astral",
+          "caret_requests": 1,
+          "readback": 1,
+          "after_right": 2,
+          "after_left": 1,
+          "clipboard": true,
+          "focus_return_continuation": true,
+          "fixture_input_method": "private_x11_clipboard",
+          "before": 22,
+          "requested": 1,
+          "request_utc": "2026-10-15T18:45:04.579657+00:00",
+          "accepted": true,
+          "clipboard_paste": true,
+          "clipboard_undo": true,
+          "clipboard_cut": true,
+          "fixture_final_caret_before_cleanup": 23,
+          "provider_character_count": 23,
+          "expected_codepoints": 23,
+          "expected_utf16_units": 26,
+          "observed_codepoints": 23,
+          "observed_utf16_units": 26,
+          "observed_equals_fixture": true,
+          "semantic_text_length": 23,
+          "semantic_selection": [
+            null,
+            null
+          ],
+          "status": "pass",
+          "run": 1,
+          "exit_code": 0,
+          "evidence_directory": "l79-h9vjhas9"
+        }
+      ],
+      "installed_bundle_unchanged": true,
+      "integrity": {
+        "installed_native_unchanged": true
+      }
+    }
+  ],
+  "matrices": [
+    {
+      "status": "selection_failure",
+      "kind": "native_keyboard_selection_matrix",
+      "cdp_observation_only": true,
+      "caret_setter_calls": 0,
+      "selection_setter_calls": 0,
+      "browser": {
+        "Browser": "Chrome/150.0.7871.250",
+        "Protocol-Version": "1.3",
+        "V8-Version": "15.0.245.31"
+      },
+      "sample_count": 16,
+      "provider_selection_passed": 4,
+      "fully_correct_samples": 4,
+      "exit_code": 1,
+      "installed_bundle_unchanged": true,
+      "active_desktop_input": false,
+      "physical_braille": "unverified",
+      "unicode_acceptance": "not_established",
+      "binary_sha256": "f36c0ef83163bb3c7b99c5860ce98a5d4055dd6b69d3a4d393d7563e499d3456",
+      "private_bundle_sha256": "02f7853f04a4fad8796e5710fc87044e046e68f1dc84e51e17a2cddba8883b83",
+      "name": "matrix-baseline",
+      "current_strict_inventory_gate_passes": false,
+      "failed_samples": [
+        {
+          "fixture": "distinct_astral",
+          "case": "full_forward",
+          "keys": [
+            "ctrl+Home",
+            "ctrl+shift+End"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            0,
+            18
+          ],
+          "dom_selection": [
+            0,
+            18
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            0,
+            15
+          ],
+          "provider_selection": [
+            0,
+            12
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 15,
+          "expected_caret": 15,
+          "semantic_selection": [
+            0,
+            12
+          ],
+          "semantic_selection_passed": false,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": false,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "full_reverse",
+          "keys": [
+            "ctrl+End",
+            "ctrl+shift+Home"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            18,
+            0
+          ],
+          "dom_selection": [
+            18,
+            0
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            0,
+            15
+          ],
+          "provider_selection": [
+            0,
+            12
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 0,
+          "expected_caret": 0,
+          "semantic_selection": [
+            0,
+            12
+          ],
+          "semantic_selection_passed": false,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": false,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "suffix_forward",
+          "keys": [
+            "ctrl+Home",
+            "Right",
+            "Right",
+            "ctrl+shift+End"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            3,
+            18
+          ],
+          "dom_selection": [
+            3,
+            18
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            2,
+            15
+          ],
+          "provider_selection": [
+            0,
+            0
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 15,
+          "expected_caret": 15,
+          "semantic_selection": [
+            0,
+            0
+          ],
+          "semantic_selection_passed": false,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": false,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "suffix_reverse",
+          "keys": [
+            "ctrl+End",
+            "ctrl+shift+Home",
+            "shift+Right",
+            "shift+Right"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            18,
+            3
+          ],
+          "dom_selection": [
+            18,
+            3
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            2,
+            15
+          ],
+          "provider_selection": [
+            0,
+            0
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 2,
+          "expected_caret": 2,
+          "semantic_selection": [
+            0,
+            0
+          ],
+          "semantic_selection_passed": false,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": false,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "one_character",
+          "keys": [
+            "ctrl+Home",
+            "Right",
+            "shift+Right"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            1,
+            3
+          ],
+          "dom_selection": [
+            1,
+            3
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            1,
+            2
+          ],
+          "provider_selection": [
+            0,
+            0
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 2,
+          "expected_caret": 2,
+          "semantic_selection": [
+            0,
+            0
+          ],
+          "semantic_selection_passed": false,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": false,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "three_supplementary",
+          "keys": [
+            "ctrl+Home",
+            "Right",
+            "shift+Right",
+            "shift+Right",
+            "shift+Right"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            1,
+            7
+          ],
+          "dom_selection": [
+            1,
+            7
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            1,
+            4
+          ],
+          "provider_selection": [
+            0,
+            0
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 4,
+          "expected_caret": 4,
+          "semantic_selection": [
+            0,
+            0
+          ],
+          "semantic_selection_passed": false,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": false,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "third_supplementary",
+          "keys": [
+            "ctrl+Home",
+            "Right",
+            "Right",
+            "Right",
+            "shift+Right"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            5,
+            7
+          ],
+          "dom_selection": [
+            5,
+            7
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            3,
+            4
+          ],
+          "provider_selection": [
+            0,
+            0
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 4,
+          "expected_caret": 4,
+          "semantic_selection": [
+            0,
+            0
+          ],
+          "semantic_selection_passed": false,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": false,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "case": "full_forward",
+          "keys": [
+            "ctrl+Home",
+            "ctrl+shift+End"
+          ],
+          "fixture_codepoints": 23,
+          "fixture_utf16": 26,
+          "expected_dom": [
+            0,
+            26
+          ],
+          "dom_selection": [
+            0,
+            26
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            0,
+            23
+          ],
+          "provider_selection": [
+            0,
+            20
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 23,
+          "expected_caret": 23,
+          "semantic_selection": [
+            0,
+            20
+          ],
+          "semantic_selection_passed": false,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": false,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "case": "full_reverse",
+          "keys": [
+            "ctrl+End",
+            "ctrl+shift+Home"
+          ],
+          "fixture_codepoints": 23,
+          "fixture_utf16": 26,
+          "expected_dom": [
+            26,
+            0
+          ],
+          "dom_selection": [
+            26,
+            0
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            0,
+            23
+          ],
+          "provider_selection": [
+            0,
+            20
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 0,
+          "expected_caret": 0,
+          "semantic_selection": [
+            0,
+            20
+          ],
+          "semantic_selection_passed": false,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": false,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "case": "suffix_forward",
+          "keys": [
+            "ctrl+Home",
+            "Right",
+            "Right",
+            "ctrl+shift+End"
+          ],
+          "fixture_codepoints": 23,
+          "fixture_utf16": 26,
+          "expected_dom": [
+            3,
+            26
+          ],
+          "dom_selection": [
+            3,
+            26
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            2,
+            23
+          ],
+          "provider_selection": [
+            0,
+            0
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 23,
+          "expected_caret": 23,
+          "semantic_selection": [
+            0,
+            0
+          ],
+          "semantic_selection_passed": false,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": false,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "case": "suffix_reverse",
+          "keys": [
+            "ctrl+End",
+            "ctrl+shift+Home",
+            "shift+Right",
+            "shift+Right"
+          ],
+          "fixture_codepoints": 23,
+          "fixture_utf16": 26,
+          "expected_dom": [
+            26,
+            3
+          ],
+          "dom_selection": [
+            26,
+            3
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            2,
+            23
+          ],
+          "provider_selection": [
+            0,
+            0
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 2,
+          "expected_caret": 2,
+          "semantic_selection": [
+            0,
+            0
+          ],
+          "semantic_selection_passed": false,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": false,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "case": "one_character",
+          "keys": [
+            "ctrl+Home",
+            "Right",
+            "shift+Right"
+          ],
+          "fixture_codepoints": 23,
+          "fixture_utf16": 26,
+          "expected_dom": [
+            1,
+            3
+          ],
+          "dom_selection": [
+            1,
+            3
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            1,
+            2
+          ],
+          "provider_selection": [
+            0,
+            0
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 2,
+          "expected_caret": 2,
+          "semantic_selection": [
+            0,
+            0
+          ],
+          "semantic_selection_passed": false,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": false,
+          "provider_caret_passed": true
+        }
+      ],
+      "samples": [
+        {
+          "fixture": "distinct_astral",
+          "case": "full_forward",
+          "keys": [
+            "ctrl+Home",
+            "ctrl+shift+End"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            0,
+            18
+          ],
+          "dom_selection": [
+            0,
+            18
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            0,
+            15
+          ],
+          "provider_selection": [
+            0,
+            12
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 15,
+          "expected_caret": 15,
+          "semantic_selection": [
+            0,
+            12
+          ],
+          "semantic_selection_passed": false,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": false,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "full_reverse",
+          "keys": [
+            "ctrl+End",
+            "ctrl+shift+Home"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            18,
+            0
+          ],
+          "dom_selection": [
+            18,
+            0
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            0,
+            15
+          ],
+          "provider_selection": [
+            0,
+            12
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 0,
+          "expected_caret": 0,
+          "semantic_selection": [
+            0,
+            12
+          ],
+          "semantic_selection_passed": false,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": false,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "suffix_forward",
+          "keys": [
+            "ctrl+Home",
+            "Right",
+            "Right",
+            "ctrl+shift+End"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            3,
+            18
+          ],
+          "dom_selection": [
+            3,
+            18
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            2,
+            15
+          ],
+          "provider_selection": [
+            0,
+            0
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 15,
+          "expected_caret": 15,
+          "semantic_selection": [
+            0,
+            0
+          ],
+          "semantic_selection_passed": false,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": false,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "suffix_reverse",
+          "keys": [
+            "ctrl+End",
+            "ctrl+shift+Home",
+            "shift+Right",
+            "shift+Right"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            18,
+            3
+          ],
+          "dom_selection": [
+            18,
+            3
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            2,
+            15
+          ],
+          "provider_selection": [
+            0,
+            0
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 2,
+          "expected_caret": 2,
+          "semantic_selection": [
+            0,
+            0
+          ],
+          "semantic_selection_passed": false,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": false,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "one_character",
+          "keys": [
+            "ctrl+Home",
+            "Right",
+            "shift+Right"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            1,
+            3
+          ],
+          "dom_selection": [
+            1,
+            3
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            1,
+            2
+          ],
+          "provider_selection": [
+            0,
+            0
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 2,
+          "expected_caret": 2,
+          "semantic_selection": [
+            0,
+            0
+          ],
+          "semantic_selection_passed": false,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": false,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "collapse_right",
+          "keys": [
+            "ctrl+Home",
+            "ctrl+shift+End",
+            "Right"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            18,
+            18
+          ],
+          "dom_selection": [
+            18,
+            18
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": null,
+          "provider_selection": null,
+          "provider_error": null,
+          "provider_selection_count": 0,
+          "provider_caret": 15,
+          "expected_caret": 15,
+          "semantic_selection": [
+            null,
+            null
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": null,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "collapse_left",
+          "keys": [
+            "ctrl+Home",
+            "ctrl+shift+End",
+            "Left"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            0,
+            0
+          ],
+          "dom_selection": [
+            0,
+            0
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": null,
+          "provider_selection": null,
+          "provider_error": null,
+          "provider_selection_count": 0,
+          "provider_caret": 0,
+          "expected_caret": 0,
+          "semantic_selection": [
+            null,
+            null
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": null,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "three_supplementary",
+          "keys": [
+            "ctrl+Home",
+            "Right",
+            "shift+Right",
+            "shift+Right",
+            "shift+Right"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            1,
+            7
+          ],
+          "dom_selection": [
+            1,
+            7
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            1,
+            4
+          ],
+          "provider_selection": [
+            0,
+            0
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 4,
+          "expected_caret": 4,
+          "semantic_selection": [
+            0,
+            0
+          ],
+          "semantic_selection_passed": false,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": false,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "third_supplementary",
+          "keys": [
+            "ctrl+Home",
+            "Right",
+            "Right",
+            "Right",
+            "shift+Right"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            5,
+            7
+          ],
+          "dom_selection": [
+            5,
+            7
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            3,
+            4
+          ],
+          "provider_selection": [
+            0,
+            0
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 4,
+          "expected_caret": 4,
+          "semantic_selection": [
+            0,
+            0
+          ],
+          "semantic_selection_passed": false,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": false,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "case": "full_forward",
+          "keys": [
+            "ctrl+Home",
+            "ctrl+shift+End"
+          ],
+          "fixture_codepoints": 23,
+          "fixture_utf16": 26,
+          "expected_dom": [
+            0,
+            26
+          ],
+          "dom_selection": [
+            0,
+            26
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            0,
+            23
+          ],
+          "provider_selection": [
+            0,
+            20
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 23,
+          "expected_caret": 23,
+          "semantic_selection": [
+            0,
+            20
+          ],
+          "semantic_selection_passed": false,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": false,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "case": "full_reverse",
+          "keys": [
+            "ctrl+End",
+            "ctrl+shift+Home"
+          ],
+          "fixture_codepoints": 23,
+          "fixture_utf16": 26,
+          "expected_dom": [
+            26,
+            0
+          ],
+          "dom_selection": [
+            26,
+            0
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            0,
+            23
+          ],
+          "provider_selection": [
+            0,
+            20
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 0,
+          "expected_caret": 0,
+          "semantic_selection": [
+            0,
+            20
+          ],
+          "semantic_selection_passed": false,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": false,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "case": "suffix_forward",
+          "keys": [
+            "ctrl+Home",
+            "Right",
+            "Right",
+            "ctrl+shift+End"
+          ],
+          "fixture_codepoints": 23,
+          "fixture_utf16": 26,
+          "expected_dom": [
+            3,
+            26
+          ],
+          "dom_selection": [
+            3,
+            26
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            2,
+            23
+          ],
+          "provider_selection": [
+            0,
+            0
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 23,
+          "expected_caret": 23,
+          "semantic_selection": [
+            0,
+            0
+          ],
+          "semantic_selection_passed": false,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": false,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "case": "suffix_reverse",
+          "keys": [
+            "ctrl+End",
+            "ctrl+shift+Home",
+            "shift+Right",
+            "shift+Right"
+          ],
+          "fixture_codepoints": 23,
+          "fixture_utf16": 26,
+          "expected_dom": [
+            26,
+            3
+          ],
+          "dom_selection": [
+            26,
+            3
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            2,
+            23
+          ],
+          "provider_selection": [
+            0,
+            0
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 2,
+          "expected_caret": 2,
+          "semantic_selection": [
+            0,
+            0
+          ],
+          "semantic_selection_passed": false,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": false,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "case": "one_character",
+          "keys": [
+            "ctrl+Home",
+            "Right",
+            "shift+Right"
+          ],
+          "fixture_codepoints": 23,
+          "fixture_utf16": 26,
+          "expected_dom": [
+            1,
+            3
+          ],
+          "dom_selection": [
+            1,
+            3
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            1,
+            2
+          ],
+          "provider_selection": [
+            0,
+            0
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 2,
+          "expected_caret": 2,
+          "semantic_selection": [
+            0,
+            0
+          ],
+          "semantic_selection_passed": false,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": false,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "case": "collapse_right",
+          "keys": [
+            "ctrl+Home",
+            "ctrl+shift+End",
+            "Right"
+          ],
+          "fixture_codepoints": 23,
+          "fixture_utf16": 26,
+          "expected_dom": [
+            26,
+            26
+          ],
+          "dom_selection": [
+            26,
+            26
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": null,
+          "provider_selection": null,
+          "provider_error": null,
+          "provider_selection_count": 0,
+          "provider_caret": 23,
+          "expected_caret": 23,
+          "semantic_selection": [
+            null,
+            null
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": null,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "case": "collapse_left",
+          "keys": [
+            "ctrl+Home",
+            "ctrl+shift+End",
+            "Left"
+          ],
+          "fixture_codepoints": 23,
+          "fixture_utf16": 26,
+          "expected_dom": [
+            0,
+            0
+          ],
+          "dom_selection": [
+            0,
+            0
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": null,
+          "provider_selection": null,
+          "provider_error": null,
+          "provider_selection_count": 0,
+          "provider_caret": 0,
+          "expected_caret": 0,
+          "semantic_selection": [
+            null,
+            null
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": null,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        }
+      ]
+    },
+    {
+      "status": "diagnostic_complete",
+      "kind": "native_keyboard_selection_matrix",
+      "cdp_observation_only": true,
+      "caret_setter_calls": 0,
+      "selection_setter_calls": 0,
+      "browser": {
+        "Browser": "Chrome/150.0.7871.250",
+        "Protocol-Version": "1.3",
+        "V8-Version": "15.0.245.31"
+      },
+      "sample_count": 16,
+      "provider_selection_passed": 16,
+      "fully_correct_samples": 16,
+      "exit_code": 0,
+      "installed_bundle_unchanged": true,
+      "active_desktop_input": false,
+      "physical_braille": "unverified",
+      "unicode_acceptance": "not_established",
+      "binary_sha256": "851b6cbe2a980344d09a1de58e451dc7a91116ea7bae5ef465abc1f5ee1799ad",
+      "private_bundle_sha256": "02f7853f04a4fad8796e5710fc87044e046e68f1dc84e51e17a2cddba8883b83",
+      "name": "matrix-candidate",
+      "current_strict_inventory_gate_passes": true,
+      "failed_samples": [],
+      "samples": [
+        {
+          "fixture": "distinct_astral",
+          "case": "full_forward",
+          "keys": [
+            "ctrl+Home",
+            "ctrl+shift+End"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            0,
+            18
+          ],
+          "dom_selection": [
+            0,
+            18
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            0,
+            15
+          ],
+          "provider_selection": [
+            0,
+            15
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 15,
+          "expected_caret": 15,
+          "semantic_selection": [
+            0,
+            15
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "full_reverse",
+          "keys": [
+            "ctrl+End",
+            "ctrl+shift+Home"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            18,
+            0
+          ],
+          "dom_selection": [
+            18,
+            0
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            0,
+            15
+          ],
+          "provider_selection": [
+            0,
+            15
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 0,
+          "expected_caret": 0,
+          "semantic_selection": [
+            0,
+            15
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "suffix_forward",
+          "keys": [
+            "ctrl+Home",
+            "Right",
+            "Right",
+            "ctrl+shift+End"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            3,
+            18
+          ],
+          "dom_selection": [
+            3,
+            18
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            2,
+            15
+          ],
+          "provider_selection": [
+            2,
+            15
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 15,
+          "expected_caret": 15,
+          "semantic_selection": [
+            2,
+            15
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "suffix_reverse",
+          "keys": [
+            "ctrl+End",
+            "ctrl+shift+Home",
+            "shift+Right",
+            "shift+Right"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            18,
+            3
+          ],
+          "dom_selection": [
+            18,
+            3
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            2,
+            15
+          ],
+          "provider_selection": [
+            2,
+            15
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 2,
+          "expected_caret": 2,
+          "semantic_selection": [
+            2,
+            15
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "one_character",
+          "keys": [
+            "ctrl+Home",
+            "Right",
+            "shift+Right"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            1,
+            3
+          ],
+          "dom_selection": [
+            1,
+            3
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            1,
+            2
+          ],
+          "provider_selection": [
+            1,
+            2
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 2,
+          "expected_caret": 2,
+          "semantic_selection": [
+            1,
+            2
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "collapse_right",
+          "keys": [
+            "ctrl+Home",
+            "ctrl+shift+End",
+            "Right"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            18,
+            18
+          ],
+          "dom_selection": [
+            18,
+            18
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": null,
+          "provider_selection": null,
+          "provider_error": null,
+          "provider_selection_count": 0,
+          "provider_caret": 15,
+          "expected_caret": 15,
+          "semantic_selection": [
+            null,
+            null
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": null,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "collapse_left",
+          "keys": [
+            "ctrl+Home",
+            "ctrl+shift+End",
+            "Left"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            0,
+            0
+          ],
+          "dom_selection": [
+            0,
+            0
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": null,
+          "provider_selection": null,
+          "provider_error": null,
+          "provider_selection_count": 0,
+          "provider_caret": 0,
+          "expected_caret": 0,
+          "semantic_selection": [
+            null,
+            null
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": null,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "three_supplementary",
+          "keys": [
+            "ctrl+Home",
+            "Right",
+            "shift+Right",
+            "shift+Right",
+            "shift+Right"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            1,
+            7
+          ],
+          "dom_selection": [
+            1,
+            7
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            1,
+            4
+          ],
+          "provider_selection": [
+            1,
+            4
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 4,
+          "expected_caret": 4,
+          "semantic_selection": [
+            1,
+            4
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "third_supplementary",
+          "keys": [
+            "ctrl+Home",
+            "Right",
+            "Right",
+            "Right",
+            "shift+Right"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            5,
+            7
+          ],
+          "dom_selection": [
+            5,
+            7
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            3,
+            4
+          ],
+          "provider_selection": [
+            3,
+            4
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 4,
+          "expected_caret": 4,
+          "semantic_selection": [
+            3,
+            4
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "case": "full_forward",
+          "keys": [
+            "ctrl+Home",
+            "ctrl+shift+End"
+          ],
+          "fixture_codepoints": 23,
+          "fixture_utf16": 26,
+          "expected_dom": [
+            0,
+            26
+          ],
+          "dom_selection": [
+            0,
+            26
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            0,
+            23
+          ],
+          "provider_selection": [
+            0,
+            23
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 23,
+          "expected_caret": 23,
+          "semantic_selection": [
+            0,
+            23
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "case": "full_reverse",
+          "keys": [
+            "ctrl+End",
+            "ctrl+shift+Home"
+          ],
+          "fixture_codepoints": 23,
+          "fixture_utf16": 26,
+          "expected_dom": [
+            26,
+            0
+          ],
+          "dom_selection": [
+            26,
+            0
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            0,
+            23
+          ],
+          "provider_selection": [
+            0,
+            23
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 0,
+          "expected_caret": 0,
+          "semantic_selection": [
+            0,
+            23
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "case": "suffix_forward",
+          "keys": [
+            "ctrl+Home",
+            "Right",
+            "Right",
+            "ctrl+shift+End"
+          ],
+          "fixture_codepoints": 23,
+          "fixture_utf16": 26,
+          "expected_dom": [
+            3,
+            26
+          ],
+          "dom_selection": [
+            3,
+            26
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            2,
+            23
+          ],
+          "provider_selection": [
+            2,
+            23
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 23,
+          "expected_caret": 23,
+          "semantic_selection": [
+            2,
+            23
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "case": "suffix_reverse",
+          "keys": [
+            "ctrl+End",
+            "ctrl+shift+Home",
+            "shift+Right",
+            "shift+Right"
+          ],
+          "fixture_codepoints": 23,
+          "fixture_utf16": 26,
+          "expected_dom": [
+            26,
+            3
+          ],
+          "dom_selection": [
+            26,
+            3
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            2,
+            23
+          ],
+          "provider_selection": [
+            2,
+            23
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 2,
+          "expected_caret": 2,
+          "semantic_selection": [
+            2,
+            23
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "case": "one_character",
+          "keys": [
+            "ctrl+Home",
+            "Right",
+            "shift+Right"
+          ],
+          "fixture_codepoints": 23,
+          "fixture_utf16": 26,
+          "expected_dom": [
+            1,
+            3
+          ],
+          "dom_selection": [
+            1,
+            3
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            1,
+            2
+          ],
+          "provider_selection": [
+            1,
+            2
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "provider_caret": 2,
+          "expected_caret": 2,
+          "semantic_selection": [
+            1,
+            2
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "case": "collapse_right",
+          "keys": [
+            "ctrl+Home",
+            "ctrl+shift+End",
+            "Right"
+          ],
+          "fixture_codepoints": 23,
+          "fixture_utf16": 26,
+          "expected_dom": [
+            26,
+            26
+          ],
+          "dom_selection": [
+            26,
+            26
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": null,
+          "provider_selection": null,
+          "provider_error": null,
+          "provider_selection_count": 0,
+          "provider_caret": 23,
+          "expected_caret": 23,
+          "semantic_selection": [
+            null,
+            null
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": null,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "case": "collapse_left",
+          "keys": [
+            "ctrl+Home",
+            "ctrl+shift+End",
+            "Left"
+          ],
+          "fixture_codepoints": 23,
+          "fixture_utf16": 26,
+          "expected_dom": [
+            0,
+            0
+          ],
+          "dom_selection": [
+            0,
+            0
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": null,
+          "provider_selection": null,
+          "provider_error": null,
+          "provider_selection_count": 0,
+          "provider_caret": 0,
+          "expected_caret": 0,
+          "semantic_selection": [
+            null,
+            null
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": null,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        }
+      ]
+    },
+    {
+      "status": "selection_failure",
+      "kind": "native_keyboard_selection_matrix",
+      "cdp_observation_only": true,
+      "caret_setter_calls": 6,
+      "selection_setter_calls": 0,
+      "browser": {
+        "Browser": "Chrome/150.0.7871.250",
+        "Protocol-Version": "1.3",
+        "V8-Version": "15.0.245.31"
+      },
+      "sample_count": 16,
+      "provider_selection_passed": 16,
+      "fully_correct_samples": 16,
+      "routes_passed": 0,
+      "exit_code": 1,
+      "installed_bundle_unchanged": true,
+      "active_desktop_input": false,
+      "physical_braille": "unverified",
+      "unicode_acceptance": "not_established",
+      "binary_sha256": "851b6cbe2a980344d09a1de58e451dc7a91116ea7bae5ef465abc1f5ee1799ad",
+      "private_bundle_sha256": "02f7853f04a4fad8796e5710fc87044e046e68f1dc84e51e17a2cddba8883b83",
+      "name": "matrix-candidate-routing",
+      "current_strict_inventory_gate_passes": false,
+      "failed_samples": [],
+      "routes": [
+        {
+          "fixture": "distinct_astral",
+          "requested_codepoint": 1,
+          "accepted": true,
+          "observations": [
+            {
+              "key": null,
+              "expected_caret": 1,
+              "expected_dom_utf16": 1,
+              "dom_caret_utf16": 1,
+              "provider_caret": 4,
+              "semantic_caret": 4
+            },
+            {
+              "key": "Right",
+              "expected_caret": 2,
+              "expected_dom_utf16": 3,
+              "dom_caret_utf16": 3,
+              "provider_caret": 2,
+              "semantic_caret": 2
+            },
+            {
+              "key": "Left",
+              "expected_caret": 1,
+              "expected_dom_utf16": 1,
+              "dom_caret_utf16": 1,
+              "provider_caret": 1,
+              "semantic_caret": 1
+            }
+          ],
+          "passed": false
+        },
+        {
+          "fixture": "distinct_astral",
+          "requested_codepoint": 2,
+          "accepted": true,
+          "observations": [
+            {
+              "key": null,
+              "expected_caret": 2,
+              "expected_dom_utf16": 3,
+              "dom_caret_utf16": 3,
+              "provider_caret": 1,
+              "semantic_caret": 1
+            },
+            {
+              "key": "Right",
+              "expected_caret": 3,
+              "expected_dom_utf16": 5,
+              "dom_caret_utf16": 5,
+              "provider_caret": 3,
+              "semantic_caret": 3
+            },
+            {
+              "key": "Left",
+              "expected_caret": 2,
+              "expected_dom_utf16": 3,
+              "dom_caret_utf16": 3,
+              "provider_caret": 2,
+              "semantic_caret": 2
+            }
+          ],
+          "passed": false
+        },
+        {
+          "fixture": "distinct_astral",
+          "requested_codepoint": 3,
+          "accepted": true,
+          "observations": [
+            {
+              "key": null,
+              "expected_caret": 3,
+              "expected_dom_utf16": 5,
+              "dom_caret_utf16": 5,
+              "provider_caret": 2,
+              "semantic_caret": 2
+            },
+            {
+              "key": "Right",
+              "expected_caret": 4,
+              "expected_dom_utf16": 7,
+              "dom_caret_utf16": 7,
+              "provider_caret": 4,
+              "semantic_caret": 4
+            },
+            {
+              "key": "Left",
+              "expected_caret": 3,
+              "expected_dom_utf16": 5,
+              "dom_caret_utf16": 5,
+              "provider_caret": 3,
+              "semantic_caret": 3
+            }
+          ],
+          "passed": false
+        },
+        {
+          "fixture": "multiline_astral",
+          "requested_codepoint": 1,
+          "accepted": true,
+          "observations": [
+            {
+              "key": null,
+              "expected_caret": 1,
+              "expected_dom_utf16": 1,
+              "dom_caret_utf16": 1,
+              "provider_caret": 0,
+              "semantic_caret": 0
+            },
+            {
+              "key": "Right",
+              "expected_caret": 2,
+              "expected_dom_utf16": 3,
+              "dom_caret_utf16": 3,
+              "provider_caret": 2,
+              "semantic_caret": 2
+            },
+            {
+              "key": "Left",
+              "expected_caret": 1,
+              "expected_dom_utf16": 1,
+              "dom_caret_utf16": 1,
+              "provider_caret": 1,
+              "semantic_caret": 1
+            }
+          ],
+          "passed": false
+        },
+        {
+          "fixture": "multiline_astral",
+          "requested_codepoint": 9,
+          "accepted": true,
+          "observations": [
+            {
+              "key": null,
+              "expected_caret": 9,
+              "expected_dom_utf16": 10,
+              "dom_caret_utf16": 10,
+              "provider_caret": 1,
+              "semantic_caret": 1
+            },
+            {
+              "key": "Right",
+              "expected_caret": 10,
+              "expected_dom_utf16": 12,
+              "dom_caret_utf16": 12,
+              "provider_caret": 10,
+              "semantic_caret": 10
+            },
+            {
+              "key": "Left",
+              "expected_caret": 9,
+              "expected_dom_utf16": 10,
+              "dom_caret_utf16": 10,
+              "provider_caret": 9,
+              "semantic_caret": 9
+            }
+          ],
+          "passed": false
+        }
+      ]
+    },
+    {
+      "status": "selection_failure",
+      "kind": "native_keyboard_selection_matrix",
+      "cdp_observation_only": true,
+      "caret_setter_calls": 6,
+      "selection_setter_calls": 0,
+      "browser": {
+        "Browser": "Chrome/150.0.7871.250",
+        "Protocol-Version": "1.3",
+        "V8-Version": "15.0.245.31"
+      },
+      "sample_count": 16,
+      "provider_selection_passed": 15,
+      "fully_correct_samples": 15,
+      "routes_passed": 6,
+      "exit_code": 1,
+      "installed_bundle_unchanged": true,
+      "active_desktop_input": false,
+      "physical_braille": "unverified",
+      "unicode_acceptance": "not_established",
+      "binary_sha256": "851b6cbe2a980344d09a1de58e451dc7a91116ea7bae5ef465abc1f5ee1799ad",
+      "private_bundle_sha256": "02f7853f04a4fad8796e5710fc87044e046e68f1dc84e51e17a2cddba8883b83",
+      "name": "matrix-candidate-route-readback",
+      "current_strict_inventory_gate_passes": false,
+      "failed_samples": [
+        {
+          "fixture": "distinct_astral",
+          "case": "one_character",
+          "keys": [
+            "ctrl+Home",
+            "Right",
+            "shift+Right"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            1,
+            3
+          ],
+          "dom_selection": [
+            1,
+            3
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            1,
+            2
+          ],
+          "provider_selection": null,
+          "provider_error": null,
+          "provider_selection_count": 0,
+          "provider_caret": 2,
+          "expected_caret": 2,
+          "semantic_selection": [
+            null,
+            null
+          ],
+          "semantic_selection_passed": false,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": false,
+          "provider_caret_passed": true
+        }
+      ],
+      "routes": [
+        {
+          "fixture": "distinct_astral",
+          "requested_codepoint": 1,
+          "accepted": true,
+          "initial_provider_caret": 4,
+          "observations": [
+            {
+              "key": null,
+              "expected_caret": 1,
+              "expected_dom_utf16": 1,
+              "dom_caret_utf16": 1,
+              "provider_caret": 1,
+              "semantic_caret": 1
+            },
+            {
+              "key": "Right",
+              "expected_caret": 2,
+              "expected_dom_utf16": 3,
+              "dom_caret_utf16": 3,
+              "provider_caret": 2,
+              "semantic_caret": 2
+            },
+            {
+              "key": "Left",
+              "expected_caret": 1,
+              "expected_dom_utf16": 1,
+              "dom_caret_utf16": 1,
+              "provider_caret": 1,
+              "semantic_caret": 1
+            }
+          ],
+          "passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "requested_codepoint": 2,
+          "accepted": true,
+          "initial_provider_caret": 1,
+          "observations": [
+            {
+              "key": null,
+              "expected_caret": 2,
+              "expected_dom_utf16": 3,
+              "dom_caret_utf16": 3,
+              "provider_caret": 2,
+              "semantic_caret": 2
+            },
+            {
+              "key": "Right",
+              "expected_caret": 3,
+              "expected_dom_utf16": 5,
+              "dom_caret_utf16": 5,
+              "provider_caret": 3,
+              "semantic_caret": 3
+            },
+            {
+              "key": "Left",
+              "expected_caret": 2,
+              "expected_dom_utf16": 3,
+              "dom_caret_utf16": 3,
+              "provider_caret": 2,
+              "semantic_caret": 2
+            }
+          ],
+          "passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "requested_codepoint": 3,
+          "accepted": true,
+          "initial_provider_caret": 2,
+          "observations": [
+            {
+              "key": null,
+              "expected_caret": 3,
+              "expected_dom_utf16": 5,
+              "dom_caret_utf16": 5,
+              "provider_caret": 3,
+              "semantic_caret": 3
+            },
+            {
+              "key": "Right",
+              "expected_caret": 4,
+              "expected_dom_utf16": 7,
+              "dom_caret_utf16": 7,
+              "provider_caret": 4,
+              "semantic_caret": 4
+            },
+            {
+              "key": "Left",
+              "expected_caret": 3,
+              "expected_dom_utf16": 5,
+              "dom_caret_utf16": 5,
+              "provider_caret": 3,
+              "semantic_caret": 3
+            }
+          ],
+          "passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "requested_codepoint": 1,
+          "accepted": true,
+          "initial_provider_caret": 0,
+          "observations": [
+            {
+              "key": null,
+              "expected_caret": 1,
+              "expected_dom_utf16": 1,
+              "dom_caret_utf16": 1,
+              "provider_caret": 1,
+              "semantic_caret": 1
+            },
+            {
+              "key": "Right",
+              "expected_caret": 2,
+              "expected_dom_utf16": 3,
+              "dom_caret_utf16": 3,
+              "provider_caret": 2,
+              "semantic_caret": 2
+            },
+            {
+              "key": "Left",
+              "expected_caret": 1,
+              "expected_dom_utf16": 1,
+              "dom_caret_utf16": 1,
+              "provider_caret": 1,
+              "semantic_caret": 1
+            }
+          ],
+          "passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "requested_codepoint": 9,
+          "accepted": true,
+          "initial_provider_caret": 1,
+          "observations": [
+            {
+              "key": null,
+              "expected_caret": 9,
+              "expected_dom_utf16": 10,
+              "dom_caret_utf16": 10,
+              "provider_caret": 9,
+              "semantic_caret": 9
+            },
+            {
+              "key": "Right",
+              "expected_caret": 10,
+              "expected_dom_utf16": 12,
+              "dom_caret_utf16": 12,
+              "provider_caret": 10,
+              "semantic_caret": 10
+            },
+            {
+              "key": "Left",
+              "expected_caret": 9,
+              "expected_dom_utf16": 10,
+              "dom_caret_utf16": 10,
+              "provider_caret": 9,
+              "semantic_caret": 9
+            }
+          ],
+          "passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "requested_codepoint": 18,
+          "accepted": true,
+          "initial_provider_caret": 9,
+          "observations": [
+            {
+              "key": null,
+              "expected_caret": 18,
+              "expected_dom_utf16": 20,
+              "dom_caret_utf16": 20,
+              "provider_caret": 18,
+              "semantic_caret": 18
+            },
+            {
+              "key": "Right",
+              "expected_caret": 19,
+              "expected_dom_utf16": 22,
+              "dom_caret_utf16": 22,
+              "provider_caret": 19,
+              "semantic_caret": 19
+            },
+            {
+              "key": "Left",
+              "expected_caret": 18,
+              "expected_dom_utf16": 20,
+              "dom_caret_utf16": 20,
+              "provider_caret": 18,
+              "semantic_caret": 18
+            }
+          ],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "status": "diagnostic_complete",
+      "kind": "native_keyboard_selection_matrix",
+      "cdp_observation_only": true,
+      "caret_setter_calls": 6,
+      "selection_setter_calls": 0,
+      "browser": {
+        "Browser": "Chrome/150.0.7871.250",
+        "Protocol-Version": "1.3",
+        "V8-Version": "15.0.245.31"
+      },
+      "sample_count": 16,
+      "provider_selection_passed": 16,
+      "fully_correct_samples": 16,
+      "routes_passed": 6,
+      "exit_code": 0,
+      "installed_bundle_unchanged": true,
+      "active_desktop_input": false,
+      "physical_braille": "unverified",
+      "unicode_acceptance": "not_established",
+      "binary_sha256": "851b6cbe2a980344d09a1de58e451dc7a91116ea7bae5ef465abc1f5ee1799ad",
+      "private_bundle_sha256": "02f7853f04a4fad8796e5710fc87044e046e68f1dc84e51e17a2cddba8883b83",
+      "name": "matrix-candidate-timing-observation",
+      "current_strict_inventory_gate_passes": true,
+      "failed_samples": [],
+      "samples": [
+        {
+          "fixture": "distinct_astral",
+          "case": "full_forward",
+          "keys": [
+            "ctrl+Home",
+            "ctrl+shift+End"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            0,
+            18
+          ],
+          "dom_selection": [
+            0,
+            18
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            0,
+            15
+          ],
+          "provider_selection": [
+            0,
+            15
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "post_clipboard_selection_count": 1,
+          "post_clipboard_selection": [
+            0,
+            15
+          ],
+          "provider_caret": 15,
+          "expected_caret": 15,
+          "semantic_selection": [
+            0,
+            15
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "full_reverse",
+          "keys": [
+            "ctrl+End",
+            "ctrl+shift+Home"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            18,
+            0
+          ],
+          "dom_selection": [
+            18,
+            0
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            0,
+            15
+          ],
+          "provider_selection": [
+            0,
+            15
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "post_clipboard_selection_count": 1,
+          "post_clipboard_selection": [
+            0,
+            15
+          ],
+          "provider_caret": 0,
+          "expected_caret": 0,
+          "semantic_selection": [
+            0,
+            15
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "suffix_forward",
+          "keys": [
+            "ctrl+Home",
+            "Right",
+            "Right",
+            "ctrl+shift+End"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            3,
+            18
+          ],
+          "dom_selection": [
+            3,
+            18
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            2,
+            15
+          ],
+          "provider_selection": [
+            2,
+            15
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "post_clipboard_selection_count": 1,
+          "post_clipboard_selection": [
+            2,
+            15
+          ],
+          "provider_caret": 15,
+          "expected_caret": 15,
+          "semantic_selection": [
+            2,
+            15
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "suffix_reverse",
+          "keys": [
+            "ctrl+End",
+            "ctrl+shift+Home",
+            "shift+Right",
+            "shift+Right"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            18,
+            3
+          ],
+          "dom_selection": [
+            18,
+            3
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            2,
+            15
+          ],
+          "provider_selection": [
+            2,
+            15
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "post_clipboard_selection_count": 1,
+          "post_clipboard_selection": [
+            2,
+            15
+          ],
+          "provider_caret": 2,
+          "expected_caret": 2,
+          "semantic_selection": [
+            2,
+            15
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "one_character",
+          "keys": [
+            "ctrl+Home",
+            "Right",
+            "shift+Right"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            1,
+            3
+          ],
+          "dom_selection": [
+            1,
+            3
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            1,
+            2
+          ],
+          "provider_selection": [
+            1,
+            2
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "post_clipboard_selection_count": 1,
+          "post_clipboard_selection": [
+            1,
+            2
+          ],
+          "provider_caret": 2,
+          "expected_caret": 2,
+          "semantic_selection": [
+            1,
+            2
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "collapse_right",
+          "keys": [
+            "ctrl+Home",
+            "ctrl+shift+End",
+            "Right"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            18,
+            18
+          ],
+          "dom_selection": [
+            18,
+            18
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": null,
+          "provider_selection": null,
+          "provider_error": null,
+          "provider_selection_count": 0,
+          "post_clipboard_selection_count": 0,
+          "post_clipboard_selection": null,
+          "provider_caret": 15,
+          "expected_caret": 15,
+          "semantic_selection": [
+            null,
+            null
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": null,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "collapse_left",
+          "keys": [
+            "ctrl+Home",
+            "ctrl+shift+End",
+            "Left"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            0,
+            0
+          ],
+          "dom_selection": [
+            0,
+            0
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": null,
+          "provider_selection": null,
+          "provider_error": null,
+          "provider_selection_count": 0,
+          "post_clipboard_selection_count": 0,
+          "post_clipboard_selection": null,
+          "provider_caret": 0,
+          "expected_caret": 0,
+          "semantic_selection": [
+            null,
+            null
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": null,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "three_supplementary",
+          "keys": [
+            "ctrl+Home",
+            "Right",
+            "shift+Right",
+            "shift+Right",
+            "shift+Right"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            1,
+            7
+          ],
+          "dom_selection": [
+            1,
+            7
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            1,
+            4
+          ],
+          "provider_selection": [
+            1,
+            4
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "post_clipboard_selection_count": 1,
+          "post_clipboard_selection": [
+            1,
+            4
+          ],
+          "provider_caret": 4,
+          "expected_caret": 4,
+          "semantic_selection": [
+            1,
+            4
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "case": "third_supplementary",
+          "keys": [
+            "ctrl+Home",
+            "Right",
+            "Right",
+            "Right",
+            "shift+Right"
+          ],
+          "fixture_codepoints": 15,
+          "fixture_utf16": 18,
+          "expected_dom": [
+            5,
+            7
+          ],
+          "dom_selection": [
+            5,
+            7
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            3,
+            4
+          ],
+          "provider_selection": [
+            3,
+            4
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "post_clipboard_selection_count": 1,
+          "post_clipboard_selection": [
+            3,
+            4
+          ],
+          "provider_caret": 4,
+          "expected_caret": 4,
+          "semantic_selection": [
+            3,
+            4
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "case": "full_forward",
+          "keys": [
+            "ctrl+Home",
+            "ctrl+shift+End"
+          ],
+          "fixture_codepoints": 23,
+          "fixture_utf16": 26,
+          "expected_dom": [
+            0,
+            26
+          ],
+          "dom_selection": [
+            0,
+            26
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            0,
+            23
+          ],
+          "provider_selection": [
+            0,
+            23
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "post_clipboard_selection_count": 1,
+          "post_clipboard_selection": [
+            0,
+            23
+          ],
+          "provider_caret": 23,
+          "expected_caret": 23,
+          "semantic_selection": [
+            0,
+            23
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "case": "full_reverse",
+          "keys": [
+            "ctrl+End",
+            "ctrl+shift+Home"
+          ],
+          "fixture_codepoints": 23,
+          "fixture_utf16": 26,
+          "expected_dom": [
+            26,
+            0
+          ],
+          "dom_selection": [
+            26,
+            0
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            0,
+            23
+          ],
+          "provider_selection": [
+            0,
+            23
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "post_clipboard_selection_count": 1,
+          "post_clipboard_selection": [
+            0,
+            23
+          ],
+          "provider_caret": 0,
+          "expected_caret": 0,
+          "semantic_selection": [
+            0,
+            23
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "case": "suffix_forward",
+          "keys": [
+            "ctrl+Home",
+            "Right",
+            "Right",
+            "ctrl+shift+End"
+          ],
+          "fixture_codepoints": 23,
+          "fixture_utf16": 26,
+          "expected_dom": [
+            3,
+            26
+          ],
+          "dom_selection": [
+            3,
+            26
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            2,
+            23
+          ],
+          "provider_selection": [
+            2,
+            23
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "post_clipboard_selection_count": 1,
+          "post_clipboard_selection": [
+            2,
+            23
+          ],
+          "provider_caret": 23,
+          "expected_caret": 23,
+          "semantic_selection": [
+            2,
+            23
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "case": "suffix_reverse",
+          "keys": [
+            "ctrl+End",
+            "ctrl+shift+Home",
+            "shift+Right",
+            "shift+Right"
+          ],
+          "fixture_codepoints": 23,
+          "fixture_utf16": 26,
+          "expected_dom": [
+            26,
+            3
+          ],
+          "dom_selection": [
+            26,
+            3
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            2,
+            23
+          ],
+          "provider_selection": [
+            2,
+            23
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "post_clipboard_selection_count": 1,
+          "post_clipboard_selection": [
+            2,
+            23
+          ],
+          "provider_caret": 2,
+          "expected_caret": 2,
+          "semantic_selection": [
+            2,
+            23
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "case": "one_character",
+          "keys": [
+            "ctrl+Home",
+            "Right",
+            "shift+Right"
+          ],
+          "fixture_codepoints": 23,
+          "fixture_utf16": 26,
+          "expected_dom": [
+            1,
+            3
+          ],
+          "dom_selection": [
+            1,
+            3
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": [
+            1,
+            2
+          ],
+          "provider_selection": [
+            1,
+            2
+          ],
+          "provider_error": null,
+          "provider_selection_count": 1,
+          "post_clipboard_selection_count": 1,
+          "post_clipboard_selection": [
+            1,
+            2
+          ],
+          "provider_caret": 2,
+          "expected_caret": 2,
+          "semantic_selection": [
+            1,
+            2
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": true,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "case": "collapse_right",
+          "keys": [
+            "ctrl+Home",
+            "ctrl+shift+End",
+            "Right"
+          ],
+          "fixture_codepoints": 23,
+          "fixture_utf16": 26,
+          "expected_dom": [
+            26,
+            26
+          ],
+          "dom_selection": [
+            26,
+            26
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": null,
+          "provider_selection": null,
+          "provider_error": null,
+          "provider_selection_count": 0,
+          "post_clipboard_selection_count": 0,
+          "post_clipboard_selection": null,
+          "provider_caret": 23,
+          "expected_caret": 23,
+          "semantic_selection": [
+            null,
+            null
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": null,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "case": "collapse_left",
+          "keys": [
+            "ctrl+Home",
+            "ctrl+shift+End",
+            "Left"
+          ],
+          "fixture_codepoints": 23,
+          "fixture_utf16": 26,
+          "expected_dom": [
+            0,
+            0
+          ],
+          "dom_selection": [
+            0,
+            0
+          ],
+          "dom_selected_text_equals_expected": true,
+          "expected_provider_selection": null,
+          "provider_selection": null,
+          "provider_error": null,
+          "provider_selection_count": 0,
+          "post_clipboard_selection_count": 0,
+          "post_clipboard_selection": null,
+          "provider_caret": 0,
+          "expected_caret": 0,
+          "semantic_selection": [
+            null,
+            null
+          ],
+          "semantic_selection_passed": true,
+          "semantic_text_equals_fixture": true,
+          "copied_equals_expected": null,
+          "provider_selection_passed": true,
+          "provider_caret_passed": true
+        }
+      ],
+      "routes": [
+        {
+          "fixture": "distinct_astral",
+          "requested_codepoint": 1,
+          "accepted": true,
+          "initial_provider_caret": 4,
+          "observations": [
+            {
+              "key": null,
+              "expected_caret": 1,
+              "expected_dom_utf16": 1,
+              "dom_caret_utf16": 1,
+              "provider_caret": 1,
+              "semantic_caret": 1
+            },
+            {
+              "key": "Right",
+              "expected_caret": 2,
+              "expected_dom_utf16": 3,
+              "dom_caret_utf16": 3,
+              "provider_caret": 2,
+              "semantic_caret": 2
+            },
+            {
+              "key": "Left",
+              "expected_caret": 1,
+              "expected_dom_utf16": 1,
+              "dom_caret_utf16": 1,
+              "provider_caret": 1,
+              "semantic_caret": 1
+            }
+          ],
+          "passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "requested_codepoint": 2,
+          "accepted": true,
+          "initial_provider_caret": 1,
+          "observations": [
+            {
+              "key": null,
+              "expected_caret": 2,
+              "expected_dom_utf16": 3,
+              "dom_caret_utf16": 3,
+              "provider_caret": 2,
+              "semantic_caret": 2
+            },
+            {
+              "key": "Right",
+              "expected_caret": 3,
+              "expected_dom_utf16": 5,
+              "dom_caret_utf16": 5,
+              "provider_caret": 3,
+              "semantic_caret": 3
+            },
+            {
+              "key": "Left",
+              "expected_caret": 2,
+              "expected_dom_utf16": 3,
+              "dom_caret_utf16": 3,
+              "provider_caret": 2,
+              "semantic_caret": 2
+            }
+          ],
+          "passed": true
+        },
+        {
+          "fixture": "distinct_astral",
+          "requested_codepoint": 3,
+          "accepted": true,
+          "initial_provider_caret": 2,
+          "observations": [
+            {
+              "key": null,
+              "expected_caret": 3,
+              "expected_dom_utf16": 5,
+              "dom_caret_utf16": 5,
+              "provider_caret": 3,
+              "semantic_caret": 3
+            },
+            {
+              "key": "Right",
+              "expected_caret": 4,
+              "expected_dom_utf16": 7,
+              "dom_caret_utf16": 7,
+              "provider_caret": 4,
+              "semantic_caret": 4
+            },
+            {
+              "key": "Left",
+              "expected_caret": 3,
+              "expected_dom_utf16": 5,
+              "dom_caret_utf16": 5,
+              "provider_caret": 3,
+              "semantic_caret": 3
+            }
+          ],
+          "passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "requested_codepoint": 1,
+          "accepted": true,
+          "initial_provider_caret": 0,
+          "observations": [
+            {
+              "key": null,
+              "expected_caret": 1,
+              "expected_dom_utf16": 1,
+              "dom_caret_utf16": 1,
+              "provider_caret": 1,
+              "semantic_caret": 1
+            },
+            {
+              "key": "Right",
+              "expected_caret": 2,
+              "expected_dom_utf16": 3,
+              "dom_caret_utf16": 3,
+              "provider_caret": 2,
+              "semantic_caret": 2
+            },
+            {
+              "key": "Left",
+              "expected_caret": 1,
+              "expected_dom_utf16": 1,
+              "dom_caret_utf16": 1,
+              "provider_caret": 1,
+              "semantic_caret": 1
+            }
+          ],
+          "passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "requested_codepoint": 9,
+          "accepted": true,
+          "initial_provider_caret": 1,
+          "observations": [
+            {
+              "key": null,
+              "expected_caret": 9,
+              "expected_dom_utf16": 10,
+              "dom_caret_utf16": 10,
+              "provider_caret": 9,
+              "semantic_caret": 9
+            },
+            {
+              "key": "Right",
+              "expected_caret": 10,
+              "expected_dom_utf16": 12,
+              "dom_caret_utf16": 12,
+              "provider_caret": 10,
+              "semantic_caret": 10
+            },
+            {
+              "key": "Left",
+              "expected_caret": 9,
+              "expected_dom_utf16": 10,
+              "dom_caret_utf16": 10,
+              "provider_caret": 9,
+              "semantic_caret": 9
+            }
+          ],
+          "passed": true
+        },
+        {
+          "fixture": "multiline_astral",
+          "requested_codepoint": 18,
+          "accepted": true,
+          "initial_provider_caret": 9,
+          "observations": [
+            {
+              "key": null,
+              "expected_caret": 18,
+              "expected_dom_utf16": 20,
+              "dom_caret_utf16": 20,
+              "provider_caret": 18,
+              "semantic_caret": 18
+            },
+            {
+              "key": "Right",
+              "expected_caret": 19,
+              "expected_dom_utf16": 22,
+              "dom_caret_utf16": 22,
+              "provider_caret": 19,
+              "semantic_caret": 19
+            },
+            {
+              "key": "Left",
+              "expected_caret": 18,
+              "expected_dom_utf16": 20,
+              "dom_caret_utf16": 20,
+              "provider_caret": 18,
+              "semantic_caret": 18
+            }
+          ],
+          "passed": true
+        }
+      ]
+    }
+  ],
+  "find_runs": [
+    {
+      "status": "diagnostic_complete",
+      "kind": "native_electron_find_in_page",
+      "fixture": "distinct_astral",
+      "samples": [
+        {
+          "case": "initial_no_selection",
+          "expected_selection": null,
+          "observations": [
+            {
+              "role": "paragraph",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 15
+            },
+            {
+              "role": "static",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 15
+            }
+          ],
+          "passed": true,
+          "dom_selection_empty": true,
+          "dom_text_equals_fixture": true,
+          "dom_anchor": 0,
+          "dom_focus": 0,
+          "find_matches": null,
+          "find_active_match_ordinal": null,
+          "command_id": 0,
+          "request_id": null
+        },
+        {
+          "case": "find_full",
+          "expected_selection": [
+            0,
+            15
+          ],
+          "observations": [
+            {
+              "role": "paragraph",
+              "selection_count": 1,
+              "selection": [
+                0,
+                15
+              ],
+              "caret": 15,
+              "character_count": 15
+            },
+            {
+              "role": "static",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 15
+            }
+          ],
+          "passed": true,
+          "dom_selection_empty": true,
+          "dom_text_equals_fixture": true,
+          "dom_anchor": 0,
+          "dom_focus": 0,
+          "find_matches": 1,
+          "find_active_match_ordinal": 1,
+          "command_id": 1,
+          "request_id": 1
+        },
+        {
+          "case": "clear_full",
+          "expected_selection": null,
+          "observations": [
+            {
+              "role": "paragraph",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 15
+            },
+            {
+              "role": "static",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 15
+            }
+          ],
+          "passed": true,
+          "dom_selection_empty": true,
+          "dom_text_equals_fixture": true,
+          "dom_anchor": 0,
+          "dom_focus": 0,
+          "find_matches": null,
+          "find_active_match_ordinal": null,
+          "command_id": 2,
+          "request_id": null
+        },
+        {
+          "case": "find_suffix",
+          "expected_selection": [
+            2,
+            15
+          ],
+          "observations": [
+            {
+              "role": "paragraph",
+              "selection_count": 1,
+              "selection": [
+                2,
+                15
+              ],
+              "caret": 15,
+              "character_count": 15
+            },
+            {
+              "role": "static",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 15
+            }
+          ],
+          "passed": true,
+          "dom_selection_empty": true,
+          "dom_text_equals_fixture": true,
+          "dom_anchor": 0,
+          "dom_focus": 0,
+          "find_matches": 1,
+          "find_active_match_ordinal": 1,
+          "command_id": 3,
+          "request_id": 2
+        },
+        {
+          "case": "clear_suffix",
+          "expected_selection": null,
+          "observations": [
+            {
+              "role": "paragraph",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 15
+            },
+            {
+              "role": "static",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 15
+            }
+          ],
+          "passed": true,
+          "dom_selection_empty": true,
+          "dom_text_equals_fixture": true,
+          "dom_anchor": 0,
+          "dom_focus": 0,
+          "find_matches": null,
+          "find_active_match_ordinal": null,
+          "command_id": 4,
+          "request_id": null
+        },
+        {
+          "case": "find_one_character",
+          "expected_selection": [
+            1,
+            2
+          ],
+          "observations": [
+            {
+              "role": "paragraph",
+              "selection_count": 1,
+              "selection": [
+                1,
+                2
+              ],
+              "caret": 2,
+              "character_count": 15
+            },
+            {
+              "role": "static",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 15
+            }
+          ],
+          "passed": true,
+          "dom_selection_empty": true,
+          "dom_text_equals_fixture": true,
+          "dom_anchor": 0,
+          "dom_focus": 0,
+          "find_matches": 1,
+          "find_active_match_ordinal": 1,
+          "command_id": 5,
+          "request_id": 3
+        },
+        {
+          "case": "clear_one_character",
+          "expected_selection": null,
+          "observations": [
+            {
+              "role": "paragraph",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 15
+            },
+            {
+              "role": "static",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 15
+            }
+          ],
+          "passed": true,
+          "dom_selection_empty": true,
+          "dom_text_equals_fixture": true,
+          "dom_anchor": 0,
+          "dom_focus": 0,
+          "find_matches": null,
+          "find_active_match_ordinal": null,
+          "command_id": 6,
+          "request_id": null
+        }
+      ],
+      "selection_setter_calls": 0,
+      "caret_setter_calls": 0,
+      "renderer_dom_observation_only": true,
+      "passed": 7,
+      "sample_count": 7,
+      "exit_code": 0,
+      "installed_binary_unchanged": true,
+      "private_binary_sha256": "f36c0ef83163bb3c7b99c5860ce98a5d4055dd6b69d3a4d393d7563e499d3456",
+      "active_desktop_input": false,
+      "physical_braille": "unverified",
+      "name": "find-baseline-distinct_astral",
+      "current_strict_inventory_gate_passes": true
+    },
+    {
+      "status": "diagnostic_complete",
+      "kind": "native_electron_find_in_page",
+      "fixture": "multiline_astral",
+      "samples": [
+        {
+          "case": "initial_no_selection",
+          "expected_selection": null,
+          "observations": [
+            {
+              "role": "paragraph",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 23
+            },
+            {
+              "role": "static",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 23
+            }
+          ],
+          "passed": true,
+          "dom_selection_empty": true,
+          "dom_text_equals_fixture": true,
+          "dom_anchor": 0,
+          "dom_focus": 0,
+          "find_matches": null,
+          "find_active_match_ordinal": null,
+          "command_id": 0,
+          "request_id": null
+        },
+        {
+          "case": "find_first_line",
+          "expected_selection": [
+            0,
+            7
+          ],
+          "observations": [
+            {
+              "role": "paragraph",
+              "selection_count": 1,
+              "selection": [
+                0,
+                7
+              ],
+              "caret": 7,
+              "character_count": 23
+            },
+            {
+              "role": "static",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 23
+            }
+          ],
+          "passed": true,
+          "dom_selection_empty": true,
+          "dom_text_equals_fixture": true,
+          "dom_anchor": 0,
+          "dom_focus": 0,
+          "find_matches": 1,
+          "find_active_match_ordinal": 1,
+          "command_id": 1,
+          "request_id": 1
+        },
+        {
+          "case": "clear_first_line",
+          "expected_selection": null,
+          "observations": [
+            {
+              "role": "paragraph",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 23
+            },
+            {
+              "role": "static",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 23
+            }
+          ],
+          "passed": true,
+          "dom_selection_empty": true,
+          "dom_text_equals_fixture": true,
+          "dom_anchor": 0,
+          "dom_focus": 0,
+          "find_matches": null,
+          "find_active_match_ordinal": null,
+          "command_id": 2,
+          "request_id": null
+        },
+        {
+          "case": "find_second_line",
+          "expected_selection": [
+            8,
+            16
+          ],
+          "observations": [
+            {
+              "role": "paragraph",
+              "selection_count": 1,
+              "selection": [
+                8,
+                16
+              ],
+              "caret": 16,
+              "character_count": 23
+            },
+            {
+              "role": "static",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 23
+            }
+          ],
+          "passed": true,
+          "dom_selection_empty": true,
+          "dom_text_equals_fixture": true,
+          "dom_anchor": 0,
+          "dom_focus": 0,
+          "find_matches": 1,
+          "find_active_match_ordinal": 1,
+          "command_id": 3,
+          "request_id": 2
+        },
+        {
+          "case": "clear_second_line",
+          "expected_selection": null,
+          "observations": [
+            {
+              "role": "paragraph",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 23
+            },
+            {
+              "role": "static",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 23
+            }
+          ],
+          "passed": true,
+          "dom_selection_empty": true,
+          "dom_text_equals_fixture": true,
+          "dom_anchor": 0,
+          "dom_focus": 0,
+          "find_matches": null,
+          "find_active_match_ordinal": null,
+          "command_id": 4,
+          "request_id": null
+        },
+        {
+          "case": "find_second_line_supplementary",
+          "expected_selection": [
+            9,
+            10
+          ],
+          "observations": [
+            {
+              "role": "paragraph",
+              "selection_count": 1,
+              "selection": [
+                9,
+                10
+              ],
+              "caret": 10,
+              "character_count": 23
+            },
+            {
+              "role": "static",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 23
+            }
+          ],
+          "passed": true,
+          "dom_selection_empty": true,
+          "dom_text_equals_fixture": true,
+          "dom_anchor": 0,
+          "dom_focus": 0,
+          "find_matches": 1,
+          "find_active_match_ordinal": 1,
+          "command_id": 5,
+          "request_id": 3
+        },
+        {
+          "case": "clear_second_line_supplementary",
+          "expected_selection": null,
+          "observations": [
+            {
+              "role": "paragraph",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 23
+            },
+            {
+              "role": "static",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 23
+            }
+          ],
+          "passed": true,
+          "dom_selection_empty": true,
+          "dom_text_equals_fixture": true,
+          "dom_anchor": 0,
+          "dom_focus": 0,
+          "find_matches": null,
+          "find_active_match_ordinal": null,
+          "command_id": 6,
+          "request_id": null
+        }
+      ],
+      "selection_setter_calls": 0,
+      "caret_setter_calls": 0,
+      "renderer_dom_observation_only": true,
+      "passed": 7,
+      "sample_count": 7,
+      "exit_code": 0,
+      "installed_binary_unchanged": true,
+      "private_binary_sha256": "f36c0ef83163bb3c7b99c5860ce98a5d4055dd6b69d3a4d393d7563e499d3456",
+      "active_desktop_input": false,
+      "physical_braille": "unverified",
+      "name": "find-baseline-multiline_astral",
+      "current_strict_inventory_gate_passes": true
+    },
+    {
+      "status": "diagnostic_complete",
+      "kind": "native_electron_find_in_page",
+      "fixture": "distinct_astral",
+      "samples": [
+        {
+          "case": "initial_no_selection",
+          "expected_selection": null,
+          "observations": [
+            {
+              "role": "paragraph",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 15
+            },
+            {
+              "role": "static",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 15
+            }
+          ],
+          "passed": true,
+          "dom_selection_empty": true,
+          "dom_text_equals_fixture": true,
+          "dom_anchor": 0,
+          "dom_focus": 0,
+          "find_matches": null,
+          "find_active_match_ordinal": null,
+          "command_id": 0,
+          "request_id": null
+        },
+        {
+          "case": "find_full",
+          "expected_selection": [
+            0,
+            15
+          ],
+          "observations": [
+            {
+              "role": "paragraph",
+              "selection_count": 1,
+              "selection": [
+                0,
+                15
+              ],
+              "caret": 15,
+              "character_count": 15
+            },
+            {
+              "role": "static",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 15
+            }
+          ],
+          "passed": true,
+          "dom_selection_empty": true,
+          "dom_text_equals_fixture": true,
+          "dom_anchor": 0,
+          "dom_focus": 0,
+          "find_matches": 1,
+          "find_active_match_ordinal": 1,
+          "command_id": 1,
+          "request_id": 1
+        },
+        {
+          "case": "clear_full",
+          "expected_selection": null,
+          "observations": [
+            {
+              "role": "paragraph",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 15
+            },
+            {
+              "role": "static",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 15
+            }
+          ],
+          "passed": true,
+          "dom_selection_empty": true,
+          "dom_text_equals_fixture": true,
+          "dom_anchor": 0,
+          "dom_focus": 0,
+          "find_matches": null,
+          "find_active_match_ordinal": null,
+          "command_id": 2,
+          "request_id": null
+        },
+        {
+          "case": "find_suffix",
+          "expected_selection": [
+            2,
+            15
+          ],
+          "observations": [
+            {
+              "role": "paragraph",
+              "selection_count": 1,
+              "selection": [
+                2,
+                15
+              ],
+              "caret": 15,
+              "character_count": 15
+            },
+            {
+              "role": "static",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 15
+            }
+          ],
+          "passed": true,
+          "dom_selection_empty": true,
+          "dom_text_equals_fixture": true,
+          "dom_anchor": 0,
+          "dom_focus": 0,
+          "find_matches": 1,
+          "find_active_match_ordinal": 1,
+          "command_id": 3,
+          "request_id": 2
+        },
+        {
+          "case": "clear_suffix",
+          "expected_selection": null,
+          "observations": [
+            {
+              "role": "paragraph",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 15
+            },
+            {
+              "role": "static",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 15
+            }
+          ],
+          "passed": true,
+          "dom_selection_empty": true,
+          "dom_text_equals_fixture": true,
+          "dom_anchor": 0,
+          "dom_focus": 0,
+          "find_matches": null,
+          "find_active_match_ordinal": null,
+          "command_id": 4,
+          "request_id": null
+        },
+        {
+          "case": "find_one_character",
+          "expected_selection": [
+            1,
+            2
+          ],
+          "observations": [
+            {
+              "role": "paragraph",
+              "selection_count": 1,
+              "selection": [
+                1,
+                2
+              ],
+              "caret": 2,
+              "character_count": 15
+            },
+            {
+              "role": "static",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 15
+            }
+          ],
+          "passed": true,
+          "dom_selection_empty": true,
+          "dom_text_equals_fixture": true,
+          "dom_anchor": 0,
+          "dom_focus": 0,
+          "find_matches": 1,
+          "find_active_match_ordinal": 1,
+          "command_id": 5,
+          "request_id": 3
+        },
+        {
+          "case": "clear_one_character",
+          "expected_selection": null,
+          "observations": [
+            {
+              "role": "paragraph",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 15
+            },
+            {
+              "role": "static",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 15
+            }
+          ],
+          "passed": true,
+          "dom_selection_empty": true,
+          "dom_text_equals_fixture": true,
+          "dom_anchor": 0,
+          "dom_focus": 0,
+          "find_matches": null,
+          "find_active_match_ordinal": null,
+          "command_id": 6,
+          "request_id": null
+        }
+      ],
+      "selection_setter_calls": 0,
+      "caret_setter_calls": 0,
+      "renderer_dom_observation_only": true,
+      "passed": 7,
+      "sample_count": 7,
+      "exit_code": 0,
+      "installed_binary_unchanged": true,
+      "private_binary_sha256": "851b6cbe2a980344d09a1de58e451dc7a91116ea7bae5ef465abc1f5ee1799ad",
+      "active_desktop_input": false,
+      "physical_braille": "unverified",
+      "name": "find-candidate-distinct_astral",
+      "current_strict_inventory_gate_passes": true
+    },
+    {
+      "status": "diagnostic_complete",
+      "kind": "native_electron_find_in_page",
+      "fixture": "multiline_astral",
+      "samples": [
+        {
+          "case": "initial_no_selection",
+          "expected_selection": null,
+          "observations": [
+            {
+              "role": "paragraph",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 23
+            },
+            {
+              "role": "static",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 23
+            }
+          ],
+          "passed": true,
+          "dom_selection_empty": true,
+          "dom_text_equals_fixture": true,
+          "dom_anchor": 0,
+          "dom_focus": 0,
+          "find_matches": null,
+          "find_active_match_ordinal": null,
+          "command_id": 0,
+          "request_id": null
+        },
+        {
+          "case": "find_first_line",
+          "expected_selection": [
+            0,
+            7
+          ],
+          "observations": [
+            {
+              "role": "paragraph",
+              "selection_count": 1,
+              "selection": [
+                0,
+                7
+              ],
+              "caret": 7,
+              "character_count": 23
+            },
+            {
+              "role": "static",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 23
+            }
+          ],
+          "passed": true,
+          "dom_selection_empty": true,
+          "dom_text_equals_fixture": true,
+          "dom_anchor": 0,
+          "dom_focus": 0,
+          "find_matches": 1,
+          "find_active_match_ordinal": 1,
+          "command_id": 1,
+          "request_id": 1
+        },
+        {
+          "case": "clear_first_line",
+          "expected_selection": null,
+          "observations": [
+            {
+              "role": "paragraph",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 23
+            },
+            {
+              "role": "static",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 23
+            }
+          ],
+          "passed": true,
+          "dom_selection_empty": true,
+          "dom_text_equals_fixture": true,
+          "dom_anchor": 0,
+          "dom_focus": 0,
+          "find_matches": null,
+          "find_active_match_ordinal": null,
+          "command_id": 2,
+          "request_id": null
+        },
+        {
+          "case": "find_second_line",
+          "expected_selection": [
+            8,
+            16
+          ],
+          "observations": [
+            {
+              "role": "paragraph",
+              "selection_count": 1,
+              "selection": [
+                8,
+                16
+              ],
+              "caret": 16,
+              "character_count": 23
+            },
+            {
+              "role": "static",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 23
+            }
+          ],
+          "passed": true,
+          "dom_selection_empty": true,
+          "dom_text_equals_fixture": true,
+          "dom_anchor": 0,
+          "dom_focus": 0,
+          "find_matches": 1,
+          "find_active_match_ordinal": 1,
+          "command_id": 3,
+          "request_id": 2
+        },
+        {
+          "case": "clear_second_line",
+          "expected_selection": null,
+          "observations": [
+            {
+              "role": "paragraph",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 23
+            },
+            {
+              "role": "static",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 23
+            }
+          ],
+          "passed": true,
+          "dom_selection_empty": true,
+          "dom_text_equals_fixture": true,
+          "dom_anchor": 0,
+          "dom_focus": 0,
+          "find_matches": null,
+          "find_active_match_ordinal": null,
+          "command_id": 4,
+          "request_id": null
+        },
+        {
+          "case": "find_second_line_supplementary",
+          "expected_selection": [
+            9,
+            10
+          ],
+          "observations": [
+            {
+              "role": "paragraph",
+              "selection_count": 1,
+              "selection": [
+                9,
+                10
+              ],
+              "caret": 10,
+              "character_count": 23
+            },
+            {
+              "role": "static",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 23
+            }
+          ],
+          "passed": true,
+          "dom_selection_empty": true,
+          "dom_text_equals_fixture": true,
+          "dom_anchor": 0,
+          "dom_focus": 0,
+          "find_matches": 1,
+          "find_active_match_ordinal": 1,
+          "command_id": 5,
+          "request_id": 3
+        },
+        {
+          "case": "clear_second_line_supplementary",
+          "expected_selection": null,
+          "observations": [
+            {
+              "role": "paragraph",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 23
+            },
+            {
+              "role": "static",
+              "selection_count": 0,
+              "selection": null,
+              "caret": -1,
+              "character_count": 23
+            }
+          ],
+          "passed": true,
+          "dom_selection_empty": true,
+          "dom_text_equals_fixture": true,
+          "dom_anchor": 0,
+          "dom_focus": 0,
+          "find_matches": null,
+          "find_active_match_ordinal": null,
+          "command_id": 6,
+          "request_id": null
+        }
+      ],
+      "selection_setter_calls": 0,
+      "caret_setter_calls": 0,
+      "renderer_dom_observation_only": true,
+      "passed": 7,
+      "sample_count": 7,
+      "exit_code": 0,
+      "installed_binary_unchanged": true,
+      "private_binary_sha256": "851b6cbe2a980344d09a1de58e451dc7a91116ea7bae5ef465abc1f5ee1799ad",
+      "active_desktop_input": false,
+      "physical_braille": "unverified",
+      "name": "find-candidate-multiline_astral",
+      "current_strict_inventory_gate_passes": true
+    }
+  ]
+}

@@ -1,0 +1,528 @@
+{
+  "date": "2026-10-15",
+  "chromium_version": "150.0.7871.250",
+  "validation_kind": "extracted_cpp_methods_with_test_dependencies",
+  "full_chromium_build": false,
+  "upstream_gtests_run": false,
+  "native_application_build": false,
+  "source_sha256": "1d50dc6645c011e6fa2f036c2b08f7bb35967a60dbda12d52d55e901e8dd731f",
+  "unit_source_sha256": "f18932d4de877d2074b541b4b77bfb9321e4292c5bf62df5a3d32c96481af540",
+  "full_patch_application_check": "passed",
+  "compiler": "g++ (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0",
+  "compiler_flags": [
+    "-std=c++17",
+    "-Wall",
+    "-Wextra",
+    "-Werror"
+  ],
+  "host": {
+    "os": "Linux Mint 21.3",
+    "architecture": "x86_64",
+    "logical_cpus": 16,
+    "ram_gib": 14,
+    "swap_gib": 2,
+    "available_ram_gib_at_inventory": 10,
+    "free_disk_tib_at_inventory": 1.3,
+    "tools_absent": [
+      "depot_tools",
+      "clang++",
+      "gn",
+      "ninja",
+      "autoninja"
+    ],
+    "development_packages_not_installed": [
+      "libatk1.0-dev",
+      "libatk-bridge2.0-dev",
+      "libgtk-3-dev",
+      "libnss3-dev"
+    ]
+  },
+  "summary": {
+    "source_sha256": "1d50dc6645c011e6fa2f036c2b08f7bb35967a60dbda12d52d55e901e8dd731f",
+    "kind": "extracted_cpp_methods_with_test_dependencies",
+    "original": {
+      "passed": 13,
+      "failed": 12,
+      "exit_code": 1,
+      "case_evidence_verified": true
+    },
+    "candidate": {
+      "passed": 25,
+      "failed": 0,
+      "exit_code": 0,
+      "case_evidence_verified": true
+    },
+    "expected_result": true
+  },
+  "original": [
+    {
+      "case": "bmp_full",
+      "expected_start": 0,
+      "expected_end": 12,
+      "observed_start": 0,
+      "observed_end": 12,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "emoji_full",
+      "expected_start": 0,
+      "expected_end": 13,
+      "observed_start": 0,
+      "observed_end": 12,
+      "selected_text_equal": false,
+      "passed": false
+    },
+    {
+      "case": "emoji_suffix",
+      "expected_start": 2,
+      "expected_end": 13,
+      "observed_start": -1,
+      "observed_end": -1,
+      "selected_text_equal": false,
+      "passed": false
+    },
+    {
+      "case": "emoji_only",
+      "expected_start": 1,
+      "expected_end": 2,
+      "observed_start": -1,
+      "observed_end": -1,
+      "selected_text_equal": false,
+      "passed": false
+    },
+    {
+      "case": "emoji_reverse",
+      "expected_start": 2,
+      "expected_end": 13,
+      "observed_start": -1,
+      "observed_end": -1,
+      "selected_text_equal": false,
+      "passed": false
+    },
+    {
+      "case": "two_emoji_full",
+      "expected_start": 0,
+      "expected_end": 14,
+      "observed_start": 0,
+      "observed_end": 12,
+      "selected_text_equal": false,
+      "passed": false
+    },
+    {
+      "case": "find_emoji_full",
+      "expected_start": 0,
+      "expected_end": 13,
+      "observed_start": 0,
+      "observed_end": 13,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "find_emoji_suffix",
+      "expected_start": 2,
+      "expected_end": 13,
+      "observed_start": 2,
+      "observed_end": 13,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "no_selection",
+      "expected_start": 0,
+      "expected_end": 0,
+      "observed_start": 0,
+      "observed_end": 0,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "ascii_full",
+      "expected_start": 0,
+      "expected_end": 13,
+      "observed_start": 0,
+      "observed_end": 13,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "bmp_suffix",
+      "expected_start": 2,
+      "expected_end": 12,
+      "observed_start": 2,
+      "observed_end": 12,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "combining_full",
+      "expected_start": 0,
+      "expected_end": 10,
+      "observed_start": 0,
+      "observed_end": 10,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "two_emoji_second",
+      "expected_start": 2,
+      "expected_end": 3,
+      "observed_start": -1,
+      "observed_end": -1,
+      "selected_text_equal": false,
+      "passed": false
+    },
+    {
+      "case": "two_distinct_supplementary_full",
+      "expected_start": 0,
+      "expected_end": 14,
+      "observed_start": 0,
+      "observed_end": 12,
+      "selected_text_equal": false,
+      "passed": false
+    },
+    {
+      "case": "multiline_full",
+      "expected_start": 0,
+      "expected_end": 13,
+      "observed_start": 0,
+      "observed_end": 11,
+      "selected_text_equal": false,
+      "passed": false
+    },
+    {
+      "case": "multiline_middle",
+      "expected_start": 3,
+      "expected_end": 7,
+      "observed_start": 2,
+      "observed_end": 6,
+      "selected_text_equal": false,
+      "passed": false
+    },
+    {
+      "case": "multiline_cross_line",
+      "expected_start": 2,
+      "expected_end": 9,
+      "observed_start": -1,
+      "observed_end": -1,
+      "selected_text_equal": false,
+      "passed": false
+    },
+    {
+      "case": "multiline_reverse",
+      "expected_start": 2,
+      "expected_end": 13,
+      "observed_start": -1,
+      "observed_end": -1,
+      "selected_text_equal": false,
+      "passed": false
+    },
+    {
+      "case": "find_two_emoji_full",
+      "expected_start": 0,
+      "expected_end": 14,
+      "observed_start": 0,
+      "observed_end": 14,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "find_two_emoji_second",
+      "expected_start": 2,
+      "expected_end": 3,
+      "observed_start": 2,
+      "observed_end": 3,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "find_multiline_cross_line",
+      "expected_start": 2,
+      "expected_end": 9,
+      "observed_start": 2,
+      "observed_end": 9,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "ordinary_selection_before_find",
+      "expected_start": 1,
+      "expected_end": 2,
+      "observed_start": -1,
+      "observed_end": -1,
+      "selected_text_equal": false,
+      "passed": false
+    },
+    {
+      "case": "find_for_another_node",
+      "expected_start": 0,
+      "expected_end": 0,
+      "observed_start": 0,
+      "observed_end": 0,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "collapsed_after_emoji",
+      "expected_start": 0,
+      "expected_end": 0,
+      "observed_start": 0,
+      "observed_end": 0,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "find_multiline_prefix",
+      "expected_start": 0,
+      "expected_end": 3,
+      "observed_start": 0,
+      "observed_end": 3,
+      "selected_text_equal": true,
+      "passed": true
+    }
+  ],
+  "candidate": [
+    {
+      "case": "bmp_full",
+      "expected_start": 0,
+      "expected_end": 12,
+      "observed_start": 0,
+      "observed_end": 12,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "emoji_full",
+      "expected_start": 0,
+      "expected_end": 13,
+      "observed_start": 0,
+      "observed_end": 13,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "emoji_suffix",
+      "expected_start": 2,
+      "expected_end": 13,
+      "observed_start": 2,
+      "observed_end": 13,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "emoji_only",
+      "expected_start": 1,
+      "expected_end": 2,
+      "observed_start": 1,
+      "observed_end": 2,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "emoji_reverse",
+      "expected_start": 2,
+      "expected_end": 13,
+      "observed_start": 2,
+      "observed_end": 13,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "two_emoji_full",
+      "expected_start": 0,
+      "expected_end": 14,
+      "observed_start": 0,
+      "observed_end": 14,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "find_emoji_full",
+      "expected_start": 0,
+      "expected_end": 13,
+      "observed_start": 0,
+      "observed_end": 13,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "find_emoji_suffix",
+      "expected_start": 2,
+      "expected_end": 13,
+      "observed_start": 2,
+      "observed_end": 13,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "no_selection",
+      "expected_start": 0,
+      "expected_end": 0,
+      "observed_start": 0,
+      "observed_end": 0,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "ascii_full",
+      "expected_start": 0,
+      "expected_end": 13,
+      "observed_start": 0,
+      "observed_end": 13,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "bmp_suffix",
+      "expected_start": 2,
+      "expected_end": 12,
+      "observed_start": 2,
+      "observed_end": 12,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "combining_full",
+      "expected_start": 0,
+      "expected_end": 10,
+      "observed_start": 0,
+      "observed_end": 10,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "two_emoji_second",
+      "expected_start": 2,
+      "expected_end": 3,
+      "observed_start": 2,
+      "observed_end": 3,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "two_distinct_supplementary_full",
+      "expected_start": 0,
+      "expected_end": 14,
+      "observed_start": 0,
+      "observed_end": 14,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "multiline_full",
+      "expected_start": 0,
+      "expected_end": 13,
+      "observed_start": 0,
+      "observed_end": 13,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "multiline_middle",
+      "expected_start": 3,
+      "expected_end": 7,
+      "observed_start": 3,
+      "observed_end": 7,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "multiline_cross_line",
+      "expected_start": 2,
+      "expected_end": 9,
+      "observed_start": 2,
+      "observed_end": 9,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "multiline_reverse",
+      "expected_start": 2,
+      "expected_end": 13,
+      "observed_start": 2,
+      "observed_end": 13,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "find_two_emoji_full",
+      "expected_start": 0,
+      "expected_end": 14,
+      "observed_start": 0,
+      "observed_end": 14,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "find_two_emoji_second",
+      "expected_start": 2,
+      "expected_end": 3,
+      "observed_start": 2,
+      "observed_end": 3,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "find_multiline_cross_line",
+      "expected_start": 2,
+      "expected_end": 9,
+      "observed_start": 2,
+      "observed_end": 9,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "ordinary_selection_before_find",
+      "expected_start": 1,
+      "expected_end": 2,
+      "observed_start": 1,
+      "observed_end": 2,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "find_for_another_node",
+      "expected_start": 0,
+      "expected_end": 0,
+      "observed_start": 0,
+      "observed_end": 0,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "collapsed_after_emoji",
+      "expected_start": 0,
+      "expected_end": 0,
+      "observed_start": 0,
+      "observed_end": 0,
+      "selected_text_equal": true,
+      "passed": true
+    },
+    {
+      "case": "find_multiline_prefix",
+      "expected_start": 0,
+      "expected_end": 3,
+      "observed_start": 0,
+      "observed_end": 3,
+      "selected_text_equal": true,
+      "passed": true
+    }
+  ],
+  "focused_unit_tests": {
+    "passed": 6,
+    "platform": "Windows Python3.14",
+    "sandbox_attempt": "temp_directory_access_denied",
+    "authorized_unsandboxed_attempt": "passed"
+  },
+  "source_tree": "/tmp/lrd-source-validation-20261015-source",
+  "retained_experiments": [
+    "contract-25",
+    "contract-25-verified"
+  ],
+  "earlier_failed_patch_attempt": {
+    "reason": "Windows CRLF patch context did not match downloaded LF sources",
+    "message": "patch does not apply",
+    "corrected": "candidate diff normalized to LF; full patch check passed"
+  },
+  "installed_applications_changed": false
+}

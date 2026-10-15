@@ -94,6 +94,11 @@ The dynamic section exists specifically to reproduce stale accessible-object lif
 
 ## Live application matrix
 
+For VS Code Unicode selection and Eurobraille b.note 80 preparation, use the
+[keyboard-driven acceptance procedure](accessibility-acceptance-vscode-unicode.md).
+Its automated prerequisites and pending live/device observations are recorded
+separately; the procedure itself is not a physical acceptance result.
+
 | Area | Applications / target | Acceptance focus | Status |
 | --- | --- | --- | --- |
 | Desktop | XFCE desktop/panel/menu | focus, arrows, activation, menus | Live pending |
