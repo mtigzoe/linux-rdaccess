@@ -633,6 +633,14 @@ class KnownUpstreamCaretMismatch(AssertionError):
     """Strictly identified upstream editor-selection failure (issue #79)."""
 
 
+def allow_known_vscode_79(binary, *, enabled):
+    """Only classify the reproduced mismatch on the investigated Code build."""
+    if not enabled:
+        return False
+    package = Path(binary).resolve().parent / "resources/app/package.json"
+    return json.loads(package.read_text())["version"] == "1.141.0"
+
+
 def vscode_check(session):
     binary = desktop_code_binary()
     if binary is None:
@@ -672,9 +680,7 @@ def vscode_check(session):
     except KnownUpstreamCaretMismatch:
         # Only classify the known failure in explicitly opted-in CI on the
         # investigated upstream version; all other failures remain fatal.
-        allow = os.environ.get("LRD_EXPECT_VSCODE_79") == "1"
-        version = json.loads((Path(binary).resolve().parent / "resources/app/package.json").read_text())["version"]
-        if not allow or version != "1.141.0":
+        if not allow_known_vscode_79(binary, enabled=os.environ.get("LRD_EXPECT_VSCODE_79") == "1"):
             raise
         print("XFAIL VS Code #79: unmodified Code 1.141.0 "
               "readback=1, Right=13 (expected Right=2); "
