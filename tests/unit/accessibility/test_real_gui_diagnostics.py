@@ -63,6 +63,21 @@ class RealGuiDiagnosticTests(unittest.TestCase):
         self.assertEqual(state["visible"], 13)
         self.assertEqual(state["keys"], ["Right"], "No routing retry or extra key after failure")
 
+    def test_known_code_79_signature_is_typed_not_silenced(self):
+        session, node, state = self.continuation_fixture(12)
+        with self.assertRaisesRegex(smoke.KnownUpstreamCaretMismatch, "Right=13"):
+            session.verify_routed_caret_continuation(node, 1)
+        self.assertEqual(state["keys"], ["Right"])
+        self.assertEqual(state["visible"], 13)
+
+    def test_other_stale_model_offsets_are_not_classified_as_code_79(self):
+        session, node, state = self.continuation_fixture(13)
+        with self.assertRaises(AssertionError) as caught:
+            session.verify_routed_caret_continuation(node, 1)
+        self.assertNotIsInstance(caught.exception, smoke.KnownUpstreamCaretMismatch)
+        self.assertEqual(state["visible"], 14)
+        self.assertEqual(state["keys"], ["Right"])
+
     def test_routed_caret_events_are_target_only_and_relative_to_the_request(self):
         target, other = object(), object()
         events = [(9.0, 12, target), (10.01, 7, other), (10.02, 1, target), (10.07, 12, target)]
