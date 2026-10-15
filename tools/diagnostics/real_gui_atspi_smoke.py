@@ -673,7 +673,7 @@ def vscode_check(session):
         # Only classify the known failure in explicitly opted-in CI on the
         # investigated upstream version; all other failures remain fatal.
         allow = os.environ.get("LRD_EXPECT_VSCODE_79") == "1"
-        version = subprocess.check_output([binary, "--version"], text=True, timeout=10).splitlines()[0]
+        version = json.loads((Path(binary).resolve().parent / "resources/app/package.json").read_text())["version"]
         if not allow or version != "1.141.0":
             raise
         print("XFAIL VS Code #79: unmodified Code 1.141.0 "
