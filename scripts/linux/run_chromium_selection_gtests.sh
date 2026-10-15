@@ -38,6 +38,10 @@ git -C "$src" diff --cached --quiet -- ui/accessibility/platform/ax_platform_nod
 commit="$(git -C "$src" rev-parse HEAD)"
 printf '%s\n' "$commit" > "$evidence/source-commit.txt"
 # A source tree with an already-applied patch cannot establish an unmodified baseline.
+if [[ ! -f "$src/$out/build.ninja" ]]; then
+  echo "ERROR: $out/build.ninja missing. Run gn gen with appropriate Linux args first." >&2
+  exit 2
+fi
 git -C "$src" apply --check "$patch" || {
   echo "ERROR: Patch does not apply cleanly; check version or existing modifications" >&2; exit 2;
 }
@@ -45,10 +49,6 @@ git -C "$src" apply --check "$patch" || {
 # huge checkout after a failed build. Only the two target files are modified.
 git -C "$src" apply "$patch"
 printf '%s\n' 'candidate patch applied' > "$evidence/patch-state.txt"
-if [[ ! -f "$src/$out/build.ninja" ]]; then
-  echo "ERROR: $out/build.ninja missing. Run gn gen with appropriate Linux args first." >&2
-  exit 2
-fi
 (
   cd "$src"
   set -o pipefail
