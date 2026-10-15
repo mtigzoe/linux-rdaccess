@@ -224,6 +224,7 @@ class Bridge:
         """
         if self.a11y_link is None:
             return
+        withheld_focus = False
         try:
             target, complete = self._find_focus_target()
             payload = None
@@ -237,12 +238,19 @@ class Bridge:
                 )
                 if payload is not None and self._caret_beyond_text_window(payload, target):
                     self._withheld_focus_id = payload["focus_id"]
+                    withheld_focus = True
                     payload = None
         except GLib.Error as exc:
             log.debug("focus resync failed")
             return
         if target is None and not complete:
             log.debug("focus resync: search limit reached; keeping cached focus")
+            return
+        if withheld_focus:
+            # Clear NVDA's old snapshot, but retain the current registry so a
+            # focused caret event can publish this object once it is in range.
+            self.a11y_link.clear_focus()
+            log.debug("focus resync: caret outside text window; withholding focus")
             return
         if payload is None:
             self._a11y_objects.clear()
@@ -254,6 +262,11 @@ class Bridge:
             log.debug("focus resync completed")
 
     def perform_remote_action(self, object_id: str, action_index: int) -> None:
+        if self._withheld_focus_id is not None:
+            # The registry is retained only to observe the caret's return. NVDA
+            # cannot activate any member of a snapshot it has not received.
+            log.warning("remote A11Y action refused while focus snapshot is withheld")
+            return
         obj = self._a11y_objects.get(object_id)
         if obj is None:
             log.warning("remote A11Y action target is not in the current snapshot")

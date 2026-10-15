@@ -4,7 +4,7 @@ from unittest import mock
 import a11y_model
 from a11y_model import object_id
 from tests.bridge_stubs import import_braille_bridge
-from tests.unit.accessibility.test_a11y_model import FakeAccessible, FakeText
+from tests.unit.accessibility.test_a11y_model import FakeAccessible, FakeAction, FakeText
 
 bridge = import_braille_bridge()
 LIMIT = a11y_model.MAX_FOCUS_TEXT_CHARS
@@ -123,7 +123,12 @@ class BridgeLongTextResumptionTests(unittest.TestCase):
 
     setUp = BridgeLongTextTests.setUp
     focus = BridgeLongTextTests.focus
-    caret_moved = BridgeLongTextTests.caret_moved
+
+    def caret_moved(self, node, *, focused=True):
+        # Resumption must use the registry established by focus/resync. Seeding
+        # it here would hide a reconnect that discarded the withheld object.
+        with mock.patch.object(bridge, "is_focused", return_value=focused):
+            self.bridge._on_event(Event("object:text-caret-moved", node))
 
     def long_editor(self, caret):
         text = MovingText("x" * 20000, caret)
@@ -145,10 +150,63 @@ class BridgeLongTextResumptionTests(unittest.TestCase):
         node, text = self.long_editor(15000)
         with mock.patch.object(self.bridge, "_find_focus_target", return_value=(node, True)):
             self.bridge.resync_focus()
+        self.caret_moved(node)
+        self.assertEqual(self.link.focus, [])
+        self.assertEqual(self.link.refreshed, [])
+        self.assertEqual(self.link.updates, [])
+        self.assertEqual(self.link.cleared, 1)
+        for position in (100, 200):
+            text.position = position
+            self.caret_moved(node)
+        self.assertEqual(len(self.link.focus), 1, "withheld focus was not sent on resumption")
+        item = next(i for i in self.link.focus[0]["objects"] if i["id"] == self.link.focus[0]["focus_id"])
+        self.assertEqual(item["caret_offset"], 100)
+        self.assertEqual([u["caret_offset"] for u in self.link.updates], [200])
+
+    def test_withheld_resync_does_not_resume_an_unfocused_object(self):
+        node, text = self.long_editor(15000)
+        with mock.patch.object(self.bridge, "_find_focus_target", return_value=(node, True)):
+            self.bridge.resync_focus()
+        text.position = 100
+        self.caret_moved(node, focused=False)
+        self.assertEqual(self.link.focus, [])
+        self.assertEqual(self.link.updates, [])
+
+    def test_focus_change_discards_the_withheld_resync_object(self):
+        node, text = self.long_editor(15000)
+        with mock.patch.object(self.bridge, "_find_focus_target", return_value=(node, True)):
+            self.bridge.resync_focus()
+        other = editor(20, 3)
+        self.focus(other)
         text.position = 100
         self.caret_moved(node)
-        self.assertEqual(len(self.link.focus), 1, "withheld focus was not sent on resumption")
+        self.assertEqual([p["focus_id"] for p in self.link.focus], [object_id(other)])
         self.assertEqual(self.link.updates, [])
+
+    def test_remote_actions_wait_until_the_withheld_snapshot_is_published(self):
+        for source in ("focus", "resync"):
+            with self.subTest(source=source):
+                self.setUp()
+                node, text = self.long_editor(15000)
+                node.action_iface = FakeAction(["activate"])
+                child = FakeAccessible("Button", "push button", node, action_iface=FakeAction(["click"]))
+                if source == "focus":
+                    self.focus(node)
+                else:
+                    with mock.patch.object(self.bridge, "_find_focus_target", return_value=(node, True)):
+                        self.bridge.resync_focus()
+                self.bridge.perform_remote_action(object_id(node), 0)
+                self.bridge.perform_remote_action(object_id(child), 0)
+                self.assertEqual(node.action_iface.performed, [])
+                self.assertEqual(child.action_iface.performed, [])
+                self.assertEqual(self.link.focus, [])
+                text.position = 100
+                self.caret_moved(node)
+                self.assertEqual(len(self.link.focus), 1)
+                self.bridge.perform_remote_action(object_id(node), 0)
+                self.bridge.perform_remote_action(object_id(child), 0)
+                self.assertEqual(node.action_iface.performed, [0])
+                self.assertEqual(child.action_iface.performed, [0])
 
 
 if __name__ == "__main__":
