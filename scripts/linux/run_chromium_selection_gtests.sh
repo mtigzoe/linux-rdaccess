@@ -22,6 +22,11 @@ test -f "$src/.gn" || { echo "ERROR: Not a complete Chromium source checkout: $s
 test -f "$src/ui/accessibility/platform/ax_platform_node_auralinux.cc" || exit 2
 command -v autoninja >/dev/null || { echo "ERROR: autoninja (depot_tools) unavailable" >&2; exit 2; }
 command -v gn >/dev/null || { echo "ERROR: gn (depot_tools) unavailable" >&2; exit 2; }
+# Reject a mismatched Chromium revision even when the patch happens to apply.
+printf '%s  %s\n' \
+  '1d50dc6645c011e6fa2f036c2b08f7bb35967a60dbda12d52d55e901e8dd731f' "$src/ui/accessibility/platform/ax_platform_node_auralinux.cc" \
+  'f18932d4de877d2074b541b4b77bfb9321e4292c5bf62df5a3d32c96481af540' "$src/ui/accessibility/platform/ax_platform_node_auralinux_unittest.cc" \
+  | sha256sum --check | tee "$evidence/baseline-hashes.log"
 git -C "$src" diff --quiet -- ui/accessibility/platform/ax_platform_node_auralinux.cc ui/accessibility/platform/ax_platform_node_auralinux_unittest.cc || {
   echo "ERROR: Target Chromium files already have unstaged changes" >&2; exit 2;
 }
