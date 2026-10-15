@@ -407,11 +407,16 @@ def main():
                     # Keep the first observation as the strict result. A second
                     # read after the clipboard action diagnoses delayed provider
                     # state; it never changes an earlier failing selection.
-                    later_count = text.get_n_selections()
+                    later_count = None
                     later_selection = None
-                    if later_count:
-                        later = self.Atspi.Text.get_selection(text, 0)
-                        later_selection = [later.start_offset, later.end_offset]
+                    later_error = None
+                    try:
+                        later_count = text.get_n_selections()
+                        if later_count:
+                            later = self.Atspi.Text.get_selection(text, 0)
+                            later_selection = [later.start_offset, later.end_offset]
+                    except (self.GLib.Error, AttributeError, TypeError) as error:
+                        later_error = type(error).__name__
                     expected_provider = [lo, hi] if lo != hi else None
                     sample = {
                         "fixture": fixture_name,
@@ -429,6 +434,7 @@ def main():
                         "provider_selection_count": provider_count,
                         "post_clipboard_selection_count": later_count,
                         "post_clipboard_selection": later_selection,
+                        "post_clipboard_selection_error": later_error,
                         "provider_caret": text.get_caret_offset(),
                         "expected_caret": focus,
                         "semantic_selection": semantic_selection,
