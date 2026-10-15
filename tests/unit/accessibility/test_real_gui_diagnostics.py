@@ -30,6 +30,39 @@ class Accessible:
 
 
 class RealGuiDiagnosticTests(unittest.TestCase):
+    def continuation_fixture(self, model_caret):
+        state = {"model": model_caret, "visible": 1, "keys": []}
+        text = SimpleNamespace(get_caret_offset=lambda: state["visible"])
+        node = SimpleNamespace(get_text_iface=lambda: text)
+        session = smoke.Session.__new__(smoke.Session)
+
+        def key(name):
+            state["keys"].append(name)
+            state["model"] += 1 if name == "Right" else -1
+            state["visible"] = state["model"]
+
+        def wait(predicate, label):
+            if not predicate():
+                raise AssertionError(label)
+
+        session.key = key
+        session.wait = wait
+        session.check = lambda label: None
+        return session, node, state
+
+    def test_routed_caret_continuation_checks_model_right_and_left(self):
+        session, node, state = self.continuation_fixture(1)
+        session.verify_routed_caret_continuation(node, 1)
+        self.assertEqual(state["keys"], ["Right", "Left"])
+        self.assertEqual(state["visible"], 1)
+
+    def test_routed_caret_readback_alone_cannot_hide_stale_editor_model(self):
+        session, node, state = self.continuation_fixture(12)
+        with self.assertRaisesRegex(AssertionError, "Right=2"):
+            session.verify_routed_caret_continuation(node, 1)
+        self.assertEqual(state["visible"], 13)
+        self.assertEqual(state["keys"], ["Right"], "No routing retry or extra key after failure")
+
     def test_routed_caret_events_are_target_only_and_relative_to_the_request(self):
         target, other = object(), object()
         events = [(9.0, 12, target), (10.01, 7, other), (10.02, 1, target), (10.07, 12, target)]

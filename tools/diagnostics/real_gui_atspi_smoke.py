@@ -290,7 +290,21 @@ class Session:
         self.wait(lambda: self.state(initial, "FOCUSED"), "Shift+Tab restores previous control")
         self.check(f"{app.get_name()}: Shift+Tab restores previous control")
 
-    def text_edit(self, node, value, label):
+    def verify_routed_caret_continuation(self, node, offset):
+        """Require the editor model, not only an accessibility caret, to move."""
+        text = node.get_text_iface()
+        for key, expected in (("Right", offset + 1), ("Left", offset)):
+            self.key(key)
+            try:
+                self.wait(lambda: text.get_caret_offset() == expected,
+                          f"routed caret keyboard {key}={expected}")
+            except AssertionError:
+                print(f"DIAGNOSTIC routed caret continuation: key={key}, "
+                      f"expected={expected}, actual={text.get_caret_offset()}", flush=True)
+                raise
+            self.check(f"Routed caret: keyboard {key} reaches {expected}")
+
+    def text_edit(self, node, value, label, *, verify_continuation=False):
         self.focus(node)
         self.key("ctrl+a")
         self.type(value)
@@ -324,6 +338,8 @@ class Session:
                   f"{routed_caret_events(self.caret_events, node, route_started)}", flush=True)
             raise
         self.check(label + ": routed caret is confirmed by the provider")
+        if verify_continuation:
+            self.verify_routed_caret_continuation(node, 1)
         self.key("ctrl+a")
 
         def selected_text():
@@ -641,7 +657,7 @@ def vscode_check(session):
                                                    or "editor" in node.get_name().casefold())),
                           "Code named editor input")
     session.check("VS Code: opened fixture exposes named editable editor", session.state(editor, "EDITABLE"))
-    session.text_edit(editor, "lrd code text", "VS Code editor")
+    session.text_edit(editor, "lrd code text", "VS Code editor", verify_continuation=True)
     session.key("ctrl+shift+p")
     # VS Code's palette uses aria-activedescendant: AT-SPI focuses the
     # selected result while the labelled input still receives typed text.
