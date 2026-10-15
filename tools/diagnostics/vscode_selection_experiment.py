@@ -34,6 +34,7 @@ BOUNDARIES = {
 CASES = {
     "ascii": "lrd code text",
     "unicode": "a🙂 café omega",
+    "unicode_bmp": "a café omega",
     "multiline": "alpha\nbravo\ncharlie",
 }
 
