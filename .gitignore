@@ -8,3 +8,4 @@ acceptance.json
 
 # Isolated upstream source, packages and evidence for routing diagnostics work.
 /tmp/braille-routing-outcomes/
+/tmp/issue79-validation/
