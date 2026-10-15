@@ -64,6 +64,15 @@ def keyboard_cases(value, *, extended=False, fixture_name=None):
     return cases
 
 
+def selection_read_intervals(dom_ready_ns, first_read_ns, later_read_ns):
+    """Measure observations after DOM readiness, not provider publication."""
+    first = first_read_ns - dom_ready_ns
+    later = later_read_ns - dom_ready_ns
+    if first < 0 or later < first:
+        raise ValueError("Selection read timestamps are out of order")
+    return first, later
+
+
 def observe_post_clipboard_selection(text, atspi, glib):
     """Capture a secondary diagnostic read without changing first-read acceptance."""
     try:
@@ -428,6 +437,9 @@ def main():
                     )
                     post_clipboard_read_ns = time.monotonic_ns()
                     expected_provider = [lo, hi] if lo != hi else None
+                    first_interval_ns, later_interval_ns = selection_read_intervals(
+                        dom_ready_ns, first_provider_read_ns, post_clipboard_read_ns
+                    )
                     sample = {
                         "fixture": fixture_name,
                         "case": case,
@@ -444,12 +456,8 @@ def main():
                         "provider_selection_count": provider_count,
                         # Read timings locate the observation window; they do not
                         # prove when AT-SPI published the selection.
-                        "dom_ready_to_first_provider_read_ns": (
-                            first_provider_read_ns - dom_ready_ns
-                        ),
-                        "dom_ready_to_post_clipboard_read_ns": (
-                            post_clipboard_read_ns - dom_ready_ns
-                        ),
+                        "dom_ready_to_first_provider_read_ns": first_interval_ns,
+                        "dom_ready_to_post_clipboard_read_ns": later_interval_ns,
                         "post_clipboard_selection_count": later_count,
                         "post_clipboard_selection": later_selection,
                         "post_clipboard_selection_error": later_error,
