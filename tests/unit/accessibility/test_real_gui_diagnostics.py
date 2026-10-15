@@ -99,7 +99,8 @@ class RealGuiDiagnosticTests(unittest.TestCase):
             package.parent.mkdir(parents=True)
             binary = root / "code"
             binary.touch()
-            for version, accepted in (("1.141.0", True), ("1.142.0", False)):
+            for version, accepted in (("1.141.0", True), ("1.141.2", True),
+                                      ("1.141.3", False), ("1.142.0", False)):
                 package.write_text('{"version": "' + version + '"}')
                 self.assertFalse(smoke.allow_known_vscode_79(str(binary), enabled=False))
                 self.assertEqual(
