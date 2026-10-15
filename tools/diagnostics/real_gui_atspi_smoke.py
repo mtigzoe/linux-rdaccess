@@ -304,8 +304,8 @@ class Session:
                       f"expected={expected}, actual={actual}", flush=True)
                 if key == "Right" and offset == 1 and expected == 2 and actual == 13:
                     raise KnownUpstreamCaretMismatch(
-                        "VS Code #79: accessibility caret readback 1, "
-                        "but Right moved stale editor selection to 13"
+                        "VS Code #79: accessibility caret readback 1; "
+                        "expected Right=2 but stale editor selection produced Right=13"
                     ) from None
                 raise
             self.check(f"Routed caret: keyboard {key} reaches {expected}")
