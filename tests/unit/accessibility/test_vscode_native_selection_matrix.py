@@ -44,6 +44,38 @@ class NativeKeyboardMatrixTests(unittest.TestCase):
             (0, None, None),
         )
 
+    def test_late_selection_does_not_repair_failed_first_observation(self):
+        """A delayed AT-SPI selection is evidence, not retroactive acceptance."""
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+
+        glib = SimpleNamespace(Error=RuntimeError)
+        result = SimpleNamespace(start_offset=1, end_offset=3)
+        atspi = SimpleNamespace(
+            Text=SimpleNamespace(get_selection=Mock(return_value=result))
+        )
+        text = SimpleNamespace(get_n_selections=Mock(side_effect=[0, 1]))
+        first_count, first_selection, first_error = matrix.observe_first_selection(
+            text, atspi, glib
+        )
+        later_count, later_selection, later_error = (
+            matrix.observe_post_clipboard_selection(text, atspi, glib)
+        )
+        self.assertEqual((first_count, first_selection, first_error), (0, None, None))
+        self.assertEqual((later_count, later_selection, later_error), (1, [1, 3], None))
+        sample = {
+            "expected_provider_selection": [1, 3],
+            "provider_selection": first_selection,
+            "provider_selection_passed": first_selection == [1, 3],
+            "provider_caret_passed": True,
+            "semantic_selection_passed": False,
+            "semantic_text_equals_fixture": True,
+            "dom_selected_text_equals_expected": True,
+            "copied_equals_expected": True,
+            "post_clipboard_selection": later_selection,
+        }
+        self.assertFalse(matrix.sample_passes(sample))
+
     def test_selection_observation_intervals_require_monotonic_order(self):
         self.assertEqual(matrix.selection_read_intervals(100, 125, 200), (25, 100))
         self.assertEqual(matrix.selection_read_intervals(100, 100, 100), (0, 0))
