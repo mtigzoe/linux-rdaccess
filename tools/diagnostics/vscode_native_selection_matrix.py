@@ -386,6 +386,7 @@ def main():
                         )
 
                     dom = self.wait(ready, f"{fixture_name}/{case} keyboard DOM state")
+                    # This marks observed DOM readiness, not the instant the DOM changed.
                     dom_ready_ns = time.monotonic_ns()
                     lo, hi = sorted((anchor, focus))
                     selected = value[lo:hi]
@@ -441,6 +442,8 @@ def main():
                         "provider_selection": provider_selection,
                         "provider_error": provider_error,
                         "provider_selection_count": provider_count,
+                        # Read timings locate the observation window; they do not
+                        # prove when AT-SPI published the selection.
                         "dom_ready_to_first_provider_read_ns": (
                             first_provider_read_ns - dom_ready_ns
                         ),
