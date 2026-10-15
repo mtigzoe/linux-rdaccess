@@ -342,6 +342,11 @@ class Session:
                   f"elapsed_ms={round((time.monotonic() - route_started) * 1000, 3)}, "
                   f"target caret events (ms, offset)="
                   f"{routed_caret_events(self.caret_events, node, route_started)}", flush=True)
+            if (label == "VS Code editor" and verify_continuation
+                    and before_route == 12 and actual == 12 and focused is True):
+                raise KnownUpstreamCaretMismatch(
+                    "VS Code #79: accepted caret request=1 but readback stayed 12"
+                ) from None
             raise
         self.check(label + ": routed caret is confirmed by the provider")
         if verify_continuation:
@@ -677,13 +682,12 @@ def vscode_check(session):
     session.check("VS Code: opened fixture exposes named editable editor", session.state(editor, "EDITABLE"))
     try:
         session.text_edit(editor, "lrd code text", "VS Code editor", verify_continuation=True)
-    except KnownUpstreamCaretMismatch:
+    except KnownUpstreamCaretMismatch as mismatch:
         # Only classify the known failure in explicitly opted-in CI on the
         # investigated upstream version; all other failures remain fatal.
         if not allow_known_vscode_79(binary, enabled=os.environ.get("LRD_EXPECT_VSCODE_79") == "1"):
             raise
-        print("XFAIL VS Code #79: unmodified Code 1.141.0 "
-              "readback=1, Right=13 (expected Right=2); "
+        print(f"XFAIL VS Code #79: unmodified Code 1.141.0; {mismatch}; "
               "remaining VS Code checks not executed", flush=True)
         return "xfail-vscode-79"
     session.key("ctrl+shift+p")
