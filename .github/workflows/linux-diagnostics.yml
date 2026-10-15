@@ -11,6 +11,8 @@ on:
       - '*.py'
       - 'scripts/linux/**'
       - '.github/workflows/linux-diagnostics.yml'
+      - '.github/workflows/chromium-selection-contract.yml'
+      - 'docs/upstream/chromium-unicode-selection.diff'
   push:
     branches: [main, refactor/root-python-cleanup, refactor/repository-structure]
     paths:
@@ -21,6 +23,8 @@ on:
       - '*.py'
       - 'scripts/linux/**'
       - '.github/workflows/linux-diagnostics.yml'
+      - '.github/workflows/chromium-selection-contract.yml'
+      - 'docs/upstream/chromium-unicode-selection.diff'
   workflow_dispatch:
 
 jobs:
@@ -84,3 +88,43 @@ jobs:
             tests.integration.x11.test_xkb_lock_state \
             tests.unit.accessibility.test_tab_trace \
             tests.unit.accessibility.test_nvda_speech_probe
+
+  chromium-selection-contract:
+    name: Chromium pinned source selection contract (not upstream gtests)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify pinned Chromium source and patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/chromium-source-contract"
+          mkdir -p "$root/original/ui/accessibility/platform" "$root/candidate/ui/accessibility/platform"
+          base="https://raw.githubusercontent.com/chromium/chromium/150.0.7871.250/ui/accessibility/platform"
+          for filename in ax_platform_node_auralinux.cc ax_platform_node_auralinux_unittest.cc; do
+            curl --fail --location --retry 3 "$base/$filename" -o "$root/original/ui/accessibility/platform/$filename"
+          done
+          printf '%s  %s\n' \
+            '1d50dc6645c011e6fa2f036c2b08f7bb35967a60dbda12d52d55e901e8dd731f' "$root/original/ui/accessibility/platform/ax_platform_node_auralinux.cc" \
+            'f18932d4de877d2074b541b4b77bfb9321e4292c5bf62df5a3d32c96481af540' "$root/original/ui/accessibility/platform/ax_platform_node_auralinux_unittest.cc" \
+            | sha256sum --check | tee "$root/source-hashes.log"
+          cp -a "$root/original/." "$root/candidate/"
+          git -C "$root/candidate" apply --check "$GITHUB_WORKSPACE/docs/upstream/chromium-unicode-selection.diff"
+          git -C "$root/candidate" apply "$GITHUB_WORKSPACE/docs/upstream/chromium-unicode-selection.diff"
+          python3 -m unittest -v \
+            tests.unit.accessibility.test_chromium_selection_contract \
+            tests.unit.accessibility.test_vscode_native_selection_matrix \
+            tests.unit.accessibility.test_electron_native_find_probe \
+            2>&1 | tee "$root/unit.log"
+          python3 tools/diagnostics/chromium_selection_contract.py \
+            --source "$root/original/ui/accessibility/platform/ax_platform_node_auralinux.cc" \
+            --patch docs/upstream/chromium-unicode-selection.diff \
+            --output "$root/contract" 2>&1 | tee "$root/contract.log"
+      - name: Preserve extracted-source results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chromium-selection-contract-evidence
+          path: ${{ runner.temp }}/chromium-source-contract/
+          if-no-files-found: warn

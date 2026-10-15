@@ -16,8 +16,144 @@ import signal
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.request
 from pathlib import Path
+
+EXTENDED_CASES = {
+    "distinct_astral": "a\U0001f642\U0001d11e\U00010437 caf\u00e9 omega",
+    "multiline_astral": "a\U0001f642 caf\u00e9\nb\U0001d11e omega\nc\U00010437 fin",
+}
+
+
+def keyboard_cases(value, *, extended=False, fixture_name=None):
+    """Expected endpoints use code points; Ctrl+Home/End span multiline text."""
+    home, end = ("ctrl+Home", "ctrl+End") if extended else ("Home", "End")
+    n = len(value)
+    shift_end = "ctrl+shift+End" if extended else "shift+End"
+    shift_home = "ctrl+shift+Home" if extended else "shift+Home"
+    cases = [
+        ("full_forward", [home, shift_end], 0, n),
+        ("full_reverse", [end, shift_home], n, 0),
+        ("suffix_forward", [home, "Right", "Right", shift_end], 2, n),
+        ("suffix_reverse", [end, shift_home, "shift+Right", "shift+Right"], n, 2),
+        ("one_character", [home, "Right", "shift+Right"], 1, 2),
+        ("collapse_right", [home, shift_end, "Right"], n, n),
+        ("collapse_left", [home, shift_end, "Left"], 0, 0),
+    ]
+    if fixture_name == "two_astral":
+        cases += [
+            ("both_emoji", [home, "Right", "shift+Right", "shift+Right"], 1, 3),
+            ("second_emoji", [home, "Right", "Right", "shift+Right"], 2, 3),
+        ]
+    if fixture_name == "distinct_astral":
+        cases += [
+            (
+                "three_supplementary",
+                [home, "Right", "shift+Right", "shift+Right", "shift+Right"],
+                1,
+                4,
+            ),
+            (
+                "third_supplementary",
+                [home, "Right", "Right", "Right", "shift+Right"],
+                3,
+                4,
+            ),
+        ]
+    return cases
+
+
+def selection_read_intervals(dom_ready_ns, first_read_ns, later_read_ns):
+    """Measure observations after DOM readiness, not provider publication."""
+    first = first_read_ns - dom_ready_ns
+    later = later_read_ns - dom_ready_ns
+    if first < 0 or later < first:
+        raise ValueError("Selection read timestamps are out of order")
+    return first, later
+
+
+def observe_post_clipboard_selection(text, atspi, glib):
+    """Capture a secondary diagnostic read without changing first-read acceptance."""
+    try:
+        count = text.get_n_selections()
+    except (glib.Error, AttributeError, TypeError) as error:
+        return None, None, type(error).__name__
+    if not count:
+        return count, None, None
+    try:
+        result = atspi.Text.get_selection(text, 0)
+        return count, [result.start_offset, result.end_offset], None
+    except (glib.Error, AttributeError, TypeError) as error:
+        return count, None, type(error).__name__
+
+
+def sample_passes(sample):
+    """A diagnostic exit alone cannot prove provider or semantic correctness."""
+    return (
+        all(
+            sample.get(field) is True
+            for field in (
+                "dom_selected_text_equals_expected",
+                "provider_selection_passed",
+                "provider_caret_passed",
+                "semantic_selection_passed",
+                "semantic_text_equals_fixture",
+            )
+        )
+        and "copied_equals_expected" in sample
+        and "expected_provider_selection" in sample
+        and (
+            sample["copied_equals_expected"] is True
+            if sample["expected_provider_selection"] is not None
+            else sample["copied_equals_expected"] is None
+        )
+    )
+
+
+def routing_positions(value):
+    return [index for index, character in enumerate(value) if ord(character) > 0xFFFF]
+
+
+def matrix_result_passes(
+    results, fixtures, *, extended=False, route_continuation=False
+):
+    expected = {
+        (fixture, case)
+        for fixture, value in fixtures.items()
+        for case, *_ in keyboard_cases(value, extended=extended, fixture_name=fixture)
+    }
+    samples = results.get("samples", [])
+    observed = [(sample.get("fixture"), sample.get("case")) for sample in samples]
+    if (
+        len(observed) != len(expected)
+        or set(observed) != expected
+        or not all(sample_passes(sample) for sample in samples)
+    ):
+        return False
+    expected_routes = (
+        {
+            (fixture, point)
+            for fixture, value in fixtures.items()
+            for point in routing_positions(value)
+        }
+        if route_continuation
+        else set()
+    )
+    routes = results.get("routes", [])
+    observed_routes = [
+        (route.get("fixture"), route.get("requested_codepoint")) for route in routes
+    ]
+    return (
+        len(observed_routes) == len(expected_routes)
+        and set(observed_routes) == expected_routes
+        and all(
+            route.get("passed") is True
+            and [item.get("key") for item in route.get("observations", [])]
+            == [None, "Right", "Left"]
+            for route in routes
+        )
+    )
 
 
 def digest(path):
@@ -31,6 +167,9 @@ def main():
     )
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--extended", action="store_true")
+    parser.add_argument("--require-correct-selection", action="store_true")
+    parser.add_argument("--route-continuation", action="store_true")
     parser.add_argument("--inner", action="store_true")
     args = parser.parse_args()
     if not sys.platform.startswith("linux"):
@@ -76,6 +215,12 @@ def main():
             str(args.output),
             "--inner",
         ]
+        if args.extended:
+            command.append("--extended")
+        if args.require_correct_selection:
+            command.append("--require-correct-selection")
+        if args.route_continuation:
+            command.append("--route-continuation")
         with (args.output / "probe.log").open("w") as stream:
             process = subprocess.Popen(
                 command,
@@ -123,6 +268,7 @@ def main():
         "caret_setter_calls": 0,
         "selection_setter_calls": 0,
         "samples": [],
+        "routes": [],
     }
     smoke.desktop_code_binary = lambda: str(binary)
     original_launch = smoke.Session.launch
@@ -196,7 +342,8 @@ def main():
 
         text = target.get_text_iface()
         try:
-            for fixture_name, value in probe.CASES.items():
+            fixtures = EXTENDED_CASES if args.extended else probe.CASES
+            for fixture_name, value in fixtures.items():
                 self.key("ctrl+a")
                 subprocess.run(
                     ["xclip", "-selection", "clipboard", "-in"],
@@ -221,35 +368,9 @@ def main():
                     "fixture end caret",
                 )
                 n = len(value)
-                matrix = [
-                    ("full_forward", ["Home", "shift+End"], 0, n),
-                    ("full_reverse", ["End", "shift+Home"], n, 0),
-                    ("suffix_forward", ["Home", "Right", "Right", "shift+End"], 2, n),
-                    (
-                        "suffix_reverse",
-                        ["End", "shift+Home", "shift+Right", "shift+Right"],
-                        n,
-                        2,
-                    ),
-                    ("one_character", ["Home", "Right", "shift+Right"], 1, 2),
-                    ("collapse_right", ["Home", "shift+End", "Right"], n, n),
-                    ("collapse_left", ["Home", "shift+End", "Left"], 0, 0),
-                ]
-                if fixture_name == "two_astral":
-                    matrix += [
-                        (
-                            "both_emoji",
-                            ["Home", "Right", "shift+Right", "shift+Right"],
-                            1,
-                            3,
-                        ),
-                        (
-                            "second_emoji",
-                            ["Home", "Right", "Right", "shift+Right"],
-                            2,
-                            3,
-                        ),
-                    ]
+                matrix = keyboard_cases(
+                    value, extended=args.extended, fixture_name=fixture_name
+                )
                 for case, keys, anchor, focus in matrix:
                     self.key(*keys)
                     # Wait only for the independently expected keyboard/DOM state,
@@ -277,6 +398,8 @@ def main():
                         )
 
                     dom = self.wait(ready, f"{fixture_name}/{case} keyboard DOM state")
+                    # This marks observed DOM readiness, not the instant the DOM changed.
+                    dom_ready_ns = time.monotonic_ns()
                     lo, hi = sorted((anchor, focus))
                     selected = value[lo:hi]
                     provider_count = text.get_n_selections()
@@ -288,6 +411,7 @@ def main():
                             provider_selection = [raw.start_offset, raw.end_offset]
                         except (self.GLib.Error, AttributeError, TypeError) as error:
                             provider_error = type(error).__name__
+                    first_provider_read_ns = time.monotonic_ns()
                     update = smoke.build_text_update(
                         "object:text-selection-changed",
                         target,
@@ -308,7 +432,17 @@ def main():
                             timeout=8,
                         )
                         copied_ok = copied == selected
+                    # Keep the first observation as the strict result. A second
+                    # read after the clipboard action diagnoses delayed provider
+                    # state; it never changes an earlier failing selection.
+                    later_count, later_selection, later_error = (
+                        observe_post_clipboard_selection(text, self.Atspi, self.GLib)
+                    )
+                    post_clipboard_read_ns = time.monotonic_ns()
                     expected_provider = [lo, hi] if lo != hi else None
+                    first_interval_ns, later_interval_ns = selection_read_intervals(
+                        dom_ready_ns, first_provider_read_ns, post_clipboard_read_ns
+                    )
                     sample = {
                         "fixture": fixture_name,
                         "case": case,
@@ -323,9 +457,18 @@ def main():
                         "provider_selection": provider_selection,
                         "provider_error": provider_error,
                         "provider_selection_count": provider_count,
+                        # Read timings locate the observation window; they do not
+                        # prove when AT-SPI published the selection.
+                        "dom_ready_to_first_provider_read_ns": first_interval_ns,
+                        "dom_ready_to_post_clipboard_read_ns": later_interval_ns,
+                        "post_clipboard_selection_count": later_count,
+                        "post_clipboard_selection": later_selection,
+                        "post_clipboard_selection_error": later_error,
                         "provider_caret": text.get_caret_offset(),
                         "expected_caret": focus,
                         "semantic_selection": semantic_selection,
+                        "semantic_selection_passed": semantic_selection
+                        == (expected_provider if expected_provider else [None, None]),
                         "semantic_text_equals_fixture": bool(
                             update and update["text"] == value
                         ),
@@ -336,6 +479,95 @@ def main():
                     }
                     results["samples"].append(sample)
                     print(json.dumps(sample), flush=True)
+                if args.route_continuation:
+                    for point in routing_positions(value):
+                        results["caret_setter_calls"] += 1
+                        accepted = smoke.set_caret_offset(target, point)
+                        initial_provider_caret = text.get_caret_offset()
+                        # Keep the normal strict runner's existing readback wait.
+                        # This sends no second setter or keyboard action.
+                        self.wait(
+                            lambda point=point: text.get_caret_offset() == point,
+                            f"{fixture_name} route readback {point}",
+                        )
+                        observations = []
+                        for key, expected in (
+                            (None, point),
+                            ("Right", point + 1),
+                            ("Left", point),
+                        ):
+                            if key:
+                                self.key(key)
+                            expected_units = units(value[:expected])
+
+                            def routed_dom_ready(
+                                expected_units=expected_units, value=value
+                            ):
+                                dom = observe_dom()
+                                return (
+                                    dom
+                                    if (
+                                        dom["text"] == value
+                                        and dom["anchor"]
+                                        == dom["focus"]
+                                        == expected_units
+                                        and dom["selected"] == ""
+                                    )
+                                    else None
+                                )
+
+                            try:
+                                dom = self.wait(
+                                    routed_dom_ready,
+                                    f"{fixture_name} routed keyboard DOM {expected}",
+                                )
+                            except AssertionError:
+                                dom = observe_dom()
+                                results["route_failure"] = {
+                                    "fixture": fixture_name,
+                                    "requested_codepoint": point,
+                                    "key": key,
+                                    "expected_caret": expected,
+                                    "expected_dom_utf16": expected_units,
+                                    "dom_anchor_utf16": dom["anchor"],
+                                    "dom_focus_utf16": dom["focus"],
+                                    "dom_text_equals_fixture": dom["text"] == value,
+                                    "dom_text_codepoints": len(dom["text"]),
+                                    "provider_caret": text.get_caret_offset(),
+                                    "provider_character_count": text.get_character_count(),
+                                }
+                                raise
+                            update = smoke.build_text_update(
+                                "object:text-caret-moved",
+                                target,
+                                object_registry={smoke.object_id(target): target},
+                            )
+                            observations.append(
+                                {
+                                    "key": key,
+                                    "expected_caret": expected,
+                                    "expected_dom_utf16": expected_units,
+                                    "dom_caret_utf16": dom["focus"],
+                                    "provider_caret": text.get_caret_offset(),
+                                    "semantic_caret": update.get("caret_offset")
+                                    if update
+                                    else None,
+                                }
+                            )
+                        route = {
+                            "fixture": fixture_name,
+                            "requested_codepoint": point,
+                            "accepted": accepted,
+                            "initial_provider_caret": initial_provider_caret,
+                            "observations": observations,
+                        }
+                        route["passed"] = accepted and all(
+                            item["provider_caret"] == item["expected_caret"]
+                            and item["semantic_caret"] == item["expected_caret"]
+                            for item in observations
+                        )
+                        results["routes"].append(route)
+                        print(json.dumps(route), flush=True)
         finally:
             ws.close()
 
@@ -349,6 +581,18 @@ def main():
         results["provider_selection_passed"] = sum(
             s["provider_selection_passed"] for s in results["samples"]
         )
+        results["fully_correct_samples"] = sum(
+            sample_passes(s) for s in results["samples"]
+        )
+        results["routes_passed"] = sum(route["passed"] for route in results["routes"])
+        if args.require_correct_selection and not matrix_result_passes(
+            results,
+            EXTENDED_CASES if args.extended else probe.CASES,
+            extended=args.extended,
+            route_continuation=args.route_continuation,
+        ):
+            code = 1
+            results["status"] = "selection_failure"
         (args.output / "matrix.json").write_text(json.dumps(results, indent=2) + "\n")
     return code
 

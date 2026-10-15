@@ -146,9 +146,13 @@ compiled counterpart of the correction; see its audit for the distinction.
 
 The [source-extraction contract](chromium-unicode-selection.md) compiles the
 actual two Chromium selection methods with explicit ATK/delegate/conversion
-test dependencies. Original: 4 passed / 5 failed (exit 1); candidate: 9 passed /
-0 failed (exit 0), using g++ 11.4.0 with warnings treated as errors. These are
-source-contract results; the upstream gtests have not been built or run.
+test dependencies. The expanded 25-case contract observes original: 13 passed /
+12 failed (exit 1); candidate: 25 passed / 0 failed (exit 0), using g++ 11.4.0
+with warnings treated as errors. Acceptance requires exact case identities,
+offsets, text comparisons and child exits. These are source-contract results;
+the upstream gtests have not been built or run. See the
+[source-validation audit](../compatibility-audit-2026-10-15-chromium-source-validation.md)
+for pinned source hashes, complete evidence and build feasibility.
 
 Download the pinned provider source and run from the repository root on Linux.
 Use a **new disposable output directory outside any Git checkout**, such as
@@ -216,3 +220,16 @@ binds result acknowledgements to request IDs and checks expected match counts.
 
 These private tests add automated native evidence. They do not establish a
 full source build, native upstream gtest success or NVDA/device acceptance.
+
+## Continuous source-contract evidence
+
+The [extracted-source workflow](../../.github/workflows/chromium-selection-contract.yml)
+checks the SHA-256 of both pinned Chromium files, verifies application of the
+complete candidate, runs the focused verifier regressions and compiles the
+25-case extracted-method comparison. It preserves original failures and
+candidate results even when a step fails. This workflow does not build Chromium
+or execute its upstream gtests. Its shell steps were verified separately on
+Mint; a local shell run is not a GitHub Actions result.
+
+See the [production validation follow-up](../compatibility-audit-2026-10-15-production-validation.md)
+for the current evidence and the remaining integration/acceptance gates.

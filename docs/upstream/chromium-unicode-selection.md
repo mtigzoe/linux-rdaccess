@@ -3,6 +3,9 @@
 The later [private native experiment](../compatibility-audit-2026-10-15-native-chromium-selection.md)
 tests a compiled-method counterpart to the correction. It adds native
 application evidence; the full source build and upstream gtests remain unrun.
+The [source-validation follow-up](../compatibility-audit-2026-10-15-chromium-source-validation.md)
+reviews the coordinate systems and build target, and expands the contract to
+25 cases with exact per-case baseline and candidate evidence checks.
 
 `chromium-unicode-selection.diff` is an **unsubmitted upstream candidate** for
 Chromium `150.0.7871.250`. Chromium source and patch context are covered by the
@@ -24,31 +27,36 @@ caret getter converts once.
 
 The candidate converts only the find-in-page fallback, whose stored offsets
 remain UTF-16. It preserves the already converted ordinary selection extents.
-Three proposed upstream gtests cover supplementary characters, partial and
-reversed selections, two supplementary characters, and find-in-page.
+Five proposed upstream gtests cover ASCII, BMP and combining characters,
+supplementary characters, partial/reversed and multiline selections, two
+supplementary characters, and full/partial/cleared find-in-page results.
 
 The source-extraction contract compiles the **actual two selection methods**
 with explicit test dependencies for ATK, selection storage, text retrieval,
 and Unicode conversion. It checks full and partial selections, a supplementary
 character selected alone, reversed extents, two supplementary characters,
-find-in-page fallback, and no selection. It checks both returned offsets and
-selected text.
+find-in-page fallback and precedence, multiline text and no selection. It
+checks both returned offsets and selected text. Code points are distinct from
+grapheme clusters: a combining mark retains its own offset.
 
 On the Linux Mint test host, g++ 11.4.0 compiled both versions with
 `-std=c++17 -Wall -Wextra -Werror`:
 
 | Source | Passed | Failed | Executable exit status |
 | --- | ---: | ---: | ---: |
-| Original | 4 | 5 | 1 |
-| Candidate | 9 | 0 | 0 |
+| Original | 13 | 12 | 1 |
+| Candidate | 25 | 0 | 0 |
 
-The contract succeeds only when it observes exactly those original failures
-and all candidate cases pass. It verifies the source SHA-256 before creating
+The contract succeeds only when it observes the exact 25-case inventory,
+per-case expected/observed offsets, text comparisons, 12 original failure
+identities and exit codes, and all candidate cases pass. It verifies the source SHA-256 before creating
 output:
 `1d50dc6645c011e6fa2f036c2b08f7bb35967a60dbda12d52d55e901e8dd731f`.
 It writes per-case numeric JSONL, a summary, extracted C++, and executables to
 a new output directory. The evidence from 2026-10-15 is retained on the host
-under `/tmp/lrd-chromium-selection-20261015.5ynYuk/result`.
+under `/tmp/lrd-source-validation-20261015-source/contract-25-verified`.
+The historical nine-case results remain under
+`/tmp/lrd-chromium-selection-20261015.5ynYuk/result`.
 
 From the repository root on Linux, with g++, git, and curl available:
 

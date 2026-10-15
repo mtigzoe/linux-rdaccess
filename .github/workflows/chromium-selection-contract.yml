@@ -1,0 +1,81 @@
+name: Chromium extracted-source selection contract
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/chromium-selection-contract.yml'
+      - 'docs/upstream/chromium-unicode-selection.diff'
+      - 'tools/diagnostics/chromium_selection_contract.py'
+      - 'tests/unit/accessibility/test_chromium_selection_contract.py'
+      - 'tools/diagnostics/vscode_native_selection_matrix.py'
+      - 'tools/diagnostics/electron_native_find_probe.py'
+      - 'tests/unit/accessibility/test_vscode_native_selection_matrix.py'
+      - 'tests/unit/accessibility/test_electron_native_find_probe.py'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/chromium-selection-contract.yml'
+      - 'docs/upstream/chromium-unicode-selection.diff'
+      - 'tools/diagnostics/chromium_selection_contract.py'
+      - 'tests/unit/accessibility/test_chromium_selection_contract.py'
+      - 'tools/diagnostics/vscode_native_selection_matrix.py'
+      - 'tools/diagnostics/electron_native_find_probe.py'
+      - 'tests/unit/accessibility/test_vscode_native_selection_matrix.py'
+      - 'tests/unit/accessibility/test_electron_native_find_probe.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  extracted-source-contract:
+    name: Pinned methods with test dependencies (not upstream gtests)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    env:
+      CONTRACT_ROOT: ${{ runner.temp }}/chromium-selection-contract
+      CHROMIUM_TAG: 150.0.7871.250
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch and verify both pinned Chromium files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$CONTRACT_ROOT/source/ui/accessibility/platform" "$CONTRACT_ROOT/evidence"
+          base="https://raw.githubusercontent.com/chromium/chromium/$CHROMIUM_TAG/ui/accessibility/platform"
+          source="$CONTRACT_ROOT/source/ui/accessibility/platform"
+          curl --fail --location "$base/ax_platform_node_auralinux.cc" -o "$source/ax_platform_node_auralinux.cc"
+          curl --fail --location "$base/ax_platform_node_auralinux_unittest.cc" -o "$source/ax_platform_node_auralinux_unittest.cc"
+          printf '%s  %s\n' \
+            1d50dc6645c011e6fa2f036c2b08f7bb35967a60dbda12d52d55e901e8dd731f "$source/ax_platform_node_auralinux.cc" \
+            f18932d4de877d2074b541b4b77bfb9321e4292c5bf62df5a3d32c96481af540 "$source/ax_platform_node_auralinux_unittest.cc" \
+            | sha256sum --check | tee "$CONTRACT_ROOT/evidence/source-hashes.log"
+          g++ --version > "$CONTRACT_ROOT/evidence/compiler-version.log"
+      - name: Check full candidate application and run extracted-source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp -a "$CONTRACT_ROOT/source" "$CONTRACT_ROOT/full-candidate"
+          git -C "$CONTRACT_ROOT/full-candidate" apply --check "$GITHUB_WORKSPACE/docs/upstream/chromium-unicode-selection.diff" \
+            2>&1 | tee "$CONTRACT_ROOT/evidence/patch-check.log"
+          git -C "$CONTRACT_ROOT/full-candidate" apply "$GITHUB_WORKSPACE/docs/upstream/chromium-unicode-selection.diff"
+          python3 -m unittest -v \
+            tests.unit.accessibility.test_chromium_selection_contract \
+            tests.unit.accessibility.test_vscode_native_selection_matrix \
+            tests.unit.accessibility.test_electron_native_find_probe \
+            2>&1 | tee "$CONTRACT_ROOT/evidence/unit.log"
+          python3 tools/diagnostics/chromium_selection_contract.py \
+            --source "$CONTRACT_ROOT/source/ui/accessibility/platform/ax_platform_node_auralinux.cc" \
+            --patch docs/upstream/chromium-unicode-selection.diff \
+            --output "$CONTRACT_ROOT/contract" \
+            2>&1 | tee "$CONTRACT_ROOT/evidence/contract.log"
+          printf '%s\n' 'Extracted methods only. ATK, delegate and conversion are test dependencies; Chromium upstream gtests and a full build were not run.' \
+            > "$CONTRACT_ROOT/evidence/validation-scope.txt"
+      - name: Preserve original failures and candidate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chromium-extracted-selection-contract
+          path: ${{ env.CONTRACT_ROOT }}/
+          if-no-files-found: warn

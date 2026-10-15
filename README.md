@@ -581,6 +581,10 @@ and actual Mint GTK focus checks. Run `python3 tools/diagnostics/gtk_atspi_smoke
 for its isolated GTK/AT-SPI regression smoke test. The private GUI runners require
 `xprop` from `x11-utils` to verify window-manager readiness and actual activation;
 see the [GTK activation investigation](docs/compatibility-audit-2026-10-15-gtk-activation.md).
+The [production validation follow-up](docs/compatibility-audit-2026-10-15-production-validation.md)
+separates the expanded Chromium source contracts and private native experiments
+from the remaining source-build, upstream integration and
+[NVDA/b.note 80 acceptance](docs/accessibility-acceptance-vscode-unicode.md).
 The [Remote SSH follow-up audit](docs/compatibility-followup-2026-10-08.md)
 records graphical-session discovery and braille hook reload fixes, stronger
 real-application keyboard checks, and the isolated NVDA Remote protocol harness.

@@ -21,7 +21,7 @@
      return nullptr;
 --- a/ui/accessibility/platform/ax_platform_node_auralinux_unittest.cc
 +++ b/ui/accessibility/platform/ax_platform_node_auralinux_unittest.cc
-@@ -2751,6 +2751,94 @@
+@@ -2751,6 +2751,184 @@
    g_object_unref(root_atk_object);
  }
  
@@ -46,6 +46,72 @@
 +      {2, 13, 2, 13, " caf\xc3\xa9 omega"},
 +      {1, 2, 1, 2, "\xf0\x9f\x99\x82"},
 +      {13, 2, 2, 13, " caf\xc3\xa9 omega"},
++  };
++  for (const auto& test : cases) {
++    SCOPED_TRACE(test.anchor);
++    SCOPED_TRACE(test.focus);
++    ASSERT_TRUE(atk_text_set_selection(text, 0, test.anchor, test.focus));
++    int start = -1;
++    int end = -1;
++    gchar* selected = atk_text_get_selection(text, 0, &start, &end);
++    EXPECT_EQ(test.start, start);
++    EXPECT_EQ(test.end, end);
++    EXPECT_STREQ(test.value, selected);
++    g_free(selected);
++  }
++}
++
++TEST_F(AXPlatformNodeAuraLinuxTest, TestAtkTextGetSelectionBmpUnicodeOffsets) {
++  const struct {
++    const char* value;
++    int count;
++  } cases[] = {
++      {"a plain omega", 13},
++      {"a caf\xc3\xa9 omega", 12},
++      // A combining mark has its own code-point offset.
++      {"a e\xcc\x81 omega", 10},
++  };
++  for (const auto& test : cases) {
++    SCOPED_TRACE(test.value);
++    AXTreeUpdate update = BuildTextField();
++    update.nodes[0].SetValue(test.value);
++    Init(update);
++    AtkText* text = ATK_TEXT(GetRootAtkObject());
++    ASSERT_TRUE(ATK_IS_TEXT(text));
++    EXPECT_EQ(test.count, atk_text_get_character_count(text));
++    ASSERT_TRUE(atk_text_set_selection(text, 0, 0, test.count));
++    int start = -1;
++    int end = -1;
++    gchar* selected = atk_text_get_selection(text, 0, &start, &end);
++    EXPECT_EQ(0, start);
++    EXPECT_EQ(test.count, end);
++    EXPECT_STREQ(test.value, selected);
++    g_free(selected);
++  }
++}
++
++TEST_F(AXPlatformNodeAuraLinuxTest, TestAtkTextGetSelectionMultilineUnicodeOffsets) {
++  const char kText[] =
++      "a\xf0\x9f\x99\x82\ncaf\xc3\xa9\n\xf0\x9d\x84\x9e end";
++  AXTreeUpdate update = BuildTextField();
++  update.nodes[0].SetValue(kText);
++  update.nodes[0].AddState(ax::mojom::State::kMultiline);
++  Init(update);
++  AtkText* text = ATK_TEXT(GetRootAtkObject());
++  ASSERT_TRUE(ATK_IS_TEXT(text));
++  EXPECT_EQ(13, atk_text_get_character_count(text));
++  const struct {
++    int anchor;
++    int focus;
++    int start;
++    int end;
++    const char* value;
++  } cases[] = {
++      {0, 13, 0, 13, kText},
++      {3, 7, 3, 7, "caf\xc3\xa9"},
++      {2, 9, 2, 9, "\ncaf\xc3\xa9\n\xf0\x9d\x84\x9e"},
++      {13, 2, 2, 13, "\ncaf\xc3\xa9\n\xf0\x9d\x84\x9e end"},
++      {8, 9, 8, 9, "\xf0\x9d\x84\x9e"},
 +  };
 +  for (const auto& test : cases) {
 +    SCOPED_TRACE(test.anchor);
@@ -101,16 +167,40 @@
 +  EXPECT_EQ(13, atk_text_get_character_count(text));
 +
 +  // Find-in-page stores UTF-16 offsets, unlike GetSelectionExtents().
-+  GetRootPlatformNode()->ActivateFindInPageResult(0, 14);
-+  EXPECT_EQ(1, atk_text_get_n_selections(text));
++  const struct {
++    int utf16_start;
++    int utf16_end;
++    int start;
++    int end;
++    const char* value;
++  } cases[] = {
++      {0, 14, 0, 13, kText},
++      {3, 14, 2, 13, " caf\xc3\xa9 omega"},
++      {1, 3, 1, 2, "\xf0\x9f\x99\x82"},
++  };
++  for (const auto& test : cases) {
++    SCOPED_TRACE(test.utf16_start);
++    SCOPED_TRACE(test.utf16_end);
++    GetRootPlatformNode()->ActivateFindInPageResult(test.utf16_start,
++                                                    test.utf16_end);
++    EXPECT_EQ(1, atk_text_get_n_selections(text));
++    int start = -1;
++    int end = -1;
++    gchar* selected = atk_text_get_selection(text, 0, &start, &end);
++    EXPECT_EQ(test.start, start);
++    EXPECT_EQ(test.end, end);
++    EXPECT_STREQ(test.value, selected);
++    g_free(selected);
++  }
++  GetRootPlatformNode()->TerminateFindInPage();
++  EXPECT_EQ(0, atk_text_get_n_selections(text));
 +  int start = -1;
 +  int end = -1;
 +  gchar* selected = atk_text_get_selection(text, 0, &start, &end);
 +  EXPECT_EQ(0, start);
-+  EXPECT_EQ(13, end);
-+  EXPECT_STREQ(kText, selected);
++  EXPECT_EQ(0, end);
++  EXPECT_EQ(nullptr, selected);
 +  g_free(selected);
-+  GetRootPlatformNode()->TerminateFindInPage();
 +}
 +
  TEST_F(AXPlatformNodeAuraLinuxTest, TestAtkTextTextFieldGetSelection) {

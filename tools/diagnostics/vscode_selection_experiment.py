@@ -36,6 +36,8 @@ CASES = {
     "unicode": "a🙂 café omega",
     "unicode_bmp": "a café omega",
     "multiline": "alpha\nbravo\ncharlie",
+    "distinct_astral": "a\U0001f642\U0001d11e\U00010437 caf\u00e9 omega",
+    "multiline_astral": "a\U0001f642 caf\u00e9\nb\U0001d11e omega\nc\U00010437 fin",
 }
 
 
@@ -224,9 +226,9 @@ def run_inner(args):
     def edit(self, target, _value, label, **kwargs):
         nonlocal node
         node = target
-        # Unicode key synthesis is unreliable with xdotool. For these two
-        # fixtures only, use the clipboard on the verified private Xvfb display.
-        if args.case in ("unicode_bmp", "unicode"):
+        # Unicode key synthesis is unreliable with xdotool. For Unicode
+        # fixtures, use the clipboard on the verified private Xvfb display.
+        if args.case in ("unicode_bmp", "unicode", "distinct_astral", "multiline_astral"):
             def paste_unicode(fixture):
                 subprocess.run(
                     ["xclip", "-selection", "clipboard", "-in"],
