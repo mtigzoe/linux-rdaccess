@@ -299,8 +299,14 @@ class Session:
                 self.wait(lambda: text.get_caret_offset() == expected,
                           f"routed caret keyboard {key}={expected}")
             except AssertionError:
+                actual = text.get_caret_offset()
                 print(f"DIAGNOSTIC routed caret continuation: key={key}, "
-                      f"expected={expected}, actual={text.get_caret_offset()}", flush=True)
+                      f"expected={expected}, actual={actual}", flush=True)
+                if key == "Right" and offset == 1 and expected == 2 and actual == 13:
+                    raise KnownUpstreamCaretMismatch(
+                        "VS Code #79: accessibility caret readback 1, "
+                        "but Right moved stale editor selection to 13"
+                    ) from None
                 raise
             self.check(f"Routed caret: keyboard {key} reaches {expected}")
 
@@ -623,6 +629,10 @@ b.textContent='Smoke replacement action';this.replaceWith(b);b.focus()">Smoke ac
                   and "focused" in objects[payload["focus_id"]]["states"])
 
 
+class KnownUpstreamCaretMismatch(AssertionError):
+    """Strictly identified upstream editor-selection failure (issue #79)."""
+
+
 def vscode_check(session):
     binary = desktop_code_binary()
     if binary is None:
@@ -657,7 +667,19 @@ def vscode_check(session):
                                                    or "editor" in node.get_name().casefold())),
                           "Code named editor input")
     session.check("VS Code: opened fixture exposes named editable editor", session.state(editor, "EDITABLE"))
-    session.text_edit(editor, "lrd code text", "VS Code editor", verify_continuation=True)
+    try:
+        session.text_edit(editor, "lrd code text", "VS Code editor", verify_continuation=True)
+    except KnownUpstreamCaretMismatch:
+        # Only classify the known failure in explicitly opted-in CI on the
+        # investigated upstream version; all other failures remain fatal.
+        allow = os.environ.get("LRD_EXPECT_VSCODE_79") == "1"
+        version = subprocess.check_output([binary, "--version"], text=True, timeout=10).splitlines()[0]
+        if not allow or version != "1.141.0":
+            raise
+        print("XFAIL VS Code #79: unmodified Code 1.141.0 "
+              "readback=1, Right=13 (expected Right=2); "
+              "remaining VS Code checks not executed", flush=True)
+        return "xfail-vscode-79"
     session.key("ctrl+shift+p")
     # VS Code's palette uses aria-activedescendant: AT-SPI focuses the
     # selected result while the labelled input still receives typed text.
@@ -692,6 +714,7 @@ def run_inner(skip):
         session.launch("wm", ["xfwm4", "--replace", "--compositor=off"])
         session.launch("atspi", ["/usr/libexec/at-spi-bus-launcher", "--launch-immediately"])
         thunar = None
+        expected_failures = []
         for name in APPLICATIONS:
             if name in skip:
                 print(f"SKIP {name}: explicitly excluded by --skip", flush=True)
@@ -709,8 +732,12 @@ def run_inner(skip):
             else:
                 checks = {"settings": settings_check, "terminal": terminal_check,
                           "calendar": calendar_check, "firefox": firefox_check, "vscode": vscode_check}
-                checks[name](session)
-        print(json.dumps({"status": "PASS", "checks": len(session.checks), "skipped": sorted(skip),
+                result = checks[name](session)
+                if result == "xfail-vscode-79":
+                    expected_failures.append("#79: unmodified Code 1.141.0 stale editor selection")
+        print(json.dumps({"status": "PASS_WITH_XFAIL" if expected_failures else "PASS",
+                           "expected_failures": expected_failures,
+                           "checks": len(session.checks), "skipped": sorted(skip),
                           "event_count": len(session.events)}, sort_keys=True), flush=True)
         return 0
     except Exception:
