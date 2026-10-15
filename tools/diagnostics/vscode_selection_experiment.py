@@ -224,6 +224,19 @@ def run_inner(args):
     def edit(self, target, _value, label, **kwargs):
         nonlocal node
         node = target
+        # Unicode key synthesis is unreliable with xdotool. For these two
+        # fixtures only, use the clipboard on the verified private Xvfb display.
+        if args.case in ("unicode_bmp", "unicode"):
+            def paste_unicode(fixture):
+                subprocess.run(
+                    ["xclip", "-selection", "clipboard", "-in"],
+                    input=fixture, text=True, encoding="utf-8",
+                    check=True, timeout=8, stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                self.key("ctrl+v")
+            self.type = paste_unicode
+            state["fixture_input_method"] = "private_x11_clipboard"
         try:
             original_edit(self, target, value, label, **kwargs)
         except Exception:

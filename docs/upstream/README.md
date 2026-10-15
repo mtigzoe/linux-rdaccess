@@ -93,7 +93,17 @@ Each result records numeric expected/observed code-point and UTF-16 lengths
 and equality, even on a caught fixture-entry failure before routing. Interpret
 `input_failed_before_route=true` as an input-harness problem, **not** evidence
 of a caret synchronization defect. A correct BMP fixture does not prove that
-emoji input or supplementary-character offset mapping works. The current
-harness uses `xdotool type`, which has not been shown to reliably inject
-these characters; do not mark Unicode acceptance passed without actual
-native evidence. Preserve all failing run logs and exit codes.
+emoji input or supplementary-character offset mapping works.
+The experiment uses `xclip -selection clipboard` plus Ctrl+V for the two
+Unicode fixtures on its private Xvfb display; ASCII and multiline still use
+`xdotool type`. `xclip` must be installed for these cases. Keep fixture-entry
+failures distinct from failures after routing, and do not mark Unicode
+acceptance passed without native evidence.
+
+In the isolated patched Code 1.141.0 run on 2026-10-15, the BMP fixture passed
+all native routing, clipboard, and focus-return checks. The emoji fixture was
+entered correctly (13 code points, 14 UTF-16 code units), and caret routing
+plus Right=2/Left=1 passed, but the strict semantic-selection check failed:
+the text exposed 13 code points while selection end was 12. This remains an
+unresolved Unicode selection mismatch; no selection assertion was relaxed.
+Preserve all failing run logs and exit codes.
