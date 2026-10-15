@@ -16,6 +16,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.request
 from pathlib import Path
 
@@ -385,6 +386,7 @@ def main():
                         )
 
                     dom = self.wait(ready, f"{fixture_name}/{case} keyboard DOM state")
+                    dom_ready_ns = time.monotonic_ns()
                     lo, hi = sorted((anchor, focus))
                     selected = value[lo:hi]
                     provider_count = text.get_n_selections()
@@ -396,6 +398,7 @@ def main():
                             provider_selection = [raw.start_offset, raw.end_offset]
                         except (self.GLib.Error, AttributeError, TypeError) as error:
                             provider_error = type(error).__name__
+                    first_provider_read_ns = time.monotonic_ns()
                     update = smoke.build_text_update(
                         "object:text-selection-changed",
                         target,
@@ -422,6 +425,7 @@ def main():
                     later_count, later_selection, later_error = (
                         observe_post_clipboard_selection(text, self.Atspi, self.GLib)
                     )
+                    post_clipboard_read_ns = time.monotonic_ns()
                     expected_provider = [lo, hi] if lo != hi else None
                     sample = {
                         "fixture": fixture_name,
@@ -437,6 +441,12 @@ def main():
                         "provider_selection": provider_selection,
                         "provider_error": provider_error,
                         "provider_selection_count": provider_count,
+                        "dom_ready_to_first_provider_read_ns": (
+                            first_provider_read_ns - dom_ready_ns
+                        ),
+                        "dom_ready_to_post_clipboard_read_ns": (
+                            post_clipboard_read_ns - dom_ready_ns
+                        ),
                         "post_clipboard_selection_count": later_count,
                         "post_clipboard_selection": later_selection,
                         "post_clipboard_selection_error": later_error,
