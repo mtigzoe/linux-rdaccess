@@ -30,6 +30,84 @@ class Accessible:
 
 
 class RealGuiDiagnosticTests(unittest.TestCase):
+    def continuation_fixture(self, model_caret):
+        state = {"model": model_caret, "visible": 1, "keys": []}
+        text = SimpleNamespace(get_caret_offset=lambda: state["visible"])
+        node = SimpleNamespace(get_text_iface=lambda: text)
+        session = smoke.Session.__new__(smoke.Session)
+
+        def key(name):
+            state["keys"].append(name)
+            state["model"] += 1 if name == "Right" else -1
+            state["visible"] = state["model"]
+
+        def wait(predicate, label):
+            if not predicate():
+                raise AssertionError(label)
+
+        session.key = key
+        session.wait = wait
+        session.check = lambda label: None
+        return session, node, state
+
+    def test_routed_caret_continuation_checks_model_right_and_left(self):
+        session, node, state = self.continuation_fixture(1)
+        session.verify_routed_caret_continuation(node, 1)
+        self.assertEqual(state["keys"], ["Right", "Left"])
+        self.assertEqual(state["visible"], 1)
+
+    def test_routed_caret_readback_alone_cannot_hide_stale_editor_model(self):
+        session, node, state = self.continuation_fixture(12)
+        with self.assertRaisesRegex(AssertionError, "Right=2"):
+            session.verify_routed_caret_continuation(node, 1)
+        self.assertEqual(state["visible"], 13)
+        self.assertEqual(state["keys"], ["Right"], "No routing retry or extra key after failure")
+
+    def test_known_code_79_signature_is_typed_not_silenced(self):
+        session, node, state = self.continuation_fixture(12)
+        with self.assertRaisesRegex(smoke.KnownUpstreamCaretMismatch, "Right=13"):
+            session.verify_routed_caret_continuation(node, 1)
+        self.assertEqual(state["keys"], ["Right"])
+        self.assertEqual(state["visible"], 13)
+
+    def test_other_stale_model_offsets_are_not_classified_as_code_79(self):
+        session, node, state = self.continuation_fixture(13)
+        with self.assertRaises(AssertionError) as caught:
+            session.verify_routed_caret_continuation(node, 1)
+        self.assertNotIsInstance(caught.exception, smoke.KnownUpstreamCaretMismatch)
+        self.assertEqual(state["visible"], 14)
+        self.assertEqual(state["keys"], ["Right"])
+
+    def test_known_vscode_stuck_readback_only_matches_exact_fixture(self):
+        match = smoke.Session.known_vscode_stuck_readback
+        self.assertTrue(match("VS Code editor", True, 12, 12, True))
+        for args in [
+            ("VS Code editor", False, 12, 12, True),
+            ("Mousepad editor", True, 12, 12, True),
+            ("VS Code editor", True, 11, 12, True),
+            ("VS Code editor", True, 12, 11, True),
+            ("VS Code editor", True, 12, 12, False),
+            ("VS Code editor", True, 12, "unavailable", True),
+        ]:
+            with self.subTest(args=args):
+                self.assertFalse(match(*args))
+
+    def test_known_vscode_79_guard_requires_opt_in_and_exact_version(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package = root / "resources" / "app" / "package.json"
+            package.parent.mkdir(parents=True)
+            binary = root / "code"
+            binary.touch()
+            for version, accepted in (("1.141.0", True), ("1.141.2", True),
+                                      ("1.141.3", False), ("1.142.0", False)):
+                package.write_text('{"version": "' + version + '"}')
+                self.assertFalse(smoke.allow_known_vscode_79(str(binary), enabled=False))
+                self.assertEqual(
+                    smoke.allow_known_vscode_79(str(binary), enabled=True),
+                    accepted,
+                )
+
     def test_routed_caret_events_are_target_only_and_relative_to_the_request(self):
         target, other = object(), object()
         events = [(9.0, 12, target), (10.01, 7, other), (10.02, 1, target), (10.07, 12, target)]
