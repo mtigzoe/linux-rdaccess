@@ -7,7 +7,6 @@ from tools.diagnostics import vscode_selection_experiment as experiment
 
 
 class NativeKeyboardMatrixTests(unittest.TestCase):
-
     def test_selection_observation_intervals_require_monotonic_order(self):
         self.assertEqual(matrix.selection_read_intervals(100, 125, 200), (25, 100))
         self.assertEqual(matrix.selection_read_intervals(100, 100, 100), (0, 0))
@@ -15,8 +14,6 @@ class NativeKeyboardMatrixTests(unittest.TestCase):
             matrix.selection_read_intervals(100, 99, 110)
         with self.assertRaises(ValueError):
             matrix.selection_read_intervals(100, 110, 109)
-
-
 
     def test_secondary_selection_read_preserves_error_as_diagnostic(self):
         from types import SimpleNamespace
@@ -32,7 +29,7 @@ class NativeKeyboardMatrixTests(unittest.TestCase):
         count, selection, error = matrix.observe_post_clipboard_selection(
             text, atspi, glib
         )
-        self.assertIsNone(count)
+        self.assertEqual(count, 1)
         self.assertIsNone(selection)
         self.assertEqual(error, "SelectionError")
 
