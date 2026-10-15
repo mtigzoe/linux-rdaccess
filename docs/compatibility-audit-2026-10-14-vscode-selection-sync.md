@@ -161,3 +161,15 @@ selection-offset problems. The experiment enters text through `xdotool type`,
 which is not a demonstrated reliable mechanism for inserting every Unicode
 character. The three prior Unicode failures remain unresolved; no Unicode pass
 or production VS Code correction is claimed.
+
+## CI version follow-up
+
+A subsequent GitHub Actions run installed **Code 1.141.2**, not 1.141.0,
+and reproduced the same first-Right-key failure: AT-SPI readback 1 followed
+by Right=13 instead of Right=2. The narrow guard correctly refused to
+classify that previously unverified version as expected, so the Linux GUI
+workflow failed while the other completed workflows passed. The opt-in
+version allowlist was then explicitly extended to **1.141.0 and 1.141.2**;
+all other versions remain fatal, even within the 1.141 series. The related
+unit test verifies accepted and rejected versions. This CI discovery does
+not validate the candidate upstream patch on 1.141.2 and does not close #79.
