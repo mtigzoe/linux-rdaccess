@@ -18,6 +18,8 @@ repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 patch="$repo/docs/upstream/chromium-unicode-selection.diff"
 evidence="${CHROMIUM_GTEST_EVIDENCE:-$repo/chromium-gtest-evidence}"
 mkdir -p "$evidence"
+# Resolve before changing directory to Chromium; relative evidence paths must stay stable.
+evidence="$(cd "$evidence" && pwd)"
 test -f "$src/.gn" || { echo "ERROR: Not a complete Chromium source checkout: $src" >&2; exit 2; }
 test -f "$src/ui/accessibility/platform/ax_platform_node_auralinux.cc" || exit 2
 command -v autoninja >/dev/null || { echo "ERROR: autoninja (depot_tools) unavailable" >&2; exit 2; }
