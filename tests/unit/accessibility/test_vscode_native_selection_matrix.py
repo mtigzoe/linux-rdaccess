@@ -7,6 +7,54 @@ from tools.diagnostics import vscode_selection_experiment as experiment
 
 
 class NativeKeyboardMatrixTests(unittest.TestCase):
+
+    def test_secondary_selection_read_preserves_error_as_diagnostic(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+
+        class SelectionError(Exception):
+            pass
+
+        glib = SimpleNamespace(Error=SelectionError)
+        atspi = SimpleNamespace(Text=SimpleNamespace(get_selection=Mock()))
+        text = SimpleNamespace(get_n_selections=Mock(return_value=1))
+        atspi.Text.get_selection.side_effect = SelectionError("selection not ready")
+        count, selection, error = matrix.observe_post_clipboard_selection(
+            text, atspi, glib
+        )
+        self.assertIsNone(count)
+        self.assertIsNone(selection)
+        self.assertEqual(error, "SelectionError")
+
+        text.get_n_selections.side_effect = SelectionError("count not ready")
+        self.assertEqual(
+            matrix.observe_post_clipboard_selection(text, atspi, glib),
+            (None, None, "SelectionError"),
+        )
+
+    def test_secondary_selection_read_records_valid_and_empty_selection(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+
+        glib = SimpleNamespace(Error=RuntimeError)
+        atspi = SimpleNamespace(
+            Text=SimpleNamespace(
+                get_selection=Mock(
+                    return_value=SimpleNamespace(start_offset=1, end_offset=3)
+                )
+            )
+        )
+        text = SimpleNamespace(get_n_selections=Mock(return_value=1))
+        self.assertEqual(
+            matrix.observe_post_clipboard_selection(text, atspi, glib),
+            (1, [1, 3], None),
+        )
+        text.get_n_selections.return_value = 0
+        self.assertEqual(
+            matrix.observe_post_clipboard_selection(text, atspi, glib),
+            (0, None, None),
+        )
+
     def test_routing_positions_are_codepoints_before_each_supplementary_character(self):
         self.assertEqual(
             matrix.routing_positions(matrix.EXTENDED_CASES["distinct_astral"]),
