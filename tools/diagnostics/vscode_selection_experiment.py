@@ -243,6 +243,14 @@ def run_inner(args):
                 text = node.get_text_iface()
                 state["fixture_final_caret_before_cleanup"] = text.get_caret_offset()
                 state["provider_character_count"] = text.get_character_count()
+                # AT-SPI, Python and Chromium selection APIs may count Unicode
+                # differently. Record numeric lengths only, never editable text.
+                observed = self.Atspi.Text.get_text(text, 0, text.get_character_count())
+                state["expected_codepoints"] = len(value)
+                state["expected_utf16_units"] = len(value.encode("utf-16-le")) // 2
+                state["observed_codepoints"] = len(observed)
+                state["observed_utf16_units"] = len(observed.encode("utf-16-le")) // 2
+                state["observed_equals_fixture"] = observed == value
                 if text.get_n_selections():
                     selection = self.Atspi.Text.get_selection(text, 0)
                     state["provider_selection"] = [
