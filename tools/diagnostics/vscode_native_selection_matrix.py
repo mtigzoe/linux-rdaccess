@@ -63,6 +63,18 @@ def keyboard_cases(value, *, extended=False, fixture_name=None):
     return cases
 
 
+def observe_post_clipboard_selection(text, atspi, glib):
+    """Capture a secondary diagnostic read without changing first-read acceptance."""
+    try:
+        count = text.get_n_selections()
+        if not count:
+            return count, None, None
+        result = atspi.Text.get_selection(text, 0)
+        return count, [result.start_offset, result.end_offset], None
+    except (glib.Error, AttributeError, TypeError) as error:
+        return None, None, type(error).__name__
+
+
 def sample_passes(sample):
     """A diagnostic exit alone cannot prove provider or semantic correctness."""
     return (
@@ -407,16 +419,9 @@ def main():
                     # Keep the first observation as the strict result. A second
                     # read after the clipboard action diagnoses delayed provider
                     # state; it never changes an earlier failing selection.
-                    later_count = None
-                    later_selection = None
-                    later_error = None
-                    try:
-                        later_count = text.get_n_selections()
-                        if later_count:
-                            later = self.Atspi.Text.get_selection(text, 0)
-                            later_selection = [later.start_offset, later.end_offset]
-                    except (self.GLib.Error, AttributeError, TypeError) as error:
-                        later_error = type(error).__name__
+                    later_count, later_selection, later_error = (
+                        observe_post_clipboard_selection(text, self.Atspi, self.GLib)
+                    )
                     expected_provider = [lo, hi] if lo != hi else None
                     sample = {
                         "fixture": fixture_name,
