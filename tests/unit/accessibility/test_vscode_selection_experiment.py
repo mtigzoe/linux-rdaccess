@@ -6,6 +6,21 @@ from tools.diagnostics import vscode_selection_experiment as experiment
 
 
 class BundledMethodTests(unittest.TestCase):
+    def test_unicode_metrics_distinguish_codepoints_from_utf16_units(self):
+        value = experiment.CASES["unicode"]
+        metrics = experiment.unicode_length_metrics(value, value)
+        self.assertEqual(metrics["expected_codepoints"], 13)
+        self.assertEqual(metrics["expected_utf16_units"], 14)
+        self.assertEqual(metrics["observed_utf16_units"], 14)
+        self.assertTrue(metrics["observed_equals_fixture"])
+
+    def test_unicode_metrics_detect_missing_astral_character(self):
+        value = experiment.CASES["unicode"]
+        metrics = experiment.unicode_length_metrics(value, value.replace("🙂", ""))
+        self.assertEqual(metrics["observed_codepoints"], 12)
+        self.assertEqual(metrics["observed_utf16_units"], 12)
+        self.assertFalse(metrics["observed_equals_fixture"])
+
     def test_neighbor_method_call_is_not_a_declaration_boundary(self):
         source = (
             "prefix;var K0e=class extends Base{"
