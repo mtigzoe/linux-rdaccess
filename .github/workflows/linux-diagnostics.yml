@@ -100,6 +100,7 @@ jobs:
         run: |
           bash -n scripts/linux/run_chromium_selection_gtests.sh
           bash scripts/linux/run_chromium_selection_gtests.sh --help
+          python3 -m unittest -v tests.unit.accessibility.test_chromium_gtest_runner
           if bash scripts/linux/run_chromium_selection_gtests.sh "$RUNNER_TEMP/nonexistent-chromium"; then
             echo 'ERROR: runner accepted a missing Chromium checkout' >&2
             exit 1
