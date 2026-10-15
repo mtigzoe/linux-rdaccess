@@ -78,6 +78,21 @@ class RealGuiDiagnosticTests(unittest.TestCase):
         self.assertEqual(state["visible"], 14)
         self.assertEqual(state["keys"], ["Right"])
 
+    def test_known_vscode_79_guard_requires_opt_in_and_exact_version(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package = root / "resources" / "app" / "package.json"
+            package.parent.mkdir(parents=True)
+            binary = root / "code"
+            binary.touch()
+            for version, accepted in (("1.141.0", True), ("1.142.0", False)):
+                package.write_text('{"version": "' + version + '"}')
+                self.assertFalse(smoke.allow_known_vscode_79(str(binary), enabled=False))
+                self.assertEqual(
+                    smoke.allow_known_vscode_79(str(binary), enabled=True),
+                    accepted,
+                )
+
     def test_routed_caret_events_are_target_only_and_relative_to_the_request(self):
         target, other = object(), object()
         events = [(9.0, 12, target), (10.01, 7, other), (10.02, 1, target), (10.07, 12, target)]
