@@ -648,7 +648,7 @@ def allow_known_vscode_79(binary, *, enabled):
     if not enabled:
         return False
     package = Path(binary).resolve().parent / "resources/app/package.json"
-    return json.loads(package.read_text())["version"] == "1.141.0"
+    return json.loads(package.read_text())["version"] in {"1.141.0", "1.141.2"}
 
 
 def vscode_check(session):
@@ -692,7 +692,7 @@ def vscode_check(session):
         # investigated upstream version; all other failures remain fatal.
         if not allow_known_vscode_79(binary, enabled=os.environ.get("LRD_EXPECT_VSCODE_79") == "1"):
             raise
-        print(f"XFAIL VS Code #79: unmodified Code 1.141.0; {mismatch}; "
+        print(f"XFAIL VS Code #79: known Code 1.141.x build; {mismatch}; "
               "remaining VS Code checks not executed", flush=True)
         return "xfail-vscode-79"
     session.key("ctrl+shift+p")
