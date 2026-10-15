@@ -72,3 +72,28 @@ clipboard operations belong to that private display. The installed root-owned
 the sandbox. Results include hashes and numeric state; private logs may include
 the public fixture and local paths. No active desktop, Orca, NVDA connection or
 physical braille device is exercised.
+
+## Unicode isolation cases
+
+The native experiment exposes two independent Unicode fixtures:
+
+- `--case unicode_bmp`: `a café omega` (12 code points, 12 UTF-16 code units).
+- `--case unicode`: `a🙂 café omega` (13 code points, 14 UTF-16 code units).
+
+Run them in **separate new output directories**, using the same reviewed
+patched TypeScript source. The test performs GUI input only in a private
+Xvfb/D-Bus session and leaves the installed Code copy unchanged:
+
+```sh
+python3 tools/diagnostics/vscode_selection_experiment.py --execute --output /tmp/code-79-unicode-bmp --source "$TREE/$SOURCE" --case unicode_bmp
+python3 tools/diagnostics/vscode_selection_experiment.py --execute --output /tmp/code-79-unicode-astral --source "$TREE/$SOURCE" --case unicode
+```
+
+Each result records numeric expected/observed code-point and UTF-16 lengths
+and equality, even on a caught fixture-entry failure before routing. Interpret
+`input_failed_before_route=true` as an input-harness problem, **not** evidence
+of a caret synchronization defect. A correct BMP fixture does not prove that
+emoji input or supplementary-character offset mapping works. The current
+harness uses `xdotool type`, which has not been shown to reliably inject
+these characters; do not mark Unicode acceptance passed without actual
+native evidence. Preserve all failing run logs and exit codes.
