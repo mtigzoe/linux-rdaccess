@@ -310,6 +310,11 @@ class Session:
                 raise
             self.check(f"Routed caret: keyboard {key} reaches {expected}")
 
+    @staticmethod
+    def known_vscode_stuck_readback(label, verify_continuation, before, actual, focused):
+        return (label == "VS Code editor" and verify_continuation is True
+                and before == 12 and actual == 12 and focused is True)
+
     def text_edit(self, node, value, label, *, verify_continuation=False):
         self.focus(node)
         self.key("ctrl+a")
@@ -342,8 +347,8 @@ class Session:
                   f"elapsed_ms={round((time.monotonic() - route_started) * 1000, 3)}, "
                   f"target caret events (ms, offset)="
                   f"{routed_caret_events(self.caret_events, node, route_started)}", flush=True)
-            if (label == "VS Code editor" and verify_continuation
-                    and before_route == 12 and actual == 12 and focused is True):
+            if self.known_vscode_stuck_readback(label, verify_continuation,
+                                                 before_route, actual, focused):
                 raise KnownUpstreamCaretMismatch(
                     "VS Code #79: accepted caret request=1 but readback stayed 12"
                 ) from None
