@@ -14,6 +14,13 @@ class BundledMethodTests(unittest.TestCase):
         self.assertEqual(metrics["observed_utf16_units"], 14)
         self.assertTrue(metrics["observed_equals_fixture"])
 
+    def test_bmp_unicode_fixture_has_no_utf16_length_difference(self):
+        value = experiment.CASES["unicode_bmp"]
+        metrics = experiment.unicode_length_metrics(value, value)
+        self.assertIn("é", value)
+        self.assertEqual(metrics["expected_codepoints"], metrics["expected_utf16_units"])
+        self.assertTrue(metrics["observed_equals_fixture"])
+
     def test_unicode_metrics_detect_missing_astral_character(self):
         value = experiment.CASES["unicode"]
         metrics = experiment.unicode_length_metrics(value, value.replace("🙂", ""))
