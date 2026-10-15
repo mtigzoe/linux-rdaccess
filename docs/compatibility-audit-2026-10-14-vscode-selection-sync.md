@@ -131,3 +131,33 @@ braille routing acceptance are required before closing #79. Issues #57, #59,
 #60 and #72 receive no new live acceptance from these tests. The active desktop,
 Orca, NVDA connection, installed add-ons, relay settings and user documents were
 not changed. No installation, restart or live-test consent was requested.
+
+## Follow-up CI classification (2026-10-14 local)
+
+PR #91 added a narrowly scoped CI-only expected-failure classification for the
+captured unmodified Code 1.141.0 sequence: AT-SPI readback 1 followed by the
+first Right key leaving the editor at 13 rather than 2. It requires
+`LRD_EXPECT_VSCODE_79=1` and installed Code version 1.141.0, read from package
+metadata without launching a second Electron process. Other caret failures
+remain fatal; the continuation checks are unchanged. The workflow now uses
+`set -o pipefail` to propagate the smoke runner's exit code through `tee`.
+
+The initial classified CI run reproduced Right=13 but failed when the version
+check launched `code --version` and timed out. This was corrected by reading
+`resources/app/package.json` directly. Subsequent CI on commit `8c90af9`
+passed **all six workflows**, including the full unittest suite and Linux GUI
+integration. The Linux GUI job recorded **53 checks, zero expected failures,
+zero skips, PASS**, with keyboard Right=2 and Left=1 both passing. Thus the
+live XFAIL classification path has **not** been exercised in a successful GUI
+run; the upstream issue is intermittent and remains open. The new regression
+tests verify a typed Right=13 mismatch, nonmatching failure propagation, and
+explicit version/opt-in requirements, but they do not constitute native GUI
+acceptance of the known failure path.
+
+The experimental Unicode fixture `a🙂 café omega` has 13 Unicode code points
+but 14 UTF-16 code units. Numeric-only diagnostics now record expected and
+observed lengths and fixture equality to distinguish injection problems from
+selection-offset problems. The experiment enters text through `xdotool type`,
+which is not a demonstrated reliable mechanism for inserting every Unicode
+character. The three prior Unicode failures remain unresolved; no Unicode pass
+or production VS Code correction is claimed.
