@@ -32,8 +32,8 @@ if (process.argv[4] === '--emit-methods') {
   process.exit(0);
 }
 
-function fixture() {
-  const f = { text: 'lrd code text', now: 1000, optimized: true, calls: [], ime: { enabled: true } };
+function fixture(text = 'lrd code text') {
+  const f = { text, now: 1000, optimized: true, calls: [], ime: { enabled: true } };
   const document = { listeners: [], activeElement: null };
   const selection = {
     rangeCount: 1, direction: 'forward',
@@ -159,6 +159,23 @@ const tests = {
   external_request_after_clipboard_hook_is_not_time_filtered() {
     const f = fixture(); f.handler.onWillCut(); f.handler.onWillPaste();
     f.now += 1; f.external(1); f.dispatch(); assert.equal(f.calls.length, 1);
+  },
+  unicode_render_preserves_full_utf16_selection() {
+    const f = fixture('a🙂 café omega');
+    assert.equal([...f.text].length, 13); assert.equal(f.text.length, 14);
+    f.render(0, f.text.length);
+    assert.equal(f.selection.anchorOffset, 0); assert.equal(f.selection.focusOffset, 14);
+  },
+  unicode_external_selection_reaches_full_model_end() {
+    const f = fixture('a🙂 café omega'); f.render(f.text.length);
+    f.now += 200; f.external(0, f.text.length); f.dispatch();
+    assert.equal(f.calls.length, 1);
+    assert.equal(f.calls[0].anchor.column, 1); assert.equal(f.calls[0].focus.column, 15);
+  },
+  unchanged_unicode_render_preserves_pending_external_selection() {
+    const f = fixture('a🙂 café omega'); f.render(f.text.length);
+    f.external(0, f.text.length); f.render(f.text.length);
+    assert.equal(f.selection.anchorOffset, 0); assert.equal(f.selection.focusOffset, 14);
   },
 };
 let failures = 0;

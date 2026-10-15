@@ -67,7 +67,7 @@ jobs:
       - name: Run all seven real application keyboard and AT-SPI checks
         shell: bash
         env:
-          # Opt-in only for the precisely recognized Code 1.141.0 issue #79 signature.
+          # Opt-in only for issue #79 signatures verified on the exact Code version.
           LRD_EXPECT_VSCODE_79: "1"
         run: |
           # Missing desktop dependencies fail CI; --skip is reserved for

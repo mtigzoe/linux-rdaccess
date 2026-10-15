@@ -305,7 +305,8 @@ class Session:
                 if key == "Right" and offset == 1 and expected == 2 and actual == 13:
                     raise KnownUpstreamCaretMismatch(
                         "VS Code #79: accessibility caret readback 1; "
-                        "expected Right=2 but stale editor selection produced Right=13"
+                        "expected Right=2 but stale editor selection produced Right=13",
+                        signature="right-13",
                     ) from None
                 raise
             self.check(f"Routed caret: keyboard {key} reaches {expected}")
@@ -350,7 +351,8 @@ class Session:
             if self.known_vscode_stuck_readback(label, verify_continuation,
                                                  before_route, actual, focused):
                 raise KnownUpstreamCaretMismatch(
-                    "VS Code #79: accepted caret request=1 but readback stayed 12"
+                    "VS Code #79: accepted caret request=1 but readback stayed 12",
+                    signature="stuck-readback-12",
                 ) from None
             raise
         self.check(label + ": routed caret is confirmed by the provider")
@@ -642,13 +644,25 @@ b.textContent='Smoke replacement action';this.replaceWith(b);b.focus()">Smoke ac
 class KnownUpstreamCaretMismatch(AssertionError):
     """Strictly identified upstream editor-selection failure (issue #79)."""
 
+    def __init__(self, message, *, signature):
+        super().__init__(message)
+        self.signature = signature
 
-def allow_known_vscode_79(binary, *, enabled):
-    """Only classify the reproduced mismatch on the investigated Code build."""
-    if not enabled:
+
+def allow_known_vscode_79(binary, *, enabled, mismatch):
+    """Only classify signatures reproduced on the exact installed version."""
+    if not enabled or not isinstance(mismatch, KnownUpstreamCaretMismatch):
         return False
     package = Path(binary).resolve().parent / "resources/app/package.json"
-    return json.loads(package.read_text())["version"] in {"1.141.0", "1.141.2"}
+    version = json.loads(package.read_text())["version"]
+    signatures = {
+        "1.141.0": {"right-13", "stuck-readback-12"},
+        "1.141.2": {"right-13", "stuck-readback-12"},
+        # CI run 38754047520 reproduced only the first-Right mismatch on
+        # 1.142.0 revision 6d62b1d5dace93a33b3a6d3eca1317bd5e15bcb1.
+        "1.142.0": {"right-13"},
+    }
+    return mismatch.signature in signatures.get(version, set())
 
 
 def vscode_check(session):
@@ -690,9 +704,10 @@ def vscode_check(session):
     except KnownUpstreamCaretMismatch as mismatch:
         # Only classify the known failure in explicitly opted-in CI on the
         # investigated upstream version; all other failures remain fatal.
-        if not allow_known_vscode_79(binary, enabled=os.environ.get("LRD_EXPECT_VSCODE_79") == "1"):
+        if not allow_known_vscode_79(binary, enabled=os.environ.get("LRD_EXPECT_VSCODE_79") == "1",
+                                     mismatch=mismatch):
             raise
-        print(f"XFAIL VS Code #79: known Code 1.141.x build; {mismatch}; "
+        print(f"XFAIL VS Code #79: verified Code version/signature; {mismatch}; "
               "remaining VS Code checks not executed", flush=True)
         return "xfail-vscode-79"
     session.key("ctrl+shift+p")
@@ -749,7 +764,7 @@ def run_inner(skip):
                           "calendar": calendar_check, "firefox": firefox_check, "vscode": vscode_check}
                 result = checks[name](session)
                 if result == "xfail-vscode-79":
-                    expected_failures.append("#79: known Code 1.141.0/1.141.2 stale editor selection")
+                    expected_failures.append("#79: verified Code version/signature stale editor selection")
         print(json.dumps({"status": "PASS_WITH_XFAIL" if expected_failures else "PASS",
                            "expected_failures": expected_failures,
                            "checks": len(session.checks), "skipped": sorted(skip),

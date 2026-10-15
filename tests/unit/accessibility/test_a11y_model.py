@@ -369,6 +369,44 @@ class A11yModelTests(unittest.TestCase):
         self.assertEqual(item["selection_start"], 1)
         self.assertEqual(item["selection_end"], 4)
 
+    def test_unicode_selection_preserves_provider_codepoint_offsets(self):
+        value = "a🙂 café omega"
+        self.assertEqual(len(value), 13)
+        self.assertEqual(len(value.encode("utf-16-le")) // 2, 14)
+        text = FakeText(value, caret=13, selection=(0, 13))
+        field = FakeAccessible("Editor", "text", text_iface=text)
+        payload = build_focus_payload("object:state-changed:focused", 1, field)
+        item = payload["objects"][0]
+        self.assertEqual(item["text"], value)
+        self.assertFalse(item["text_truncated"])
+        self.assertEqual(item["caret_offset"], 13)
+        self.assertEqual((item["selection_start"], item["selection_end"]), (0, 13))
+
+    def test_unicode_selection_update_preserves_short_provider_selection(self):
+        # A provider selecting only through 12 must remain observable. The
+        # bridge cannot infer or repair a full-selection request from the text.
+        value = "a🙂 café omega"
+        text = FakeText(value, caret=12, selection=(0, 12))
+        field = FakeAccessible("Editor", "text", text_iface=text)
+        update = build_text_update(
+            "object:text-selection-changed", field,
+            object_registry={object_id(field): field},
+        )
+        self.assertEqual(update["text"], value)
+        self.assertEqual(update["caret_offset"], 12)
+        self.assertEqual((update["selection_start"], update["selection_end"]), (0, 12))
+        self.assertEqual(update["text"][update["selection_end"]:], "a")
+
+    def test_unicode_selection_does_not_guess_utf16_provider_offsets(self):
+        # AT-SPI offsets belong to the provider's character coordinate space.
+        # An out-of-range offset must not be silently converted to fit the text.
+        text = FakeText("a🙂 café omega", caret=14, selection=(0, 14))
+        field = FakeAccessible("Editor", "text", text_iface=text)
+        item = build_focus_payload("object:state-changed:focused", 1, field)["objects"][0]
+        self.assertIsNone(item["caret_offset"])
+        self.assertIsNone(item["selection_start"])
+        self.assertIsNone(item["selection_end"])
+
     def test_nonfocused_neighbors_do_not_serialize_text(self):
         app = FakeAccessible("App", "application")
         dialog = FakeAccessible("Dialog", "dialog", app)

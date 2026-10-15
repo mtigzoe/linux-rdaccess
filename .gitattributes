@@ -4,3 +4,4 @@
 /linux_rdaccess_core/connection/nvda_test_client/*.py text eol=lf
 # Unified-diff context prefixes intentionally contain spaces before tabs/blank lines.
 /docs/upstream/vscode-selection-sync.diff text eol=lf -whitespace
+/docs/upstream/chromium-unicode-selection.diff text eol=lf -whitespace
