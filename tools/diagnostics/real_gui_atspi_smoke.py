@@ -749,7 +749,7 @@ def run_inner(skip):
                           "calendar": calendar_check, "firefox": firefox_check, "vscode": vscode_check}
                 result = checks[name](session)
                 if result == "xfail-vscode-79":
-                    expected_failures.append("#79: unmodified Code 1.141.0 stale editor selection")
+                    expected_failures.append("#79: known Code 1.141.0/1.141.2 stale editor selection")
         print(json.dumps({"status": "PASS_WITH_XFAIL" if expected_failures else "PASS",
                            "expected_failures": expected_failures,
                            "checks": len(session.checks), "skipped": sorted(skip),
