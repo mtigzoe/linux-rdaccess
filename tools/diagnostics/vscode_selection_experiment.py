@@ -38,6 +38,17 @@ CASES = {
 }
 
 
+def unicode_length_metrics(expected, observed):
+    """Numeric-only input diagnostics, without retaining editable text."""
+    return {
+        "expected_codepoints": len(expected),
+        "expected_utf16_units": len(expected.encode("utf-16-le")) // 2,
+        "observed_codepoints": len(observed),
+        "observed_utf16_units": len(observed.encode("utf-16-le")) // 2,
+        "observed_equals_fixture": observed == expected,
+    }
+
+
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -212,7 +223,19 @@ def run_inner(args):
     def edit(self, target, _value, label, **kwargs):
         nonlocal node
         node = target
-        original_edit(self, target, value, label, **kwargs)
+        try:
+            original_edit(self, target, value, label, **kwargs)
+        except Exception:
+            # Preserve input evidence even when the baseline fixture assertion
+            # fails before any route request can occur.
+            try:
+                text = target.get_text_iface()
+                observed = self.Atspi.Text.get_text(text, 0, text.get_character_count())
+                state.update(unicode_length_metrics(value, observed))
+                state["input_failed_before_route"] = state["caret_requests"] == 0
+            except Exception as error:  # noqa: BLE001 -- transient AT-SPI object
+                state["input_diagnostic_error"] = type(error).__name__
+            raise
         text = target.get_text_iface()
 
         def contents():
@@ -246,11 +269,7 @@ def run_inner(args):
                 # AT-SPI, Python and Chromium selection APIs may count Unicode
                 # differently. Record numeric lengths only, never editable text.
                 observed = self.Atspi.Text.get_text(text, 0, text.get_character_count())
-                state["expected_codepoints"] = len(value)
-                state["expected_utf16_units"] = len(value.encode("utf-16-le")) // 2
-                state["observed_codepoints"] = len(observed)
-                state["observed_utf16_units"] = len(observed.encode("utf-16-le")) // 2
-                state["observed_equals_fixture"] = observed == value
+                state.update(unicode_length_metrics(value, observed))
                 if text.get_n_selections():
                     selection = self.Atspi.Text.get_selection(text, 0)
                     state["provider_selection"] = [
