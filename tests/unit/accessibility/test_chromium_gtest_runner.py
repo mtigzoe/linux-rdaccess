@@ -5,6 +5,7 @@ These tests intentionally do not compile Chromium or claim native accessibility 
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -13,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[3]
 RUNNER = ROOT / "scripts/linux/run_chromium_selection_gtests.sh"
 
 
+@unittest.skipUnless(sys.platform == "linux", "requires native Linux shell and filesystem semantics")
 class ChromiumGtestRunnerPreflightTests(unittest.TestCase):
     def invoke(self, source, env=None):
         return subprocess.run(
