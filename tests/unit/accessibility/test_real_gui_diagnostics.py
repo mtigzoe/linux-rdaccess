@@ -78,6 +78,20 @@ class RealGuiDiagnosticTests(unittest.TestCase):
         self.assertEqual(state["visible"], 14)
         self.assertEqual(state["keys"], ["Right"])
 
+    def test_known_vscode_stuck_readback_only_matches_exact_fixture(self):
+        match = smoke.Session.known_vscode_stuck_readback
+        self.assertTrue(match("VS Code editor", True, 12, 12, True))
+        for args in [
+            ("VS Code editor", False, 12, 12, True),
+            ("Mousepad editor", True, 12, 12, True),
+            ("VS Code editor", True, 11, 12, True),
+            ("VS Code editor", True, 12, 11, True),
+            ("VS Code editor", True, 12, 12, False),
+            ("VS Code editor", True, 12, "unavailable", True),
+        ]:
+            with self.subTest(args=args):
+                self.assertFalse(match(*args))
+
     def test_known_vscode_79_guard_requires_opt_in_and_exact_version(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
