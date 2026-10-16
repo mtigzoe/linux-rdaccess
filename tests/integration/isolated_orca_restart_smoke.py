@@ -94,6 +94,7 @@ def smoke() -> None:
             transport.write_text(_patch_legacy_transport_cleanup(
                 transport.read_text(encoding="utf-8")), encoding="utf-8")
             real_import = (
+                "from pathlib import Path\n"
                 "sys.path.insert(0, os.environ['LRD_UPSTREAM_SCRIPTS'])\n"
                 "from remote_controller import RemoteController\n"
                 "from transport import RelayTransport\n"
@@ -109,6 +110,7 @@ def smoke() -> None:
                 "exercise(RemoteController, RelayTransport, JSONSerializer)\n"
                 "from tests.integration.real_upstream_orca_tls import exercise_tls\n"
                 "exercise_tls(RemoteController, RelayTransport, JSONSerializer)\n"
+                "Path(os.environ['LRD_STARTUP_STAGE']).write_text('real relay integration')\n"
                 "from tests.integration.real_nvda_relay import exercise_relay\n"
                 "exercise_relay(RemoteController, RelayTransport, JSONSerializer)\n"
             )
@@ -165,6 +167,7 @@ def smoke() -> None:
         env["LRD_ORCA_ADAPTER_DIR"] = str(profile)
         env["LRD_PROJECT_ROOT"] = str(Path(__file__).resolve().parents[2])
         env["LRD_ORCA_LOAD_MARKER"] = str(marker)
+        env["LRD_STARTUP_STAGE"] = str(base / "orca-startup-stage")
         # Choose a free X display number by binding the X11 socket via -displayfd.
         xserver = subprocess.Popen(
             [xvfb, "-nolisten", "tcp", "-screen", "0", "1024x768x24",
@@ -206,7 +209,9 @@ def smoke() -> None:
                 "            try: _, err = p.communicate(timeout=5)\n"
                 "            except subprocess.TimeoutExpired:\n"
                 "                p.kill(); _, err = p.communicate(timeout=5)\n"
-                "            raise RuntimeError(f'Orca customization did not complete cycle {cycle}: {err[-3500:]}')\n"
+                "            stage = Path(os.environ['LRD_STARTUP_STAGE'])\n"
+                "            detail = stage.read_text() if stage.exists() else 'before real relay integration'\n"
+                "            raise RuntimeError(f'Orca customization did not complete cycle {cycle} at {detail}: {err[-3500:]}')\n"
                 "        if marker.read_text().strip() != str(p.pid) + '|linux_rdaccess_orca_adapter':\n"
                 "            raise RuntimeError(f'Unexpected Orca customization loading PID in cycle {cycle}')\n"
                 "        if code is not None:\n"
