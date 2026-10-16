@@ -4,8 +4,9 @@
 Run only on a dedicated Linux test runner with:
     python3 tests/integration/isolated_orca_restart_smoke.py
 
-This starts a *real* Orca executable but does not test NVDA Remote, the
-linux-rdaccess transport, speech output, or physical braille.
+This starts a *real* Orca executable while a separately mocked-controller
+transport loopback regression runs within the same private display and bus.
+It does NOT wire that transport into Orca or test NVDA, speech, or braille.
 """
 from __future__ import annotations
 
@@ -91,6 +92,15 @@ def smoke() -> None:
                 "        if code is not None:\n"
                 "            err = p.stderr.read()[-2000:]\n"
                 "            raise RuntimeError(f'Orca exited early in cycle {cycle}: {code}: {err}')\n"
+                "        check = subprocess.run([sys.executable, '-m', 'unittest', '-v',\n"
+                "            'tests.integration.test_nvda_remote_loopback.NvdaRemoteLoopbackTests.'\n"
+                "            'test_native_reconnector_two_disconnect_cycles_reject_partial_old_keys'],\n"
+                "            capture_output=True, text=True, timeout=35)\n"
+                "        if check.returncode:\n"
+                "            raise RuntimeError('Transport loopback failed while isolated Orca was running: '\n"
+                "                + check.stdout[-2000:] + check.stderr[-3500:])\n"
+                "        if p.poll() is not None:\n"
+                "            raise RuntimeError(f'Orca exited during transport test in cycle {cycle}')\n"
                 "    finally:\n"
                 "        if p.poll() is None:\n"
                 "            p.terminate()\n"
@@ -98,11 +108,11 @@ def smoke() -> None:
                 "            except subprocess.TimeoutExpired:\n"
                 "                p.kill(); p.wait(timeout=5)\n"
                 "        p.stderr.close()\n"
-                "print('Two isolated Orca launches completed')\n"
+                "print('Two isolated Orca launches and transport loopback checks completed')\n"
             )
             session = subprocess.run(
                 [dbus, "--", sys.executable, "-c", script, orca],
-                env=env, capture_output=True, text=True, timeout=50,
+                env=env, capture_output=True, text=True, timeout=110,
                 check=False,
             )
             if session.returncode:
