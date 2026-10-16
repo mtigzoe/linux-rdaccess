@@ -1598,7 +1598,16 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
         updated_disconnect, count = re.subn(
             close_pattern, guard_close, updated_disconnect, count=1)
         if count != 1:
-            raise ValueError("unsupported legacy transport socket close")
+            # Real upstream already guards socket close and clears the handle,
+            # including the exception path. Do not layer another close guard.
+            guarded = re.search(
+                r"(?s)if self\\.server_sock is not None:\\s+try:\\s+"
+                r"self\\.server_sock\\.close\\(\\)\\s+except Exception:\\s+"
+                r"pass\\s+self\\.server_sock = None",
+                updated_disconnect,
+            )
+            if count != 0 or guarded is None:
+                raise ValueError("unsupported legacy transport socket close")
         text = text.replace(disconnect_source, updated_disconnect, 1)
 
     if not (upgrading_v3 or upgrading_v4 or upgrading_v5 or upgrading_v6):
