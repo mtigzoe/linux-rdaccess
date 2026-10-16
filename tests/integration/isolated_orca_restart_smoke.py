@@ -105,6 +105,8 @@ def smoke() -> None:
                 "sys.path.insert(0, os.environ['LRD_PROJECT_ROOT'])\n"
                 "from tests.integration.real_upstream_orca_loopback import exercise\n"
                 "exercise(RemoteController, RelayTransport, JSONSerializer)\n"
+                "from tests.integration.real_upstream_orca_tls import exercise_tls\n"
+                "exercise_tls(RemoteController, RelayTransport, JSONSerializer)\n"
             )
             env["LRD_UPSTREAM_SCRIPTS"] = str(scripts)
         (profile / "orca-customizations.py").write_text(
@@ -173,7 +175,11 @@ def smoke() -> None:
                 "        while not marker.exists() and p.poll() is None and time.monotonic() < deadline:\n"
                 "            time.sleep(0.1)\n"
                 "        if not marker.exists():\n"
-                "            raise RuntimeError(f'Orca did not load isolated customization in cycle {cycle}')\n"
+                "            if p.poll() is None: p.terminate()\n"
+                "            try: _, err = p.communicate(timeout=5)\n"
+                "            except subprocess.TimeoutExpired:\n"
+                "                p.kill(); _, err = p.communicate(timeout=5)\n"
+                "            raise RuntimeError(f'Orca customization did not complete cycle {cycle}: {err[-3500:]}')\n"
                 "        if marker.read_text().strip() != str(p.pid) + '|linux_rdaccess_orca_adapter':\n"
                 "            raise RuntimeError(f'Unexpected Orca customization loading PID in cycle {cycle}')\n"
                 "        if code is not None:\n"
