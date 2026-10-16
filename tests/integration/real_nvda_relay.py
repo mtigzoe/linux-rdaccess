@@ -201,6 +201,12 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
             assert transport.buffer == b""
             assert not controller.connected_clients
             previous_keys = len(key_events)
+            # The upstream transport's previous sender used this queue.
+            # Give the new test connection an empty queue after confirming
+            # its old sender exited, as in the isolated TLS reconnect smoke.
+            import queue
+            assert transport.queue_thread is None
+            transport.queue = queue.Queue()
             start_orca()
             recovered = master(channel)
             peers.append(recovered)
