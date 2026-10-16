@@ -6612,15 +6612,25 @@ def _patch_verified_upstream_inject_delegate(text: str) -> str:
             else:
                 self._held_keys.discard(key)
         return delivered"""
-    new_inject = old_inject.replace("                return\n", "                return True\n")
-    # Backend denied, missing, or failed: explicitly return False.
-    new_inject = new_inject.replace("            self._warn_no_key_backend()\n            return\n",
-                                    "            self._warn_no_key_backend()\n            return False\n")
-    new_inject = new_inject.replace("        self._warn_no_key_backend()",
-                                    "        self._warn_no_key_backend()\n        return False")
-    # Portal denial does not imply a delivered key.
-    new_inject = new_inject.replace("            if self._portal_denied():\n                return True",
-                                    "            if self._portal_denied():\n                return False")
+    new_inject = """def _inject(self, key, pressed):
+        if self._is_wayland_session():
+            if self._send_key_portal(key, pressed):
+                return True
+            if self._portal_denied():
+                return False
+            if self._send_key_ydotool(key, pressed):
+                return True
+            self._warn_no_key_backend()
+            return False
+
+        if self._send_key_xdotool(key, pressed):
+            return True
+        if self._send_key_ydotool(key, pressed):
+            return True
+        if self._send_key_portal(key, pressed):
+            return True
+        self._warn_no_key_backend()
+        return False"""
     result = text.replace(inject_source, new_inject, 1)
     result = result.replace(old_held, new_held, 1)
     compile(result, "<verified upstream keyboard injection>", "exec")
