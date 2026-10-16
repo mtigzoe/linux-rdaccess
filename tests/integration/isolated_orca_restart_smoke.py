@@ -6,7 +6,7 @@ Run only on a dedicated Linux test runner with:
 
 This starts a *real* Orca executable while a separately mocked-controller
 transport loopback regression runs within the same private display and bus.\nThe first Orca child is forcibly killed and the second must start cleanly.
-This verifies real Orca imports the production adapter from a private copy\nand executes its safe active-script resolver before writing the import marker.\nIt does NOT wire the transport into Orca or test NVDA, speech, or braille.
+This verifies real Orca imports the production adapter and executes a patched\nfixture-backed TCP transport reconnect in the real Orca process\nand executes its safe active-script resolver before writing the import marker.\nThe transport is exercised in-process but is not the installed Orca Remote\ncontroller. It does not test NVDA, speech, or physical braille.
 """
 from __future__ import annotations
 
@@ -76,11 +76,27 @@ def smoke() -> None:
             "sys.path.insert(0, os.environ['LRD_ORCA_ADAPTER_DIR'])\n"
             "from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter\n"
             "OrcaRuntimeAdapter.active_script()\n"
+            "sys.path.insert(0, os.environ['LRD_PROJECT_ROOT'])\n"
+            "from tests.integration.nvda_remote_harness import LoopbackSession\n"
+            "with_marker = LoopbackSession()\n"
+            "try:\n"
+            "    with_marker.start(native_reconnector=True)\n"
+            "    with_marker.send(type='channel_joined', channel='test-only')\n"
+            "    with_marker.barrier()\n"
+            "    with_marker.disconnect_peer()\n"
+            "    with_marker.transport.callback_manager.wait_for('transport_disconnected')\n"
+            "    with_marker.accept()\n"
+            "    with_marker.transport.callback_manager.wait_for('transport_connected', count=2)\n"
+            "    with_marker.send(type='channel_joined', channel='test-only')\n"
+            "    with_marker.barrier()\n"
+            "finally:\n"
+            "    with_marker.close()\n"
             "Path(os.environ['LRD_ORCA_LOAD_MARKER']).write_text(\n"
             "    str(os.getpid()) + '|linux_rdaccess_orca_adapter')\n",
             encoding="utf-8",
         )
         env["LRD_ORCA_ADAPTER_DIR"] = str(profile)
+        env["LRD_PROJECT_ROOT"] = str(Path(__file__).resolve().parents[2])
         env["LRD_ORCA_LOAD_MARKER"] = str(marker)
         # Choose a free X display number by binding the X11 socket via -displayfd.
         xserver = subprocess.Popen(
