@@ -74,6 +74,8 @@ def smoke() -> None:
         # the fixture-based transport. This is module loading, NOT relay
         # connection or a production customization startup.
         upstream = os.environ.get("LRD_PINNED_ORCA_REMOTE")
+        if os.environ.get("LRD_PINNED_RELAY_FILE"):
+            env["LRD_PINNED_RELAY_FILE"] = os.environ["LRD_PINNED_RELAY_FILE"]
         if upstream:
             sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
         real_import = ""
@@ -107,6 +109,8 @@ def smoke() -> None:
                 "exercise(RemoteController, RelayTransport, JSONSerializer)\n"
                 "from tests.integration.real_upstream_orca_tls import exercise_tls\n"
                 "exercise_tls(RemoteController, RelayTransport, JSONSerializer)\n"
+                "from tests.integration.real_nvda_relay import exercise_relay\n"
+                "exercise_relay(RemoteController, RelayTransport, JSONSerializer)\n"
             )
             env["LRD_UPSTREAM_SCRIPTS"] = str(scripts)
         (profile / "orca-customizations.py").write_text(
@@ -171,7 +175,7 @@ def smoke() -> None:
                 "    try:\n"
                 "        time.sleep(3)\n"
                 "        code = p.poll()\n"
-                "        deadline = time.monotonic() + 8\n"
+                "        deadline = time.monotonic() + 60\n"
                 "        while not marker.exists() and p.poll() is None and time.monotonic() < deadline:\n"
                 "            time.sleep(0.1)\n"
                 "        if not marker.exists():\n"

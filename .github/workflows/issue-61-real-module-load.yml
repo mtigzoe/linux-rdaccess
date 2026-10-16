@@ -6,6 +6,7 @@ on:
       - 'tests/integration/isolated_orca_restart_smoke.py'
       - 'tests/integration/real_upstream_orca_loopback.py'
       - 'tests/integration/real_upstream_orca_tls.py'
+      - 'tests/integration/real_nvda_relay.py'
       - '.github/workflows/issue-61-real-module-load.yml'
       - 'linux_rdaccess_core/connection/remote_access.py'
   workflow_dispatch:
@@ -30,7 +31,14 @@ jobs:
           git clone -q https://github.com/serrebidev/orca-remote.git /tmp/orca-remote-upstream
           git -C /tmp/orca-remote-upstream checkout -q d273e82fbc93bf6a6eb473a00e38291d84f1dccb
           test "$(git -C /tmp/orca-remote-upstream rev-parse HEAD)" = d273e82fbc93bf6a6eb473a00e38291d84f1dccb
+      - name: Fetch pinned real NVDA Remote relay server
+        run: |
+          set -euo pipefail
+          git clone -q https://github.com/a2hsh/nvda-remote.git /tmp/lrd-nvda-relay
+          git -C /tmp/lrd-nvda-relay checkout -q 78de6ac0cf7fde4081b6dc176a2e0dbb87450e17
+          test "$(git -C /tmp/lrd-nvda-relay rev-parse HEAD)" = 78de6ac0cf7fde4081b6dc176a2e0dbb87450e17
       - name: Load patched real upstream modules in isolated Orca and restart
         env:
           LRD_PINNED_ORCA_REMOTE: /tmp/orca-remote-upstream
+          LRD_PINNED_RELAY_FILE: /tmp/lrd-nvda-relay/server.py
         run: /usr/bin/python3 tests/integration/isolated_orca_restart_smoke.py

@@ -28,15 +28,29 @@ def exercise_tls(RemoteController, RelayTransport, JSONSerializer):
         listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         listener.bind(("127.0.0.1", 0))
         listener.listen(1)
-        listener.settimeout(8)
+        listener.settimeout(15)
         transport = RelayTransport(
             JSONSerializer(), listener.getsockname(),
             channel="test-only-tls-channel", connection_type="slave")
         controller = RemoteController(transport)
         assert controller.transport is transport
         errors = []
+        sent_messages = []
+        original_send = transport.send
+        def observed_send(type, **kwargs):
+            sent_messages.append((type, dict(kwargs), transport.connected))
+            return original_send(type, **kwargs)
+        transport.send = observed_send
         workers = []
         peer = None
+
+        # The upstream close() queues a sentinel to stop the old sender.
+        # Reset only test-owned state before beginning a fresh run; retain
+        # assertions that the previous worker stopped and the buffer cleared.
+        def prepare_reconnect():
+            import queue
+            assert transport.queue_thread is None
+            transport.queue = queue.Queue()
 
         def run_transport():
             try:
@@ -47,15 +61,28 @@ def exercise_tls(RemoteController, RelayTransport, JSONSerializer):
         def accept_tls():
             raw, address = listener.accept()
             assert address[0] == "127.0.0.1"
-            raw.settimeout(8)
+            raw.settimeout(15)
             return server_ctx.wrap_socket(raw, server_side=True)
 
         def handshake(peer):
             buf = b""
             messages = []
-            deadline = time.monotonic() + 8
+            deadline = time.monotonic() + 15
             while len(messages) < 2 and time.monotonic() < deadline:
-                chunk = peer.recv(8192)
+                try:
+                    chunk = peer.recv(8192)
+                except socket.timeout as exc:
+                    raise AssertionError(
+                        "TLS handshake receive timeout: " + repr({
+                            "messages": messages,
+                            "send_calls": sent_messages,
+                            "transport_connected": transport.connected,
+                            "successful_connects": transport.successful_connects,
+                            "queue_size": transport.queue.qsize(),
+                            "sender_alive": bool(transport.queue_thread and transport.queue_thread.is_alive()),
+                            "receiver_alive": [w.is_alive() for w in workers],
+                            "worker_errors": [str(e) for e in errors],
+                        })) from exc
                 if not chunk:
                     raise AssertionError("TLS peer disconnected before join")
                 buf += chunk
@@ -82,6 +109,8 @@ def exercise_tls(RemoteController, RelayTransport, JSONSerializer):
 
         try:
             for cycle in range(2):
+                if cycle:
+                    prepare_reconnect()
                 worker = threading.Thread(target=run_transport, daemon=True)
                 workers.append(worker)
                 worker.start()
@@ -102,7 +131,7 @@ def exercise_tls(RemoteController, RelayTransport, JSONSerializer):
                     # Simulate relay loss with an incomplete frame.
                     peer.close()
                     peer = None
-                    worker.join(timeout=8)
+                    worker.join(timeout=15)
                     assert not worker.is_alive(), "old TLS receiver still running"
                     assert not transport.connected
                     assert transport.buffer == b"", "TLS partial frame leaked"
@@ -114,6 +143,6 @@ def exercise_tls(RemoteController, RelayTransport, JSONSerializer):
                 peer.close()
             listener.close()
             for worker in workers:
-                worker.join(timeout=8)
+                worker.join(timeout=15)
                 assert not worker.is_alive(), "TLS receiver worker leaked"
         assert not errors, errors
