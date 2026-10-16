@@ -1509,7 +1509,13 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
             count=1,
         )
         if count != 1:
-            raise ValueError("unsupported legacy transport disconnect guard")
+            # Pinned upstream already removed the stale connected-flag guard.
+            # Only accept a layout that still explicitly handles both resources.
+            has_sender = "if self.queue_thread is not None:" in disconnect_source
+            has_socket = "if self.server_sock is not None:" in disconnect_source
+            stale_guard = "if not self.connected:" in disconnect_source
+            if not (count == 0 and has_sender and has_socket and not stale_guard):
+                raise ValueError("unsupported legacy transport disconnect guard")
         text = text.replace(disconnect_source, updated_disconnect, 1)
 
         # Reparse after the source edit so line/column spans remain exact.
