@@ -35,6 +35,12 @@ def exercise_tls(RemoteController, RelayTransport, JSONSerializer):
         controller = RemoteController(transport)
         assert controller.transport is transport
         errors = []
+        sent_messages = []
+        original_send = transport.send
+        def observed_send(type, **kwargs):
+            sent_messages.append((type, dict(kwargs), transport.connected))
+            return original_send(type, **kwargs)
+        transport.send = observed_send
         workers = []
         peer = None
 
@@ -61,6 +67,7 @@ def exercise_tls(RemoteController, RelayTransport, JSONSerializer):
                     raise AssertionError(
                         "TLS handshake receive timeout: " + repr({
                             "messages": messages,
+                            "send_calls": sent_messages,
                             "transport_connected": transport.connected,
                             "successful_connects": transport.successful_connects,
                             "queue_size": transport.queue.qsize(),
