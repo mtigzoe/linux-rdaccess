@@ -50,9 +50,11 @@ def main() -> None:
         # changes after the vetted upstream patch has been applied.
         patched_machine = machine.read_text(encoding="utf-8")
         for replacement in (
-            ("return True", "return None"),
-            ("if delivered:", "if True:"),
-            ("return delivered", "return True"),
+            ("if self._send_key_portal(key, pressed):\n                return True",
+             "if self._send_key_portal(key, pressed):\n                return None"),
+            ("if delivered:\n            if pressed:",
+             "if True:\n            if pressed:"),
+            ("        return delivered\n", "        return True\n"),
         ):
             altered = patched_machine.replace(replacement[0], replacement[1], 1)
             if altered == patched_machine:
