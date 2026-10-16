@@ -178,10 +178,24 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
             send_key(authorized, True)
             await_keys(1)
             assert key_events[0]["pressed"] is True
+            assert controller._lrd_forwarded, "Shift press did not acquire held-key ownership"
+            # Losing the relay while Shift is held must release that modifier.
+            # Record the actual local-machine boundary without touching X11.
             authorized.close()
             peers.remove(authorized)
             members(0)
             transport.close()
+            deadline = time.monotonic() + 8
+            while time.monotonic() < deadline and not any(
+                e["key_name"] == "Shift" and e["pressed"] is False
+                for e in key_events
+            ):
+                time.sleep(0.02)
+            assert any(
+                e["key_name"] == "Shift" and e["pressed"] is False
+                for e in key_events
+            ), "held Shift was not released on transport disconnect: " + repr(key_events)
+            assert not controller._lrd_forwarded, "held-key ownership survived disconnect"
             sessions[-1].join(timeout=8)
             assert not sessions[-1].is_alive()
             assert transport.buffer == b""
