@@ -55,7 +55,19 @@ def exercise_tls(RemoteController, RelayTransport, JSONSerializer):
             messages = []
             deadline = time.monotonic() + 15
             while len(messages) < 2 and time.monotonic() < deadline:
-                chunk = peer.recv(8192)
+                try:
+                    chunk = peer.recv(8192)
+                except socket.timeout as exc:
+                    raise AssertionError(
+                        "TLS handshake receive timeout: " + repr({
+                            "messages": messages,
+                            "transport_connected": transport.connected,
+                            "successful_connects": transport.successful_connects,
+                            "queue_size": transport.queue.qsize(),
+                            "sender_alive": bool(transport.queue_thread and transport.queue_thread.is_alive()),
+                            "receiver_alive": [w.is_alive() for w in workers],
+                            "worker_errors": [str(e) for e in errors],
+                        })) from exc
                 if not chunk:
                     raise AssertionError("TLS peer disconnected before join")
                 buf += chunk
