@@ -129,7 +129,7 @@ def smoke() -> None:
                 "YOUR_ORCA_SCRIPTS_FOLDER = os.environ['LRD_UPSTREAM_SCRIPTS']")
             legacy_path.write_text(legacy_source, encoding="utf-8")
             env["LRD_PINNED_LEGACY_STARTUP"] = str(legacy_path)
-            real_import += (
+            legacy_import = (
                 "import runpy, faulthandler\n"
                 "faulthandler.dump_traceback_later(35, repeat=False)\n"
                 "try:\n"
@@ -142,6 +142,12 @@ def smoke() -> None:
                 "assert legacy['_has_config'] is False\n"
                 "assert legacy['controller'].transport is legacy['transport']\n"
             )
+            # Startup precedes the TLS and loopback exercises; shared module
+            # state from those tests must not affect legacy initialization.
+            real_import = real_import.replace(
+                "from tests.integration.real_upstream_orca_loopback import exercise\\n",
+                legacy_import + "from tests.integration.real_upstream_orca_loopback import exercise\\n",
+                1)
             env["LRD_UPSTREAM_SCRIPTS"] = str(scripts)
         (profile / "orca-customizations.py").write_text(
             "import os, sys\n"
