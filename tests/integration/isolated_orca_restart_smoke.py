@@ -66,9 +66,9 @@ def smoke() -> None:
         profile.mkdir(parents=True)
         marker = base / "orca-customizations-loaded"
         (profile / "orca-customizations.py").write_text(
-            "import os\\n"
-            "from pathlib import Path\\n"
-            "Path(os.environ['LRD_ORCA_LOAD_MARKER']).write_text(str(os.getpid()))\\n",
+            "import os\n"
+            "from pathlib import Path\n"
+            "Path(os.environ['LRD_ORCA_LOAD_MARKER']).write_text(str(os.getpid()))\n",
             encoding="utf-8",
         )
         env["LRD_ORCA_LOAD_MARKER"] = str(marker)
