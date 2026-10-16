@@ -6,7 +6,7 @@ Run only on a dedicated Linux test runner with:
 
 This starts a *real* Orca executable while a separately mocked-controller
 transport loopback regression runs within the same private display and bus.\nThe first Orca child is forcibly killed and the second must start cleanly.
-It does NOT wire that transport into Orca or test NVDA, speech, or braille.
+This verifies real Orca executed a private customization import marker.\nIt does NOT wire the transport into Orca or test NVDA, speech, or braille.
 """
 from __future__ import annotations
 
@@ -59,6 +59,19 @@ def smoke() -> None:
             # Disallow inherited user session configuration.
             "NO_AT_BRIDGE": "0",
         }
+        # A marker written from within Orca's customization import proves the
+        # real process loaded the private test customization. It is not proof
+        # that the separate Orca Remote transport/controller was loaded.
+        profile = base / "data" / "orca"
+        profile.mkdir(parents=True)
+        marker = base / "orca-customizations-loaded"
+        (profile / "orca-customizations.py").write_text(
+            "import os\\n"
+            "from pathlib import Path\\n"
+            "Path(os.environ['LRD_ORCA_LOAD_MARKER']).write_text(str(os.getpid()))\\n",
+            encoding="utf-8",
+        )
+        env["LRD_ORCA_LOAD_MARKER"] = str(marker)
         # Choose a free X display number by binding the X11 socket via -displayfd.
         xserver = subprocess.Popen(
             [xvfb, "-nolisten", "tcp", "-screen", "0", "1024x768x24",
@@ -83,12 +96,22 @@ def smoke() -> None:
             script = (
                 "import os, signal, subprocess, sys, time\n"
                 "orca = sys.argv[1]\n"
+                "from pathlib import Path\n"
+                "marker = Path(os.environ['LRD_ORCA_LOAD_MARKER'])\n"
                 "for cycle in range(2):\n"
+                "    marker.unlink(missing_ok=True)\n"
                 "    p = subprocess.Popen([orca, '--no-setup'], "
                 "stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)\n"
                 "    try:\n"
                 "        time.sleep(3)\n"
                 "        code = p.poll()\n"
+                "        deadline = time.monotonic() + 8\n"
+                "        while not marker.exists() and p.poll() is None and time.monotonic() < deadline:\n"
+                "            time.sleep(0.1)\n"
+                "        if not marker.exists():\n"
+                "            raise RuntimeError(f'Orca did not load isolated customization in cycle {cycle}')\n"
+                "        if marker.read_text().strip() != str(p.pid):\n"
+                "            raise RuntimeError(f'Unexpected Orca customization loading PID in cycle {cycle}')\n"
                 "        if code is not None:\n"
                 "            err = p.stderr.read()[-2000:]\n"
                 "            raise RuntimeError(f'Orca exited early in cycle {cycle}: {code}: {err}')\n"
