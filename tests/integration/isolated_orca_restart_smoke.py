@@ -107,6 +107,8 @@ def smoke() -> None:
                 "exercise(RemoteController, RelayTransport, JSONSerializer)\n"
                 "from tests.integration.real_upstream_orca_tls import exercise_tls\n"
                 "exercise_tls(RemoteController, RelayTransport, JSONSerializer)\n"
+                "from tests.integration.real_nvda_relay import exercise_relay\n"
+                "exercise_relay(RemoteController, RelayTransport, JSONSerializer)\n"
             )
             env["LRD_UPSTREAM_SCRIPTS"] = str(scripts)
         (profile / "orca-customizations.py").write_text(
