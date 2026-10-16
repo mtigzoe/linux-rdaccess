@@ -6544,6 +6544,89 @@ def _valid_patch_python(text: str) -> bool:
     return True
 
 
+
+def _patch_verified_upstream_inject_delegate(text: str) -> str:
+    """Adapt only the exact reviewed upstream delegated injection control flow.
+
+    Unexpected versions fail closed in _patch_local_key_results, rather than
+    assuming unknown backend helpers successfully delivered a key event.
+    """
+    import ast as _ast
+
+    tree = _ast.parse(text)
+    classes = [n for n in tree.body if isinstance(n, _ast.ClassDef)
+               and n.name == "LocalMachine"]
+    if len(classes) != 1:
+        return text
+    methods = {n.name: n for n in classes[0].body
+               if isinstance(n, _ast.FunctionDef)}
+    send = methods.get("send_key")
+    inject = methods.get("_inject")
+    if send is None or inject is None:
+        return text
+    if not any(a.arg == "vk_code" for a in send.args.args):
+        return text
+    send_source = _ast.get_source_segment(text, send)
+    inject_source = _ast.get_source_segment(text, inject)
+    if not send_source or not inject_source:
+        return text
+    old_held = """if pressed:
+            self._held_keys.add(key)
+        else:
+            self._held_keys.discard(key)
+        self._inject(key, pressed)"""
+    old_inject = """def _inject(self, key, pressed):
+        if self._is_wayland_session():
+            if self._send_key_portal(key, pressed):
+                return
+            if self._portal_denied():
+                return
+            if self._send_key_ydotool(key, pressed):
+                return
+            self._warn_no_key_backend()
+            return
+
+        if self._send_key_xdotool(key, pressed):
+            return
+        if self._send_key_ydotool(key, pressed):
+            return
+        if self._send_key_portal(key, pressed):
+            return
+        self._warn_no_key_backend()"""
+    if old_held not in send_source or inject_source != old_inject:
+        return text
+    # The upstream method must end immediately after the reviewed delegation.
+    if not send_source.rstrip().endswith(old_held):
+        return text
+    # Only known helper calls may appear; reject altered prelude or injected
+    # side effects before touching the source.
+    if sum(1 for n in _ast.walk(send) if isinstance(n, _ast.Call)
+           and isinstance(n.func, _ast.Attribute)
+           and n.func.attr == "_inject") != 1:
+        return text
+    new_held = """# linux-rdaccess: verified delegated backend results
+        delivered = bool(self._inject(key, pressed))
+        if delivered:
+            if pressed:
+                self._held_keys.add(key)
+            else:
+                self._held_keys.discard(key)
+        return delivered"""
+    new_inject = old_inject.replace("                return\n", "                return True\n")
+    # Backend denied, missing, or failed: explicitly return False.
+    new_inject = new_inject.replace("            self._warn_no_key_backend()\n            return\n",
+                                    "            self._warn_no_key_backend()\n            return False\n")
+    new_inject = new_inject.replace("        self._warn_no_key_backend()",
+                                    "        self._warn_no_key_backend()\n        return False")
+    # Portal denial does not imply a delivered key.
+    new_inject = new_inject.replace("            if self._portal_denied():\n                return True",
+                                    "            if self._portal_denied():\n                return False")
+    result = text.replace(inject_source, new_inject, 1)
+    result = result.replace(old_held, new_held, 1)
+    compile(result, "<verified upstream keyboard injection>", "exec")
+    return result
+
+
 def _patch_local_key_results(text: str) -> str:
     """Expose backend results only for source control flow we can establish."""
     try:
@@ -6797,7 +6880,9 @@ def patch_legacy_orca_local_machine(path: Path) -> bool:
             raise ValueError(f"older patch found but backup is missing: {backup}")
         text = backup.read_text(encoding="utf-8")
     text = _redact_legacy_logs(text)
-    text = _patch_local_key_results(text)
+    text = _patch_verified_upstream_inject_delegate(text)
+    if "# linux-rdaccess: verified delegated backend results" not in text:
+        text = _patch_local_key_results(text)
     match = _XDOTOOL_DEF_RE.search(text)
     if match is None:
         raise ValueError(f"legacy _send_key_xdotool was not found in {path}")
