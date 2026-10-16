@@ -48,7 +48,7 @@ def exercise(RemoteController, RelayTransport, JSONSerializer):
                 raise AssertionError("real transport disconnected before handshake")
             incoming += chunk
             while b"\n" in incoming:
-                frame, incoming = incoming.split(b"\\n", 1)
+                frame, incoming = incoming.split(b"\n", 1)
                 messages.append(json.loads(frame))
         assert len(messages) >= 2, messages
         assert messages[0].get("type") == "protocol_version", messages
