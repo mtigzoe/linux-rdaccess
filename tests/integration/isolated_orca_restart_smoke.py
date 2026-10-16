@@ -130,8 +130,12 @@ def smoke() -> None:
             legacy_path.write_text(legacy_source, encoding="utf-8")
             env["LRD_PINNED_LEGACY_STARTUP"] = str(legacy_path)
             real_import += (
-                "import runpy\n"
-                "legacy = runpy.run_path(os.environ['LRD_PINNED_LEGACY_STARTUP'])\n"
+                "import runpy, faulthandler\n"
+                "faulthandler.dump_traceback_later(35, repeat=False)\n"
+                "try:\n"
+                "    legacy = runpy.run_path(os.environ['LRD_PINNED_LEGACY_STARTUP'])\n"
+                "finally:\n"
+                "    faulthandler.cancel_dump_traceback_later()\n"
                 "Path(os.environ['LRD_STARTUP_STAGE']).write_text('upstream legacy entry point finished')\n"
                 "assert isinstance(legacy['controller'], RemoteController)\n"
                 "assert legacy['transport'].connected is False\n"
