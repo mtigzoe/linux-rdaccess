@@ -24,6 +24,10 @@ def exercise_tls(RemoteController, RelayTransport, JSONSerializer):
             "-keyout", str(key), "-out", str(cert),
         ], check=True, capture_output=True, timeout=15)
         server_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        # Diagnostic: pin this disposable peer to TLS 1.2 to distinguish
+        # TLS 1.3 record handling from the reconnect/queue lifecycle.
+        # The separate real-relay test still negotiates the default TLS.
+        server_ctx.maximum_version = ssl.TLSVersion.TLSv1_2
         server_ctx.load_cert_chain(str(cert), str(key))
         listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         listener.bind(("127.0.0.1", 0))
@@ -41,6 +45,29 @@ def exercise_tls(RemoteController, RelayTransport, JSONSerializer):
             sent_messages.append((type, dict(kwargs), transport.connected))
             return original_send(type, **kwargs)
         transport.send = observed_send
+        # Diagnose actual socket writes without bypassing the upstream sender.
+        original_create_socket = transport.create_outbound_socket
+        socket_writes = []
+        class ObservedSocket:
+            def __init__(self, sock):
+                self._sock = sock
+            def connect(self, address):
+                return self._sock.connect(address)
+            def sendall(self, data):
+                try:
+                    result = self._sock.sendall(data)
+                    socket_writes.append(("ok", bytes(data[:100])))
+                    return result
+                except OSError as exc:
+                    socket_writes.append(("error", str(exc)))
+                    raise
+            def __getattr__(self, name):
+                return getattr(self._sock, name)
+            def fileno(self):
+                return self._sock.fileno()
+        def observed_create_socket(address):
+            return ObservedSocket(original_create_socket(address))
+        transport.create_outbound_socket = observed_create_socket
         workers = []
         peer = None
 
@@ -62,6 +89,7 @@ def exercise_tls(RemoteController, RelayTransport, JSONSerializer):
             raw, address = listener.accept()
             assert address[0] == "127.0.0.1"
             raw.settimeout(15)
+            raw.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             return server_ctx.wrap_socket(raw, server_side=True)
 
         def handshake(peer):
@@ -75,7 +103,10 @@ def exercise_tls(RemoteController, RelayTransport, JSONSerializer):
                     raise AssertionError(
                         "TLS handshake receive timeout: " + repr({
                             "messages": messages,
+                            "tls_pending": peer.pending(),
+                            "tls_version": peer.version(),
                             "send_calls": sent_messages,
+                            "socket_writes": socket_writes,
                             "transport_connected": transport.connected,
                             "successful_connects": transport.successful_connects,
                             "queue_size": transport.queue.qsize(),
@@ -115,7 +146,7 @@ def exercise_tls(RemoteController, RelayTransport, JSONSerializer):
                 workers.append(worker)
                 worker.start()
                 peer = accept_tls()
-                assert peer.version() in {"TLSv1.2", "TLSv1.3"}
+                assert peer.version() == "TLSv1.2"
                 handshake(peer)
                 # A channel_joined frame is a *fixture* relay authorization
                 # response, not independent proof a real relay checked the key.

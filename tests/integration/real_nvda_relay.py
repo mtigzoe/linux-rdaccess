@@ -24,6 +24,23 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
     spec = importlib.util.spec_from_file_location("lrd_private_real_relay", relay_file)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    # Observe real relay inbound key frames without modifying forwarding.
+    relay_key_messages = []
+    original_process = module.Client.process_message
+    async def observed_process(client, line):
+        try:
+            message = json.loads(line)
+            if message.get("type") == "key":
+                relay_key_messages.append({
+                    "client_id": client.id,
+                    "channel": client.channel_id,
+                    "key_name": message.get("key_name"),
+                    "pressed": message.get("pressed"),
+                })
+        except (ValueError, TypeError):
+            pass
+        return await original_process(client, line)
+    module.Client.process_message = observed_process
     with tempfile.TemporaryDirectory(prefix="lrd-genuine-relay-") as tmp:
         cert, key = Path(tmp) / "cert.pem", Path(tmp) / "key.pem"
         subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048",
@@ -70,6 +87,34 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
         transport = RelayTransport(
             JSONSerializer(), address, channel=channel, connection_type="slave")
         controller = RemoteController(transport)
+        # Observe parsed incoming frames at the Orca callback boundary.
+        controller_key_callbacks = []
+        transport.callback_manager.register_callback(
+            "msg_key", lambda **event: controller_key_callbacks.append(dict(event)))
+
+        # Intercept key injection at the final controller boundary. The real
+        # relay and RemoteController callbacks remain active, but never send
+        # keys to the runner desktop.
+        key_events = []
+        def observe_key(**event):
+            key_events.append(dict(event))
+            return True
+        controller.local_machine.send_key = observe_key
+
+        def await_keys(count):
+            deadline = time.monotonic() + 8
+            while time.monotonic() < deadline:
+                if len(key_events) >= count:
+                    return
+                time.sleep(0.02)
+            raise AssertionError(
+                "expected real-relay key callbacks: " + repr({"expected_count": count, "actual_events": list(key_events), "transport_connected": transport.connected, "connected_clients": dict(controller.connected_clients), "relay_channels": {key: len(value) for key, value in real_server.channels.items()}}))
+
+        def send_key(peer, pressed, *, key_name="Shift", vk_code=16):
+            peer.sendall((json.dumps({
+                "type": "key", "key_name": key_name,
+                "pressed": pressed, "vk_code": vk_code,
+            }) + "\n").encode("utf-8"))
         sessions = []
 
         # Observe whether the real sender queue emits a protocol handshake.
@@ -130,6 +175,9 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
             authorized = master(channel)
             peers.append(authorized)
             members(1)
+            send_key(authorized, True)
+            await_keys(1)
+            assert key_events[0]["pressed"] is True
             authorized.close()
             peers.remove(authorized)
             members(0)
@@ -138,10 +186,38 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
             assert not sessions[-1].is_alive()
             assert transport.buffer == b""
             assert not controller.connected_clients
+            previous_keys = len(key_events)
             start_orca()
             recovered = master(channel)
             peers.append(recovered)
             members(1)
+            assert len(key_events) == previous_keys, "old key replayed after reconnect"
+            # A distinct key identifies fresh-session delivery even if the
+            # disconnect callback generated a Shift release independently.
+            # Unmatched key-up is intentionally ignored by the production
+            # controller. Exercise a complete *new-session* press/release pair.
+            send_key(recovered, True, key_name="Control", vk_code=17)
+            deadline = time.monotonic() + 8
+            while time.monotonic() < deadline and not any(
+                e["key_name"] == "Control" and e["pressed"] is True
+                for e in key_events[previous_keys:]
+            ):
+                time.sleep(0.02)
+            assert any(
+                e["key_name"] == "Control" and e["pressed"] is True
+                for e in key_events[previous_keys:]
+            ), "fresh-session Control press never reached real controller: " + repr(key_events)
+            send_key(recovered, False, key_name="Control", vk_code=17)
+            deadline = time.monotonic() + 8
+            while time.monotonic() < deadline and not any(
+                e["key_name"] == "Control" and e["pressed"] is False
+                for e in key_events[previous_keys:]
+            ):
+                time.sleep(0.02)
+            assert any(
+                e["key_name"] == "Control" and e["pressed"] is False
+                for e in key_events[previous_keys:]
+            ), "fresh-session Control release never reached real controller: " + repr({"controller_events": key_events, "relay_inbound": relay_key_messages, "controller_key_callbacks": controller_key_callbacks, "relay_clients": [(c.id, c.channel_id) for c in real_server.clients]})
         finally:
             transport.close()
             for peer in peers:
