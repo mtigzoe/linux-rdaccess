@@ -1,0 +1,31 @@
+name: Issue 61 pinned upstream Orca Remote patches
+
+on:
+  pull_request:
+    paths:
+      - 'tests/integration/verify_pinned_orca_remote.py'
+      - '.github/workflows/issue-61-upstream-patch-compat.yml'
+      - 'linux_rdaccess_core/connection/remote_access.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-upstream-patch-contract:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Fetch pinned legacy Orca Remote implementation (test-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone -q https://github.com/serrebidev/orca-remote.git /tmp/orca-remote-upstream
+          git -C /tmp/orca-remote-upstream checkout -q d273e82fbc93bf6a6eb473a00e38291d84f1dccb
+          test "$(git -C /tmp/orca-remote-upstream rev-parse HEAD)" = d273e82fbc93bf6a6eb473a00e38291d84f1dccb
+      - name: Verify actual pinned upstream patch compatibility
+        run: python -m tests.integration.verify_pinned_orca_remote /tmp/orca-remote-upstream
