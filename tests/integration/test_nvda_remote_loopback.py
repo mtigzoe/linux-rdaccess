@@ -403,6 +403,42 @@ class NvdaRemoteLoopbackTests(Harness, unittest.TestCase):
                                      for pressed in (True, True, False, True, False)])
         self.assertFalse(self.controller._lrd_forwarded)
 
+    def test_native_reconnector_two_disconnect_cycles_reject_partial_old_keys(self):
+        """Exercise the real patched TCP receiver/reconnector across two EOFs."""
+        self.connect(native_reconnector=True)
+        keys = []
+        self.controller.local_machine.send_key = lambda **kw: keys.append(
+            (kw.get("vk_code"), kw["pressed"])
+        )
+        for cycle in range(2):
+            modifier = 0xA0 if cycle == 0 else 0xA2
+            self.key(modifier, True)
+            self.session.barrier()
+            # A truncated packet must never survive onto the next TCP socket.
+            fragment = b'{"type":"key","vk_code":'
+            self.session.peer.sendall(fragment)
+            self.session.wait_for_buffer(fragment)
+            self.session.disconnect_peer()
+            manager = self.session.transport.callback_manager
+            manager.wait_for("transport_disconnected", count=cycle + 1)
+            self.session.accept()
+            manager.wait_for("transport_connected", count=cycle + 2)
+            self.assertEqual(self.session.transport.buffer, b"")
+            self.session.send(type="channel_joined", channel="test-only")
+            self.session.barrier()
+            self.assertEqual(self.controller._lrd_down, set())
+            self.assertEqual(self.controller._lrd_forwarded, {})
+            self.assertEqual(keys[-2:], [(modifier, True), (modifier, False)])
+        self.key(0x41, True)
+        self.key(0x41, False)
+        self.session.barrier()
+        self.assertEqual(keys, [
+            (0xA0, True), (0xA0, False),
+            (0xA2, True), (0xA2, False),
+            (0x41, True), (0x41, False),
+        ])
+        self.assertEqual(self.session.transport.successful_connects, 3)
+
     def test_native_reconnector_rejoins_and_discards_partial_message_and_held_modifier(self):
         self.connect(native_reconnector=True)
         self.key(0xA0, True)
