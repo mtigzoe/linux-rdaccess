@@ -1,7 +1,7 @@
 # Reconnect and stale-input lifecycle audit (issue #61)
 
 Base: `origin/main` at `d8557b28848edd27a848188f9ca045c5378f95aa`.
-Branch: `fix/reconnect-lifecycle-audit`.
+Branch: `issue_61`.
 
 **Result: no new defect was reproduced.** This change adds lifecycle coverage
 only; it changes no production code. Issue #61 is a live-validation task and
