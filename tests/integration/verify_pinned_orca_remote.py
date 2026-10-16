@@ -46,6 +46,23 @@ def main() -> None:
         assert patch_legacy_orca_local_machine(machine), (
             "local-machine patch did not modify pinned upstream"
         )
+        # Fail closed if either the injection backend or held-key accounting
+        # changes after the vetted upstream patch has been applied.
+        patched_machine = machine.read_text(encoding="utf-8")
+        for replacement in (
+            ("return True", "return None"),
+            ("if delivered:", "if True:"),
+            ("return delivered", "return True"),
+        ):
+            altered = patched_machine.replace(replacement[0], replacement[1], 1)
+            if altered == patched_machine:
+                raise AssertionError(f"missing validation fixture: {replacement[0]}")
+            from linux_rdaccess_core.connection.remote_access import (
+                legacy_local_machine_patch_current,
+            )
+            assert not legacy_local_machine_patch_current(altered), (
+                f"validator accepted unsafe alteration: {replacement}"
+            )
         patched_transport = _patch_legacy_transport_cleanup(
             transport.read_text(encoding="utf-8")
         )
