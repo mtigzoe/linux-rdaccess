@@ -5,6 +5,7 @@ on:
     paths:
       - 'tests/integration/isolated_orca_restart_smoke.py'
       - 'tests/integration/real_upstream_orca_loopback.py'
+      - 'tests/integration/real_upstream_orca_tls.py'
       - '.github/workflows/issue-61-real-module-load.yml'
       - 'linux_rdaccess_core/connection/remote_access.py'
   workflow_dispatch:
@@ -22,7 +23,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            orca xvfb dbus-x11 at-spi2-core python3-gi
+            orca xvfb dbus-x11 at-spi2-core python3-gi openssl
       - name: Fetch pinned upstream extension
         run: |
           set -euo pipefail
