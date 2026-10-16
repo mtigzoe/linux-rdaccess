@@ -1861,7 +1861,20 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
                        + match.group(0)),
         disconnect_source, count=1)
     if count != 1:
-        raise ValueError("unsupported legacy transport disconnect state")
+        # The pinned upstream has no stale guard; invalidate session state
+        # at entry while retaining its unconditional socket/thread cleanup.
+        method = ast.parse(disconnect_source).body[0]
+        if not (count == 0 and isinstance(method, ast.FunctionDef)
+                and method.name == "_disconnect"
+                and "if self.queue_thread is not None:" in disconnect_source
+                and "if self.server_sock is not None:" in disconnect_source):
+            raise ValueError("unsupported legacy transport disconnect state")
+        first = method.body[0]
+        lines = disconnect_source.splitlines(keepends=True)
+        indent = " " * first.col_offset
+        lines.insert(first.lineno - 1, indent + "self.connected = False\n"
+                     + indent + "self.buffer = b''\n")
+        updated_disconnect = "".join(lines)
     text = text.replace(disconnect_source, updated_disconnect, 1)
 
     # Native reconnect() starts a replacement ConnectorThread on this same
