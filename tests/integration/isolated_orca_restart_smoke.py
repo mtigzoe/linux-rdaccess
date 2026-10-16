@@ -102,6 +102,9 @@ def smoke() -> None:
                 "assert real_controller.transport is real_transport\n"
                 "assert real_controller.local_machine is not None\n"
                 "assert real_transport.connected is False\n"
+                "sys.path.insert(0, os.environ['LRD_PROJECT_ROOT'])\n"
+                "from tests.integration.real_upstream_orca_loopback import exercise\n"
+                "exercise(RemoteController, RelayTransport, JSONSerializer)\n"
             )
             env["LRD_UPSTREAM_SCRIPTS"] = str(scripts)
         (profile / "orca-customizations.py").write_text(

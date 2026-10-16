@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'tests/integration/isolated_orca_restart_smoke.py'
+      - 'tests/integration/real_upstream_orca_loopback.py'
       - '.github/workflows/issue-61-real-module-load.yml'
       - 'linux_rdaccess_core/connection/remote_access.py'
   workflow_dispatch:
