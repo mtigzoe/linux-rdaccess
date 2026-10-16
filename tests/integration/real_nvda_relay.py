@@ -24,6 +24,23 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
     spec = importlib.util.spec_from_file_location("lrd_private_real_relay", relay_file)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    # Observe real relay inbound key frames without modifying forwarding.
+    relay_key_messages = []
+    original_process = module.Client.process_message
+    async def observed_process(client, line):
+        try:
+            message = json.loads(line)
+            if message.get("type") == "key":
+                relay_key_messages.append({
+                    "client_id": client.id,
+                    "channel": client.channel_id,
+                    "key_name": message.get("key_name"),
+                    "pressed": message.get("pressed"),
+                })
+        except (ValueError, TypeError):
+            pass
+        return await original_process(client, line)
+    module.Client.process_message = observed_process
     with tempfile.TemporaryDirectory(prefix="lrd-genuine-relay-") as tmp:
         cert, key = Path(tmp) / "cert.pem", Path(tmp) / "key.pem"
         subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048",
