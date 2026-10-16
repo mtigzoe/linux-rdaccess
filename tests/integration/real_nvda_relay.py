@@ -26,10 +26,13 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
     spec.loader.exec_module(module)
     # Observe real relay inbound key frames without modifying forwarding.
     relay_key_messages = []
+    relay_handshake_messages = []
     original_process = module.Client.process_message
     async def observed_process(client, line):
         try:
             message = json.loads(line)
+            if message.get("type") in ("join", "protocol_version"):
+                relay_handshake_messages.append((client.id, message.get("type"), bool(message.get("channel"))))
             if message.get("type") == "key":
                 relay_key_messages.append({
                     "client_id": client.id,
@@ -142,7 +145,7 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
                 ):
                     return
                 time.sleep(0.02)
-            raise AssertionError("actual upstream transport never joined real relay: " + repr({"transport_connected": transport.connected, "worker_alive": worker.is_alive(), "worker_errors": [str(e) for e in errors], "relay_clients": [(c.id, c.channel_id) for c in real_server.clients], "relay_channels": list(real_server.channels), "successful_connects": transport.successful_connects, "queue_size": transport.queue.qsize(), "sender_alive": bool(transport.queue_thread and transport.queue_thread.is_alive()), "socket": repr(transport.server_sock), "sent": sent}))
+            raise AssertionError("actual upstream transport never joined real relay: " + repr({"transport_connected": transport.connected, "worker_alive": worker.is_alive(), "worker_errors": [str(e) for e in errors], "relay_clients": [(c.id, c.channel_id) for c in real_server.clients], "relay_channels": list(real_server.channels), "successful_connects": transport.successful_connects, "queue_size": transport.queue.qsize(), "sender_alive": bool(transport.queue_thread and transport.queue_thread.is_alive()), "socket": repr(transport.server_sock), "sent": sent, "relay_handshake": relay_handshake_messages}))
 
         def master(key_string):
             peer = ssl._create_unverified_context().wrap_socket(
