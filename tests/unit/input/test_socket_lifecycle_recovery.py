@@ -7,6 +7,7 @@ NVDA Remote relay or an Orca/NVDA installation.
 from __future__ import annotations
 
 import socket
+from contextlib import ExitStack
 import unittest
 
 from tests.unit.input.test_lifecycle_invariants import LifecycleHarness
@@ -20,7 +21,10 @@ class SocketLifecycleTests(LifecycleHarness, unittest.TestCase):
         # Restore the queueing scheduler after the synchronous key-down.
         del c._linux_rdaccess_run_main
         queued, patches = self._fake_glib()
-        with patches, socket.socketpair() as (receiver, sender):
+        with patches, ExitStack() as stack:
+            receiver, sender = socket.socketpair()
+            stack.enter_context(receiver)
+            stack.enter_context(sender)
             receiver.settimeout(2)
             c._linux_rdaccess_stop_local_speech()
             sender.shutdown(socket.SHUT_WR)
@@ -39,14 +43,20 @@ class SocketLifecycleTests(LifecycleHarness, unittest.TestCase):
     def test_new_socket_after_eof_accepts_fresh_input(self):
         c = self._lifecycle_controller()
         c._linux_rdaccess_run_main = lambda func, **kw: func()
-        with socket.socketpair() as (receiver, sender):
+        with ExitStack() as stack:
+            receiver, sender = socket.socketpair()
+            stack.enter_context(receiver)
+            stack.enter_context(sender)
             receiver.settimeout(2)
             self._key(c, 0xA2, True)
             sender.shutdown(socket.SHUT_WR)
             self.assertEqual(receiver.recv(1), b"")
             c._on_transport_disconnected()
 
-        with socket.socketpair() as (receiver, sender):
+        with ExitStack() as stack:
+            receiver, sender = socket.socketpair()
+            stack.enter_context(receiver)
+            stack.enter_context(sender)
             receiver.settimeout(2)
             c.transport = self.FakeTransport()
             c._on_transport_connected()
