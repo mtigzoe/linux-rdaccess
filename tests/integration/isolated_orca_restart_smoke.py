@@ -145,8 +145,8 @@ def smoke() -> None:
             # Startup precedes the TLS and loopback exercises; shared module
             # state from those tests must not affect legacy initialization.
             real_import = real_import.replace(
-                "from tests.integration.real_upstream_orca_loopback import exercise\\n",
-                legacy_import + "from tests.integration.real_upstream_orca_loopback import exercise\\n",
+                "from tests.integration.real_upstream_orca_loopback import exercise\n",
+                legacy_import + "from tests.integration.real_upstream_orca_loopback import exercise\n",
                 1)
             env["LRD_UPSTREAM_SCRIPTS"] = str(scripts)
         (profile / "orca-customizations.py").write_text(
