@@ -70,13 +70,42 @@ def smoke() -> None:
         adapter_source = (Path(__file__).resolve().parents[2]
                           / "linux_rdaccess_core" / "accessibility" / "orca_adapter.py")
         shutil.copy2(adapter_source, profile / "linux_rdaccess_orca_adapter.py")
+        # Optional CI-only check using exact upstream modules rather than
+        # the fixture-based transport. This is module loading, NOT relay
+        # connection or a production customization startup.
+        upstream = os.environ.get("LRD_PINNED_ORCA_REMOTE")
+        if upstream:
+            sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+        real_import = ""
+        if upstream:
+            from linux_rdaccess_core.connection.remote_access import (
+                _patch_legacy_transport_cleanup,
+                patch_legacy_orca_local_machine,
+                patch_legacy_orca_remote_controller,
+            )
+            scripts_source = Path(upstream) / "orca-scripts"
+            scripts = profile / "orca-scripts"
+            shutil.copytree(scripts_source, scripts)
+            patch_legacy_orca_local_machine(scripts / "local_machine.py")
+            patch_legacy_orca_remote_controller(scripts / "remote_controller.py")
+            transport = scripts / "transport.py"
+            transport.write_text(_patch_legacy_transport_cleanup(
+                transport.read_text(encoding="utf-8")), encoding="utf-8")
+            real_import = (
+                "sys.path.insert(0, os.environ['LRD_UPSTREAM_SCRIPTS'])\n"
+                "from remote_controller import RemoteController\n"
+                "from transport import RelayTransport\n"
+                "from serializer import JSONSerializer\n"
+            )
+            env["LRD_UPSTREAM_SCRIPTS"] = str(scripts)
         (profile / "orca-customizations.py").write_text(
             "import os, sys\n"
             "from pathlib import Path\n"
             "sys.path.insert(0, os.environ['LRD_ORCA_ADAPTER_DIR'])\n"
             "from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter\n"
             "OrcaRuntimeAdapter.active_script()\n"
-            "sys.path.insert(0, os.environ['LRD_PROJECT_ROOT'])\n"
+            + real_import
+            + "sys.path.insert(0, os.environ['LRD_PROJECT_ROOT'])\n"
             "from tests.integration.nvda_remote_harness import LoopbackSession\n"
             "with_marker = LoopbackSession()\n"
             "try:\n"

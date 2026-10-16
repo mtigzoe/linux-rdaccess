@@ -1,0 +1,34 @@
+name: Issue 61 real upstream Orca module load
+
+on:
+  pull_request:
+    paths:
+      - 'tests/integration/isolated_orca_restart_smoke.py'
+      - '.github/workflows/issue-61-real-module-load.yml'
+      - 'linux_rdaccess_core/connection/remote_access.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-upstream-in-orca:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install isolated Orca dependencies
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            orca xvfb dbus-x11 at-spi2-core python3-gi
+      - name: Fetch pinned upstream extension
+        run: |
+          set -euo pipefail
+          git clone -q https://github.com/serrebidev/orca-remote.git /tmp/orca-remote-upstream
+          git -C /tmp/orca-remote-upstream checkout -q d273e82fbc93bf6a6eb473a00e38291d84f1dccb
+          test "$(git -C /tmp/orca-remote-upstream rev-parse HEAD)" = d273e82fbc93bf6a6eb473a00e38291d84f1dccb
+      - name: Load patched real upstream modules in isolated Orca and restart
+        env:
+          LRD_PINNED_ORCA_REMOTE: /tmp/orca-remote-upstream
+        run: /usr/bin/python3 tests/integration/isolated_orca_restart_smoke.py
