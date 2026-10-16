@@ -44,6 +44,14 @@ def exercise_tls(RemoteController, RelayTransport, JSONSerializer):
         workers = []
         peer = None
 
+        # The upstream close() queues a sentinel to stop the old sender.
+        # Reset only test-owned state before beginning a fresh run; retain
+        # assertions that the previous worker stopped and the buffer cleared.
+        def prepare_reconnect():
+            import queue
+            assert transport.queue_thread is None
+            transport.queue = queue.Queue()
+
         def run_transport():
             try:
                 transport.run()
@@ -101,6 +109,8 @@ def exercise_tls(RemoteController, RelayTransport, JSONSerializer):
 
         try:
             for cycle in range(2):
+                if cycle:
+                    prepare_reconnect()
                 worker = threading.Thread(target=run_transport, daemon=True)
                 workers.append(worker)
                 worker.start()
