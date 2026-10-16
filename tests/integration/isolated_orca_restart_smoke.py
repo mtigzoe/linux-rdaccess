@@ -5,7 +5,7 @@ Run only on a dedicated Linux test runner with:
     python3 tests/integration/isolated_orca_restart_smoke.py
 
 This starts a *real* Orca executable while a separately mocked-controller
-transport loopback regression runs within the same private display and bus.
+transport loopback regression runs within the same private display and bus.\nThe first Orca child is forcibly killed and the second must start cleanly.
 It does NOT wire that transport into Orca or test NVDA, speech, or braille.
 """
 from __future__ import annotations
@@ -81,7 +81,7 @@ def smoke() -> None:
             # Keep one private bus alive, spawn Orca twice within it. The driver
             # sends lifecycle signals only to the children it owns.
             script = (
-                "import os, subprocess, sys, time\n"
+                "import os, signal, subprocess, sys, time\n"
                 "orca = sys.argv[1]\n"
                 "for cycle in range(2):\n"
                 "    p = subprocess.Popen([orca, '--no-setup'], "
@@ -101,6 +101,11 @@ def smoke() -> None:
                 "                + check.stdout[-2000:] + check.stderr[-3500:])\n"
                 "        if p.poll() is not None:\n"
                 "            raise RuntimeError(f'Orca exited during transport test in cycle {cycle}')\n"
+                "        if cycle == 0:\n"
+                "            p.kill()  # Abrupt process death, not graceful shutdown\n"
+                "            code = p.wait(timeout=5)\n"
+                "            if code != -signal.SIGKILL:\n"
+                "                raise RuntimeError(f'Expected SIGKILL in first cycle, got {code}')\n"
                 "    finally:\n"
                 "        if p.poll() is None:\n"
                 "            p.terminate()\n"
@@ -108,7 +113,7 @@ def smoke() -> None:
                 "            except subprocess.TimeoutExpired:\n"
                 "                p.kill(); p.wait(timeout=5)\n"
                 "        p.stderr.close()\n"
-                "print('Two isolated Orca launches and transport loopback checks completed')\n"
+                "print('Isolated Orca crash/restart and transport loopback checks completed')\n"
             )
             session = subprocess.run(
                 [dbus, "--", sys.executable, "-c", script, orca],
