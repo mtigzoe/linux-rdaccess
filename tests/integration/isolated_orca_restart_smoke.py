@@ -112,6 +112,29 @@ def smoke() -> None:
                 "from tests.integration.real_nvda_relay import exercise_relay\n"
                 "exercise_relay(RemoteController, RelayTransport, JSONSerializer)\n"
             )
+            # Execute upstream's actual legacy customization entry point in
+            # the disposable Orca process, not merely its imported modules.
+            # Its sentinel host/key disable any automatic external connection.
+            legacy_source = (Path(upstream) / "orca-customizations.py").read_text(
+                encoding="utf-8")
+            legacy_path = profile / "lrd-pinned-legacy-startup.py"
+            config_line = ('YOUR_ORCA_SCRIPTS_FOLDER = '
+                           'os.path.expanduser("~/.local/share/orca/orca-scripts")')
+            if legacy_source.count(config_line) != 1:
+                raise RuntimeError("Pinned legacy customization path changed")
+            legacy_source = legacy_source.replace(
+                config_line,
+                "YOUR_ORCA_SCRIPTS_FOLDER = os.environ['LRD_UPSTREAM_SCRIPTS']")
+            legacy_path.write_text(legacy_source, encoding="utf-8")
+            env["LRD_PINNED_LEGACY_STARTUP"] = str(legacy_path)
+            real_import += (
+                "import runpy\n"
+                "legacy = runpy.run_path(os.environ['LRD_PINNED_LEGACY_STARTUP'])\n"
+                "assert isinstance(legacy['controller'], RemoteController)\n"
+                "assert legacy['transport'].connected is False\n"
+                "assert legacy['_has_config'] is False\n"
+                "assert legacy['controller'].transport is legacy['transport']\n"
+            )
             env["LRD_UPSTREAM_SCRIPTS"] = str(scripts)
         (profile / "orca-customizations.py").write_text(
             "import os, sys\n"
