@@ -74,6 +74,8 @@ def smoke() -> None:
         # the fixture-based transport. This is module loading, NOT relay
         # connection or a production customization startup.
         upstream = os.environ.get("LRD_PINNED_ORCA_REMOTE")
+        if os.environ.get("LRD_PINNED_RELAY_FILE"):
+            env["LRD_PINNED_RELAY_FILE"] = os.environ["LRD_PINNED_RELAY_FILE"]
         if upstream:
             sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
         real_import = ""
