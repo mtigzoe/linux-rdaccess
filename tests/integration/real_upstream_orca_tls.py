@@ -41,6 +41,29 @@ def exercise_tls(RemoteController, RelayTransport, JSONSerializer):
             sent_messages.append((type, dict(kwargs), transport.connected))
             return original_send(type, **kwargs)
         transport.send = observed_send
+        # Diagnose actual socket writes without bypassing the upstream sender.
+        original_create_socket = transport.create_outbound_socket
+        socket_writes = []
+        class ObservedSocket:
+            def __init__(self, sock):
+                self._sock = sock
+            def connect(self, address):
+                return self._sock.connect(address)
+            def sendall(self, data):
+                try:
+                    result = self._sock.sendall(data)
+                    socket_writes.append(("ok", bytes(data[:100])))
+                    return result
+                except OSError as exc:
+                    socket_writes.append(("error", str(exc)))
+                    raise
+            def __getattr__(self, name):
+                return getattr(self._sock, name)
+            def fileno(self):
+                return self._sock.fileno()
+        def observed_create_socket(address):
+            return ObservedSocket(original_create_socket(address))
+        transport.create_outbound_socket = observed_create_socket
         workers = []
         peer = None
 
@@ -76,6 +99,7 @@ def exercise_tls(RemoteController, RelayTransport, JSONSerializer):
                         "TLS handshake receive timeout: " + repr({
                             "messages": messages,
                             "send_calls": sent_messages,
+                            "socket_writes": socket_writes,
                             "transport_connected": transport.connected,
                             "successful_connects": transport.successful_connects,
                             "queue_size": transport.queue.qsize(),
