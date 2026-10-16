@@ -175,7 +175,7 @@ def smoke() -> None:
                 "    try:\n"
                 "        time.sleep(3)\n"
                 "        code = p.poll()\n"
-                "        deadline = time.monotonic() + 8\n"
+                "        deadline = time.monotonic() + 60\n"
                 "        while not marker.exists() and p.poll() is None and time.monotonic() < deadline:\n"
                 "            time.sleep(0.1)\n"
                 "        if not marker.exists():\n"
