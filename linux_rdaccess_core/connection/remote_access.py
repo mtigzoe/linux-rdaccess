@@ -6853,11 +6853,51 @@ def legacy_local_machine_patch_current(text: str) -> bool:
         if len(method.body) < len(expected) or not all(
                 _ast_equal(a, b) for a, b in zip(method.body, expected)):
             return False
-    try:
-        if _patch_local_key_results(text) != text:
+    if "# linux-rdaccess: verified delegated backend results" in text:
+        # This marker is insufficient by itself: recognize exactly the
+        # reviewed resulting injection method and send_key ownership tail.
+        inject = _unique_method(cls, "_inject")
+        send = _unique_method(cls, "send_key")
+        expected_inject = ast.parse("""def _inject(self, key, pressed):
+    if self._is_wayland_session():
+        if self._send_key_portal(key, pressed):
+            return True
+        if self._portal_denied():
             return False
-    except ValueError:
+        if self._send_key_ydotool(key, pressed):
+            return True
+        self._warn_no_key_backend()
         return False
+    if self._send_key_xdotool(key, pressed):
+        return True
+    if self._send_key_ydotool(key, pressed):
+        return True
+    if self._send_key_portal(key, pressed):
+        return True
+    self._warn_no_key_backend()
+    return False
+""").body[0]
+        expected_tail = ast.parse("""def tail(self, key, pressed):
+    delivered = bool(self._inject(key, pressed))
+    if delivered:
+        if pressed:
+            self._held_keys.add(key)
+        else:
+            self._held_keys.discard(key)
+    return delivered
+""").body[0].body
+        if (inject is None or send is None
+                or not _ast_equal(inject, expected_inject)
+                or len(send.body) < len(expected_tail)
+                or not all(_ast_equal(a, b) for a, b in zip(
+                    send.body[-len(expected_tail):], expected_tail))):
+            return False
+    else:
+        try:
+            if _patch_local_key_results(text) != text:
+                return False
+        except ValueError:
+            return False
     return True
 
 
