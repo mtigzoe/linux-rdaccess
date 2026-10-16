@@ -1600,13 +1600,25 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
         if count != 1:
             # Real upstream already guards socket close and clears the handle,
             # including the exception path. Do not layer another close guard.
-            guarded = re.search(
-                r"(?s)if self\\.server_sock is not None:\\s+try:\\s+"
-                r"self\\.server_sock\\.close\\(\\)\\s+except Exception:\\s+"
-                r"pass\\s+self\\.server_sock = None",
-                updated_disconnect,
-            )
-            if count != 0 or guarded is None:
+            # Validate the already-guarded close with Python's syntax tree,
+            # rather than a whitespace-sensitive regular expression.
+            tree_close = ast.parse(updated_disconnect)
+            close_calls = [n for n in ast.walk(tree_close)
+                           if isinstance(n, ast.Call)
+                           and isinstance(n.func, ast.Attribute)
+                           and n.func.attr == "close"
+                           and isinstance(n.func.value, ast.Attribute)
+                           and isinstance(n.func.value.value, ast.Name)
+                           and n.func.value.value.id == "self"
+                           and n.func.value.attr == "server_sock"]
+            guarded = len(close_calls) == 1 and any(
+                isinstance(n, ast.If)
+                and ast.get_source_segment(updated_disconnect, n.test)
+                    == "self.server_sock is not None"
+                and any(call in ast.walk(n) for call in close_calls)
+                for n in ast.walk(tree_close)
+            ) and "self.server_sock = None" in updated_disconnect
+            if count != 0 or not guarded:
                 raise ValueError("unsupported legacy transport socket close")
         text = text.replace(disconnect_source, updated_disconnect, 1)
 
