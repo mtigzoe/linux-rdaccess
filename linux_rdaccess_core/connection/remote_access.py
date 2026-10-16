@@ -1872,7 +1872,7 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
         first = method.body[0]
         lines = disconnect_source.splitlines(keepends=True)
         line = lines[first.lineno - 1]
-        indent = line[:len(line) - len(line.lstrip(" \\t"))]
+        indent = line[:len(line) - len(line.lstrip())]
         lines.insert(first.lineno - 1, indent + "self.connected = False\n"
                      + indent + "self.buffer = b''\n")
         updated_disconnect = "".join(lines)
