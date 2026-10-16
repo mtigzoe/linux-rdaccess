@@ -89,10 +89,10 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
             raise AssertionError(
                 "expected real-relay key callbacks: " + repr({"expected_count": count, "actual_events": list(key_events), "transport_connected": transport.connected, "connected_clients": dict(controller.connected_clients), "relay_channels": {key: len(value) for key, value in real_server.channels.items()}}))
 
-        def send_key(peer, pressed):
+        def send_key(peer, pressed, *, key_name="Shift", vk_code=16):
             peer.sendall((json.dumps({
-                "type": "key", "key_name": "Shift",
-                "pressed": pressed, "vk_code": 16,
+                "type": "key", "key_name": key_name,
+                "pressed": pressed, "vk_code": vk_code,
             }) + "\n").encode("utf-8"))
         sessions = []
 
@@ -171,9 +171,19 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
             peers.append(recovered)
             members(1)
             assert len(key_events) == previous_keys, "old key replayed after reconnect"
-            send_key(recovered, False)
-            await_keys(previous_keys + 1)
-            assert key_events[-1]["pressed"] is False
+            # A distinct key identifies fresh-session delivery even if the
+            # disconnect callback generated a Shift release independently.
+            send_key(recovered, False, key_name="Control", vk_code=17)
+            deadline = time.monotonic() + 8
+            while time.monotonic() < deadline and not any(
+                e["key_name"] == "Control" and e["pressed"] is False
+                for e in key_events[previous_keys:]
+            ):
+                time.sleep(0.02)
+            assert any(
+                e["key_name"] == "Control" and e["pressed"] is False
+                for e in key_events[previous_keys:]
+            ), "fresh-session Control release never reached real controller: " + repr(key_events)
         finally:
             transport.close()
             for peer in peers:
