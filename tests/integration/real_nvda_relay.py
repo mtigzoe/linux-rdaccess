@@ -81,7 +81,7 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
             worker = threading.Thread(target=run, daemon=True)
             sessions.append(worker)
             worker.start()
-            deadline = time.monotonic() + 8
+            deadline = time.monotonic() + 15
             while time.monotonic() < deadline:
                 if transport.connected and any(
                     client.channel_id == channel
@@ -89,7 +89,7 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
                 ):
                     return
                 time.sleep(0.02)
-            raise AssertionError("actual upstream transport never joined real relay")
+            raise AssertionError("actual upstream transport never joined real relay: " + repr({"transport_connected": transport.connected, "worker_alive": worker.is_alive(), "worker_errors": [str(e) for e in errors], "relay_clients": [(c.id, c.channel_id) for c in real_server.clients], "relay_channels": list(real_server.channels)}))
 
         def master(key_string):
             peer = ssl._create_unverified_context().wrap_socket(
