@@ -110,7 +110,7 @@ def smoke() -> None:
                 "exercise(RemoteController, RelayTransport, JSONSerializer)\n"
                 "from tests.integration.real_upstream_orca_tls import exercise_tls\n"
                 "exercise_tls(RemoteController, RelayTransport, JSONSerializer)\n"
-                "Path(os.environ['LRD_STARTUP_STAGE']).write_text('real relay integration')\n"
+                "Path(os.environ['LRD_STARTUP_STAGE']).write_text('upstream legacy entry point')\n"
                 "# Real relay transport lifecycle is covered by separate tests;\n"
                 "# legacy customization startup must not depend on relay timing.\n"
             )
@@ -132,6 +132,7 @@ def smoke() -> None:
             real_import += (
                 "import runpy\n"
                 "legacy = runpy.run_path(os.environ['LRD_PINNED_LEGACY_STARTUP'])\n"
+                "Path(os.environ['LRD_STARTUP_STAGE']).write_text('upstream legacy entry point finished')\n"
                 "assert isinstance(legacy['controller'], RemoteController)\n"
                 "assert legacy['transport'].connected is False\n"
                 "assert legacy['_has_config'] is False\n"
