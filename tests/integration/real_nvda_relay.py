@@ -70,6 +70,30 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
         transport = RelayTransport(
             JSONSerializer(), address, channel=channel, connection_type="slave")
         controller = RemoteController(transport)
+
+        # Intercept key injection at the final controller boundary. The real
+        # relay and RemoteController callbacks remain active, but never send
+        # keys to the runner desktop.
+        key_events = []
+        def observe_key(**event):
+            key_events.append(dict(event))
+            return True
+        controller.local_machine.send_key = observe_key
+
+        def await_keys(count):
+            deadline = time.monotonic() + 8
+            while time.monotonic() < deadline:
+                if len(key_events) >= count:
+                    return
+                time.sleep(0.02)
+            raise AssertionError(
+                "expected real-relay key callbacks: " + repr(key_events))
+
+        def send_key(peer, pressed):
+            peer.sendall((json.dumps({
+                "type": "key", "key_name": "Shift",
+                "pressed": pressed, "vk_code": 16,
+            }) + "\n").encode("utf-8"))
         sessions = []
 
         # Observe whether the real sender queue emits a protocol handshake.
@@ -130,6 +154,9 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
             authorized = master(channel)
             peers.append(authorized)
             members(1)
+            send_key(authorized, True)
+            await_keys(1)
+            assert key_events[0]["pressed"] is True
             authorized.close()
             peers.remove(authorized)
             members(0)
@@ -138,10 +165,15 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
             assert not sessions[-1].is_alive()
             assert transport.buffer == b""
             assert not controller.connected_clients
+            previous_keys = len(key_events)
             start_orca()
             recovered = master(channel)
             peers.append(recovered)
             members(1)
+            assert len(key_events) == previous_keys, "old key replayed after reconnect"
+            send_key(recovered, False)
+            await_keys(previous_keys + 1)
+            assert key_events[-1]["pressed"] is False
         finally:
             transport.close()
             for peer in peers:
