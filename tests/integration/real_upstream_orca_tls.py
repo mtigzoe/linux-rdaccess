@@ -67,6 +67,18 @@ def exercise_tls(RemoteController, RelayTransport, JSONSerializer):
                 "protocol_version", "join"], messages
             assert messages[1]["channel"] == "test-only-tls-channel"
             assert transport.connected
+ 
+        def await_clients(expected):
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                if set(controller.connected_clients) == set(expected):
+                    return
+                time.sleep(0.02)
+            raise AssertionError(
+                "unexpected controller clients: " + repr(controller.connected_clients))
+
+        def relay_event(peer, **message):
+            peer.sendall((json.dumps(message) + "\n").encode("utf-8"))
 
         try:
             for cycle in range(2):
@@ -76,6 +88,15 @@ def exercise_tls(RemoteController, RelayTransport, JSONSerializer):
                 peer = accept_tls()
                 assert peer.version() in {"TLSv1.2", "TLSv1.3"}
                 handshake(peer)
+                # A channel_joined frame is a *fixture* relay authorization
+                # response, not independent proof a real relay checked the key.
+                client_id = "peer-" + str(cycle)
+                relay_event(peer, type="channel_joined",
+                            channel="test-only-tls-channel",
+                            clients=[{"id": client_id, "connection_type": "master"}])
+                await_clients([client_id])
+                relay_event(peer, type="client_left", client={"id": client_id})
+                await_clients([])
                 if cycle == 0:
                     peer.sendall(b'{"type":"key","vk_code":17')
                     # Simulate relay loss with an incomplete frame.
@@ -86,6 +107,7 @@ def exercise_tls(RemoteController, RelayTransport, JSONSerializer):
                     assert not transport.connected
                     assert transport.buffer == b"", "TLS partial frame leaked"
                     assert transport.queue_thread is None, "TLS sender thread leaked"
+                    await_clients([])
         finally:
             transport.close()
             if peer is not None:
