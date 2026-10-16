@@ -1509,7 +1509,13 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
             count=1,
         )
         if count != 1:
-            raise ValueError("unsupported legacy transport disconnect guard")
+            # Pinned upstream already removed the stale connected-flag guard.
+            # Only accept a layout that still explicitly handles both resources.
+            has_sender = "if self.queue_thread is not None:" in disconnect_source
+            has_socket = "if self.server_sock is not None:" in disconnect_source
+            stale_guard = "if not self.connected:" in disconnect_source
+            if not (count == 0 and has_sender and has_socket and not stale_guard):
+                raise ValueError("unsupported legacy transport disconnect guard")
         text = text.replace(disconnect_source, updated_disconnect, 1)
 
         # Reparse after the source edit so line/column spans remain exact.
@@ -1592,7 +1598,28 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
         updated_disconnect, count = re.subn(
             close_pattern, guard_close, updated_disconnect, count=1)
         if count != 1:
-            raise ValueError("unsupported legacy transport socket close")
+            # Real upstream already guards socket close and clears the handle,
+            # including the exception path. Do not layer another close guard.
+            # Validate the already-guarded close with Python's syntax tree,
+            # rather than a whitespace-sensitive regular expression.
+            tree_close = ast.parse(updated_disconnect)
+            close_calls = [n for n in ast.walk(tree_close)
+                           if isinstance(n, ast.Call)
+                           and isinstance(n.func, ast.Attribute)
+                           and n.func.attr == "close"
+                           and isinstance(n.func.value, ast.Attribute)
+                           and isinstance(n.func.value.value, ast.Name)
+                           and n.func.value.value.id == "self"
+                           and n.func.value.attr == "server_sock"]
+            guarded = len(close_calls) == 1 and any(
+                isinstance(n, ast.If)
+                and ast.get_source_segment(updated_disconnect, n.test)
+                    == "self.server_sock is not None"
+                and any(call in ast.walk(n) for call in close_calls)
+                for n in ast.walk(tree_close)
+            ) and "self.server_sock = None" in updated_disconnect
+            if count != 0 or not guarded:
+                raise ValueError("unsupported legacy transport socket close")
         text = text.replace(disconnect_source, updated_disconnect, 1)
 
     if not (upgrading_v3 or upgrading_v4 or upgrading_v5 or upgrading_v6):
@@ -1834,7 +1861,23 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
                        + match.group(0)),
         disconnect_source, count=1)
     if count != 1:
-        raise ValueError("unsupported legacy transport disconnect state")
+        # The pinned upstream has no stale guard; invalidate session state
+        # at entry while retaining its unconditional socket/thread cleanup.
+        method = ast.parse(disconnect_source).body[0]
+        if not (count == 0 and isinstance(method, ast.FunctionDef)
+                and method.name == "_disconnect"
+                and "if self.queue_thread is not None:" in disconnect_source
+                and "if self.server_sock is not None:" in disconnect_source):
+            raise ValueError("unsupported legacy transport disconnect state")
+        first = method.body[0]
+        lines = disconnect_source.splitlines(keepends=True)
+        line = lines[first.lineno - 1]
+        indent = line[:len(line) - len(line.lstrip())]
+        lines.insert(first.lineno - 1, indent + "self.connected = False\n"
+                     + indent + "self.buffer = b''\n"
+                     + indent + "if self.server_sock is None and self.queue_thread is None:\n"
+                     + indent + ("\t" if "\t" in indent else "    ") + "return\n")
+        updated_disconnect = "".join(lines)
     text = text.replace(disconnect_source, updated_disconnect, 1)
 
     # Native reconnect() starts a replacement ConnectorThread on this same
@@ -6544,6 +6587,99 @@ def _valid_patch_python(text: str) -> bool:
     return True
 
 
+
+def _patch_verified_upstream_inject_delegate(text: str) -> str:
+    """Adapt only the exact reviewed upstream delegated injection control flow.
+
+    Unexpected versions fail closed in _patch_local_key_results, rather than
+    assuming unknown backend helpers successfully delivered a key event.
+    """
+    import ast as _ast
+
+    tree = _ast.parse(text)
+    classes = [n for n in tree.body if isinstance(n, _ast.ClassDef)
+               and n.name == "LocalMachine"]
+    if len(classes) != 1:
+        return text
+    methods = {n.name: n for n in classes[0].body
+               if isinstance(n, _ast.FunctionDef)}
+    send = methods.get("send_key")
+    inject = methods.get("_inject")
+    if send is None or inject is None:
+        return text
+    if not any(a.arg == "vk_code" for a in send.args.args):
+        return text
+    send_source = _ast.get_source_segment(text, send)
+    inject_source = _ast.get_source_segment(text, inject)
+    if not send_source or not inject_source:
+        return text
+    old_held = """if pressed:
+            self._held_keys.add(key)
+        else:
+            self._held_keys.discard(key)
+        self._inject(key, pressed)"""
+    old_inject = """def _inject(self, key, pressed):
+        if self._is_wayland_session():
+            if self._send_key_portal(key, pressed):
+                return
+            if self._portal_denied():
+                return
+            if self._send_key_ydotool(key, pressed):
+                return
+            self._warn_no_key_backend()
+            return
+
+        if self._send_key_xdotool(key, pressed):
+            return
+        if self._send_key_ydotool(key, pressed):
+            return
+        if self._send_key_portal(key, pressed):
+            return
+        self._warn_no_key_backend()"""
+    if old_held not in send_source or inject_source != old_inject:
+        return text
+    # The upstream method must end immediately after the reviewed delegation.
+    if not send_source.rstrip().endswith(old_held):
+        return text
+    # Only known helper calls may appear; reject altered prelude or injected
+    # side effects before touching the source.
+    if sum(1 for n in _ast.walk(send) if isinstance(n, _ast.Call)
+           and isinstance(n.func, _ast.Attribute)
+           and n.func.attr == "_inject") != 1:
+        return text
+    new_held = """# linux-rdaccess: verified delegated backend results
+        delivered = bool(self._inject(key, pressed))
+        if delivered:
+            if pressed:
+                self._held_keys.add(key)
+            else:
+                self._held_keys.discard(key)
+        return delivered"""
+    new_inject = """def _inject(self, key, pressed):
+        if self._is_wayland_session():
+            if self._send_key_portal(key, pressed):
+                return True
+            if self._portal_denied():
+                return False
+            if self._send_key_ydotool(key, pressed):
+                return True
+            self._warn_no_key_backend()
+            return False
+
+        if self._send_key_xdotool(key, pressed):
+            return True
+        if self._send_key_ydotool(key, pressed):
+            return True
+        if self._send_key_portal(key, pressed):
+            return True
+        self._warn_no_key_backend()
+        return False"""
+    result = text.replace(inject_source, new_inject, 1)
+    result = result.replace(old_held, new_held, 1)
+    compile(result, "<verified upstream keyboard injection>", "exec")
+    return result
+
+
 def _patch_local_key_results(text: str) -> str:
     """Expose backend results only for source control flow we can establish."""
     try:
@@ -6717,11 +6853,51 @@ def legacy_local_machine_patch_current(text: str) -> bool:
         if len(method.body) < len(expected) or not all(
                 _ast_equal(a, b) for a, b in zip(method.body, expected)):
             return False
-    try:
-        if _patch_local_key_results(text) != text:
+    if "# linux-rdaccess: verified delegated backend results" in text:
+        # This marker is insufficient by itself: recognize exactly the
+        # reviewed resulting injection method and send_key ownership tail.
+        inject = _unique_method(cls, "_inject")
+        send = _unique_method(cls, "send_key")
+        expected_inject = ast.parse("""def _inject(self, key, pressed):
+    if self._is_wayland_session():
+        if self._send_key_portal(key, pressed):
+            return True
+        if self._portal_denied():
             return False
-    except ValueError:
+        if self._send_key_ydotool(key, pressed):
+            return True
+        self._warn_no_key_backend()
         return False
+    if self._send_key_xdotool(key, pressed):
+        return True
+    if self._send_key_ydotool(key, pressed):
+        return True
+    if self._send_key_portal(key, pressed):
+        return True
+    self._warn_no_key_backend()
+    return False
+""").body[0]
+        expected_tail = ast.parse("""def tail(self, key, pressed):
+    delivered = bool(self._inject(key, pressed))
+    if delivered:
+        if pressed:
+            self._held_keys.add(key)
+        else:
+            self._held_keys.discard(key)
+    return delivered
+""").body[0].body
+        if (inject is None or send is None
+                or not _ast_equal(inject, expected_inject)
+                or len(send.body) < len(expected_tail)
+                or not all(_ast_equal(a, b) for a, b in zip(
+                    send.body[-len(expected_tail):], expected_tail))):
+            return False
+    else:
+        try:
+            if _patch_local_key_results(text) != text:
+                return False
+        except ValueError:
+            return False
     return True
 
 
@@ -6797,7 +6973,9 @@ def patch_legacy_orca_local_machine(path: Path) -> bool:
             raise ValueError(f"older patch found but backup is missing: {backup}")
         text = backup.read_text(encoding="utf-8")
     text = _redact_legacy_logs(text)
-    text = _patch_local_key_results(text)
+    text = _patch_verified_upstream_inject_delegate(text)
+    if "# linux-rdaccess: verified delegated backend results" not in text:
+        text = _patch_local_key_results(text)
     match = _XDOTOOL_DEF_RE.search(text)
     if match is None:
         raise ValueError(f"legacy _send_key_xdotool was not found in {path}")
