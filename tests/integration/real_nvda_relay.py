@@ -200,7 +200,7 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
             assert any(
                 e["key_name"] == "Control" and e["pressed"] is False
                 for e in key_events[previous_keys:]
-            ), "fresh-session Control release never reached real controller: " + repr(key_events)
+            ), "fresh-session Control release never reached real controller: " + repr({"controller_events": key_events, "relay_inbound": relay_key_messages, "relay_clients": [(c.id, c.channel_id) for c in real_server.clients]})
         finally:
             transport.close()
             for peer in peers:
