@@ -87,6 +87,10 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
         transport = RelayTransport(
             JSONSerializer(), address, channel=channel, connection_type="slave")
         controller = RemoteController(transport)
+        # Observe parsed incoming frames at the Orca callback boundary.
+        controller_key_callbacks = []
+        transport.callback_manager.register_callback(
+            "msg_key", lambda **event: controller_key_callbacks.append(dict(event)))
 
         # Intercept key injection at the final controller boundary. The real
         # relay and RemoteController callbacks remain active, but never send
@@ -200,7 +204,7 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
             assert any(
                 e["key_name"] == "Control" and e["pressed"] is False
                 for e in key_events[previous_keys:]
-            ), "fresh-session Control release never reached real controller: " + repr({"controller_events": key_events, "relay_inbound": relay_key_messages, "relay_clients": [(c.id, c.channel_id) for c in real_server.clients]})
+            ), "fresh-session Control release never reached real controller: " + repr({"controller_events": key_events, "relay_inbound": relay_key_messages, "controller_key_callbacks": controller_key_callbacks, "relay_clients": [(c.id, c.channel_id) for c in real_server.clients]})
         finally:
             transport.close()
             for peer in peers:
