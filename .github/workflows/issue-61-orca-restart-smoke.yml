@@ -1,0 +1,31 @@
+name: Issue 61 isolated Orca restart smoke
+
+on:
+  pull_request:
+    paths:
+      - 'tests/integration/isolated_orca_restart_smoke.py'
+      - '.github/workflows/issue-61-orca-restart-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-orca-restart:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install isolated GUI dependencies
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            orca xvfb dbus-x11 at-spi2-core python3-gi
+      - name: Verify required executables
+        run: |
+          command -v orca
+          command -v Xvfb
+          command -v dbus-run-session
+      - name: Run real Orca restart smoke in private Xvfb and D-Bus
+        run: /usr/bin/python3 tests/integration/isolated_orca_restart_smoke.py
