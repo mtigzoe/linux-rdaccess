@@ -26,10 +26,13 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
     spec.loader.exec_module(module)
     # Observe real relay inbound key frames without modifying forwarding.
     relay_key_messages = []
+    relay_handshake_messages = []
     original_process = module.Client.process_message
     async def observed_process(client, line):
         try:
             message = json.loads(line)
+            if message.get("type") in ("join", "protocol_version"):
+                relay_handshake_messages.append((client.id, message.get("type"), bool(message.get("channel"))))
             if message.get("type") == "key":
                 relay_key_messages.append({
                     "client_id": client.id,
@@ -120,6 +123,28 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
         # Observe whether the real sender queue emits a protocol handshake.
         original_send = transport.send
         sent = []
+        # Keep an audit of actual sender socket writes. A send() request alone
+        # is not proof its queued frame reached the TLS socket.
+        writes = []
+        original_create = transport.create_outbound_socket
+        class ObservedSocket:
+            def __init__(self, sock):
+                self._sock = sock
+            def sendall(self, payload):
+                result = self._sock.sendall(payload)
+                try:
+                    kind = json.loads(payload).get("type")
+                except ValueError:
+                    kind = "invalid"
+                writes.append((transport.successful_connects, kind))
+                return result
+            def __getattr__(self, name):
+                return getattr(self._sock, name)
+            def fileno(self):
+                return self._sock.fileno()
+        def observed_create(address):
+            return ObservedSocket(original_create(address))
+        transport.create_outbound_socket = observed_create
         def observed_send(type, **kwargs):
             sent.append((type, sorted(kwargs)))
             return original_send(type, **kwargs)
@@ -142,7 +167,7 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
                 ):
                     return
                 time.sleep(0.02)
-            raise AssertionError("actual upstream transport never joined real relay: " + repr({"transport_connected": transport.connected, "worker_alive": worker.is_alive(), "worker_errors": [str(e) for e in errors], "relay_clients": [(c.id, c.channel_id) for c in real_server.clients], "relay_channels": list(real_server.channels), "successful_connects": transport.successful_connects, "queue_size": transport.queue.qsize(), "sender_alive": bool(transport.queue_thread and transport.queue_thread.is_alive()), "socket": repr(transport.server_sock), "sent": sent}))
+            raise AssertionError("actual upstream transport never joined real relay: " + repr({"transport_connected": transport.connected, "worker_alive": worker.is_alive(), "worker_errors": [str(e) for e in errors], "relay_clients": [(c.id, c.channel_id) for c in real_server.clients], "relay_channels": list(real_server.channels), "successful_connects": transport.successful_connects, "queue_size": transport.queue.qsize(), "sender_alive": bool(transport.queue_thread and transport.queue_thread.is_alive()), "socket": repr(transport.server_sock), "sent": sent, "relay_handshake": relay_handshake_messages, "socket_writes": writes}))
 
         def master(key_string):
             peer = ssl._create_unverified_context().wrap_socket(
@@ -178,15 +203,35 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
             send_key(authorized, True)
             await_keys(1)
             assert key_events[0]["pressed"] is True
+            assert controller._lrd_forwarded, "Shift press did not acquire held-key ownership"
+            # Losing the relay while Shift is held must release that modifier.
+            # Record the actual local-machine boundary without touching X11.
             authorized.close()
             peers.remove(authorized)
             members(0)
             transport.close()
+            deadline = time.monotonic() + 8
+            while time.monotonic() < deadline and not any(
+                e["key_name"] == "Shift" and e["pressed"] is False
+                for e in key_events
+            ):
+                time.sleep(0.02)
+            assert any(
+                e["key_name"] == "Shift" and e["pressed"] is False
+                for e in key_events
+            ), "held Shift was not released on transport disconnect: " + repr(key_events)
+            assert not controller._lrd_forwarded, "held-key ownership survived disconnect"
             sessions[-1].join(timeout=8)
             assert not sessions[-1].is_alive()
             assert transport.buffer == b""
             assert not controller.connected_clients
             previous_keys = len(key_events)
+            # The upstream transport's previous sender used this queue.
+            # Give the new test connection an empty queue after confirming
+            # its old sender exited, as in the isolated TLS reconnect smoke.
+            import queue
+            assert transport.queue_thread is None
+            transport.queue = queue.Queue()
             start_orca()
             recovered = master(channel)
             peers.append(recovered)
