@@ -17,6 +17,8 @@ class SocketLifecycleTests(LifecycleHarness, unittest.TestCase):
         c = self._lifecycle_controller()
         c._linux_rdaccess_run_main = lambda func, **kw: func()
         self._key(c, 0xA2, True)
+        # Restore the queueing scheduler after the synchronous key-down.
+        del c._linux_rdaccess_run_main
         queued, patches = self._fake_glib()
         with patches, socket.socketpair() as (receiver, sender):
             receiver.settimeout(2)
