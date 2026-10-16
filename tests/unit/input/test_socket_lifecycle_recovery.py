@@ -32,13 +32,16 @@ class SocketLifecycleTests(LifecycleHarness, unittest.TestCase):
             # The fake upstream transport does not implement a real socket
             # receiver; explicitly bridge the observed EOF to its callback.
             c._on_transport_disconnected()
+            cleanup_events = list(c.local_machine.events)
             while queued:
                 queued.pop(0)()
+        self.assertEqual(c.local_machine.events, cleanup_events,
+                         "stale queued work must not add new events")
         events = [(vk, pressed) for _, vk, pressed in self._key_log(c)]
         self.assertEqual(events, [(0xA2, True), (0xA2, False)])
         self.assertEqual(
             [event for event in c.local_machine.events
-             if event[0] != "key"], [])
+             if event[0] != "key"], [("cancel",)])
 
     def test_new_socket_after_eof_accepts_fresh_input(self):
         c = self._lifecycle_controller()
