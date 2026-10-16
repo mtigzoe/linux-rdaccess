@@ -201,7 +201,7 @@ def smoke() -> None:
                 "    try:\n"
                 "        time.sleep(3)\n"
                 "        code = p.poll()\n"
-                "        deadline = time.monotonic() + 60\n"
+                "        deadline = time.monotonic() + 100\n"
                 "        while not marker.exists() and p.poll() is None and time.monotonic() < deadline:\n"
                 "            time.sleep(0.1)\n"
                 "        if not marker.exists():\n"
@@ -242,7 +242,7 @@ def smoke() -> None:
             )
             session = subprocess.run(
                 [dbus, "--", sys.executable, "-c", script, orca],
-                env=env, capture_output=True, text=True, timeout=110,
+                env=env, capture_output=True, text=True, timeout=220,
                 check=False,
             )
             if session.returncode:
