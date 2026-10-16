@@ -90,10 +90,10 @@ def smoke() -> None:
             transport.write_text(_patch_legacy_transport_cleanup(
                 transport.read_text(encoding="utf-8")), encoding="utf-8")
             real_import = (
-                "sys.path.insert(0, os.environ['LRD_UPSTREAM_SCRIPTS'])\\n"
-                "from remote_controller import RemoteController\\n"
-                "from transport import RelayTransport\\n"
-                "from serializer import JSONSerializer\\n"
+                "sys.path.insert(0, os.environ['LRD_UPSTREAM_SCRIPTS'])\n"
+                "from remote_controller import RemoteController\n"
+                "from transport import RelayTransport\n"
+                "from serializer import JSONSerializer\n"
             )
             env["LRD_UPSTREAM_SCRIPTS"] = str(scripts)
         (profile / "orca-customizations.py").write_text(
@@ -103,7 +103,7 @@ def smoke() -> None:
             "from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter\n"
             "OrcaRuntimeAdapter.active_script()\n"
             + real_import
-            "sys.path.insert(0, os.environ['LRD_PROJECT_ROOT'])\n"
+            + "sys.path.insert(0, os.environ['LRD_PROJECT_ROOT'])\n"
             "from tests.integration.nvda_remote_harness import LoopbackSession\n"
             "with_marker = LoopbackSession()\n"
             "try:\n"
