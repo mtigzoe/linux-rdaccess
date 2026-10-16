@@ -85,6 +85,7 @@ def exercise_tls(RemoteController, RelayTransport, JSONSerializer):
             raw, address = listener.accept()
             assert address[0] == "127.0.0.1"
             raw.settimeout(15)
+            raw.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             return server_ctx.wrap_socket(raw, server_side=True)
 
         def handshake(peer):
@@ -98,6 +99,8 @@ def exercise_tls(RemoteController, RelayTransport, JSONSerializer):
                     raise AssertionError(
                         "TLS handshake receive timeout: " + repr({
                             "messages": messages,
+                            "tls_pending": peer.pending(),
+                            "tls_version": peer.version(),
                             "send_calls": sent_messages,
                             "socket_writes": socket_writes,
                             "transport_connected": transport.connected,
