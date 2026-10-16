@@ -10,12 +10,12 @@ linux-rdaccess transport, speech output, or physical braille.
 from __future__ import annotations
 
 import os
+import select
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tempfile
-import time
 
 
 def require(command: str) -> str:
@@ -70,14 +70,10 @@ def smoke() -> None:
             if xserver.stdout is None:
                 raise RuntimeError("Xvfb stdout unavailable")
             # -displayfd writes the numeric display ID when the server is ready.
-            from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
-            with ThreadPoolExecutor(max_workers=1) as pool:
-                future = pool.submit(xserver.stdout.readline)
-                try:
-                    display = future.result(timeout=10).strip()
-                except FutureTimeout as exc:
-                    stop(xserver)
-                    raise RuntimeError("Xvfb did not become ready") from exc
+            ready, _, _ = select.select([xserver.stdout], [], [], 10)
+            if not ready:
+                raise RuntimeError("Xvfb did not become ready")
+            display = xserver.stdout.readline().strip()
             if not display.isdigit():
                 raise RuntimeError(f"Xvfb did not supply a display number: {display!r}")
             env["DISPLAY"] = f":{display}"
