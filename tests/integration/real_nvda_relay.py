@@ -87,7 +87,7 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
                     return
                 time.sleep(0.02)
             raise AssertionError(
-                "expected real-relay key callbacks: " + repr(key_events))
+                "expected real-relay key callbacks: " + repr({"expected_count": count, "actual_events": list(key_events), "transport_connected": transport.connected, "connected_clients": dict(controller.connected_clients), "relay_channels": {key: len(value) for key, value in real_server.channels.items()}}))
 
         def send_key(peer, pressed):
             peer.sendall((json.dumps({
