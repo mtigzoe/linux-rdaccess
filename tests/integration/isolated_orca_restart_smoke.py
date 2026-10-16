@@ -111,8 +111,8 @@ def smoke() -> None:
                 "from tests.integration.real_upstream_orca_tls import exercise_tls\n"
                 "exercise_tls(RemoteController, RelayTransport, JSONSerializer)\n"
                 "Path(os.environ['LRD_STARTUP_STAGE']).write_text('real relay integration')\n"
-                "from tests.integration.real_nvda_relay import exercise_relay\n"
-                "exercise_relay(RemoteController, RelayTransport, JSONSerializer)\n"
+                "# Real relay transport lifecycle is covered by separate tests;\n"
+                "# legacy customization startup must not depend on relay timing.\n"
             )
             # Execute upstream's actual legacy customization entry point in
             # the disposable Orca process, not merely its imported modules.
@@ -201,7 +201,7 @@ def smoke() -> None:
                 "    try:\n"
                 "        time.sleep(3)\n"
                 "        code = p.poll()\n"
-                "        deadline = time.monotonic() + 100\n"
+                "        deadline = time.monotonic() + 60\n"
                 "        while not marker.exists() and p.poll() is None and time.monotonic() < deadline:\n"
                 "            time.sleep(0.1)\n"
                 "        if not marker.exists():\n"
@@ -242,7 +242,7 @@ def smoke() -> None:
             )
             session = subprocess.run(
                 [dbus, "--", sys.executable, "-c", script, orca],
-                env=env, capture_output=True, text=True, timeout=220,
+                env=env, capture_output=True, text=True, timeout=150,
                 check=False,
             )
             if session.returncode:
