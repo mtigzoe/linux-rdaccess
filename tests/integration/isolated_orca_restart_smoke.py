@@ -6,7 +6,7 @@ Run only on a dedicated Linux test runner with:
 
 This starts a *real* Orca executable while a separately mocked-controller
 transport loopback regression runs within the same private display and bus.\nThe first Orca child is forcibly killed and the second must start cleanly.
-This verifies real Orca executed a private customization import marker.\nIt does NOT wire the transport into Orca or test NVDA, speech, or braille.
+This verifies real Orca imports the production adapter from a private copy\nand executes its safe active-script resolver before writing the import marker.\nIt does NOT wire the transport into Orca or test NVDA, speech, or braille.
 """
 from __future__ import annotations
 
@@ -65,12 +65,22 @@ def smoke() -> None:
         profile = base / "data" / "orca"
         profile.mkdir(parents=True)
         marker = base / "orca-customizations-loaded"
+        # Import the production adapter from a private copy inside real Orca.
+        # No real Orca Remote controller or relay is installed by this smoke.
+        adapter_source = (Path(__file__).resolve().parents[2]
+                          / "linux_rdaccess_core" / "accessibility" / "orca_adapter.py")
+        shutil.copy2(adapter_source, profile / "linux_rdaccess_orca_adapter.py")
         (profile / "orca-customizations.py").write_text(
-            "import os\n"
+            "import os, sys\n"
             "from pathlib import Path\n"
-            "Path(os.environ['LRD_ORCA_LOAD_MARKER']).write_text(str(os.getpid()))\n",
+            "sys.path.insert(0, os.environ['LRD_ORCA_ADAPTER_DIR'])\n"
+            "from linux_rdaccess_orca_adapter import OrcaRuntimeAdapter\n"
+            "OrcaRuntimeAdapter.active_script()\n"
+            "Path(os.environ['LRD_ORCA_LOAD_MARKER']).write_text(\n"
+            "    str(os.getpid()) + '|linux_rdaccess_orca_adapter')\n",
             encoding="utf-8",
         )
+        env["LRD_ORCA_ADAPTER_DIR"] = str(profile)
         env["LRD_ORCA_LOAD_MARKER"] = str(marker)
         # Choose a free X display number by binding the X11 socket via -displayfd.
         xserver = subprocess.Popen(
@@ -110,7 +120,7 @@ def smoke() -> None:
                 "            time.sleep(0.1)\n"
                 "        if not marker.exists():\n"
                 "            raise RuntimeError(f'Orca did not load isolated customization in cycle {cycle}')\n"
-                "        if marker.read_text().strip() != str(p.pid):\n"
+                "        if marker.read_text().strip() != str(p.pid) + '|linux_rdaccess_orca_adapter':\n"
                 "            raise RuntimeError(f'Unexpected Orca customization loading PID in cycle {cycle}')\n"
                 "        if code is not None:\n"
                 "            err = p.stderr.read()[-2000:]\n"
