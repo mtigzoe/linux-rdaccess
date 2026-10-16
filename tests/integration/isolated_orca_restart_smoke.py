@@ -62,7 +62,7 @@ def smoke() -> None:
         # A marker written from within Orca's customization import proves the
         # real process loaded the private test customization. It is not proof
         # that the separate Orca Remote transport/controller was loaded.
-        profile = home / ".local" / "share" / "orca"
+        profile = base / "data" / "orca"
         profile.mkdir(parents=True)
         marker = base / "orca-customizations-loaded"
         (profile / "orca-customizations.py").write_text(
