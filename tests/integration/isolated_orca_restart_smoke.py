@@ -1,0 +1,127 @@
+#!/usr/bin/env python3
+"""Opt-in real Orca restart smoke check in disposable Xvfb and D-Bus.
+
+Run only on a dedicated Linux test runner with:
+    python3 tests/integration/isolated_orca_restart_smoke.py
+
+This starts a *real* Orca executable but does not test NVDA Remote, the
+linux-rdaccess transport, speech output, or physical braille.
+"""
+from __future__ import annotations
+
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+
+
+def require(command: str) -> str:
+    executable = shutil.which(command)
+    if executable is None:
+        raise RuntimeError(f"Missing required executable: {command}")
+    return executable
+
+
+def stop(proc: subprocess.Popen) -> None:
+    if proc.poll() is not None:
+        return
+    proc.terminate()
+    try:
+        proc.wait(timeout=8)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=5)
+
+
+def smoke() -> None:
+    # Explicit opt-in only. Never inherit an active DISPLAY or D-Bus address.
+    xvfb = require("Xvfb")
+    dbus = require("dbus-run-session")
+    orca = require("orca")
+    with tempfile.TemporaryDirectory(prefix="lrd-orca-smoke-") as root:
+        base = Path(root)
+        home = base / "home"
+        runtime = base / "runtime"
+        home.mkdir()
+        runtime.mkdir(mode=0o700)
+        env = {
+            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "HOME": str(home),
+            "XDG_CONFIG_HOME": str(base / "config"),
+            "XDG_CACHE_HOME": str(base / "cache"),
+            "XDG_DATA_HOME": str(base / "data"),
+            "XDG_RUNTIME_DIR": str(runtime),
+            "LANG": os.environ.get("LANG", "C.UTF-8"),
+            # Disallow inherited user session configuration.
+            "NO_AT_BRIDGE": "0",
+        }
+        # Choose a free X display number by binding the X11 socket via -displayfd.
+        xserver = subprocess.Popen(
+            [xvfb, "-nolisten", "tcp", "-screen", "0", "1024x768x24",
+             "-displayfd", "1"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            text=True, env=env,
+        )
+        session = None
+        try:
+            if xserver.stdout is None:
+                raise RuntimeError("Xvfb stdout unavailable")
+            # -displayfd writes the numeric display ID when the server is ready.
+            from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(xserver.stdout.readline)
+                try:
+                    display = future.result(timeout=10).strip()
+                except FutureTimeout as exc:
+                    stop(xserver)
+                    raise RuntimeError("Xvfb did not become ready") from exc
+            if not display.isdigit():
+                raise RuntimeError(f"Xvfb did not supply a display number: {display!r}")
+            env["DISPLAY"] = f":{display}"
+            # Keep one private bus alive, spawn Orca twice within it. The driver
+            # sends lifecycle signals only to the children it owns.
+            script = (
+                "import os, subprocess, sys, time\n"
+                "orca = sys.argv[1]\n"
+                "for cycle in range(2):\n"
+                "    p = subprocess.Popen([orca, '--no-setup'], "
+                "stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)\n"
+                "    try:\n"
+                "        time.sleep(3)\n"
+                "        code = p.poll()\n"
+                "        if code is not None:\n"
+                "            err = p.stderr.read()[-2000:]\n"
+                "            raise RuntimeError(f'Orca exited early in cycle {cycle}: {code}: {err}')\n"
+                "    finally:\n"
+                "        if p.poll() is None:\n"
+                "            p.terminate()\n"
+                "            try: p.wait(timeout=8)\n"
+                "            except subprocess.TimeoutExpired:\n"
+                "                p.kill(); p.wait(timeout=5)\n"
+                "        p.stderr.close()\n"
+                "print('Two isolated Orca launches completed')\n"
+            )
+            session = subprocess.run(
+                [dbus, "--", sys.executable, "-c", script, orca],
+                env=env, capture_output=True, text=True, timeout=50,
+                check=False,
+            )
+            if session.returncode:
+                raise RuntimeError(
+                    "Isolated Orca smoke failed: " + session.stderr[-2500:])
+            print(session.stdout.strip())
+        finally:
+            stop(xserver)
+            if xserver.stdout:
+                xserver.stdout.close()
+
+
+if __name__ == "__main__":
+    try:
+        smoke()
+    except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
+        print(f"FAIL: {exc}", file=sys.stderr)
+        sys.exit(1)
