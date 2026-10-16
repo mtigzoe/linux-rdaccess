@@ -131,11 +131,14 @@ def smoke() -> None:
             env["LRD_PINNED_LEGACY_STARTUP"] = str(legacy_path)
             legacy_import = (
                 "import runpy, faulthandler\n"
-                "faulthandler.dump_traceback_later(35, repeat=False)\n"
+                "trace_file = open(os.environ['LRD_STARTUP_TRACE'], 'w')\n"
+                "faulthandler.dump_traceback_later(20, repeat=False, file=trace_file)\n"
                 "try:\n"
                 "    legacy = runpy.run_path(os.environ['LRD_PINNED_LEGACY_STARTUP'])\n"
                 "finally:\n"
                 "    faulthandler.cancel_dump_traceback_later()\n"
+                "    trace_file.flush()\n"
+                "    trace_file.close()\n"
                 "Path(os.environ['LRD_STARTUP_STAGE']).write_text('upstream legacy entry point finished')\n"
                 "assert isinstance(legacy['controller'], RemoteController)\n"
                 "assert legacy['transport'].connected is False\n"
@@ -179,6 +182,7 @@ def smoke() -> None:
         env["LRD_PROJECT_ROOT"] = str(Path(__file__).resolve().parents[2])
         env["LRD_ORCA_LOAD_MARKER"] = str(marker)
         env["LRD_STARTUP_STAGE"] = str(base / "orca-startup-stage")
+        env["LRD_STARTUP_TRACE"] = str(base / "orca-startup-trace")
         # Choose a free X display number by binding the X11 socket via -displayfd.
         xserver = subprocess.Popen(
             [xvfb, "-nolisten", "tcp", "-screen", "0", "1024x768x24",
@@ -221,8 +225,9 @@ def smoke() -> None:
                 "            except subprocess.TimeoutExpired:\n"
                 "                p.kill(); _, err = p.communicate(timeout=5)\n"
                 "            stage = Path(os.environ['LRD_STARTUP_STAGE'])\n"
-                "            detail = stage.read_text() if stage.exists() else 'before real relay integration'\n"
-                "            raise RuntimeError(f'Orca customization did not complete cycle {cycle} at {detail}: {err[-3500:]}')\n"
+                "            detail = stage.read_text() if stage.exists() else 'before real relay integration'\n"                "            trace = Path(os.environ['LRD_STARTUP_TRACE'])\n"
+                "            stacks = trace.read_text()[-3500:] if trace.exists() else 'no thread trace recorded'\n"
+                "            raise RuntimeError(f'Orca customization did not complete cycle {cycle} at {detail}: {stacks} {err[-1500:]}')\n"
                 "        if marker.read_text().strip() != str(p.pid) + '|linux_rdaccess_orca_adapter':\n"
                 "            raise RuntimeError(f'Unexpected Orca customization loading PID in cycle {cycle}')\n"
                 "        if code is not None:\n"
