@@ -24,6 +24,10 @@ def exercise_tls(RemoteController, RelayTransport, JSONSerializer):
             "-keyout", str(key), "-out", str(cert),
         ], check=True, capture_output=True, timeout=15)
         server_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        # Diagnostic: pin this disposable peer to TLS 1.2 to distinguish
+        # TLS 1.3 record handling from the reconnect/queue lifecycle.
+        # The separate real-relay test still negotiates the default TLS.
+        server_ctx.maximum_version = ssl.TLSVersion.TLSv1_2
         server_ctx.load_cert_chain(str(cert), str(key))
         listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         listener.bind(("127.0.0.1", 0))
@@ -142,7 +146,7 @@ def exercise_tls(RemoteController, RelayTransport, JSONSerializer):
                 workers.append(worker)
                 worker.start()
                 peer = accept_tls()
-                assert peer.version() in {"TLSv1.2", "TLSv1.3"}
+                assert peer.version() == "TLSv1.2"
                 handshake(peer)
                 # A channel_joined frame is a *fixture* relay authorization
                 # response, not independent proof a real relay checked the key.
