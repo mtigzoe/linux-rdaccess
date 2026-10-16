@@ -1874,7 +1874,9 @@ def _patch_legacy_transport_cleanup(text: str) -> str:
         line = lines[first.lineno - 1]
         indent = line[:len(line) - len(line.lstrip())]
         lines.insert(first.lineno - 1, indent + "self.connected = False\n"
-                     + indent + "self.buffer = b''\n")
+                     + indent + "self.buffer = b''\n"
+                     + indent + "if self.server_sock is None and self.queue_thread is None:\n"
+                     + indent + ("\t" if "\t" in indent else "    ") + "return\n")
         updated_disconnect = "".join(lines)
     text = text.replace(disconnect_source, updated_disconnect, 1)
 
