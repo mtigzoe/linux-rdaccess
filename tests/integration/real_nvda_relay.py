@@ -194,6 +194,19 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
             assert len(key_events) == previous_keys, "old key replayed after reconnect"
             # A distinct key identifies fresh-session delivery even if the
             # disconnect callback generated a Shift release independently.
+            # Unmatched key-up is intentionally ignored by the production
+            # controller. Exercise a complete *new-session* press/release pair.
+            send_key(recovered, True, key_name="Control", vk_code=17)
+            deadline = time.monotonic() + 8
+            while time.monotonic() < deadline and not any(
+                e["key_name"] == "Control" and e["pressed"] is True
+                for e in key_events[previous_keys:]
+            ):
+                time.sleep(0.02)
+            assert any(
+                e["key_name"] == "Control" and e["pressed"] is True
+                for e in key_events[previous_keys:]
+            ), "fresh-session Control press never reached real controller: " + repr(key_events)
             send_key(recovered, False, key_name="Control", vk_code=17)
             deadline = time.monotonic() + 8
             while time.monotonic() < deadline and not any(
