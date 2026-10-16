@@ -96,6 +96,12 @@ def smoke() -> None:
                 "from remote_controller import RemoteController\n"
                 "from transport import RelayTransport\n"
                 "from serializer import JSONSerializer\n"
+                "real_transport = RelayTransport(JSONSerializer(),\n"
+                "    ('127.0.0.1', 1), channel='isolated-no-connect', connection_type='slave')\n"
+                "real_controller = RemoteController(real_transport)\n"
+                "assert real_controller.transport is real_transport\n"
+                "assert real_controller.local_machine is not None\n"
+                "assert real_transport.connected is False\n"
             )
             env["LRD_UPSTREAM_SCRIPTS"] = str(scripts)
         (profile / "orca-customizations.py").write_text(
