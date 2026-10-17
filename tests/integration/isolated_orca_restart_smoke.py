@@ -78,6 +78,12 @@ def smoke() -> None:
         if os.environ.get("LRD_PINNED_RELAY_FILE"):
             env["LRD_PINNED_RELAY_FILE"] = os.environ["LRD_PINNED_RELAY_FILE"]
         if upstream:
+            # Opt-in soak repeats only; default remains the existing single
+            # real-relay check per disposable Orca restart cycle.
+            soak_repeats = int(os.environ.get("LRD_REAL_RELAY_SOAK_REPEATS", "1"))
+            if not 1 <= soak_repeats <= 3:
+                raise ValueError("LRD_REAL_RELAY_SOAK_REPEATS must be 1..3")
+            env["LRD_REAL_RELAY_SOAK_REPEATS"] = str(soak_repeats)
             sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
         real_import = ""
         if upstream:
@@ -157,7 +163,10 @@ def smoke() -> None:
                 "exercise_tls(RemoteController, RelayTransport, JSONSerializer)\n"
                 "Path(os.environ['LRD_STARTUP_STAGE']).write_text('real NVDA Remote relay')\n"
                 "from tests.integration.real_nvda_relay import exercise_relay\n"
-                "exercise_relay(RemoteController, RelayTransport, JSONSerializer)\n"
+                "for soak_cycle in range(int(os.environ.get('LRD_REAL_RELAY_SOAK_REPEATS', '1'))):\n"
+                "    Path(os.environ['LRD_STARTUP_STAGE']).write_text(\n"
+                "        f'real NVDA Remote relay soak cycle {soak_cycle + 1}')\n"
+                "    exercise_relay(RemoteController, RelayTransport, JSONSerializer)\n"
             )
             env["LRD_UPSTREAM_SCRIPTS"] = str(scripts)
         (profile / "orca-customizations.py").write_text(
@@ -285,6 +294,6 @@ def smoke() -> None:
 if __name__ == "__main__":
     try:
         smoke()
-    except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
+    except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
         print(f"FAIL: {exc}", file=sys.stderr)
         sys.exit(1)
