@@ -129,6 +129,38 @@ class SerialTLSSocketTests(unittest.TestCase):
         self.assertEqual(inner.events[-1],
                          ("sendall", b"subsequent-message"))
 
+    def test_decrypted_pending_frames_are_drained_before_next_select(self):
+        """Buffered plaintext must not be stranded behind an idle TCP fd."""
+        namespace = patched_transport()
+        serializer = types.SimpleNamespace(
+            deserialize=lambda frame: json.loads(frame),
+        )
+        transport = namespace["TCPTransport"](
+            serializer, ("127.0.0.1", 6837))
+        inner = FakeTLS()
+        frames = [b'{"type":"first"}\n', b'{"type":"second"}\n']
+        kinds = []
+
+        def recv_frame(_size):
+            assert inner.nonblocking
+            return frames.pop(0)
+
+        inner.recv = recv_frame
+        inner.pending = lambda: len(frames)
+        transport.callback_manager.register_callback(
+            "msg_first", lambda **event: kinds.append("first"))
+        transport.callback_manager.register_callback(
+            "msg_second", lambda **event: kinds.append("second"))
+        transport.server_sock = namespace[
+            "_linux_rdaccess_serial_ssl_socket"](inner)
+        transport.connected = True
+        transport.handle_server_data()
+        self.assertEqual(kinds, ["first", "second"])
+        self.assertTrue(transport.connected)
+        self.assertEqual(frames, [])
+        self.assertEqual(inner.timeout, None)
+        transport._disconnect()
+
     def test_tls_post_handshake_want_read_keeps_transport_connected(self):
         namespace = patched_transport()
         serializer = types.SimpleNamespace(
