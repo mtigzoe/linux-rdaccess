@@ -1,0 +1,48 @@
+{
+  "kind": "isolated-routing-simulation-evidence",
+  "source": "simulated-atspi",
+  "transport": "ssh",
+  "tested_revision": "470a222989121a19041388a4417116ddc759eafe",
+  "checkout_source": "Published PR #88 branch, separate private checkout",
+  "started_utc": "2026-10-14T21:39:26.057520+00:00",
+  "finished_utc": "2026-10-14T21:39:30.870955+00:00",
+  "environment": {
+    "host": "Cyber Linux Mint test machine",
+    "python": "3.10.12",
+    "gtk3_package": "3.24.33-1ubuntu2.2",
+    "atspi_package": "2.44.0-3",
+    "installed_orca_package": "42.0-1ubuntu2",
+    "display_and_bus": "Runner-owned private Xvfb and D-Bus",
+    "application": "Repository public GTK fixture"
+  },
+  "command": "python3 -B tools/diagnostics/run_routing_simulation.py",
+  "tests": {"passed": 1, "failures": 0, "errors": 0, "skips": 0},
+  "simulation": {
+    "actual_cli_preview_apply_and_stale_refusal": true,
+    "before_caret": 2,
+    "requested_character_offset": 7,
+    "after_caret": 7,
+    "setter_reason": "setter_returned",
+    "matching_caret_event_elapsed_ms": 7.5,
+    "observation_elapsed_ms": 1008.4,
+    "same_initial_focus": true,
+    "focus_changed_during_observation": false,
+    "dropped_events": 0,
+    "stale_preview_apply_exit_code": 2
+  },
+  "preservation": {
+    "active_desktop_input_sent": false,
+    "same_orca_process_before_after": true,
+    "installed_controller_and_helper_hashes_compared": 4,
+    "installed_controller_and_helper_hashes_unchanged": true,
+    "runtime_installation_or_restart_performed": false
+  },
+  "acceptance": {
+    "running_orca_controller_route": "not-tested",
+    "windows_nvda_message_dismissal": "not-tested",
+    "physical_bnote": "not-tested",
+    "historical_6_to_9_cause": "unverified",
+    "issue_57_closure": "not-ready",
+    "issue_72_closure": "not-ready"
+  }
+}
