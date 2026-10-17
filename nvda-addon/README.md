@@ -13,6 +13,7 @@ Included components:
 - An explicit five-minute consent dialog and same-user authenticated local test
   service supporting `status`, `connect` using saved settings, `cancel`, and
   separately opted-in, read-only `braille_trace` diagnostics.
+- A separate, unchecked one-shot permission to simulate routing cell 0 of a visible Linux temporary message, without document routing fallback.
 - Metadata-only test status, preserving `physical_braille: unverified`.
 
 NVDA Remote Access continues to own speech, keyboard control and relay settings.
@@ -30,7 +31,7 @@ uv run --no-project --python 3.13 python nvda-addon/build.py
 ```
 
 The standard-library builder writes
-`nvda-addon/dist/linuxRdAccess-20261014.0.3.nvda-addon`. It is reproducible and
+`nvda-addon/dist/linuxRdAccess-20261014.0.4.nvda-addon`. It is reproducible and
 includes Python source, documentation, attribution and the full upstream
 license. `buildVars.py` is the source of add-on metadata; `--version` can override
 the three-component numeric development version.
@@ -48,6 +49,8 @@ Build **20261014.0.1** adds the argument-free version 3 `braille_outcomes` read,
 available as `nvda-braille-outcomes`. Versions 1 and 2 are unchanged. The same
 unchecked diagnostics checkbox enables two independent ledgers of at most
 twelve records each; each ledger discloses its own drops and clears with consent.
+
+Build **20261014.0.4** adds argument-free version 4 `braille_message_route`, exposed as `nvda-route-message`. It requires a *separate unchecked one-shot consent option* in NVDA Tools and consumes the grant before attempting to queue a route. It may route **only cell 0 of the current, Linux-owned stock NVDA temporary message**, and revalidates control, message ownership and consent at execution time. It cannot fall back to document routing or inject arbitrary keys. Protocol operations v1–v3 are unchanged. See [the scripted routing guide](../docs/scripted-message-routing.md). This development build is **not installed or live-accepted** by this PR.
 
 ## Install and migrate
 
@@ -106,8 +109,7 @@ script and gesture execution pipeline, including input help and capture.
 This is automated-tested; it does not establish physical routing acceptance
 or explain the historical 6→9 movement. See the
 [queued routing audit](../docs/compatibility-audit-2026-10-14-queued-main-routing.md).
-This review candidate is based on merged main; it does not include the separate,
-unmerged PR #89 one-shot automation. It has not been installed or deployed.
+This original `.3` protection remains included in the `.4` development candidate. The additional one-shot message-routing feature is software-only until separately authorized and live-tested; no physical display acceptance is claimed.
 
 Build **20261014.0.1** adds diagnostics only: stock out-of-buffer no-ops,
 activation/caret attempts, send return/failure, message dismissal, discarded

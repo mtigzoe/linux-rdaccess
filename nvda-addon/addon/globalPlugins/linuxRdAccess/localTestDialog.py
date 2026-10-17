@@ -20,7 +20,9 @@ class LocalTestAuthorizationDialog(wx.Dialog):
 			"for five minutes. "
 			"You can revoke authorization from NVDA Tools. "
 			"A connection created by this test session will be disconnected when authorization ends. "
-			"Existing connections are preserved. Keyboard injection is unavailable.",
+			"Existing connections are preserved. Keyboard injection is unavailable. "
+			"The optional routing permission allows one software routing press on cell 0 "
+			"of a visible Linux temporary message, never the document underneath.",
 		)
 		label = wx.StaticText(self, label=message)
 		label.Wrap(480)
@@ -37,6 +39,12 @@ class LocalTestAuthorizationDialog(wx.Dialog):
 			label=_("Record numeric braille routing diagnostics (no text)"),
 		)
 		sizer.Add(self.recordRouting, flag=wx.ALL, border=12)
+		# Translators: Separate optional input permission; not granted by status/diagnostics consent.
+		self.allowMessageRoute = wx.CheckBox(
+			self,
+			label=_("Allow one simulated routing press on a Linux message (records numeric diagnostics)"),
+		)
+		sizer.Add(self.allowMessageRoute, flag=wx.ALL, border=12)
 		buttons = self.CreateButtonSizer(wx.OK | wx.CANCEL)
 		# Translators: Confirms temporary authorization; this is not persistent configuration.
 		self.FindWindowById(wx.ID_OK).SetLabel(_("Authorize for five minutes"))

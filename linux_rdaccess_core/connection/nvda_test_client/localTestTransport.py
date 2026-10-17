@@ -47,6 +47,7 @@ def validateOperation(request: Any) -> str:
 			(request["version"] == 1 and request["action"] in _ACTIONS)
 			or (request["version"] == 2 and request["action"] == "braille_trace")
 			or (request["version"] == 3 and request["action"] == "braille_outcomes")
+			or (request["version"] == 4 and request["action"] == "braille_message_route")
 		)
 	):
 		raise ValueError("Invalid local test operation")
@@ -79,9 +80,29 @@ def sanitizeOutcomesReply(reply: Any) -> dict[str, Any]:
 
 
 def _replySanitizer(action: str):
+	if action == "braille_message_route":
+		return sanitizeMessageRouteReply
 	if action == "braille_outcomes":
 		return sanitizeOutcomesReply
 	return sanitizeTraceReply if action == "braille_trace" else sanitizeReply
+
+
+def sanitizeMessageRouteReply(reply: Any) -> dict[str, Any]:
+	if type(reply) is not dict or set(reply) != {"result", "status", "message_route"}:
+		raise ValueError("Invalid simulated message route response")
+	base = sanitizeReply({"result": reply["result"], "status": reply["status"]})
+	route = reply["message_route"]
+	if (
+		type(route) is not dict
+		or set(route) != {"outcome", "simulated", "routing_index"}
+		or type(route["outcome"]) is not str
+		or route["outcome"] not in {"queued", "refused", "not_authorized", "already_attempted", "unavailable"}
+		or route["simulated"] is not True
+		or type(route["routing_index"]) is not int
+		or route["routing_index"] != 0
+	):
+		raise ValueError("Invalid simulated message route metadata")
+	return {**base, "message_route": dict(route)}
 
 
 def _nonce(value: Any) -> str:
@@ -127,7 +148,10 @@ def request(
 ) -> dict[str, Any]:
 	validatePipeAddress(address)
 	_key(key)
-	operation = {"version": {"braille_trace": 2, "braille_outcomes": 3}.get(action, 1), "action": action}
+	operation = {
+		"version": {"braille_trace": 2, "braille_outcomes": 3, "braille_message_route": 4}.get(action, 1),
+		"action": action,
+	}
 	validateOperation(operation)
 	from .localTestWindows import Pipe
 

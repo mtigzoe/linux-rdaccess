@@ -1,0 +1,277 @@
+"""The coordinator waits for new evidence and never retries a route."""
+
+import contextlib
+import io
+import json
+import shlex
+import unittest
+from unittest import mock
+
+from diagnostics.nvda import simulate_message_routing as coordinator
+from diagnostics.nvda.simulate_message_routing import public_observation, software_check
+from linux_rdaccess_core.routing_automation import wait_and_route
+
+
+def trace(events=(), *, drops=0, control=True):
+    return {"result": "connected", "status": {"remote_control_active": control,
+            "semantic_braille_negotiated": True}, "braille_trace": {
+            "available": True, "dropped": drops, "events": list(events)}}
+
+
+MESSAGE = {"event": "message_shown", "linux_owned": True, "control": True, "capture": False}
+
+
+class RoutingAutomationTests(unittest.TestCase):
+    def setUp(self):
+        self.now = 0
+        self.calls = []
+        self.attempts = []
+        self.traces = iter([trace(), trace([MESSAGE]), trace([MESSAGE])])
+        self.last_trace = trace()
+        self.route_result = "queued"
+        self.client = mock.Mock()
+
+        def operation(action):
+            self.calls.append(action)
+            if action == "braille_trace":
+                self.last_trace = next(self.traces, self.last_trace)
+                return self.last_trace
+            if action == "braille_outcomes":
+                return {"braille_outcomes": {"available": True, "dropped": 0, "events": []}}
+            if action == "braille_message_route":
+                return {"message_route": {"outcome": self.route_result}}
+            self.fail("Unexpected operation")
+
+        self.client.operation.side_effect = operation
+
+    def sleep(self, duration):
+        self.now += duration
+
+    def run_wait(self):
+        return wait_and_route(self.client, wait_seconds=1, clock=lambda: self.now,
+                              sleep=self.sleep, on_route_attempt=lambda: self.attempts.append(True))
+
+    def test_new_message_causes_exactly_one_simulated_route(self):
+        result = self.run_wait()
+        self.assertEqual(self.calls.count("braille_message_route"), 1)
+        self.assertEqual(self.attempts, [True])
+        self.assertTrue(result["simulated"])
+        self.assertEqual(result["physical_braille"], "unverified")
+
+    def test_old_message_is_not_reused_as_a_new_test(self):
+        self.traces = iter([trace([MESSAGE])])
+        result = self.run_wait()
+        self.assertEqual(result["outcome"], "no_new_message_no_route_sent")
+        self.assertNotIn("braille_message_route", self.calls)
+
+    def test_overflow_prevents_route(self):
+        self.traces = iter([trace(), trace(drops=1)])
+        with self.assertRaises(ValueError):
+            self.run_wait()
+        self.assertNotIn("braille_message_route", self.calls)
+        self.assertEqual(self.attempts, [])
+
+    def test_can_arm_local_then_route_a_new_remote_message(self):
+        self.traces = iter([trace(control=False), trace([MESSAGE])])
+        self.run_wait()
+        self.assertEqual(self.calls.count("braille_message_route"), 1)
+
+    def test_local_control_cannot_consume_the_routing_permission(self):
+        self.traces = iter([trace(control=False), trace([MESSAGE], control=False)])
+        result = self.run_wait()
+        self.assertEqual(result["outcome"], "no_new_message_no_route_sent")
+        self.assertNotIn("braille_message_route", self.calls)
+        self.assertEqual(self.attempts, [])
+
+    def test_refused_request_is_not_retried(self):
+        self.route_result = "refused"
+        result = self.run_wait()
+        self.assertEqual(result["route_reply"]["message_route"]["outcome"], "refused")
+        self.assertEqual(self.calls.count("braille_message_route"), 1)
+
+    def test_ambiguous_dispatch_exception_is_not_retried(self):
+        original = self.client.operation.side_effect
+
+        def fail(action):
+            if action == "braille_message_route":
+                self.calls.append(action)
+                raise TimeoutError("No response after potential execution")
+            return original(action)
+
+        self.client.operation.side_effect = fail
+        with self.assertRaises(TimeoutError):
+            self.run_wait()
+        self.assertEqual(self.calls.count("braille_message_route"), 1)
+
+    def test_linux_observation_drops_private_or_unbounded_fields(self):
+        result = public_observation({
+            "name": "PRIVATE", "text": "PRIVATE", "before_caret": 11, "after_caret": 11,
+            "elapsed_ms": float("inf"), "events": [
+                {"type": "caret-moved", "caret_offset": 9, "elapsed_ms": 20, "text": "PRIVATE"},
+                {"type": "caret-moved", "caret_offset": 10, "elapsed_ms": float("nan")},
+            ],
+        })
+        self.assertNotIn("PRIVATE", str(result))
+        self.assertNotIn("elapsed_ms", result)
+        self.assertEqual(result["caret_events"], [{"caret_offset": 9, "elapsed_ms": 20}])
+
+    def result_fixture(self):
+        return {"route_reply": {"message_route": {"outcome": "queued"}},
+                "trace_after": {"available": True, "dropped": 0},
+                "outcomes_before": {"events": []},
+                "outcomes_after": {"available": True, "dropped": 0,
+                                   "events": [{"event": "message_dismissed"}]},
+                "linux_observer_exit_code": 0,
+                "request_started_utc": "2026-10-14T22:00:05+00:00",
+                "linux_ready_received_utc": "2026-10-14T22:00:00+00:00",
+                "linux_final_received_utc": "2026-10-14T22:00:45+00:00",
+                "windows_final_received_utc": "2026-10-14T22:00:46+00:00",
+                "linux_observation": {"dropped_events": 0, "same_initial_focus": True,
+                                      "focus_changed_during_observation": False,
+                                      "before_caret": 11, "after_caret": 11, "caret_events": []}}
+
+    def test_queue_acceptance_alone_is_not_a_software_pass(self):
+        result = self.result_fixture()
+        self.assertEqual(software_check(result), "pass")
+        result["outcomes_after"]["events"] = []
+        self.assertEqual(software_check(result), "inconclusive")
+        result["outcomes_after"]["events"] = [{"event": "message_dismissed"}]
+        result["outcomes_after"]["dropped"] = 1
+        self.assertEqual(software_check(result), "inconclusive")
+
+    def test_caret_round_trip_or_remote_action_fails_the_scripted_check(self):
+        result = self.result_fixture()
+        result["linux_observation"]["caret_events"] = [{"caret_offset": 9}, {"caret_offset": 11}]
+        self.assertEqual(software_check(result), "fail")
+        result["linux_observation"]["caret_events"] = []
+        result["outcomes_after"]["events"].append({"event": "activation_attempted"})
+        self.assertEqual(software_check(result), "fail")
+
+    def test_unknown_outcome_or_observer_ending_before_route_is_inconclusive(self):
+        result = self.result_fixture()
+        result["outcomes_after"]["events"].append({"event": "outcome_unknown"})
+        self.assertEqual(software_check(result), "inconclusive")
+        result = self.result_fixture()
+        result["linux_final_received_utc"] = "2026-10-14T22:00:01+00:00"
+        self.assertEqual(software_check(result), "inconclusive")
+
+    def test_windows_snapshot_before_linux_final_cannot_pass(self):
+        result = self.result_fixture()
+        result["windows_final_received_utc"] = "2026-10-14T22:00:06+00:00"
+        self.assertEqual(software_check(result), "inconclusive")
+        del result["windows_final_received_utc"]
+        self.assertEqual(software_check(result), "inconclusive")
+
+    def run_with_late_windows_evidence(self, *, drops=0, late_events=()):
+        early = self.result_fixture()
+        ready = {"observer": "ready", "application": "mousepad", "input_sent": False}
+        final = {"kind": "linux-atspi-caret-observation", **early["linux_observation"]}
+        final["events"] = []
+        process = mock.Mock(stdout=io.StringIO(json.dumps(ready)+'\n'+json.dumps(final)+'\n'))
+        process.poll.return_value = 0
+        process.wait.return_value = 0
+        reads = []
+
+        def operation(action):
+            reads.append((action, process.wait.called))
+            if action == "status":
+                return trace()
+            if action == "braille_trace":
+                return {"braille_trace": {"available": True, "dropped": drops, "events": []}}
+            if action == "braille_outcomes":
+                return {"braille_outcomes": {"available": True, "dropped": 0,
+                        "events": [{"event": "message_dismissed"}, *late_events]}}
+            self.fail("Unexpected operation")
+
+        self.client.operation.side_effect = operation
+        output = io.StringIO()
+        fixed_times = [coordinator.datetime.fromisoformat(early[key]) for key in (
+            "linux_ready_received_utc", "linux_final_received_utc", "windows_final_received_utc")]
+        with mock.patch.object(coordinator.os, "name", "nt"), \
+                mock.patch.object(coordinator, "AuthorizedClient", return_value=self.client), \
+                mock.patch.object(coordinator.subprocess, "Popen", return_value=process), \
+                mock.patch.object(coordinator, "wait_and_route", return_value=early), \
+                mock.patch.object(coordinator, "datetime", wraps=coordinator.datetime) as dates, \
+                contextlib.redirect_stdout(output):
+            dates.now.side_effect = fixed_times
+            code = coordinator.main(["--execute", "--observer-path", "/reviewed/observe_routing.py"])
+        return code, json.loads(output.getvalue().splitlines()[-1]), reads
+
+    def test_late_caret_attempt_after_early_dismissal_prevents_pass(self):
+        code, result, reads = self.run_with_late_windows_evidence(
+            late_events=[{"event": "caret_attempted", "offset": 11}])
+        self.assertEqual(code, 1)
+        self.assertEqual(result["software_check"], "fail")
+        self.assertIn(("braille_outcomes", True), reads)
+        self.assertEqual(result["outcomes_after_dispatch"]["events"], [{"event": "message_dismissed"}])
+
+    def test_late_trace_overflow_after_early_dismissal_prevents_pass(self):
+        code, result, reads = self.run_with_late_windows_evidence(drops=1)
+        self.assertEqual(code, 2)
+        self.assertEqual(result["software_check"], "inconclusive")
+        self.assertIn(("braille_trace", True), reads)
+
+    def test_complete_coordinator_wires_ssh_ready_before_one_route(self):
+        original = self.client.operation.side_effect
+        outcome_reads = []
+
+        def operation(action):
+            if action == "status":
+                return trace()
+            if action == "braille_outcomes":
+                outcome_reads.append(action)
+                events = [] if len(outcome_reads) == 1 else [{"event": "message_dismissed"}]
+                return {"braille_outcomes": {"available": True, "dropped": 0, "events": events}}
+            return original(action)
+
+        self.client.operation.side_effect = operation
+        ready = {"observer": "ready", "application": "mousepad", "input_sent": False, "before_caret": 11}
+        final = {"kind": "linux-atspi-caret-observation", "before_caret": 11, "after_caret": 11,
+                 "dropped_events": 0, "same_initial_focus": True,
+                 "focus_changed_during_observation": False, "events": []}
+        process = mock.Mock(stdout=io.StringIO(json.dumps(ready)+'\n'+json.dumps(final)+'\n'))
+        process.poll.return_value = 0
+        process.wait.return_value = 0
+        output = io.StringIO()
+        path = "/reviewed checkout/observe_routing.py"
+        with mock.patch.object(coordinator.os, "name", "nt"), \
+                mock.patch.object(coordinator, "AuthorizedClient", return_value=self.client), \
+                mock.patch.object(coordinator.subprocess, "Popen", return_value=process) as start, \
+                contextlib.redirect_stdout(output):
+            code = coordinator.main(["--execute", "--observer-path", path])
+        self.assertEqual(code, 0)
+        self.assertEqual(self.calls.count("braille_message_route"), 1)
+        self.assertIn("StrictHostKeyChecking=yes", start.call_args.args[0])
+        self.assertEqual(shlex.split(start.call_args.args[0][-1])[2], path)
+        result = json.loads(output.getvalue().splitlines()[-1])
+        self.assertEqual(result["software_check"], "pass")
+        self.assertEqual(result["physical_braille"], "unverified")
+
+    def test_unready_linux_observer_prevents_any_route(self):
+        self.client.operation.side_effect = lambda action: trace()
+        process = mock.Mock(stdout=io.StringIO('{"observer":"unavailable","text":"PRIVATE"}\n'))
+        process.poll.return_value = 0
+        process.wait.return_value = 0
+        output = io.StringIO()
+        with mock.patch.object(coordinator.os, "name", "nt"), \
+                mock.patch.object(coordinator, "AuthorizedClient", return_value=self.client), \
+                mock.patch.object(coordinator.subprocess, "Popen", return_value=process), \
+                contextlib.redirect_stdout(output):
+            code = coordinator.main(["--execute", "--observer-path", "/reviewed/observe_routing.py"])
+        self.assertEqual(code, 2)
+        self.client.operation.assert_called_once_with("status")
+        self.assertNotIn("PRIVATE", output.getvalue())
+
+    def test_preflight_refusal_is_reported_as_no_route_sent(self):
+        self.client.operation.side_effect = lambda action: trace()
+        ready = {"observer": "ready", "application": "mousepad", "input_sent": False}
+        process = mock.Mock(stdout=io.StringIO(json.dumps(ready)+'\n'))
+        process.poll.return_value = 0
+        output = io.StringIO()
+        with mock.patch.object(coordinator.os, "name", "nt"), \
+                mock.patch.object(coordinator, "AuthorizedClient", return_value=self.client), \
+                mock.patch.object(coordinator.subprocess, "Popen", return_value=process), \
+                mock.patch.object(coordinator, "wait_and_route", side_effect=ValueError("full trace")), \
+                contextlib.redirect_stdout(output):
+            self.assertEqual(coordinator.main(["--execute", "--observer-path", "/reviewed/observe_routing.py"]), 2)
+        self.assertEqual(json.loads(output.getvalue().splitlines()[-1])["route_outcome"], "not_sent")
