@@ -1,0 +1,26 @@
+name: Issue 123 isolated TLS concurrency probe
+
+on:
+  pull_request:
+    paths:
+      - 'tests/integration/ssl_thread_probe.py'
+      - '.github/workflows/issue-123-tls-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tls-loopback:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show pinned OS Python and OpenSSL
+        run: |
+          /usr/bin/python3 --version
+          openssl version
+      - name: Compare concurrent SSL I/O with serialized handshake on localhost
+        env:
+          LRD_TLS_PROBE_ITERATIONS: "150"
+        run: /usr/bin/python3 tests/integration/ssl_thread_probe.py
