@@ -1,0 +1,28 @@
+name: Issue 123 patched SSL post-connect delivery
+
+on:
+  pull_request:
+    paths:
+      - 'linux_rdaccess_core/connection/remote_access.py'
+      - 'tests/unit/transport/test_tls_socket_serialization.py'
+      - 'tests/integration/ssl_patched_postconnect_probe.py'
+      - '.github/workflows/issue-123-ssl-patched.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  patched-postconnect:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify pinned OS Python and OpenSSL
+        run: |
+          /usr/bin/python3 --version
+          openssl version
+      - name: Exercise actual patched SSL socket with concurrent application frames
+        env:
+          LRD_POSTCONNECT_TLS_PROBE_ITERATIONS: "200"
+        run: /usr/bin/python3 -X faulthandler tests/integration/ssl_patched_postconnect_probe.py
