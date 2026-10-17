@@ -166,8 +166,10 @@ def exercise():
                 else:
                     counts["missing_app_frames"] += 1
                     if overlaps:
-                        counts["missing_with_ssl_overlap"] += 1
-                counts["ssl_overlap_sessions"] += bool(overlaps)
+                        counts["missing_with_concurrent_attempts"] += 1
+                # These are simultaneous call attempts at the wrapper,
+                # not overlapping native SSL operations: the gate serializes.
+                counts["concurrent_call_attempt_sessions"] += bool(overlaps)
                 counts["write_error_sessions"] += bool(send_errors)
                 with suppress(OSError):
                     client.close()
