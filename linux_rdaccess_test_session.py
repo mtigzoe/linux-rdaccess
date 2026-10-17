@@ -114,7 +114,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=(
         "status", "doctor", "start", "launch-nvda", "prepare", "start-all", "nvda-status", "nvda-braille-trace",
-        "nvda-braille-outcomes", "cancel",
+        "nvda-braille-outcomes", "nvda-route-message", "cancel",
     ))
     parser.add_argument("--session-file", type=Path,
                         help="Optional DPAPI-protected NVDA consent file; never a relay key")
@@ -124,7 +124,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--confirm-launch", action="store_true",
                         help="Explicitly authorize launching NVDA, without connecting its add-on")
     args = parser.parse_args(argv)
-    if args.command in ("start-all", "nvda-status", "nvda-braille-trace", "nvda-braille-outcomes", "cancel"):
+    if args.command in ("start-all", "nvda-status", "nvda-braille-trace", "nvda-braille-outcomes", "nvda-route-message", "cancel"):
         if args.confirm_start or args.confirm_launch or args.nvda_path:
             parser.error("NVDA test commands use NVDA authorization, not launch/restart flags")
         from linux_rdaccess_core.connection.test_session import (
@@ -135,7 +135,8 @@ def main(argv: list[str] | None = None) -> int:
             result, code = start_all(probe, path=args.session_file)
         else:
             action = {"nvda-status": "status", "nvda-braille-trace": "braille_trace",
-                      "nvda-braille-outcomes": "braille_outcomes", "cancel": "cancel"}[args.command]
+                      "nvda-braille-outcomes": "braille_outcomes",
+                      "nvda-route-message": "braille_message_route", "cancel": "cancel"}[args.command]
             result, code = windows_operation(action, args.session_file)
             result["mode"] = args.command
         print(json.dumps(result, sort_keys=True, indent=2))
