@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import unittest
 
+from linux_rdaccess_core.connection import remote_access
+
 from tests.unit.input.test_lifecycle_invariants import LifecycleHarness
 
 
@@ -32,6 +34,24 @@ class RecoveryEdgeCaseTests(LifecycleHarness, unittest.TestCase):
                   if event[1] == 0xA2]
         self.assertEqual([pressed for _, _, pressed in events],
                          [True, False])
+
+    def test_v120_and_v121_controller_upgrades_preserve_original_backup(self):
+        """A new controller helper must replace installed old versions safely."""
+        controller, path, _ = self._patched_controller()
+        current = path.read_text(encoding="utf-8")
+        backup = path.with_name(path.name + ".linux-rdaccess-backup")
+        for previous in (remote_access.LEGACY_COMPAT_MARKER_V120,
+                         remote_access.LEGACY_COMPAT_MARKER_V121):
+            with self.subTest(previous=previous):
+                path.write_text(
+                    current.replace(remote_access.LEGACY_COMPAT_MARKER, previous),
+                    encoding="utf-8",
+                )
+                self.assertTrue(remote_access.patch_legacy_orca_remote_controller(path))
+                self.assertEqual(path.read_text(encoding="utf-8"), current)
+                self.assertEqual(backup.read_text(encoding="utf-8"),
+                                 self.UPSTREAM_CONTROLLER)
+                self.assertFalse(remote_access.patch_legacy_orca_remote_controller(path))
 
     def test_queued_command_expires_while_handoff_release_is_blocked(self):
         """An in-flight reset must expire queued work before slow key cleanup."""
