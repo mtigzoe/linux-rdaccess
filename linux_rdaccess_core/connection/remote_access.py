@@ -1238,8 +1238,9 @@ if hasattr(TCPTransport, "close"):
 '''
 
 
-TRANSPORT_OUTBOUND_MARKER = "# linux-rdaccess relay output lifetime v1"
-_TRANSPORT_OUTBOUND_HOOK = TRANSPORT_OUTBOUND_MARKER + '''
+TRANSPORT_OUTBOUND_MARKER_V1 = "# linux-rdaccess relay output lifetime v1"
+TRANSPORT_OUTBOUND_MARKER = "# linux-rdaccess relay output lifetime v2"
+_TRANSPORT_OUTBOUND_HOOK_V1 = TRANSPORT_OUTBOUND_MARKER_V1 + '''
 _linux_rdaccess_outbound_init = TCPTransport.__init__
 def _linux_rdaccess_outbound_owned_init(self, *args, **kwargs):
     self._linux_rdaccess_outbound_lock = _linux_rdaccess_transport_threading.RLock()
@@ -1271,6 +1272,48 @@ if hasattr(TCPTransport, "send"):
     TCPTransport.send = _linux_rdaccess_outbound_send
 '''
 
+# Keep the exact v1 hook to allow safe, backup-preserving upgrades.
+_TRANSPORT_OUTBOUND_HOOK = (
+    _TRANSPORT_OUTBOUND_HOOK_V1.replace(
+        TRANSPORT_OUTBOUND_MARKER_V1, TRANSPORT_OUTBOUND_MARKER, 1)
+    + '''
+# Complete the initial TLS handshake writes on the connection thread before
+# upstream TCPTransport.run() starts the sender and receiver concurrently.
+# TLS 1.3 session tickets can wake select() before application data arrives;
+# reading and writing one SSLSocket from two threads is not safe.
+if "RelayTransport" in globals():
+    _linux_rdaccess_original_relay_on_connected = RelayTransport.on_connected
+
+    def _linux_rdaccess_relay_handshake_before_receive(self):
+        # Preserve upstream send() callbacks and lifetime checks. Those
+        # callbacks queue protocol_version and join, in that order.
+        _linux_rdaccess_original_relay_on_connected(self)
+        if self.queue_thread is not None:
+            return
+        active_socket = self.server_sock
+        if active_socket is None:
+            return
+        while self.server_sock is active_socket and self.connected:
+            try:
+                frame = self.queue.get_nowait()
+            except queue.Empty:
+                break
+            if frame is None:
+                # Preserve the shutdown sentinel if close() raced startup.
+                self.queue.put(None)
+                break
+            try:
+                active_socket.sendall(frame)
+            except OSError:
+                # The connection guard in run() detects this invalidated
+                # socket and avoids launching a sender on a dead session.
+                self._disconnect()
+                break
+
+    RelayTransport.on_connected = _linux_rdaccess_relay_handshake_before_receive
+'''
+)
+
 _TRANSPORT_SEND_SOURCE = '''
 def send(self, type, **kwargs):
     obj = self.serializer.serialize(type=type, **kwargs)
@@ -1280,18 +1323,24 @@ def send(self, type, **kwargs):
 
 
 def _strip_transport_outbound(text: str) -> str:
-    if TRANSPORT_OUTBOUND_MARKER not in text:
-        return text
-    if (text.count(TRANSPORT_OUTBOUND_MARKER) != 1
-            or not text.endswith(_TRANSPORT_OUTBOUND_HOOK)):
-        raise ValueError("incomplete relay output lifetime patch")
-    return text[:-len(_TRANSPORT_OUTBOUND_HOOK)].rstrip("\n") + "\n"
+    for marker, hook in (
+        (TRANSPORT_OUTBOUND_MARKER, _TRANSPORT_OUTBOUND_HOOK),
+        (TRANSPORT_OUTBOUND_MARKER_V1, _TRANSPORT_OUTBOUND_HOOK_V1),
+    ):
+        if marker not in text:
+            continue
+        if text.count(marker) != 1 or not text.endswith(hook):
+            raise ValueError("incomplete relay output lifetime patch")
+        return text[:-len(hook)].rstrip("\n") + "\n"
+    return text
 
 
 def _patch_transport_outbound(text: str) -> str:
     if TRANSPORT_OUTBOUND_MARKER in text:
         _strip_transport_outbound(text)
         return text
+    if TRANSPORT_OUTBOUND_MARKER_V1 in text:
+        text = _strip_transport_outbound(text)
     tcp = _unique_class(ast.parse(text, feature_version=(3, 10)), "TCPTransport")
     send = _unique_method(tcp, "send") if tcp is not None else None
     if send is not None and not _ast_equal(send, ast.parse(_TRANSPORT_SEND_SOURCE).body[0]):
