@@ -19,6 +19,7 @@ from .localTestSession import LocalStatusSession
 from .localTestTransport import (
 	descriptorPath,
 	publishDescriptor,
+	sanitizeMessageRouteReply,
 	sanitizeOutcomesReply,
 	sanitizeReply,
 	sanitizeTraceReply,
@@ -47,6 +48,7 @@ class LocalTestService:
 		path: Path | None = None,
 		routingTrace: Callable[[], dict[str, Any]] | None = None,
 		routingOutcomes: Callable[[], dict[str, Any]] | None = None,
+		messageRoute: Callable[[Callable[[], bool]], str] | None = None,
 	):
 		self.session = session
 		self._status = status
@@ -56,12 +58,17 @@ class LocalTestService:
 		self._path = path
 		self._routingTrace = routingTrace
 		self._routingOutcomes = routingOutcomes
+		self._messageRoute = messageRoute
+		self._messageRouteAllowed = False
+		self._messageRouteUsed = False
 		self.worker: threading.Thread | None = None
 		self._remote: RemoteConnection | None = None
 		self._connectAllowed = False
 		self._watchdogScheduled = False
 
-	def start(self, *, allowConnect: bool, remote: RemoteConnection | None) -> None:
+	def start(
+		self, *, allowConnect: bool, remote: RemoteConnection | None, allowMessageRoute: bool = False
+	) -> None:
 		if threading.current_thread() is not threading.main_thread():
 			raise RuntimeError("Consent requires NVDA's main thread")
 		if not self._permitted():
@@ -72,6 +79,8 @@ class LocalTestService:
 		cancelled = self.session.cancellationEvent()
 		self._remote = remote
 		self._connectAllowed = allowConnect is True
+		self._messageRouteAllowed = allowMessageRoute is True
+		self._messageRouteUsed = False
 		self._watchdogScheduled = False
 		self.worker = threading.Thread(
 			target=self._run,
@@ -173,7 +182,30 @@ class LocalTestService:
 			else:
 				result = remote.state() if remote is not None else "unavailable"
 			reply = {"result": result, "status": self._status()}
-			if action == "braille_trace":
+			if action == "braille_message_route":
+				outcome = "not_authorized"
+				if self._messageRouteAllowed:
+					outcome = "already_attempted"
+					if not self._messageRouteUsed:
+						# Consume before calling; an ambiguous failure must never be retried.
+						self._messageRouteUsed = True
+						outcome = "unavailable"
+						if self._messageRoute is not None:
+
+							def permit():
+								return (
+									not cancelled.is_set()
+									and self.session.isCurrent(descriptor)
+									and self._permitted()
+								)
+
+							try:
+								outcome = self._messageRoute(permit)
+							except Exception:
+								# No retry or arbitrary exception text in the response/logs.
+								outcome = "unavailable"
+				reply["message_route"] = {"outcome": outcome, "simulated": True, "routing_index": 0}
+			elif action == "braille_trace":
 				reply["braille_trace"] = (
 					self._routingTrace() if self._routingTrace is not None else emptyTrace()
 				)
@@ -184,9 +216,13 @@ class LocalTestService:
 			return reply
 
 		sanitize = (
-			sanitizeOutcomesReply
-			if action == "braille_outcomes"
-			else (sanitizeTraceReply if action == "braille_trace" else sanitizeReply)
+			sanitizeMessageRouteReply
+			if action == "braille_message_route"
+			else (
+				sanitizeOutcomesReply
+				if action == "braille_outcomes"
+				else (sanitizeTraceReply if action == "braille_trace" else sanitizeReply)
+			)
 		)
 		return waitForMainThreadStatus(execute, self._dispatch, cancelled=cancelled, sanitize=sanitize)
 
