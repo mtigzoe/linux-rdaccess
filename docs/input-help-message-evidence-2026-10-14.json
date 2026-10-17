@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "audit_source_commit": "f247d771e6b522f5fec8bde0c31eb7f928d0d42d",
+  "date_utc": "2026-10-14",
+  "scope": "One user-reported input-help message appearance and return of Linux line; not routing dismissal",
+  "environment": {
+    "companion_manifest_on_disk": "20261014.0.1",
+    "installed_python_files_match_reviewed_package": 15,
+    "loaded_companion_modules_attested": false,
+    "authenticated_outcomes_v3_available": true,
+    "linux_controller_installed": "v121",
+    "orca_package": "42.0-1ubuntu2",
+    "nvda_executable_product_version": "2026.2",
+    "display_model_user_reported": "Eurobraille b.note",
+    "display_driver_firmware_cells_and_active_profile": "unverified"
+  },
+  "human_observation": {
+    "source": "user-confirmation",
+    "requested_gesture": "NVDA+1 once, then leave Linux keys untouched for ten seconds",
+    "report": "NVDA announced input help on; a message appeared and the Linux line returned",
+    "exact_gesture_time_utc": null,
+    "exact_message_text_and_duration": null,
+    "physical_cursor_preservation_confirmed": false
+  },
+  "prompt_timing": {
+    "not_before_utc": "2026-10-14T18:30:18Z",
+    "basis": "UTC tool read immediately before the recorder prompt; not a timestamp of the human gesture"
+  },
+  "windows_observation": {
+    "source": "authenticated documented braille_trace v2 and braille_outcomes v3 reads",
+    "authorization": "active throughout retained recording",
+    "transport_connected": true,
+    "bridge_attached": true,
+    "remote_control_active": true,
+    "semantic_braille_negotiated": true,
+    "temporary_message_supported": true,
+    "snapshot_count": 34,
+    "trace": {
+      "first_reply_utc": "2026-10-14T18:30:07.744134+00:00",
+      "last_reply_utc": "2026-10-14T18:30:59.510171+00:00",
+      "first_snapshot_ms": 91458,
+      "last_snapshot_ms": 143223,
+      "retained_events": 12,
+      "first_dropped": 48,
+      "last_dropped": 80
+    },
+    "outcomes": {
+      "first_reply_utc": "2026-10-14T18:30:07.874324+00:00",
+      "last_reply_utc": "2026-10-14T18:30:59.639475+00:00",
+      "first_snapshot_ms": 91586,
+      "last_snapshot_ms": 143352,
+      "retained_events": 12,
+      "first_dropped": 6,
+      "last_dropped": 20
+    },
+    "limitations": "Both ledgers overflowed before the test prompt. Retained routing attempts are setup activity; no complete timer/gesture/absence-of-send inference is possible."
+  },
+  "linux_observation": {
+    "source": "read-only existing Mousepad AT-SPI observer",
+    "elapsed_ms": 60052.7,
+    "role": "text",
+    "before_caret": 37,
+    "after_caret": 43,
+    "same_initial_focus": true,
+    "focus_changed_during_observation": false,
+    "dropped_events": 0,
+    "caret_events": [
+      {
+        "elapsed_ms": 9775.5,
+        "caret_offset": 36
+      },
+      {
+        "elapsed_ms": 10390.7,
+        "caret_offset": 35
+      },
+      {
+        "elapsed_ms": 11004.4,
+        "caret_offset": 36
+      },
+      {
+        "elapsed_ms": 11922.6,
+        "caret_offset": 37
+      },
+      {
+        "elapsed_ms": 13769.7,
+        "caret_offset": 36
+      },
+      {
+        "elapsed_ms": 15305.7,
+        "caret_offset": 37
+      },
+      {
+        "elapsed_ms": 15891.1,
+        "caret_offset": 38
+      },
+      {
+        "elapsed_ms": 19607.8,
+        "caret_offset": 39
+      },
+      {
+        "elapsed_ms": 19914.6,
+        "caret_offset": 40
+      },
+      {
+        "elapsed_ms": 20113.3,
+        "caret_offset": 41
+      },
+      {
+        "elapsed_ms": 20524.5,
+        "caret_offset": 42
+      },
+      {
+        "elapsed_ms": 22988.4,
+        "caret_offset": 43
+      }
+    ],
+    "limitations": "Elapsed time is relative to Linux observer start. No precise clock-aligned human gesture was captured; movement is not attributed to NVDA+1, routing or user navigation. Text was not captured."
+  },
+  "acceptance": {
+    "input_help_on_announcement": "Confirmed live PASS, user-reported",
+    "physical_message_appearance_and_linux_line_return": "Confirmed live PASS, limited",
+    "configured_timeout_accuracy": "Not verified",
+    "caret_and_physical_cursor_preservation": "Inconclusive",
+    "routing_key_message_dismissal": "Not tested by this interaction",
+    "issue_57": "NOT READY",
+    "issue_72": "NOT READY",
+    "issue_59": "Keep open independently"
+  },
+  "agent_actions": {
+    "desktop_input_sent": false,
+    "settings_changed": false,
+    "automatic_consent_renewal": false
+  }
+}
