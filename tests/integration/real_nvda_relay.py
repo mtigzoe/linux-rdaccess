@@ -378,7 +378,7 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
                         master_peer.sendall((json.dumps({
                             "type": "lrd_issue123_probe_back", "phase": phase,
                             "seq": seq,
-                        }) + "\\n").encode("utf-8"))
+                        }) + "\n").encode("utf-8"))
                 except OSError as exc:
                     peer_errors.append(type(exc).__name__)
 
