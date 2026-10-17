@@ -28,12 +28,16 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
     # Observe real relay inbound key frames without modifying forwarding.
     relay_key_messages = []
     relay_handshake_messages = []
+    relay_outbound_probes = []
     original_process = module.Client.process_message
     async def observed_process(client, line):
         try:
             message = json.loads(line)
             if message.get("type") in ("join", "protocol_version"):
                 relay_handshake_messages.append((client.id, message.get("type"), bool(message.get("channel"))))
+            if message.get("type") == "lrd_issue123_probe_out":
+                relay_outbound_probes.append((client.id, message.get("phase"),
+                                              message.get("seq")))
             if message.get("type") == "key":
                 relay_key_messages.append({
                     "client_id": client.id,
@@ -122,6 +126,11 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
         controller = RemoteController(transport)
         # Observe parsed incoming frames at the Orca callback boundary.
         controller_key_callbacks = []
+        orca_inbound_probes = []
+        transport.callback_manager.register_callback(
+            "msg_lrd_issue123_probe_back",
+            lambda **event: orca_inbound_probes.append(
+                (event.get("phase"), event.get("seq"))))
         transport.callback_manager.register_callback(
             "msg_key", lambda **event: controller_key_callbacks.append(dict(event)))
 
@@ -351,6 +360,68 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
                 "unexpected real controller membership: " +
                 repr(controller.connected_clients))
 
+        def exercise_postconnect_frames(master_peer, phase):
+            """Post-join outbound and inbound frames on the same SSL socket.
+
+            Simultaneous application traffic is deliberately independent of
+            the initial handshake, and is delivered to the real relay and
+            upstream Orca transport; no keys reach the runner's desktop.
+            """
+            count = 32
+            sending = threading.Event()
+            peer_errors = []
+
+            def master_to_orca():
+                try:
+                    sending.set()
+                    for seq in range(count):
+                        master_peer.sendall((json.dumps({
+                            "type": "lrd_issue123_probe_back", "phase": phase,
+                            "seq": seq,
+                        }) + "\\n").encode("utf-8"))
+                except OSError as exc:
+                    peer_errors.append(type(exc).__name__)
+
+            worker = threading.Thread(target=master_to_orca)
+            worker.start()
+            try:
+                assert sending.wait(2), "post-connect sender never began"
+                for seq in range(count):
+                    transport.send("lrd_issue123_probe_out",
+                                   phase=phase, seq=seq)
+            finally:
+                worker.join(3)
+
+            assert not worker.is_alive(), "post-connect peer sender blocked"
+            assert not peer_errors, "post-connect peer send failed: " + repr(peer_errors)
+            deadline = time.monotonic() + 8
+            while time.monotonic() < deadline:
+                outgoing = [seq for _, p, seq in relay_outbound_probes
+                            if p == phase]
+                incoming = [seq for p, seq in orca_inbound_probes
+                            if p == phase]
+                if len(outgoing) >= count and len(incoming) >= count:
+                    break
+                time.sleep(0.02)
+
+            outgoing = [seq for _, p, seq in relay_outbound_probes
+                        if p == phase]
+            incoming = [seq for p, seq in orca_inbound_probes
+                        if p == phase]
+            expected = list(range(count))
+            assert outgoing == expected and incoming == expected, (
+                "post-connect relay frame delivery incomplete: " + repr({
+                    "phase": phase,
+                    "outbound_count": len(outgoing),
+                    "inbound_count": len(incoming),
+                    "outbound_sequence_ok": outgoing == expected,
+                    "inbound_sequence_ok": incoming == expected,
+                    "transport_connected": transport.connected,
+                    "relay": server_snapshot(),
+                    "ssl_io_overlaps": socket_io_overlaps[-12:],
+                    "socket_writes": writes[-12:],
+                }))
+
         peers = []
         try:
             start_orca()
@@ -360,6 +431,7 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
             authorized = master(channel)
             peers.append(authorized)
             members(1)
+            exercise_postconnect_frames(authorized, "first")
             send_key(authorized, True)
             await_keys(1)
             assert key_events[0]["pressed"] is True
@@ -396,6 +468,7 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
             recovered = master(channel)
             peers.append(recovered)
             members(1)
+            exercise_postconnect_frames(recovered, "reconnect")
             assert len(key_events) == previous_keys, "old key replayed after reconnect"
             # A distinct key identifies fresh-session delivery even if the
             # disconnect callback generated a Shift release independently.
