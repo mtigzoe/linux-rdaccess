@@ -4,9 +4,12 @@
 Run only on a dedicated Linux test runner with:
     python3 tests/integration/isolated_orca_restart_smoke.py
 
-This starts a *real* Orca executable while a separately mocked-controller
-transport loopback regression runs within the same private display and bus.\nThe first Orca child is forcibly killed and the second must start cleanly.
-This verifies real Orca imports the production adapter and executes a patched\nfixture-backed TCP transport reconnect in the real Orca process\nand executes its safe active-script resolver before writing the import marker.\nThe transport is exercised in-process but is not the installed Orca Remote\ncontroller. It does not test NVDA, speech, or physical braille.
+The first Orca child is forcibly killed and the second must start cleanly.
+Both load the production adapter and run the fixture-backed transport checks.
+With LRD_PINNED_ORCA_REMOTE set, private copies of the actual upstream
+customization, controller and transport are patched and loaded too, followed
+by the TCP, TLS and real-relay lifecycle checks. This does not test an active
+desktop, the modern Orca extension API, Windows NVDA, or physical braille.
 """
 from __future__ import annotations
 
@@ -59,9 +62,8 @@ def smoke() -> None:
             # Disallow inherited user session configuration.
             "NO_AT_BRIDGE": "0",
         }
-        # A marker written from within Orca's customization import proves the
-        # real process loaded the private test customization. It is not proof
-        # that the separate Orca Remote transport/controller was loaded.
+        # A marker proves all enabled startup and transport checks completed
+        # within this exact private Orca process.
         profile = base / "data" / "orca"
         profile.mkdir(parents=True)
         marker = base / "orca-customizations-loaded"
@@ -70,9 +72,8 @@ def smoke() -> None:
         adapter_source = (Path(__file__).resolve().parents[2]
                           / "linux_rdaccess_core" / "accessibility" / "orca_adapter.py")
         shutil.copy2(adapter_source, profile / "linux_rdaccess_orca_adapter.py")
-        # Optional CI-only check using exact upstream modules rather than
-        # the fixture-based transport. This is module loading, NOT relay
-        # connection or a production customization startup.
+        # Optional CI-only startup using the pinned legacy entry point and
+        # patched upstream modules, with sentinel connection settings.
         upstream = os.environ.get("LRD_PINNED_ORCA_REMOTE")
         if os.environ.get("LRD_PINNED_RELAY_FILE"):
             env["LRD_PINNED_RELAY_FILE"] = os.environ["LRD_PINNED_RELAY_FILE"]
@@ -81,6 +82,7 @@ def smoke() -> None:
         real_import = ""
         if upstream:
             from linux_rdaccess_core.connection.remote_access import (
+                _patch_legacy_customization_character_api,
                 _patch_legacy_transport_cleanup,
                 patch_legacy_orca_local_machine,
                 patch_legacy_orca_remote_controller,
@@ -94,6 +96,7 @@ def smoke() -> None:
             transport.write_text(_patch_legacy_transport_cleanup(
                 transport.read_text(encoding="utf-8")), encoding="utf-8")
             real_import = (
+                "from pathlib import Path\n"
                 "sys.path.insert(0, os.environ['LRD_UPSTREAM_SCRIPTS'])\n"
                 "from remote_controller import RemoteController\n"
                 "from transport import RelayTransport\n"
@@ -105,10 +108,54 @@ def smoke() -> None:
                 "assert real_controller.local_machine is not None\n"
                 "assert real_transport.connected is False\n"
                 "sys.path.insert(0, os.environ['LRD_PROJECT_ROOT'])\n"
+            )
+            # Execute upstream's actual legacy customization entry point in
+            # the disposable Orca process, not merely its imported modules.
+            # Its sentinel host/key disable any automatic external connection.
+            legacy_source = (Path(upstream) / "orca-customizations.py").read_text(
+                encoding="utf-8")
+            legacy_path = profile / "lrd-pinned-legacy-startup.py"
+            config_line = ('YOUR_ORCA_SCRIPTS_FOLDER = '
+                           'os.path.expanduser("~/.local/share/orca/orca-scripts")')
+            if legacy_source.count(config_line) != 1:
+                raise RuntimeError("Pinned legacy customization path changed")
+            legacy_source = legacy_source.replace(
+                config_line,
+                "YOUR_ORCA_SCRIPTS_FOLDER = os.environ['LRD_UPSTREAM_SCRIPTS']")
+            legacy_source = _patch_legacy_customization_character_api(legacy_source)
+            legacy_path.write_text(legacy_source, encoding="utf-8")
+            env["LRD_PINNED_LEGACY_STARTUP"] = str(legacy_path)
+            legacy_import = (
+                "Path(os.environ['LRD_STARTUP_STAGE']).write_text('upstream legacy entry point')\n"
+                "import runpy, faulthandler, traceback\n"
+                "trace_file = open(os.environ['LRD_STARTUP_TRACE'], 'w')\n"
+                "faulthandler.dump_traceback_later(20, repeat=False, file=trace_file)\n"
+                "try:\n"
+                "    legacy = runpy.run_path(os.environ['LRD_PINNED_LEGACY_STARTUP'])\n"
+                "except BaseException:\n"
+                "    traceback.print_exc(file=trace_file)\n"
+                "    raise\n"
+                "finally:\n"
+                "    faulthandler.cancel_dump_traceback_later()\n"
+                "    trace_file.flush()\n"
+                "    trace_file.close()\n"
+                "Path(os.environ['LRD_STARTUP_STAGE']).write_text('upstream legacy entry point finished')\n"
+                "assert isinstance(legacy['controller'], RemoteController)\n"
+                "assert legacy['transport'].connected is False\n"
+                "assert legacy['_has_config'] is False\n"
+                "assert legacy['controller'].transport is legacy['transport']\n"
+                "assert getattr(legacy['SpeechServer'], legacy['_linux_rdaccess_character_method']) is legacy['my_speak_character']\n"
+            )
+            # Startup precedes the TLS and loopback exercises; shared module
+            # state from those tests must not affect legacy initialization.
+            real_import += legacy_import + (
+                "Path(os.environ['LRD_STARTUP_STAGE']).write_text('upstream TCP reconnect')\n"
                 "from tests.integration.real_upstream_orca_loopback import exercise\n"
                 "exercise(RemoteController, RelayTransport, JSONSerializer)\n"
+                "Path(os.environ['LRD_STARTUP_STAGE']).write_text('upstream TLS reconnect')\n"
                 "from tests.integration.real_upstream_orca_tls import exercise_tls\n"
                 "exercise_tls(RemoteController, RelayTransport, JSONSerializer)\n"
+                "Path(os.environ['LRD_STARTUP_STAGE']).write_text('real NVDA Remote relay')\n"
                 "from tests.integration.real_nvda_relay import exercise_relay\n"
                 "exercise_relay(RemoteController, RelayTransport, JSONSerializer)\n"
             )
@@ -142,6 +189,8 @@ def smoke() -> None:
         env["LRD_ORCA_ADAPTER_DIR"] = str(profile)
         env["LRD_PROJECT_ROOT"] = str(Path(__file__).resolve().parents[2])
         env["LRD_ORCA_LOAD_MARKER"] = str(marker)
+        env["LRD_STARTUP_STAGE"] = str(base / "orca-startup-stage")
+        env["LRD_STARTUP_TRACE"] = str(base / "orca-startup-trace")
         # Choose a free X display number by binding the X11 socket via -displayfd.
         xserver = subprocess.Popen(
             [xvfb, "-nolisten", "tcp", "-screen", "0", "1024x768x24",
@@ -170,6 +219,8 @@ def smoke() -> None:
                 "marker = Path(os.environ['LRD_ORCA_LOAD_MARKER'])\n"
                 "for cycle in range(2):\n"
                 "    marker.unlink(missing_ok=True)\n"
+                "    Path(os.environ['LRD_STARTUP_STAGE']).unlink(missing_ok=True)\n"
+                "    Path(os.environ['LRD_STARTUP_TRACE']).unlink(missing_ok=True)\n"
                 "    p = subprocess.Popen([orca, '--no-setup'], "
                 "stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)\n"
                 "    try:\n"
@@ -183,7 +234,11 @@ def smoke() -> None:
                 "            try: _, err = p.communicate(timeout=5)\n"
                 "            except subprocess.TimeoutExpired:\n"
                 "                p.kill(); _, err = p.communicate(timeout=5)\n"
-                "            raise RuntimeError(f'Orca customization did not complete cycle {cycle}: {err[-3500:]}')\n"
+                "            stage = Path(os.environ['LRD_STARTUP_STAGE'])\n"
+                "            detail = stage.read_text() if stage.exists() else 'adapter and upstream imports'\n"
+                "            trace = Path(os.environ['LRD_STARTUP_TRACE'])\n"
+                "            stacks = trace.read_text()[-3500:] if trace.exists() else 'no thread trace recorded'\n"
+                "            raise RuntimeError(f'Orca customization did not complete cycle {cycle} at {detail}: {stacks} {err[-1500:]}')\n"
                 "        if marker.read_text().strip() != str(p.pid) + '|linux_rdaccess_orca_adapter':\n"
                 "            raise RuntimeError(f'Unexpected Orca customization loading PID in cycle {cycle}')\n"
                 "        if code is not None:\n"
@@ -214,7 +269,7 @@ def smoke() -> None:
             )
             session = subprocess.run(
                 [dbus, "--", sys.executable, "-c", script, orca],
-                env=env, capture_output=True, text=True, timeout=110,
+                env=env, capture_output=True, text=True, timeout=150,
                 check=False,
             )
             if session.returncode:
