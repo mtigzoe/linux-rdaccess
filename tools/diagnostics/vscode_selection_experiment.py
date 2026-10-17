@@ -205,6 +205,7 @@ def run_inner(args):
     private = Path(metadata["private_binary"])
     if not private.resolve().is_relative_to(output):
         raise ValueError("Private binary outside experiment directory")
+    original_desktop_code_binary = smoke.desktop_code_binary
     smoke.desktop_code_binary = lambda: str(private)
     state = {
         "case": args.case,
@@ -383,6 +384,7 @@ def run_inner(args):
         smoke.set_caret_offset, smoke.Session.check = original_route, original_check
         smoke.Session.wait = original_wait
         smoke.Session.text_edit, smoke.Session.close = original_edit, original_close
+        smoke.desktop_code_binary = original_desktop_code_binary
         (Path(os.environ["LRD_GUI_PRIVATE"]) / "selection-result.json").write_text(
             json.dumps(state, indent=2)
         )
