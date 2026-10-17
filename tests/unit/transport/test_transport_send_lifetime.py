@@ -3,13 +3,16 @@
 import json
 from pathlib import Path
 import queue
+import sys
 import tempfile
 import threading
+import types
 import unittest
+from unittest import mock
 
 from linux_rdaccess_core.connection import remote_access
 from tests.unit.transport.test_transport_stream_boundaries import (
-    UPSTREAM, StreamSocket, transport_from_source,
+    UPSTREAM, Callbacks, StreamSocket, transport_from_source,
 )
 
 
@@ -127,6 +130,76 @@ class TransportSendLifetimeTests(unittest.TestCase):
         transport.serializer.serialize = lambda **kw: self.fail("disconnected output was serialized")
         transport.send(type="speak", sequence=["obsolete"])
         self.assertTrue(transport.queue.empty())
+
+    def test_tls_relay_handshake_flushes_before_receiver_thread_starts(self):
+        """Handshake packets must not race the first TLS 1.3 server read."""
+        source = remote_access._patch_legacy_transport_cleanup(UPSTREAM)
+        callback_module = types.ModuleType("callback_manager")
+        callback_module.CallbackManager = Callbacks
+        namespace = {}
+        with mock.patch.dict(sys.modules, callback_manager=callback_module):
+            exec(compile(source, "patched-transport", "exec"), namespace)
+        serializer = types.SimpleNamespace(
+            serialize=lambda **kwargs: (
+                json.dumps(kwargs).encode("utf-8") + b"\n"),
+            deserialize=lambda frame: json.loads(frame),
+        )
+        relay = namespace["RelayTransport"](
+            serializer, ("127.0.0.1", 6837),
+            channel="test-session", connection_type="slave",
+        )
+        sock = StreamSocket([])
+        sent = []
+        sock.sendall = lambda payload: sent.append(json.loads(payload))
+        relay.server_sock = sock
+        relay.transport_connected()
+        self.assertEqual(
+            [message["type"] for message in sent],
+            ["protocol_version", "join"],
+        )
+        self.assertEqual(sent[1]["channel"], "test-session")
+        self.assertTrue(relay.queue.empty())
+        self.assertIsNone(relay.queue_thread)
+        relay.close()
+
+    def test_failed_synchronous_join_cleans_socket_without_starting_sender(self):
+        """A failed pre-read write must invalidate the connection safely."""
+        source = remote_access._patch_legacy_transport_cleanup(UPSTREAM)
+        callback_module = types.ModuleType("callback_manager")
+        callback_module.CallbackManager = Callbacks
+        namespace = {}
+        with mock.patch.dict(sys.modules, callback_manager=callback_module):
+            exec(compile(source, "patched-transport", "exec"), namespace)
+        serializer = types.SimpleNamespace(
+            serialize=lambda **kwargs: json.dumps(kwargs).encode() + b"\n",
+            deserialize=lambda frame: json.loads(frame),
+        )
+        relay = namespace["RelayTransport"](
+            serializer, ("127.0.0.1", 6837),
+            channel="test-session", connection_type="slave",
+        )
+        sock = StreamSocket([])
+        sock.sendall = mock.Mock(side_effect=OSError("peer closed TLS"))
+        relay.server_sock = sock
+        relay.transport_connected()
+        self.assertFalse(relay.connected)
+        self.assertIsNone(relay.server_sock)
+        self.assertIsNone(relay.queue_thread)
+        self.assertTrue(sock.closed)
+
+    def test_v1_outbound_hook_upgrades_without_duplicate_patch(self):
+        """Already-installed v1 output hooks must safely upgrade to v2."""
+        current = remote_access._patch_legacy_transport_cleanup(UPSTREAM)
+        v1 = current.replace(
+            remote_access._TRANSPORT_OUTBOUND_HOOK,
+            remote_access._TRANSPORT_OUTBOUND_HOOK_V1,
+        )
+        self.assertNotEqual(v1, current)
+        self.assertFalse(remote_access.legacy_transport_cleanup_patch_current(v1))
+        upgraded = remote_access._patch_legacy_transport_cleanup(v1)
+        self.assertEqual(upgraded, current)
+        self.assertTrue(remote_access.legacy_transport_cleanup_patch_current(upgraded))
+        self.assertEqual(remote_access._patch_legacy_transport_cleanup(upgraded), upgraded)
 
     def test_genuine_v7_upgrade_preserves_backup_and_is_idempotent(self):
         fixture = Path(__file__).resolve().parents[2] / "fixtures/legacy-patches/transport-v7.txt"
