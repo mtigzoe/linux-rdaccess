@@ -2262,7 +2262,8 @@ LEGACY_COMPAT_MARKER_V117 = "# linux-rdaccess NVDA/Orca input compatibility v117
 LEGACY_COMPAT_MARKER_V118 = "# linux-rdaccess NVDA/Orca input compatibility v118"
 LEGACY_COMPAT_MARKER_V119 = "# linux-rdaccess NVDA/Orca input compatibility v119"
 LEGACY_COMPAT_MARKER_V120 = "# linux-rdaccess NVDA/Orca input compatibility v120"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v121"
+LEGACY_COMPAT_MARKER_V121 = "# linux-rdaccess NVDA/Orca input compatibility v121"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v122"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -2834,6 +2835,9 @@ _LEGACY_HELPERS = '''\
         successful forwards acquire release ownership; failed releases remain
         owned so a later reset can retry them.
         """
+        # Expire earlier Orca idle callbacks before any release can block.
+        # The main loop runs on another thread and does not take input lock.
+        self._lrd_generation = getattr(self, "_lrd_generation", 0) + 1
         forwarded = getattr(self, "_lrd_forwarded", {})
         trace_held = sorted(
             self._linux_rdaccess_trace_label(k[0], k[1]) or "char"
@@ -2880,7 +2884,6 @@ _LEGACY_HELPERS = '''\
         if bypass_request is not None:
             _lrd_schedule_bypass_cleanup(bypass_request)
         self._lrd_navigation_marker = None
-        self._lrd_generation = getattr(self, "_lrd_generation", 0) + 1
         self._linux_rdaccess_reset_braille_width()
         self._lrd_local_stop_pending = False
         self._lrd_speech_epoch = 0
@@ -7057,6 +7060,8 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V121,
+                LEGACY_COMPAT_MARKER_V120,
                 LEGACY_COMPAT_MARKER_V119,
                 LEGACY_COMPAT_MARKER_V118,
                 LEGACY_COMPAT_MARKER_V117,
