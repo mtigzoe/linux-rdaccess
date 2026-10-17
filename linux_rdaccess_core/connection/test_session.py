@@ -15,6 +15,11 @@ def windows_operation(action: str, path: Path | None = None) -> tuple[dict, int]
         client = AuthorizedClient(path)
         reply = client.operation(action)
     except (OSError, ValueError, ImportError, EOFError, TimeoutError):
+        if action == "braille_message_route":
+            # A request may have executed before the response was lost. Never retry.
+            return {"windows_authorization": "unavailable_or_expired",
+                    "message_route": {"outcome": "unknown", "simulated": True},
+                    "physical_braille": "unverified"}, 2
         if action in ("braille_trace", "braille_outcomes") and client is not None:
             try:
                 status = client.operation("status")
@@ -24,7 +29,10 @@ def windows_operation(action: str, path: Path | None = None) -> tuple[dict, int]
                 return {"windows_authorization": "active", **status,
                         "routing_trace": "unavailable_or_unsupported"}, 2
         return {"windows_authorization": "required_or_expired", "physical_braille": "unverified"}, 2
-    return {"windows_authorization": "active", **reply}, 0
+    code = 0
+    if action == "braille_message_route" and reply["message_route"]["outcome"] != "queued":
+        code = 2
+    return {"windows_authorization": "active", **reply}, code
 
 
 def start_all(
