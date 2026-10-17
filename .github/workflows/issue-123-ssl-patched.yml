@@ -24,5 +24,5 @@ jobs:
           openssl version
       - name: Exercise actual patched SSL socket with concurrent application frames
         env:
-          LRD_POSTCONNECT_TLS_PROBE_ITERATIONS: "60"
+          LRD_POSTCONNECT_TLS_PROBE_ITERATIONS: "200"
         run: /usr/bin/python3 -X faulthandler tests/integration/ssl_patched_postconnect_probe.py
