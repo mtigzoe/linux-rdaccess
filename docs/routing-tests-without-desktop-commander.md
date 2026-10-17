@@ -1,10 +1,12 @@
 # Routing acceptance without Desktop Commander
 
-Use the normal Windows NVDA Remote connection and the physical display. The
-user operates the application and display; the agent only observes Linux
-through SSH. Desktop Commander, Windows UI automation, keyboard injection,
-clipboard access, relay changes and an NVDA/Orca restart are not required.
-The tools below do not connect Remote Access or send input.
+For physical acceptance, use the normal Windows NVDA Remote connection and the
+physical display. The user operates the application and display while the
+agent observes Linux through SSH. Desktop Commander, Windows UI automation,
+keyboard injection, clipboard access, relay changes and an NVDA/Orca restart
+are not required. The physical-test observer does not send input. The separate
+[simulation commands](#simulate-one-linux-caret-route-over-ssh) below exercise
+Linux caret behavior without establishing physical acceptance.
 
 ## Prepare one public test
 
@@ -103,6 +105,92 @@ GUI/unit evidence `isolated-test`. Unobserved layers remain `unverified` or
 declared evidence labels, not cryptographic verification of a report's author.
 Do not include private text, passwords, relay keys or raw logs. Keep reports
 with user content local; publish only sanitized, consented fixture evidence.
+
+## Simulate one Linux caret route over SSH
+
+For repeatable Linux routing diagnostics without coordinating physical keys,
+run the private fixture script from a Linux checkout:
+
+```sh
+python3 tools/diagnostics/run_routing_simulation.py
+```
+
+It also works over SSH, for example:
+
+```sh
+ssh cyber python3 /path/to/linux-rdaccess/tools/diagnostics/run_routing_simulation.py
+```
+
+Replace the checkout path with the reviewed checkout on that host. The script
+creates its own Xvfb display, D-Bus session and public GTK fixture. It verifies
+session ownership, previews the target without writing, moves the caret from
+2 to 7, checks a target caret event and readback, and rejects reuse of the stale
+preview. It needs Python GI/GTK3/AT-SPI, Xvfb, xauth, dbus-run-session, xfwm4
+and xdotool. It needs no NVDA consent, physical gesture, installation, restart,
+existing editor focus or change to the active desktop.
+
+For an **explicitly approved live caret change**, the separate command below
+targets only an already focused Mousepad text area. It does not focus a window,
+type, launch an application, or connect Remote Access. Its default is a preview:
+
+```sh
+python3 diagnostics/atspi/simulate_routing.py --offset 6
+```
+
+The preview returns the PID, current caret and character count. Copy those
+numbers into the guarded apply command; these example values are illustrative:
+
+```sh
+python3 diagnostics/atspi/simulate_routing.py --offset 6 --apply \
+  --expect-pid 1234 --expect-caret 19 --expect-count 19
+```
+
+Offsets are zero-based **characters**, not braille cells. An apply makes at
+most one call to the same `a11y_model.set_caret_offset` helper used by semantic
+routing. The event observer is ready first. Immediately before writing, the
+command rechecks identity within that invocation, PID, caret, length and absence
+of a selection. PID and counters alone do not identify a document across
+separate previews; use only the approved public target and keep it focused.
+Password fields, terminals, noneditable targets, invalid offsets, mismatches
+and detected focus changes are refused. There are no automatic retries or restoration
+writes. A provider return and a matching readback are reported separately.
+Output contains numeric target/event data and fixed labels, without document
+text or accessible labels. Exceptions are redacted; an interrupted/failed
+command may have written already, so preview again before deciding a next step.
+The `gtk-fixture` application category is for the repository's public
+`tests/apps/accessibility_smoke_app.py`, used by the private test runner.
+
+This simulation bypasses Windows NVDA, the relay, Orca's running controller,
+semantic object/session checks and braille-cell translation. It cannot establish
+temporary-message dismissal, device output or input origin, and it cannot
+explain the historical 6→9 movement by itself. Keep #59 and #72's physical
+acceptance open. Windows message-routing behavior can be exercised separately
+by the companion's existing unit tests; do not add an arbitrary-input operation
+to the five-minute status endpoint to simulate a physical gesture.
+
+Validation on 2026-10-14:
+
+```sh
+# Windows, Python 3.13.13: 27 passed, 0 failures/errors/skips.
+python -B -m unittest -v tests.unit.test_routing_simulator tests.unit.test_routing_observer
+# WSL Ubuntu 22.04, Python 3.10.12: 1 native test passed, 0 failures/errors/skips.
+python3 -B tools/diagnostics/run_routing_simulation.py
+```
+
+The unit tests use fake providers/event loops with the real caret helper. The
+native test runs the actual command-line preview/apply/refusal against a GTK3
+AT-SPI provider in its private desktop: caret 2→7, matching event/readback,
+same focus, no dropped events. Neither result is a live NVDA, running Orca or
+b.note acceptance result. No live Mousepad route was sent for this validation.
+
+The same published revision `470a222` also passed **one native test over SSH on
+Cyber** (Python 3.10.12, GTK 3.24.33, AT-SPI 2.44.0), using a separate checkout
+and the runner's private desktop. The actual CLI recorded caret **2→7**, a
+matching event at **7.5 ms**, final readback, same focus and zero dropped events;
+the stale apply was refused. The existing Orca process and all four installed
+controller/helper hashes were unchanged before/after. No live Mousepad route,
+runtime installation or restart was performed. See the
+[sanitized SSH evidence](routing-simulation-ssh-evidence-2026-10-14.json).
 
 ## Automated observer validation
 

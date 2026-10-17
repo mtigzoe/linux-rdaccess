@@ -26,6 +26,17 @@ python3 diagnostics/atspi/atspi_event_probe.py --types object:state-changed:focu
 These commands require working Linux `gi` / AT-SPI bindings and an accessible
 desktop session. The event probe redacts object labels.
 
+Preview a simulated caret route in the already focused public Mousepad editor:
+
+```bash
+python3 diagnostics/atspi/simulate_routing.py --offset 6
+```
+
+The default is read-only. An explicit `--apply` plus the preview's PID, caret
+and character count permits one direct Linux caret write. See
+[routing simulation](../docs/routing-tests-without-desktop-commander.md#simulate-one-linux-caret-route-over-ssh)
+for guards, SSH usage and the separate Windows/physical acceptance limits.
+
 ## X11 desktop and keyboard (Linux Mint, X11)
 
 Check the active X11 session and lock-key indicators:

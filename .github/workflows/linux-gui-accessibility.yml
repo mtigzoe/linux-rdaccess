@@ -11,6 +11,9 @@ on:
       - 'tests/unit/accessibility/test_x11_window_activation.py'
       - 'tests/integration/x11/test_routing_observer.py'
       - 'diagnostics/atspi/observe_routing.py'
+      - 'diagnostics/atspi/simulate_routing.py'
+      - 'tests/unit/test_routing_simulator.py'
+      - 'tests/integration/x11/test_routing_simulator.py'
       - 'linux_rdaccess_core/**'
       - 'a11y_model.py'
   push:
@@ -23,6 +26,9 @@ on:
       - 'tests/unit/accessibility/test_x11_window_activation.py'
       - 'tests/integration/x11/test_routing_observer.py'
       - 'diagnostics/atspi/observe_routing.py'
+      - 'diagnostics/atspi/simulate_routing.py'
+      - 'tests/unit/test_routing_simulator.py'
+      - 'tests/integration/x11/test_routing_simulator.py'
       - 'linux_rdaccess_core/**'
       - 'a11y_model.py'
   workflow_dispatch:
@@ -63,6 +69,7 @@ jobs:
         run: |
           python3 -m py_compile tools/diagnostics/gtk_atspi_smoke.py tools/diagnostics/real_gui_atspi_smoke.py tools/diagnostics/x11_window_activation.py
           python3 -m unittest tests.unit.accessibility.test_real_gui_diagnostics tests.unit.accessibility.test_x11_window_activation -v
+          python3 -m unittest tests.unit.test_routing_simulator tests.unit.test_routing_observer -v
       - name: Run GTK controls and AT-SPI semantic event checks
         shell: bash
         env:
@@ -101,6 +108,12 @@ jobs:
               )
               raise SystemExit(result.returncode)
           PY
+      - name: Simulate guarded caret routing in an independent private desktop
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 tools/diagnostics/run_routing_simulation.py 2>&1 | tee routing-simulation.log
       - name: Preserve real application accessibility results
         if: always()
         uses: actions/upload-artifact@v4
@@ -111,4 +124,5 @@ jobs:
             gtk-smoke-evidence/
             real-gui-atspi.log
             routing-observer.log
+            routing-simulation.log
           if-no-files-found: ignore
