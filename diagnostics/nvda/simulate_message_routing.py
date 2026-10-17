@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Windows coordinator: observe Linux over SSH, then simulate one NVDA message route.
 
-Requires companion 20261014.0.2 and its separate one-shot permission. No physical
+Requires the separately consented one-shot feature (development companion 20261014.0.4). No physical
 key, SSH server on Windows, keyboard injection or active-desktop Linux input.
 """
 
