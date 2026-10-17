@@ -1239,7 +1239,8 @@ if hasattr(TCPTransport, "close"):
 
 
 TRANSPORT_OUTBOUND_MARKER_V1 = "# linux-rdaccess relay output lifetime v1"
-TRANSPORT_OUTBOUND_MARKER = "# linux-rdaccess relay output lifetime v2"
+TRANSPORT_OUTBOUND_MARKER_V2 = "# linux-rdaccess relay output lifetime v2"
+TRANSPORT_OUTBOUND_MARKER = "# linux-rdaccess relay output lifetime v3"
 _TRANSPORT_OUTBOUND_HOOK_V1 = TRANSPORT_OUTBOUND_MARKER_V1 + '''
 _linux_rdaccess_outbound_init = TCPTransport.__init__
 def _linux_rdaccess_outbound_owned_init(self, *args, **kwargs):
@@ -1273,9 +1274,9 @@ if hasattr(TCPTransport, "send"):
 '''
 
 # Keep the exact v1 hook to allow safe, backup-preserving upgrades.
-_TRANSPORT_OUTBOUND_HOOK = (
+_TRANSPORT_OUTBOUND_HOOK_V2 = (
     _TRANSPORT_OUTBOUND_HOOK_V1.replace(
-        TRANSPORT_OUTBOUND_MARKER_V1, TRANSPORT_OUTBOUND_MARKER, 1)
+        TRANSPORT_OUTBOUND_MARKER_V1, TRANSPORT_OUTBOUND_MARKER_V2, 1)
     + '''
 # Complete the initial TLS handshake writes on the connection thread before
 # upstream TCPTransport.run() starts the sender and receiver concurrently.
@@ -1314,6 +1315,70 @@ if "RelayTransport" in globals():
 '''
 )
 
+_TRANSPORT_OUTBOUND_HOOK = (
+    _TRANSPORT_OUTBOUND_HOOK_V2.replace(
+        TRANSPORT_OUTBOUND_MARKER_V2, TRANSPORT_OUTBOUND_MARKER, 1)
+    + '''
+# Prevent concurrent SSL_read and SSL_write on the same live socket after
+# handshake, without locking a blocking TLS 1.3 post-handshake recv.
+import ssl as _linux_rdaccess_tls_ssl
+
+class _linux_rdaccess_serial_ssl_socket:
+    def __init__(self, socket):
+        self._socket = socket
+        self._io_lock = _linux_rdaccess_transport_threading.RLock()
+
+    def fileno(self):
+        return self._socket.fileno()
+
+    def __getattr__(self, name):
+        return getattr(self._socket, name)
+
+    def recv(self, *args, **kwargs):
+        # The file descriptor may be readable only for a TLS 1.3 session
+        # ticket. Never wait for application bytes while holding the I/O lock
+        # or the outgoing sender could stall forever.
+        with self._io_lock:
+            previous_timeout = self._socket.gettimeout()
+            self._socket.setblocking(False)
+            try:
+                return self._socket.recv(*args, **kwargs)
+            finally:
+                self._socket.settimeout(previous_timeout)
+
+    def sendall(self, *args, **kwargs):
+        with self._io_lock:
+            return self._socket.sendall(*args, **kwargs)
+
+_linux_rdaccess_original_create_outbound_socket = TCPTransport.create_outbound_socket
+def _linux_rdaccess_serial_create_outbound_socket(self, address):
+    socket = _linux_rdaccess_original_create_outbound_socket(self, address)
+    if isinstance(socket, _linux_rdaccess_tls_ssl.SSLSocket):
+        return _linux_rdaccess_serial_ssl_socket(socket)
+    return socket
+TCPTransport.create_outbound_socket = _linux_rdaccess_serial_create_outbound_socket
+
+_linux_rdaccess_original_handle_server_data = TCPTransport.handle_server_data
+def _linux_rdaccess_serial_handle_server_data(self):
+    active = self.server_sock
+    try:
+        result = _linux_rdaccess_original_handle_server_data(self)
+        # select() sees ciphertext readiness, not already decrypted records.
+        # Consume buffered plaintext while it is available.
+        while (self.server_sock is active
+               and isinstance(active, _linux_rdaccess_serial_ssl_socket)
+               and active.pending()):
+            _linux_rdaccess_original_handle_server_data(self)
+        return result
+    except (_linux_rdaccess_tls_ssl.SSLWantReadError,
+            _linux_rdaccess_tls_ssl.SSLWantWriteError):
+        # Another network event can complete an incomplete TLS record.
+        # This is not a disconnected peer or a malformed JSON frame.
+        return
+TCPTransport.handle_server_data = _linux_rdaccess_serial_handle_server_data
+'''
+)
+
 _TRANSPORT_SEND_SOURCE = '''
 def send(self, type, **kwargs):
     obj = self.serializer.serialize(type=type, **kwargs)
@@ -1325,6 +1390,7 @@ def send(self, type, **kwargs):
 def _strip_transport_outbound(text: str) -> str:
     for marker, hook in (
         (TRANSPORT_OUTBOUND_MARKER, _TRANSPORT_OUTBOUND_HOOK),
+        (TRANSPORT_OUTBOUND_MARKER_V2, _TRANSPORT_OUTBOUND_HOOK_V2),
         (TRANSPORT_OUTBOUND_MARKER_V1, _TRANSPORT_OUTBOUND_HOOK_V1),
     ):
         if marker not in text:
@@ -1339,7 +1405,8 @@ def _patch_transport_outbound(text: str) -> str:
     if TRANSPORT_OUTBOUND_MARKER in text:
         _strip_transport_outbound(text)
         return text
-    if TRANSPORT_OUTBOUND_MARKER_V1 in text:
+    if (TRANSPORT_OUTBOUND_MARKER_V1 in text
+            or TRANSPORT_OUTBOUND_MARKER_V2 in text):
         text = _strip_transport_outbound(text)
     tcp = _unique_class(ast.parse(text, feature_version=(3, 10)), "TCPTransport")
     send = _unique_method(tcp, "send") if tcp is not None else None
