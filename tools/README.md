@@ -29,10 +29,18 @@ python3 tools/diagnostics/gtk_atspi_smoke.py
 python3 tools/diagnostics/orca42_d_landmark_check.py
 python3 tools/diagnostics/summarize_input_trace.py --timeline
 python3 tools/diagnostics/xkb_lock_state.py
+python3 tools/diagnostics/run_routing_simulation.py
 ```
 
 Some tools require Linux, the Orca/X11 environment, or external test
 dependencies. Refer to the README and dedicated diagnostics documentation.
+
+`run_routing_simulation.py` creates a private GTK/Xvfb/D-Bus test desktop,
+previews a target, routes its caret from 2 to 7, checks the event and readback,
+and verifies that reusing the stale preview is refused. It does not touch the
+active desktop or require a physical display. For an explicitly approved
+existing Mousepad target, use
+[`diagnostics/atspi/simulate_routing.py`](../diagnostics/atspi/simulate_routing.py).
 
 ## Windows NVDA speech probe
 
