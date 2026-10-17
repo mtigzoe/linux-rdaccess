@@ -158,6 +158,7 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
         writes = []
         socket_connects = []
         socket_closes = []
+        socket_io_overlaps = []
         original_create = transport.create_outbound_socket
         next_socket_id = 0
 
@@ -168,6 +169,8 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
                 self._socket_id = next_socket_id
                 self._local_port = None
                 self._sock = sock
+                self._io_guard = threading.Lock()
+                self._active_io = {"recv": 0, "sendall": 0}
 
             def connect(self, address):
                 result = self._sock.connect(address)
@@ -177,8 +180,36 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
                     self._local_port))
                 return result
 
+            def _start_io(self, operation):
+                # Python/OpenSSL do not support concurrent SSL_read and
+                # SSL_write on one SSL object. Detect overlapping calls
+                # without serializing them (a blocking recv + lock would
+                # introduce a new deadlock).
+                with self._io_guard:
+                    other = "recv" if operation == "sendall" else "sendall"
+                    if self._active_io[other]:
+                        socket_io_overlaps.append((
+                            round(time.monotonic(), 3),
+                            self._socket_id, operation, other))
+                    self._active_io[operation] += 1
+
+            def _finish_io(self, operation):
+                with self._io_guard:
+                    self._active_io[operation] -= 1
+
+            def recv(self, *args, **kwargs):
+                self._start_io("recv")
+                try:
+                    return self._sock.recv(*args, **kwargs)
+                finally:
+                    self._finish_io("recv")
+
             def sendall(self, payload):
-                result = self._sock.sendall(payload)
+                self._start_io("sendall")
+                try:
+                    result = self._sock.sendall(payload)
+                finally:
+                    self._finish_io("sendall")
                 try:
                     kind = json.loads(payload).get("type")
                 except (ValueError, TypeError, AttributeError):
@@ -296,7 +327,7 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
                         repr({"local_port": local_port, "frames": observed}))
                     return
                 time.sleep(0.02)
-            raise AssertionError("actual upstream transport never joined real relay: " + repr({"transport_connected": transport.connected, "worker_alive": worker.is_alive(), "worker_errors": [str(e) for e in errors], "server": server_snapshot(), "successful_connects": transport.successful_connects, "queue_size": transport.queue.qsize(), "sender_alive": bool(transport.queue_thread and transport.queue_thread.is_alive()), "tcp_state": sender_tcp_state(), "sent": sent, "relay_handshake": relay_handshake_messages, "relay_read_lines": relay_read_lines[-30:], "socket_connects": socket_connects, "socket_writes": writes, "socket_closes": socket_closes}))
+            raise AssertionError("actual upstream transport never joined real relay: " + repr({"transport_connected": transport.connected, "worker_alive": worker.is_alive(), "worker_errors": [str(e) for e in errors], "server": server_snapshot(), "successful_connects": transport.successful_connects, "queue_size": transport.queue.qsize(), "sender_alive": bool(transport.queue_thread and transport.queue_thread.is_alive()), "tcp_state": sender_tcp_state(), "sent": sent, "relay_handshake": relay_handshake_messages, "relay_read_lines": relay_read_lines[-30:], "socket_connects": socket_connects, "socket_writes": writes, "socket_closes": socket_closes, "concurrent_ssl_io": socket_io_overlaps[-30:]}))
 
         def master(key_string):
             peer = ssl._create_unverified_context().wrap_socket(
