@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import secrets
 import socket
+import struct
 import ssl
 import subprocess
 import tempfile
@@ -248,6 +249,24 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
             except Exception as exc:
                 return {"snapshot_error": type(exc).__name__}
 
+        def sender_tcp_state():
+            # Linux TCP_INFO is independent of the TLS plaintext parser.
+            # Unacknowledged TCP segments distinguish outstanding network
+            # delivery from data acknowledged by the peer's TCP stack.
+            sock = transport.server_sock
+            if sock is None:
+                return None
+            try:
+                info = sock.getsockopt(socket.IPPROTO_TCP, socket.TCP_INFO, 104)
+                return {
+                    "state": info[0],
+                    "unacked_segments": struct.unpack_from("=I", info, 24)[0],
+                    "socket_error": sock.getsockopt(
+                        socket.SOL_SOCKET, socket.SO_ERROR),
+                }
+            except (AttributeError, OSError, struct.error) as exc:
+                return {"tcp_info_error": type(exc).__name__}
+
         def start_orca():
             def run():
                 try:
@@ -277,7 +296,7 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
                         repr({"local_port": local_port, "frames": observed}))
                     return
                 time.sleep(0.02)
-            raise AssertionError("actual upstream transport never joined real relay: " + repr({"transport_connected": transport.connected, "worker_alive": worker.is_alive(), "worker_errors": [str(e) for e in errors], "server": server_snapshot(), "successful_connects": transport.successful_connects, "queue_size": transport.queue.qsize(), "sender_alive": bool(transport.queue_thread and transport.queue_thread.is_alive()), "sent": sent, "relay_handshake": relay_handshake_messages, "relay_read_lines": relay_read_lines[-30:], "socket_connects": socket_connects, "socket_writes": writes, "socket_closes": socket_closes}))
+            raise AssertionError("actual upstream transport never joined real relay: " + repr({"transport_connected": transport.connected, "worker_alive": worker.is_alive(), "worker_errors": [str(e) for e in errors], "server": server_snapshot(), "successful_connects": transport.successful_connects, "queue_size": transport.queue.qsize(), "sender_alive": bool(transport.queue_thread and transport.queue_thread.is_alive()), "tcp_state": sender_tcp_state(), "sent": sent, "relay_handshake": relay_handshake_messages, "relay_read_lines": relay_read_lines[-30:], "socket_connects": socket_connects, "socket_writes": writes, "socket_closes": socket_closes}))
 
         def master(key_string):
             peer = ssl._create_unverified_context().wrap_socket(
