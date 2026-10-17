@@ -1,16 +1,26 @@
 # Chromium Unicode selection candidate
 
-The later [private native experiment](../compatibility-audit-2026-10-15-native-chromium-selection.md)
+The [later compiled-source checkpoint](../compatibility-audit-2026-10-17-sourcebuilt-checkpoint.md)
+records the actual Chromium `accessibility_unittests` target compiled and run
+on 2026-10-16 at pinned commit `f916f1b7136907af19d96b95b891533d091d932a`.
+The original provider with the proposed tests passed 7 and failed 3; the
+corrected provider passed the same 10 tests, then all 16 tests in a broader
+ATK-text inventory. This validates the correction at the compiled Chromium/ATK unit-test
+level. A complete Chromium application, completed source-built Electron runtime,
+full VS Code source build and real NVDA/physical braille acceptance remain
+outstanding.
+
+The earlier [private native experiment](../compatibility-audit-2026-10-15-native-chromium-selection.md)
 tests a compiled-method counterpart to the correction. It adds native
-application evidence; the full source build and upstream gtests remain unrun.
+application evidence separately from those compiled upstream gtests.
 The [source-validation follow-up](../compatibility-audit-2026-10-15-chromium-source-validation.md)
 reviews the coordinate systems and build target, and expands the contract to
 25 cases with exact per-case baseline and candidate evidence checks.
 
 `chromium-unicode-selection.diff` is an **unsubmitted upstream candidate** for
 Chromium `150.0.7871.250`. Chromium source and patch context are covered by the
-included [BSD license](Chromium-LICENSE.txt). This repository does not build or
-install a patched Chromium/Electron binary.
+included [BSD license](Chromium-LICENSE.txt). This repository does not distribute
+or install a patched Chromium/Electron binary.
 
 The test host's installed Code 1.141.0 reports Electron `43.7.7`, Chromium
 `150.0.7871.250`, and Microsoft build `15553055` when its executable runs in
@@ -67,9 +77,11 @@ python3 tools/diagnostics/chromium_selection_contract.py --source /tmp/lrd-chrom
 ```
 
 Choose a new `--output` path for each invocation. The contract does not fetch
-source or contact a desktop. Its output does not establish a full Chromium
-build, execution of the proposed upstream gtests, a native test of the C++
-candidate, or NVDA/physical braille acceptance. Those checks remain outstanding.
+source or contact a desktop. Its output alone does not establish a full Chromium
+application build, execution of the proposed upstream gtests, a native
+application test of the C++ candidate, or NVDA/physical braille acceptance.
+The later checkpoint supplies the separate compiled-gtest evidence; application
+and device acceptance remain outstanding.
 The separate native observation establishes that the Unicode offset defect
 also occurs in private original and experimentally patched VS Code copies;
 it does not establish native acceptance of this Chromium candidate.

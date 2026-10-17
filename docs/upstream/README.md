@@ -140,17 +140,24 @@ The Chromium Authors under the accompanying [BSD license](Chromium-LICENSE.txt).
 The candidate converts ordinary selection offsets once and preserves the
 separate UTF-16 conversion needed by find-in-page. Apply it only to a
 disposable checkout of that exact Chromium tag. No candidate is installed.
-The full source build/gtest suite and real NVDA/physical braille acceptance
-remain outstanding. The separate private native experiment below tests the
-compiled counterpart of the correction; see its audit for the distinction.
+The [later compiled-source checkpoint](../compatibility-audit-2026-10-17-sourcebuilt-checkpoint.md)
+records the actual `accessibility_unittests` target compiled and run on
+2026-10-16 at pinned Chromium commit `f916f1b7136907af19d96b95b891533d091d932a`:
+the original provider with the proposed tests passed 7 and failed 3, the corrected
+provider passed the same 10 tests, and a broader corrected ATK-text inventory
+passed 16/16. These are compiled upstream unit-test results. A complete Chromium
+application, completed source-built Electron runtime, full VS Code source build
+and real NVDA/physical braille acceptance remain outstanding. The separate
+private native experiment below tests a compiled-method counterpart of the
+correction; see its audit for the distinction.
 
 The [source-extraction contract](chromium-unicode-selection.md) compiles the
 actual two Chromium selection methods with explicit ATK/delegate/conversion
 test dependencies. The expanded 25-case contract observes original: 13 passed /
 12 failed (exit 1); candidate: 25 passed / 0 failed (exit 0), using g++ 11.4.0
 with warnings treated as errors. Acceptance requires exact case identities,
-offsets, text comparisons and child exits. These are source-contract results;
-the upstream gtests have not been built or run. See the
+offsets, text comparisons and child exits. These historical source-contract
+results are separate from the later compiled upstream gtests. See the
 [source-validation audit](../compatibility-audit-2026-10-15-chromium-source-validation.md)
 for pinned source hashes, complete evidence and build feasibility.
 
@@ -218,8 +225,9 @@ installed executable is never edited. The finalized fixture uses
 [Electron API](https://github.com/electron/electron/blob/v43.7.7/docs/api/web-contents.md#contentsfindinpagetext-options),
 binds result acknowledgements to request IDs and checks expected match counts.
 
-These private tests add automated native evidence. They do not establish a
-full source build, native upstream gtest success or NVDA/device acceptance.
+These private tests add automated native evidence independently of the later
+compiled upstream gtests. They do not establish a complete source-built
+application runtime or NVDA/device acceptance.
 
 ## Continuous source-contract evidence
 
@@ -232,4 +240,6 @@ or execute its upstream gtests. Its shell steps were verified separately on
 Mint; a local shell run is not a GitHub Actions result.
 
 See the [production validation follow-up](../compatibility-audit-2026-10-15-production-validation.md)
-for the current evidence and the remaining integration/acceptance gates.
+for the earlier evidence and the
+[later compiled-source checkpoint](../compatibility-audit-2026-10-17-sourcebuilt-checkpoint.md)
+for the verified gtest milestone and remaining integration/acceptance gates.

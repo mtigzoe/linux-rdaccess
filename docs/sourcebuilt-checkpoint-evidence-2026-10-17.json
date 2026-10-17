@@ -1,0 +1,340 @@
+{
+  "captured_utc": "2026-10-17T21:39:45.935002+00:00",
+  "repository_main": "c975491a0428207e43ea87b17e431d56f231fc1e",
+  "kind": "preserved_artifact_verification_no_new_application_run",
+  "compiled_chromium": {
+    "baseline": {
+      "finished_utc": "2026-10-16T23:36:30.340595+00:00",
+      "source_commit": "f916f1b7136907af19d96b95b891533d091d932a",
+      "provider_sha256": "1d50dc6645c011e6fa2f036c2b08f7bb35967a60dbda12d52d55e901e8dd731f",
+      "unittest_sha256": "00f5961dc5b71d37df7c13794780b51854cc8a23b6db0dfdf42fdca4ea6621ec",
+      "binary_sha256": "66eee26314273bb3ad1ab9459f5df6e0be6001cdf53a0617931562e84f7f5482",
+      "test_exit": 1,
+      "passed": 7,
+      "failed": 3,
+      "skipped": [],
+      "executed": [
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextContentEditableGetNSelections",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextContentEditableGetNSelectionsZero",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextFindInPageUnicodeOffsets",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextGetSelectionBmpUnicodeOffsets",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextGetSelectionMultilineUnicodeOffsets",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextGetSelectionTwoSupplementaryChars",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextGetSelectionUnicodeOffsets",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextTextFieldGetNSelectionsZero",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextTextFieldGetSelection",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextTextFieldSetSelection"
+      ],
+      "failed_tests": [
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextGetSelectionMultilineUnicodeOffsets",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextGetSelectionTwoSupplementaryChars",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextGetSelectionUnicodeOffsets"
+      ],
+      "xml": "baseline-selection-gtests.xml",
+      "xml_sha256": "a4e16d69a2d4a62cfb0016ac7242300fd76a96df83cfb7a236ad9dfc68a5c594",
+      "summary": "compiled-baseline-summary.json",
+      "summary_sha256": "de04dac3bd325f0ec02e87216d6bc4e9c5f033c9ad2ea11e14f80cfb8cb48db0"
+    },
+    "candidate": {
+      "finished_utc": "2026-10-16T23:37:27.638774+00:00",
+      "source_commit": "f916f1b7136907af19d96b95b891533d091d932a",
+      "provider_sha256": "1a22a6fcde74b271d58f35185405984f34c4227d51a56f724635e4f43e74e80c",
+      "unittest_sha256": "00f5961dc5b71d37df7c13794780b51854cc8a23b6db0dfdf42fdca4ea6621ec",
+      "binary_sha256": "d199bab39dd28ceec03b67ce551ae0534f1d3ba20b680113b34cefb2cc0c29d5",
+      "test_exit": 0,
+      "passed": 10,
+      "failed": 0,
+      "skipped": [],
+      "executed": [
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextContentEditableGetNSelections",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextContentEditableGetNSelectionsZero",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextFindInPageUnicodeOffsets",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextGetSelectionBmpUnicodeOffsets",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextGetSelectionMultilineUnicodeOffsets",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextGetSelectionTwoSupplementaryChars",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextGetSelectionUnicodeOffsets",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextTextFieldGetNSelectionsZero",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextTextFieldGetSelection",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextTextFieldSetSelection"
+      ],
+      "failed_tests": [],
+      "xml": "candidate-gtest-evidence/selection-gtests.xml",
+      "xml_sha256": "12254991690069d1b6624e731ffe6aa9a707c9034392f8f449aeee9f509fb273",
+      "summary": "compiled-candidate-summary.json",
+      "summary_sha256": "3614efacf8395ce095b692aa98af67302578d7cfc19e15ad9b84b5c4dfc47f87"
+    },
+    "candidate_atk_text": {
+      "finished_utc": "2026-10-16T23:37:56.032375+00:00",
+      "source_commit": "f916f1b7136907af19d96b95b891533d091d932a",
+      "provider_sha256": "1a22a6fcde74b271d58f35185405984f34c4227d51a56f724635e4f43e74e80c",
+      "unittest_sha256": "00f5961dc5b71d37df7c13794780b51854cc8a23b6db0dfdf42fdca4ea6621ec",
+      "binary_sha256": "d199bab39dd28ceec03b67ce551ae0534f1d3ba20b680113b34cefb2cc0c29d5",
+      "test_exit": 0,
+      "passed": 16,
+      "failed": 0,
+      "skipped": [],
+      "executed": [
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextCaretMoved",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextCharacterGranularity",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextContentEditableGetNSelections",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextContentEditableGetNSelectionsZero",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextFindInPageUnicodeOffsets",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextGetSelectionBmpUnicodeOffsets",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextGetSelectionMultilineUnicodeOffsets",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextGetSelectionTwoSupplementaryChars",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextGetSelectionUnicodeOffsets",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextGetText",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextSentenceGranularity",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextTextFieldGetNSelectionsZero",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextTextFieldGetSelection",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextTextFieldSetSelection",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextWithNonBMPCharacters",
+        "AXPlatformNodeAuraLinuxTest.TestAtkTextWordGranularity"
+      ],
+      "failed_tests": [],
+      "xml": "candidate-atk-text-gtests.xml",
+      "xml_sha256": "705c6d6c28463947d94b3b8cd69f3702d2ca499d8b7d33fea4334858c10480e9",
+      "summary": "compiled-candidate-atk-text-summary.json",
+      "summary_sha256": "8f397e79c37e4d91119a4b0323f76deb2f50f9f22f398a262dae1b7a50a2ccd0"
+    }
+  },
+  "preserved_evidence_files_verified": 73,
+  "compiled_manifest_sha256": "77f1314a2a5d0cafcb4af52db372888dd6d490ae821eabc31ce9428dd27612a2",
+  "compiled_binaries_match_recorded_hashes": {
+    "baseline": true,
+    "candidate": true
+  },
+  "electron": {
+    "tag": "v43.7.7",
+    "commit": "ddb762f50fbd70384d0385302697e60ada549024",
+    "chromium_version_file": "MAJOR=150\nMINOR=0\nBUILD=7871\nPATCH=250\n",
+    "chromium_base_commit": "f916f1b7136907af19d96b95b891533d091d932a",
+    "chromium_after_official_patches": "289a05f36b7fdc2d529fc3258211336de2ab9849",
+    "official_patch_dependency_checkpoints_verified": [
+      {
+        "repo": "/home/miriam/chromium/issue79-electron-20261016-a/src",
+        "head": "289a05f36b7fdc2d529fc3258211336de2ab9849",
+        "preserved_ref": "refs/issue79/official-patches-completed-20261017"
+      },
+      {
+        "repo": "/home/miriam/chromium/issue79-electron-20261016-a/src/third_party/boringssl/src",
+        "head": "9fc9ad90232c723432265436504709ef8c9362bd",
+        "preserved_ref": "refs/issue79/official-patches-completed-20261017"
+      },
+      {
+        "repo": "/home/miriam/chromium/issue79-electron-20261016-a/src/third_party/devtools-frontend/src",
+        "head": "534fa5a20381c843442d80baa6283b763f99c4ac",
+        "preserved_ref": "refs/issue79/official-patches-completed-20261017"
+      },
+      {
+        "repo": "/home/miriam/chromium/issue79-electron-20261016-a/src/third_party/ffmpeg",
+        "head": "81347cb163f1e79564aaad72cd4e22fcdfd0b636",
+        "preserved_ref": "refs/issue79/official-patches-completed-20261017"
+      },
+      {
+        "repo": "/home/miriam/chromium/issue79-electron-20261016-a/src/v8",
+        "head": "a8a2d480b393930dde236dd9c6adbedcb4dae601",
+        "preserved_ref": "refs/issue79/official-patches-completed-20261017"
+      },
+      {
+        "repo": "/home/miriam/chromium/issue79-electron-20261016-a/src/third_party/angle",
+        "head": "9d22fc5753ea0e6573134d8e878db99154f2e9da",
+        "preserved_ref": "refs/issue79/official-patches-completed-20261017"
+      },
+      {
+        "repo": "/home/miriam/chromium/issue79-electron-20261016-a/src/third_party/electron_node",
+        "head": "e19f0df997f6834e777d341484086a24619d1081",
+        "preserved_ref": "refs/issue79/official-patches-completed-20261017"
+      },
+      {
+        "repo": "/home/miriam/chromium/issue79-electron-20261016-a/src/third_party/nan",
+        "head": "639d0557d84c86bcc3255e3dba631d488fe84974",
+        "preserved_ref": "refs/issue79/official-patches-completed-20261017"
+      },
+      {
+        "repo": "/home/miriam/chromium/issue79-electron-20261016-a/src/third_party/perfetto",
+        "head": "a4236855af8808935419d8b067d83b3149f1611e",
+        "preserved_ref": "refs/issue79/official-patches-completed-20261017"
+      },
+      {
+        "repo": "/home/miriam/chromium/issue79-electron-20261016-a/src/third_party/squirrel.mac",
+        "head": "c26ff0a57d9816293405aeb46d11cd830201dae4",
+        "preserved_ref": "refs/issue79/official-patches-completed-20261017"
+      },
+      {
+        "repo": "/home/miriam/chromium/issue79-electron-20261016-a/src/third_party/squirrel.mac/vendor/ReactiveObjC",
+        "head": "08bf3b1cedf723b6404c29a3cef1f2408adea73d",
+        "preserved_ref": "refs/issue79/official-patches-completed-20261017"
+      },
+      {
+        "repo": "/home/miriam/chromium/issue79-electron-20261016-a/src/third_party/webrtc",
+        "head": "b81078caaf572d51722cd02ec5b03313e3c3f3f6",
+        "preserved_ref": "refs/issue79/official-patches-completed-20261017"
+      },
+      {
+        "repo": "/home/miriam/chromium/issue79-electron-20261016-a/src/third_party/engflow-reclient-configs",
+        "head": "cdd6f51639a0911ef91a24c96dec7bf98591343a",
+        "preserved_ref": "refs/issue79/official-patches-completed-20261017"
+      },
+      {
+        "repo": "/home/miriam/chromium/issue79-electron-20261016-a/src/third_party/sqlite/src",
+        "head": "bc691d864e09b0af4e0b3fcf0ed1dd0d32c093c7",
+        "preserved_ref": "refs/issue79/official-patches-completed-20261017"
+      },
+      {
+        "repo": "/home/miriam/chromium/issue79-electron-20261016-a/src/third_party/dawn",
+        "head": "7a620b6f1bb6bd3ae3fe4df0c6549e2b387ba839",
+        "preserved_ref": "refs/issue79/official-patches-completed-20261017"
+      },
+      {
+        "repo": "/home/miriam/chromium/issue79-electron-20261016-a/src/third_party/skia",
+        "head": "3c3fad2a91980f9b63d3a45511581f398977d3e1",
+        "preserved_ref": "refs/issue79/official-patches-completed-20261017"
+      },
+      {
+        "repo": "/home/miriam/chromium/issue79-electron-20261016-a/src/third_party/pdfium",
+        "head": "e8177ed651abb224eb8cb5943da681b3758401eb",
+        "preserved_ref": "refs/issue79/official-patches-completed-20261017"
+      },
+      {
+        "repo": "/home/miriam/chromium/issue79-electron-20261016-a/src/third_party/libyuv",
+        "head": "fe02d0686257578226e582fdb03dac4e7c9bf750",
+        "preserved_ref": "refs/issue79/official-patches-completed-20261017"
+      }
+    ],
+    "configuration_and_checkpoint_hashes": {
+      "args.gn": {
+        "sha256": "59b13a26616f6093f31c749197e5d6feaa7cca4c9753e4423c4d02449ebc9022",
+        "matches_preserved": true
+      },
+      ".ninja_log": {
+        "sha256": "1265a06655430c981d98f524edb6bb4742dc367b850df70d48b9c35c3e7102cb",
+        "matches_preserved": true
+      },
+      ".ninja_deps": {
+        "sha256": "20aef0b84548ce947f24b7ef0627a1d23e518939e93eea3a39e7aa565eb25994",
+        "matches_preserved": true
+      },
+      "provider": {
+        "sha256": "1d50dc6645c011e6fa2f036c2b08f7bb35967a60dbda12d52d55e901e8dd731f",
+        "matches_preserved": true
+      },
+      "unittest_original": {
+        "sha256": "f18932d4de877d2074b541b4b77bfb9321e4292c5bf62df5a3d32c96481af540",
+        "matches_preserved": true
+      },
+      "bindings_BUILD.gn": {
+        "sha256": "be4d98e1f52b1cb35c4edc99325120f199816a868e5e003311f55e7f4fa53747",
+        "matches_preserved": true
+      },
+      "monitor": {
+        "sha256": "9004d05946d50ccf64b9dd35c97fa979124573ff8c2ade3783d5fe9a3d944a91",
+        "matches_preserved": true
+      },
+      "controller": {
+        "sha256": "87e50fb2603e0719327bcc4719ad12680f4f07b44fe4a3e7b011187577c0dc86",
+        "matches_preserved": true
+      }
+    },
+    "args": "import(\"//electron/build/args/testing.gn\")\nsymbol_level = 0\nblink_symbol_level = 0\nv8_symbol_level = 0\nuse_thin_lto = false\nconcurrent_links = 1\nuse_remoteexec = false\nuse_glib = true\n",
+    "previous_build_result": {
+      "exit_code": -15,
+      "reason": "RuntimeError('Stopping contained task for new host memory/swap pressure')",
+      "elapsed_seconds": 11159.689,
+      "scope": {
+        "group": "/user.slice/user-1000.slice/user@1000.service/app.slice/lrd79-electron-baseline-build.scope",
+        "memory_high": "6442450944",
+        "memory_max": "8589934592",
+        "swap_max_unchanged": "max",
+        "cpu_affinity": [
+          14,
+          15
+        ]
+      },
+      "resources": {
+        "utc": "2026-10-17T14:11:51.034988+00:00",
+        "available_kib": 12476748,
+        "swap_free_kib": 472060,
+        "swap_pages_out": 464836,
+        "memory_full_avg10": 0.54,
+        "free_disk_bytes": 1248090218496,
+        "load_1m": 6.37646484375
+      }
+    },
+    "completed_actions": 23371,
+    "original_total_actions": 45402,
+    "completed_objects_preserved": 19024,
+    "recovery_plan_not_yet_generated": true,
+    "controller_alive": true,
+    "controller_status": {
+      "utc": "2026-10-17T21:39:16.070194+00:00",
+      "pid": 629572,
+      "status": "waiting_for_startup_resources",
+      "next_phase": "electron-baseline-resume1-gn",
+      "resources": {
+        "utc": "2026-10-17T21:39:16.070165+00:00",
+        "available_kib": 12117172,
+        "swap_free_kib": 760572,
+        "swap_pages_out": 464908,
+        "memory_full_avg10": 0.0,
+        "free_disk_bytes": 1247870476288,
+        "load_1m": 0.15966796875
+      },
+      "required_available_kib": 12582912
+    },
+    "runtime_exists": false,
+    "distribution_zip_exists": false,
+    "dependencies_summary": {
+      "synced": true,
+      "post_checkout_hooks_run": false,
+      "original_chromium_sources_unchanged": true,
+      "task_memory_max_mib": 4096,
+      "system_swap_settings_modified": false
+    },
+    "hooks_summary": {
+      "hooks_passed": true,
+      "resumed_after_completed_patch_stage": true,
+      "official_patch_refs_preserved": true,
+      "task_configuration_restored": true,
+      "bootstrap_node": "v24.12.0",
+      "provider_sha256": "1d50dc6645c011e6fa2f036c2b08f7bb35967a60dbda12d52d55e901e8dd731f",
+      "verified_host_headers": {
+        "node": "v24.12.0",
+        "cache": "/home/miriam/chromium/issue79-electron-20261016-a/node-gyp-cache-verified",
+        "archive_sha256": "af120bedced0f62cf6506503347e165032b50274383e0dcc6d216c8d32260172",
+        "official_https_checksum_verified": true,
+        "header_compile_passed": true
+      },
+      "original_chromium_sources_unchanged": true
+    },
+    "clang_version": "clang version 23.0.0git (https://chromium.googlesource.com/a/external/github.com/llvm/llvm-project 20b6ec66967ac2a8f932863c1abf251e5b17a843)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/miriam/chromium/issue79-electron-20261016-a/src/third_party/llvm-build/Release+Asserts/bin",
+    "ninja_version": "1.12.1",
+    "DEPS_sha256": "4fab9d412a30ba06f936f8cb56c8c32e1aa513f40b7f7cb84dc6c369da51306e",
+    "electron_DEPS_sha256": "8d666880adcceac3d571bc0e4885bbba849dc5388b619dc9ef2f2ba9d43e481d"
+  },
+  "harness_staging": {
+    "utc": "2026-10-17T21:39:09.916421+00:00",
+    "upstream_repository_commit": "c975491a0428207e43ea87b17e431d56f231fc1e",
+    "old_sha256": "28a1d9deded1794eaca0e9effd12b87fe2472a4b7d6349961235abb598b22b3e",
+    "new_sha256": "80b06a264701b7f47eb43e6d74f5c924137e4ed0f331375320f2e6f5d68a7456",
+    "new_git_blob": "189541403a3bd1075195113f3f3665055926b022",
+    "old_script_preserved": "/home/miriam/chromium/issue79-electron-20261016-a/evidence/resume-review-20261017-b/vscode_selection_experiment.original.py",
+    "target": "/home/miriam/chromium/issue79-native-20261016-b/tools/diagnostics/vscode_selection_experiment.py",
+    "unit_tests": 6,
+    "original_exit": 1,
+    "updated_exit": 0,
+    "original_errors": 14,
+    "original_affected_test_methods": 2,
+    "negative_control_log": "unit-before.log",
+    "staging_precheck_correction": "Initial script expected one failure and one error; actual unittest subtest accounting was 14 missing-diagnostics errors. Original log retained without rerun.",
+    "application_tests_executed": false,
+    "build_started_by_this_script": false,
+    "controller_restarted": false,
+    "resource_policy_modified": false
+  },
+  "new_build_started": false,
+  "new_native_application_tests_run": false,
+  "chromium_correction_applied_to_electron": false,
+  "full_vscode_source_build_validated": false,
+  "live_nvda_physical_braille_acceptance": false
+}

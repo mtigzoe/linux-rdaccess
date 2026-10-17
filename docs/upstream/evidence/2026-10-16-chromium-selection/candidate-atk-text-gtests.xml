@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="AllTests" tests="16" failures="0" disabled="0" errors="0" time="0.001" timestamp="2026-10-16T23:37:55">
+  <testsuite name="AXPlatformNodeAuraLinuxTest" tests="16" failures="0" disabled="0" errors="0" time="0.001" timestamp="2026-10-16T23:37:55">
+    <testcase name="TestAtkTextCaretMoved" status="run" time="0.000" timestamp="2026-10-16T23:37:55" classname="AXPlatformNodeAuraLinuxTest">
+    </testcase>
+    <testcase name="TestAtkTextCharacterGranularity" status="run" time="0.000" timestamp="2026-10-16T23:37:55" classname="AXPlatformNodeAuraLinuxTest">
+    </testcase>
+    <testcase name="TestAtkTextContentEditableGetNSelections" status="run" time="0.000" timestamp="2026-10-16T23:37:55" classname="AXPlatformNodeAuraLinuxTest">
+    </testcase>
+    <testcase name="TestAtkTextContentEditableGetNSelectionsZero" status="run" time="0.000" timestamp="2026-10-16T23:37:55" classname="AXPlatformNodeAuraLinuxTest">
+    </testcase>
+    <testcase name="TestAtkTextFindInPageUnicodeOffsets" status="run" time="0.000" timestamp="2026-10-16T23:37:55" classname="AXPlatformNodeAuraLinuxTest">
+    </testcase>
+    <testcase name="TestAtkTextGetSelectionBmpUnicodeOffsets" status="run" time="0.000" timestamp="2026-10-16T23:37:55" classname="AXPlatformNodeAuraLinuxTest">
+    </testcase>
+    <testcase name="TestAtkTextGetSelectionMultilineUnicodeOffsets" status="run" time="0.000" timestamp="2026-10-16T23:37:55" classname="AXPlatformNodeAuraLinuxTest">
+    </testcase>
+    <testcase name="TestAtkTextGetSelectionTwoSupplementaryChars" status="run" time="0.000" timestamp="2026-10-16T23:37:55" classname="AXPlatformNodeAuraLinuxTest">
+    </testcase>
+    <testcase name="TestAtkTextGetSelectionUnicodeOffsets" status="run" time="0.000" timestamp="2026-10-16T23:37:55" classname="AXPlatformNodeAuraLinuxTest">
+    </testcase>
+    <testcase name="TestAtkTextGetText" status="run" time="0.000" timestamp="2026-10-16T23:37:55" classname="AXPlatformNodeAuraLinuxTest">
+    </testcase>
+    <testcase name="TestAtkTextSentenceGranularity" status="run" time="0.000" timestamp="2026-10-16T23:37:55" classname="AXPlatformNodeAuraLinuxTest">
+    </testcase>
+    <testcase name="TestAtkTextTextFieldGetNSelectionsZero" status="run" time="0.000" timestamp="2026-10-16T23:37:55" classname="AXPlatformNodeAuraLinuxTest">
+    </testcase>
+    <testcase name="TestAtkTextTextFieldGetSelection" status="run" time="0.000" timestamp="2026-10-16T23:37:55" classname="AXPlatformNodeAuraLinuxTest">
+    </testcase>
+    <testcase name="TestAtkTextTextFieldSetSelection" status="run" time="0.000" timestamp="2026-10-16T23:37:55" classname="AXPlatformNodeAuraLinuxTest">
+    </testcase>
+    <testcase name="TestAtkTextWithNonBMPCharacters" status="run" time="0.001" timestamp="2026-10-16T23:37:55" classname="AXPlatformNodeAuraLinuxTest">
+    </testcase>
+    <testcase name="TestAtkTextWordGranularity" status="run" time="0.000" timestamp="2026-10-16T23:37:55" classname="AXPlatformNodeAuraLinuxTest">
+    </testcase>
+  </testsuite>
+</testsuites>

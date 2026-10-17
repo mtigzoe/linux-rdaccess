@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="AllTests" tests="10" failures="0" disabled="0" errors="0" time="0.000" timestamp="2026-10-16T23:37:27">
+  <testsuite name="AXPlatformNodeAuraLinuxTest" tests="10" failures="0" disabled="0" errors="0" time="0.000" timestamp="2026-10-16T23:37:27">
+    <testcase name="TestAtkTextContentEditableGetNSelections" status="run" time="0.000" timestamp="2026-10-16T23:37:27" classname="AXPlatformNodeAuraLinuxTest">
+    </testcase>
+    <testcase name="TestAtkTextContentEditableGetNSelectionsZero" status="run" time="0.000" timestamp="2026-10-16T23:37:27" classname="AXPlatformNodeAuraLinuxTest">
+    </testcase>
+    <testcase name="TestAtkTextFindInPageUnicodeOffsets" status="run" time="0.000" timestamp="2026-10-16T23:37:27" classname="AXPlatformNodeAuraLinuxTest">
+    </testcase>
+    <testcase name="TestAtkTextGetSelectionBmpUnicodeOffsets" status="run" time="0.000" timestamp="2026-10-16T23:37:27" classname="AXPlatformNodeAuraLinuxTest">
+    </testcase>
+    <testcase name="TestAtkTextGetSelectionMultilineUnicodeOffsets" status="run" time="0.000" timestamp="2026-10-16T23:37:27" classname="AXPlatformNodeAuraLinuxTest">
+    </testcase>
+    <testcase name="TestAtkTextGetSelectionTwoSupplementaryChars" status="run" time="0.000" timestamp="2026-10-16T23:37:27" classname="AXPlatformNodeAuraLinuxTest">
+    </testcase>
+    <testcase name="TestAtkTextGetSelectionUnicodeOffsets" status="run" time="0.000" timestamp="2026-10-16T23:37:27" classname="AXPlatformNodeAuraLinuxTest">
+    </testcase>
+    <testcase name="TestAtkTextTextFieldGetNSelectionsZero" status="run" time="0.000" timestamp="2026-10-16T23:37:27" classname="AXPlatformNodeAuraLinuxTest">
+    </testcase>
+    <testcase name="TestAtkTextTextFieldGetSelection" status="run" time="0.000" timestamp="2026-10-16T23:37:27" classname="AXPlatformNodeAuraLinuxTest">
+    </testcase>
+    <testcase name="TestAtkTextTextFieldSetSelection" status="run" time="0.000" timestamp="2026-10-16T23:37:27" classname="AXPlatformNodeAuraLinuxTest">
+    </testcase>
+  </testsuite>
+</testsuites>
