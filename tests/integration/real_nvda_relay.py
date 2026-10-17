@@ -51,9 +51,6 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
                         "-keyout", str(key), "-out", str(cert)],
                        check=True, capture_output=True, timeout=15)
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        # Match the TLS 1.2 transport used in the isolated upstream TLS smoke.
-        # Avoid TLS 1.3 record delivery differences while testing lifecycle.
-        ctx.maximum_version = ssl.TLSVersion.TLSv1_2
         ctx.load_cert_chain(str(cert), str(key))
         args = SimpleNamespace(max_msg_size=65536, tracebacks=True,
                                motd="", motd_force=False)
@@ -146,9 +143,7 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
             def fileno(self):
                 return self._sock.fileno()
         def observed_create(address):
-            sock = original_create(address)
-            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-            return ObservedSocket(sock)
+            return ObservedSocket(original_create(address))
         transport.create_outbound_socket = observed_create
         def observed_send(type, **kwargs):
             sent.append((type, sorted(kwargs)))

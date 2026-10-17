@@ -182,6 +182,45 @@ def _customization_speech_server_function(tree):
     return getter
 
 
+def _patch_legacy_customization_character_api(text: str) -> str:
+    """Hook the character method Orca actually calls, including Orca 42."""
+    tree = ast.parse(text, feature_version=(3, 10))
+    attributes = [node for node in ast.walk(tree)
+                  if isinstance(node, ast.Attribute)
+                  and isinstance(node.value, ast.Name)
+                  and node.value.id == "SpeechServer"
+                  and node.attr == "speak_character"]
+    if not attributes:
+        return text
+    replacements = (
+        ("old_speakCharacter = SpeechServer.speak_character",
+         "_linux_rdaccess_character_method = (\n"
+         "    'speak_character' if hasattr(SpeechServer, 'speak_character')\n"
+         "    else 'speakCharacter')\n"
+         "old_speakCharacter = getattr(SpeechServer, _linux_rdaccess_character_method)"),
+        ("SpeechServer.speak_character = my_speak_character",
+         "setattr(SpeechServer, _linux_rdaccess_character_method, my_speak_character)"),
+    )
+    edits = []
+    for original, replacement in replacements:
+        expected = ast.parse(original).body[0]
+        matches = [node for node in tree.body if _ast_equal(node, expected)]
+        if len(matches) != 1:
+            raise ValueError("unsupported legacy character speech hook")
+        edits.append((matches[0], replacement))
+    if len(attributes) != 2 or _binding_count(tree.body, "_linux_rdaccess_character_method"):
+        raise ValueError("conflicting legacy character speech hook")
+    data = text.encode("utf-8")
+    starts = [0]
+    for line in data.splitlines(keepends=True):
+        starts.append(starts[-1] + len(line))
+    for node, replacement in sorted(edits, key=lambda edit: edit[0].lineno, reverse=True):
+        start = starts[node.lineno - 1] + node.col_offset
+        end = starts[node.end_lineno - 1] + node.end_col_offset
+        data = data[:start] + replacement.encode("utf-8") + data[end:]
+    return data.decode("utf-8")
+
+
 def _patch_legacy_customization_speech_server(text: str) -> str:
     tree = ast.parse(text, feature_version=(3, 10))
     getter = _customization_speech_server_function(tree)
@@ -1996,6 +2035,7 @@ def update_legacy_orca_customizations(
     }
     text = _replace_configuration_values(text, replacements, role=config.orca_connection_type)
     text = _redact_legacy_logs(text)
+    text = _patch_legacy_customization_character_api(text)
 
     pref_name = "LINUX_RDACCESS_MUTE_LOCAL_ORCA_SPEECH"
     pref_value = "True" if config.mute_local_orca_speech else "False"
