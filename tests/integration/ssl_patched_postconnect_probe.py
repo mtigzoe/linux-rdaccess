@@ -19,8 +19,11 @@ import subprocess
 import tempfile
 import threading
 import time
+import sys
 from types import SimpleNamespace
 
+# Direct script execution puts tests/integration ahead of the repository root.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from tests.unit.transport.test_tls_socket_serialization import patched_transport
 
 
