@@ -126,6 +126,7 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
         # Keep an audit of actual sender socket writes. A send() request alone
         # is not proof its queued frame reached the TLS socket.
         writes = []
+        socket_closes = []
         original_create = transport.create_outbound_socket
         class ObservedSocket:
             def __init__(self, sock):
@@ -138,6 +139,12 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
                     kind = "invalid"
                 writes.append((transport.successful_connects, kind))
                 return result
+            def close(self):
+                socket_closes.append((transport.successful_connects, time.monotonic()))
+                return self._sock.close()
+            def shutdown(self, how):
+                socket_closes.append((transport.successful_connects, time.monotonic(), "shutdown", how))
+                return self._sock.shutdown(how)
             def __getattr__(self, name):
                 return getattr(self._sock, name)
             def fileno(self):
@@ -167,7 +174,7 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
                 ):
                     return
                 time.sleep(0.02)
-            raise AssertionError("actual upstream transport never joined real relay: " + repr({"transport_connected": transport.connected, "worker_alive": worker.is_alive(), "worker_errors": [str(e) for e in errors], "relay_clients": [(c.id, c.channel_id) for c in real_server.clients], "relay_channels": list(real_server.channels), "successful_connects": transport.successful_connects, "queue_size": transport.queue.qsize(), "sender_alive": bool(transport.queue_thread and transport.queue_thread.is_alive()), "socket": repr(transport.server_sock), "sent": sent, "relay_handshake": relay_handshake_messages, "socket_writes": writes}))
+            raise AssertionError("actual upstream transport never joined real relay: " + repr({"transport_connected": transport.connected, "worker_alive": worker.is_alive(), "worker_errors": [str(e) for e in errors], "relay_clients": [(c.id, c.channel_id) for c in real_server.clients], "relay_channels": list(real_server.channels), "successful_connects": transport.successful_connects, "queue_size": transport.queue.qsize(), "sender_alive": bool(transport.queue_thread and transport.queue_thread.is_alive()), "socket": repr(transport.server_sock), "sent": sent, "relay_handshake": relay_handshake_messages, "socket_writes": writes, "socket_closes": socket_closes}))
 
         def master(key_string):
             peer = ssl._create_unverified_context().wrap_socket(
