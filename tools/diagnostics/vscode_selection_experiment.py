@@ -52,6 +52,41 @@ def unicode_length_metrics(expected, observed):
     }
 
 
+def failure_stage(label):
+    """Classify only known private-fixture steps, never export app text/labels.
+
+    The same AssertionError can mean a failed fixture setup, a stale AT-SPI
+    caret, a stale editor model after Right/Left, or wrong Unicode selection.
+    Keep these separate when inspecting baseline and corrected Electron runs.
+    """
+    if label in (
+        "VS Code editor text",
+        "VS Code editor caret",
+        "VS Code editor left-arrow caret",
+        "VS Code editor: typed text and left-arrow caret match AT-SPI",
+    ):
+        return "fixture_entry"
+    if label == "VS Code editor: semantic routing accepts provider caret setter":
+        return "caret_setter"
+    if label in (
+        "VS Code editor routed caret",
+        "VS Code editor: routed caret is confirmed by the provider",
+    ):
+        return "caret_readback"
+    if label.startswith(("routed caret keyboard ", "Routed caret: keyboard ")):
+        return "keyboard_continuation"
+    if label in (
+        "VS Code editor semantic selection",
+        "VS Code editor: semantic text snapshot tracks keyboard selection",
+    ):
+        return "semantic_selection"
+    if label.startswith("Code private "):
+        return "clipboard_integrity"
+    if label.startswith(("Code focus-return ", "VS Code: typed palette ")):
+        return "focus_return"
+    return "other_stage"
+
+
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -170,6 +205,7 @@ def run_inner(args):
     private = Path(metadata["private_binary"])
     if not private.resolve().is_relative_to(output):
         raise ValueError("Private binary outside experiment directory")
+    original_desktop_code_binary = smoke.desktop_code_binary
     smoke.desktop_code_binary = lambda: str(private)
     state = {
         "case": args.case,
@@ -183,7 +219,17 @@ def run_inner(args):
     node = None
     value = CASES[args.case]
     original_route, original_check = smoke.set_caret_offset, smoke.Session.check
+    original_wait = smoke.Session.wait
     original_edit, original_close = smoke.Session.text_edit, smoke.Session.close
+
+    def wait(self, predicate, label, *, seconds=18):
+        try:
+            return original_wait(self, predicate, label, seconds=seconds)
+        except AssertionError:
+            # Do not export a live window label or document text; only fixed
+            # stage identifiers derived from the known test vocabulary.
+            state.setdefault("failure_stage", failure_stage(label))
+            raise
 
     def route(target, offset):
         nonlocal node
@@ -199,7 +245,11 @@ def run_inner(args):
         return result
 
     def check(self, label, condition=True):
-        result = original_check(self, label, condition)
+        try:
+            result = original_check(self, label, condition)
+        except AssertionError:
+            state.setdefault("failure_stage", failure_stage(label))
+            raise
         if label == "VS Code editor: routed caret is confirmed by the provider":
             state["readback"] = node.get_text_iface().get_caret_offset()
         elif label == "Routed caret: keyboard Right reaches 2":
@@ -308,6 +358,7 @@ def run_inner(args):
         original_close(self)
 
     smoke.set_caret_offset, smoke.Session.check = route, check
+    smoke.Session.wait = wait
     smoke.Session.text_edit, smoke.Session.close = edit, close
     try:
         result = smoke.run_inner(set(smoke.APPLICATIONS) - {"vscode"})
@@ -320,11 +371,20 @@ def run_inner(args):
             and state["focus_return_continuation"]
         )
         state["status"] = "pass" if result == 0 and complete else "fail"
+        if state["status"] == "fail":
+            state.setdefault("failure_stage", "missing_confirmation")
         return 0 if state["status"] == "pass" else 1
     except BaseException as error:
         state.update(status="fail", failure_class=type(error).__name__)
+        state.setdefault("failure_stage", "unclassified_error")
         raise
     finally:
+        # The private experiment runs once per process, but leave the imported
+        # smoke implementation unchanged for callers invoking run_inner again.
+        smoke.set_caret_offset, smoke.Session.check = original_route, original_check
+        smoke.Session.wait = original_wait
+        smoke.Session.text_edit, smoke.Session.close = original_edit, original_close
+        smoke.desktop_code_binary = original_desktop_code_binary
         (Path(os.environ["LRD_GUI_PRIVATE"]) / "selection-result.json").write_text(
             json.dumps(state, indent=2)
         )
