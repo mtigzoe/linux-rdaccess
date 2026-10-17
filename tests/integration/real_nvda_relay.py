@@ -251,6 +251,18 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
                     client.channel_id == channel
                     for client in real_server.clients
                 ):
+                    # Once the relay has joined, both frames must have been
+                    # seen at its read boundary for this socket's local port.
+                    # This also validates the diagnostic port correlation on
+                    # successful first connections and reconnects.
+                    local_port = socket_connects[-1][2]
+                    observed = [
+                        kind for _, peer_port, kind, _ in relay_read_lines
+                        if peer_port == local_port
+                    ]
+                    assert "protocol_version" in observed and "join" in observed, (
+                        "relay frame observer missed the joined socket: " +
+                        repr({"local_port": local_port, "frames": observed}))
                     return
                 time.sleep(0.02)
             raise AssertionError("actual upstream transport never joined real relay: " + repr({"transport_connected": transport.connected, "worker_alive": worker.is_alive(), "worker_errors": [str(e) for e in errors], "server": server_snapshot(), "successful_connects": transport.successful_connects, "queue_size": transport.queue.qsize(), "sender_alive": bool(transport.queue_thread and transport.queue_thread.is_alive()), "sent": sent, "relay_handshake": relay_handshake_messages, "relay_read_lines": relay_read_lines[-30:], "socket_connects": socket_connects, "socket_writes": writes, "socket_closes": socket_closes}))
