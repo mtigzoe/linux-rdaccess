@@ -187,19 +187,30 @@ class TransportSendLifetimeTests(unittest.TestCase):
         self.assertIsNone(relay.queue_thread)
         self.assertTrue(sock.closed)
 
-    def test_v1_outbound_hook_upgrades_without_duplicate_patch(self):
-        """Already-installed v1 output hooks must safely upgrade to v2."""
+    def test_v1_and_v2_outbound_hooks_upgrade_without_duplicate_patch(self):
+        """Already-installed output hooks must safely upgrade to v3."""
         current = remote_access._patch_legacy_transport_cleanup(UPSTREAM)
-        v1 = current.replace(
-            remote_access._TRANSPORT_OUTBOUND_HOOK,
-            remote_access._TRANSPORT_OUTBOUND_HOOK_V1,
-        )
-        self.assertNotEqual(v1, current)
-        self.assertFalse(remote_access.legacy_transport_cleanup_patch_current(v1))
-        upgraded = remote_access._patch_legacy_transport_cleanup(v1)
-        self.assertEqual(upgraded, current)
-        self.assertTrue(remote_access.legacy_transport_cleanup_patch_current(upgraded))
-        self.assertEqual(remote_access._patch_legacy_transport_cleanup(upgraded), upgraded)
+        for old_hook in (
+                remote_access._TRANSPORT_OUTBOUND_HOOK_V1,
+                remote_access._TRANSPORT_OUTBOUND_HOOK_V2):
+            with self.subTest(previous=old_hook.splitlines()[0]):
+                historical = current.replace(
+                    remote_access._TRANSPORT_OUTBOUND_HOOK,
+                    old_hook,
+                )
+                self.assertNotEqual(historical, current)
+                self.assertFalse(
+                    remote_access.legacy_transport_cleanup_patch_current(
+                        historical))
+                upgraded = remote_access._patch_legacy_transport_cleanup(
+                    historical)
+                self.assertEqual(upgraded, current)
+                self.assertTrue(
+                    remote_access.legacy_transport_cleanup_patch_current(
+                        upgraded))
+                self.assertEqual(
+                    remote_access._patch_legacy_transport_cleanup(upgraded),
+                    upgraded)
 
     def test_genuine_v7_upgrade_preserves_backup_and_is_idempotent(self):
         fixture = Path(__file__).resolve().parents[2] / "fixtures/legacy-patches/transport-v7.txt"
