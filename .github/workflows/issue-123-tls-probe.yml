@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'tests/integration/ssl_thread_probe.py'
+      - 'tests/integration/ssl_postconnect_probe.py'
       - '.github/workflows/issue-123-tls-probe.yml'
   workflow_dispatch:
 
@@ -24,3 +25,7 @@ jobs:
         env:
           LRD_TLS_PROBE_ITERATIONS: "150"
         run: /usr/bin/python3 tests/integration/ssl_thread_probe.py
+      - name: Compare post-connect concurrent TLS app traffic with serialized control
+        env:
+          LRD_POSTCONNECT_TLS_PROBE_ITERATIONS: "60"
+        run: /usr/bin/python3 tests/integration/ssl_postconnect_probe.py
