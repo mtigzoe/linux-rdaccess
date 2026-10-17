@@ -70,6 +70,12 @@ class FakeTLS:
     def fileno(self):
         return 1
 
+    def shutdown(self, how):
+        self.events.append(("shutdown", how))
+
+    def close(self):
+        self.events.append(("close",))
+
 
 class SerialTLSSocketTests(unittest.TestCase):
     def test_receive_want_read_restores_original_blocking_mode(self):
