@@ -15,7 +15,7 @@ device output, explain the historical 6→9 movement by itself, or close #59/#72
 ## Review and setup
 
 1. Review the forward-ported companion candidate **20261014.0.4** (preserves .3 safeguards; not installed). Obtain explicit authorization
-   before installing it or restarting NVDA. The previous .1 installation and
+   before installing it or restarting NVDA. Any prior installation or
    previous test grants do not authorize this installation or new input scope.
    No Linux runtime installation or Orca restart is required.
 2. Prepare the existing public Mousepad editor, finish navigation and verify its
@@ -116,9 +116,10 @@ python nvda-addon/build.py
 git diff --check
 ```
 
-Review artifact: `nvda-addon/dist/linuxRdAccess-20261014.0.2.nvda-addon`, SHA-256
+Historical artifact from **the original PR #89** (not the new .4 build):
+`nvda-addon/dist/linuxRdAccess-20261014.0.2.nvda-addon`, SHA-256
 `7bfc7d84dc802fa26c0a7b344df684b3257c3e25e80e9644dac3482c98513d93`.
-The user subsequently reported installing this package and restarting NVDA.
+The user subsequently reported installing that **earlier .2 package** and restarting NVDA. The new `.4` forward-port candidate is not installed; its independently built CI artifact has a different hash.
 All **17** installed code/manifest files match the reviewed archive. This is
 an on-disk comparison, not attestation of every loaded module. Installation and
 the one-shot routing grant remain separate decisions. CI is not polled or awaited.
