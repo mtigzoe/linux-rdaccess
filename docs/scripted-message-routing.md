@@ -14,7 +14,7 @@ device output, explain the historical 6→9 movement by itself, or close #59/#72
 
 ## Review and setup
 
-1. Review companion candidate **20261014.0.2**. Obtain explicit authorization
+1. Review the forward-ported companion candidate **20261014.0.4** (preserves .3 safeguards; not installed). Obtain explicit authorization
    before installing it or restarting NVDA. The previous .1 installation and
    previous test grants do not authorize this installation or new input scope.
    No Linux runtime installation or Orca restart is required.
