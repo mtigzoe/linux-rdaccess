@@ -133,7 +133,7 @@ Remote Access control shortcut yourself when ready; keyboard injection is
 never an IPC action. End-to-end NVDA/Orca/physical braille acceptance remains
 separate consented live testing.
 
-## Optional one-shot simulated message route (20261014.0.2)
+## Optional one-shot simulated message route (introduced in .2; forward-port candidate .4)
 
 Version 4 adds exactly one argument-free operation, `braille_message_route`,
 exposed as `python linux_rdaccess_test_session.py nvda-route-message`.
