@@ -47,12 +47,14 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
     # Correlate actual relay read boundaries with individual client TLS writes.
     # Record only frame types/lengths and ephemeral ports, never channel keys.
     relay_read_lines = []
+    active_readers = {}
     original_handle_client = module.AsyncServer.handle_client
 
     async def observed_handle_client(server, reader, writer):
         peer = writer.get_extra_info("peername")
         peer_port = peer[1] if peer else None
         original_readline = reader.readline
+        active_readers[peer_port] = reader
 
         async def observed_readline():
             line = await original_readline()
@@ -65,7 +67,10 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
             return line
 
         reader.readline = observed_readline
-        return await original_handle_client(server, reader, writer)
+        try:
+            return await original_handle_client(server, reader, writer)
+        finally:
+            active_readers.pop(peer_port, None)
 
     module.AsyncServer.handle_client = observed_handle_client
     with tempfile.TemporaryDirectory(prefix="lrd-genuine-relay-") as tmp:
@@ -225,6 +230,13 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
                 "channels": [
                     (channel_label(key), len(members))
                     for key, members in real_server.channels.items()
+                ],
+                "readers": [
+                    (peer_port, len(getattr(reader, "_buffer", b"")),
+                     reader.at_eof(),
+                     type(reader.exception()).__name__ if reader.exception()
+                     else None)
+                    for peer_port, reader in active_readers.items()
                 ],
             }
 
