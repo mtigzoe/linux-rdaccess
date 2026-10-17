@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import secrets
 import socket
+import struct
 import ssl
 import subprocess
 import tempfile
@@ -44,6 +45,35 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
             pass
         return await original_process(client, line)
     module.Client.process_message = observed_process
+    # Correlate actual relay read boundaries with individual client TLS writes.
+    # Record only frame types/lengths and ephemeral ports, never channel keys.
+    relay_read_lines = []
+    active_readers = {}
+    original_handle_client = module.AsyncServer.handle_client
+
+    async def observed_handle_client(server, reader, writer):
+        peer = writer.get_extra_info("peername")
+        peer_port = peer[1] if peer else None
+        original_readline = reader.readline
+        active_readers[peer_port] = reader
+
+        async def observed_readline():
+            line = await original_readline()
+            try:
+                kind = json.loads(line).get("type") if line else "EOF"
+            except (ValueError, TypeError, AttributeError):
+                kind = "invalid"
+            relay_read_lines.append(
+                (round(time.monotonic(), 3), peer_port, kind, len(line)))
+            return line
+
+        reader.readline = observed_readline
+        try:
+            return await original_handle_client(server, reader, writer)
+        finally:
+            active_readers.pop(peer_port, None)
+
+    module.AsyncServer.handle_client = observed_handle_client
     with tempfile.TemporaryDirectory(prefix="lrd-genuine-relay-") as tmp:
         cert, key = Path(tmp) / "cert.pem", Path(tmp) / "key.pem"
         subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048",
@@ -111,7 +141,7 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
                     return
                 time.sleep(0.02)
             raise AssertionError(
-                "expected real-relay key callbacks: " + repr({"expected_count": count, "actual_events": list(key_events), "transport_connected": transport.connected, "connected_clients": dict(controller.connected_clients), "relay_channels": {key: len(value) for key, value in real_server.channels.items()}}))
+                "expected real-relay key callbacks: " + repr({"expected_count": count, "actual_events": list(key_events), "transport_connected": transport.connected, "connected_clients": dict(controller.connected_clients), "server": server_snapshot()}))
 
         def send_key(peer, pressed, *, key_name="Shift", vk_code=16):
             peer.sendall((json.dumps({
@@ -126,24 +156,80 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
         # Keep an audit of actual sender socket writes. A send() request alone
         # is not proof its queued frame reached the TLS socket.
         writes = []
+        socket_connects = []
         socket_closes = []
+        socket_io_overlaps = []
         original_create = transport.create_outbound_socket
+        next_socket_id = 0
+
         class ObservedSocket:
             def __init__(self, sock):
+                nonlocal next_socket_id
+                next_socket_id += 1
+                self._socket_id = next_socket_id
+                self._local_port = None
                 self._sock = sock
+                self._io_guard = threading.Lock()
+                self._active_io = {"recv": 0, "sendall": 0}
+
+            def connect(self, address):
+                result = self._sock.connect(address)
+                self._local_port = self._sock.getsockname()[1]
+                socket_connects.append((
+                    round(time.monotonic(), 3), self._socket_id,
+                    self._local_port))
+                return result
+
+            def _start_io(self, operation):
+                # Python/OpenSSL do not support concurrent SSL_read and
+                # SSL_write on one SSL object. Detect overlapping calls
+                # without serializing them (a blocking recv + lock would
+                # introduce a new deadlock).
+                with self._io_guard:
+                    other = "recv" if operation == "sendall" else "sendall"
+                    if self._active_io[other]:
+                        socket_io_overlaps.append((
+                            round(time.monotonic(), 3),
+                            self._socket_id, operation, other))
+                    self._active_io[operation] += 1
+
+            def _finish_io(self, operation):
+                with self._io_guard:
+                    self._active_io[operation] -= 1
+
+            def recv(self, *args, **kwargs):
+                self._start_io("recv")
+                try:
+                    return self._sock.recv(*args, **kwargs)
+                finally:
+                    self._finish_io("recv")
+
             def sendall(self, payload):
-                result = self._sock.sendall(payload)
+                self._start_io("sendall")
+                try:
+                    result = self._sock.sendall(payload)
+                finally:
+                    self._finish_io("sendall")
                 try:
                     kind = json.loads(payload).get("type")
-                except ValueError:
+                except (ValueError, TypeError, AttributeError):
                     kind = "invalid"
-                writes.append((transport.successful_connects, kind))
+                writes.append((
+                    round(time.monotonic(), 3), self._socket_id,
+                    self._local_port, transport.successful_connects,
+                    kind, len(payload)))
                 return result
+
             def close(self):
-                socket_closes.append((transport.successful_connects, time.monotonic()))
+                socket_closes.append((
+                    round(time.monotonic(), 3), self._socket_id,
+                    self._local_port, "close"))
                 return self._sock.close()
+
             def shutdown(self, how):
-                socket_closes.append((transport.successful_connects, time.monotonic(), "shutdown", how))
+                socket_closes.append((
+                    round(time.monotonic(), 3), self._socket_id,
+                    self._local_port, "shutdown", how))
                 return self._sock.shutdown(how)
             def __getattr__(self, name):
                 return getattr(self._sock, name)
@@ -156,6 +242,61 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
             sent.append((type, sorted(kwargs)))
             return original_send(type, **kwargs)
         transport.send = observed_send
+
+        async def inspect_server():
+            def channel_label(channel_id):
+                if channel_id is None:
+                    return "unjoined"
+                if channel_id == channel:
+                    return "target"
+                if channel_id == other_channel:
+                    return "other"
+                return "unexpected"
+
+            return {
+                "clients": [
+                    (client.id, channel_label(client.channel_id),
+                     client.connection_type)
+                    for client in real_server.clients
+                ],
+                "channels": [
+                    (channel_label(key), len(members))
+                    for key, members in real_server.channels.items()
+                ],
+                "readers": [
+                    (peer_port, len(getattr(reader, "_buffer", b"")),
+                     reader.at_eof(),
+                     type(reader.exception()).__name__ if reader.exception()
+                     else None)
+                    for peer_port, reader in active_readers.items()
+                ],
+            }
+
+        def server_snapshot():
+            # Inspect asyncio-owned client/channel sets from their own loop.
+            future = asyncio.run_coroutine_threadsafe(inspect_server(), loop)
+            try:
+                return future.result(timeout=2)
+            except Exception as exc:
+                return {"snapshot_error": type(exc).__name__}
+
+        def sender_tcp_state():
+            # Linux TCP_INFO is independent of the TLS plaintext parser.
+            # Unacknowledged TCP segments distinguish outstanding network
+            # delivery from data acknowledged by the peer's TCP stack.
+            sock = transport.server_sock
+            if sock is None:
+                return None
+            try:
+                info = sock.getsockopt(socket.IPPROTO_TCP, socket.TCP_INFO, 104)
+                return {
+                    "state": info[0],
+                    "unacked_segments": struct.unpack_from("=I", info, 24)[0],
+                    "socket_error": sock.getsockopt(
+                        socket.SOL_SOCKET, socket.SO_ERROR),
+                }
+            except (AttributeError, OSError, struct.error) as exc:
+                return {"tcp_info_error": type(exc).__name__}
 
         def start_orca():
             def run():
@@ -172,9 +313,21 @@ def exercise_relay(RemoteController, RelayTransport, JSONSerializer):
                     client.channel_id == channel
                     for client in real_server.clients
                 ):
+                    # Once the relay has joined, both frames must have been
+                    # seen at its read boundary for this socket's local port.
+                    # This also validates the diagnostic port correlation on
+                    # successful first connections and reconnects.
+                    local_port = socket_connects[-1][2]
+                    observed = [
+                        kind for _, peer_port, kind, _ in relay_read_lines
+                        if peer_port == local_port
+                    ]
+                    assert "protocol_version" in observed and "join" in observed, (
+                        "relay frame observer missed the joined socket: " +
+                        repr({"local_port": local_port, "frames": observed}))
                     return
                 time.sleep(0.02)
-            raise AssertionError("actual upstream transport never joined real relay: " + repr({"transport_connected": transport.connected, "worker_alive": worker.is_alive(), "worker_errors": [str(e) for e in errors], "relay_clients": [(c.id, c.channel_id) for c in real_server.clients], "relay_channels": list(real_server.channels), "successful_connects": transport.successful_connects, "queue_size": transport.queue.qsize(), "sender_alive": bool(transport.queue_thread and transport.queue_thread.is_alive()), "socket": repr(transport.server_sock), "sent": sent, "relay_handshake": relay_handshake_messages, "socket_writes": writes, "socket_closes": socket_closes}))
+            raise AssertionError("actual upstream transport never joined real relay: " + repr({"transport_connected": transport.connected, "worker_alive": worker.is_alive(), "worker_errors": [str(e) for e in errors], "server": server_snapshot(), "successful_connects": transport.successful_connects, "queue_size": transport.queue.qsize(), "sender_alive": bool(transport.queue_thread and transport.queue_thread.is_alive()), "tcp_state": sender_tcp_state(), "sent": sent, "relay_handshake": relay_handshake_messages, "relay_read_lines": relay_read_lines[-30:], "socket_connects": socket_connects, "socket_writes": writes, "socket_closes": socket_closes, "concurrent_ssl_io": socket_io_overlaps[-30:]}))
 
         def master(key_string):
             peer = ssl._create_unverified_context().wrap_socket(
