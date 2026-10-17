@@ -1,0 +1,43 @@
+name: Issue 123 genuine relay reconnect soak
+
+on:
+  pull_request:
+    paths:
+      - 'tests/integration/isolated_orca_restart_smoke.py'
+      - 'tests/integration/real_nvda_relay.py'
+      - '.github/workflows/issue-123-real-relay-soak.yml'
+      - 'linux_rdaccess_core/connection/remote_access.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-relay-soak:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install isolated Orca dependencies
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            orca xvfb dbus-x11 at-spi2-core python3-gi openssl
+      - name: Fetch exact pinned Orca Remote
+        run: |
+          set -euo pipefail
+          git clone -q https://github.com/serrebidev/orca-remote.git /tmp/orca-remote-upstream
+          git -C /tmp/orca-remote-upstream checkout -q d273e82fbc93bf6a6eb473a00e38291d84f1dccb
+          test "$(git -C /tmp/orca-remote-upstream rev-parse HEAD)" = d273e82fbc93bf6a6eb473a00e38291d84f1dccb
+      - name: Fetch exact pinned genuine NVDA Remote relay
+        run: |
+          set -euo pipefail
+          git clone -q https://github.com/a2hsh/nvda-remote.git /tmp/lrd-nvda-relay
+          git -C /tmp/lrd-nvda-relay checkout -q 78de6ac0cf7fde4081b6dc176a2e0dbb87450e17
+          test "$(git -C /tmp/lrd-nvda-relay rev-parse HEAD)" = 78de6ac0cf7fde4081b6dc176a2e0dbb87450e17
+      - name: Repeat genuine relay initial join and reconnect in private Orca
+        env:
+          LRD_PINNED_ORCA_REMOTE: /tmp/orca-remote-upstream
+          LRD_PINNED_RELAY_FILE: /tmp/lrd-nvda-relay/server.py
+          LRD_REAL_RELAY_SOAK_REPEATS: "3"
+        run: /usr/bin/python3 -X faulthandler tests/integration/isolated_orca_restart_smoke.py
