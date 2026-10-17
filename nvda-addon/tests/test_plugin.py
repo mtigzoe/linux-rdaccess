@@ -76,7 +76,10 @@ class PluginTests(unittest.TestCase):
 		self.module.RemoteAccessSemanticBrailleBridge = mock.Mock()
 		remote = sys.modules[f"{name}.localTestRemote"]
 		remote.findRemoteConnection = mock.Mock(return_value=mock.sentinel.remote)
-		self.dialog = types.SimpleNamespace(allowConnect=mock.Mock(), recordRouting=mock.Mock())
+		self.dialog = types.SimpleNamespace(
+			allowConnect=mock.Mock(), recordRouting=mock.Mock(), allowMessageRoute=mock.Mock()
+		)
+		self.dialog.allowMessageRoute.GetValue.return_value = False
 		self.dialog.allowConnect.GetValue.return_value = False
 		self.dialog.recordRouting.GetValue.return_value = False
 		sys.modules[f"{name}.localTestDialog"] = types.SimpleNamespace(
@@ -163,7 +166,9 @@ class PluginTests(unittest.TestCase):
 			self.dialog.allowConnect.GetValue.return_value = allowed
 			plugin._showLocalTestAuthorization()
 			self.dialogs.call_args.kwargs["callback"](1)
-			self.service.start.assert_called_with(allowConnect=allowed, remote=mock.sentinel.remote)
+			self.service.start.assert_called_with(
+				allowConnect=allowed, remote=mock.sentinel.remote, allowMessageRoute=False
+			)
 
 	def test_routing_diagnostics_require_their_checkbox_and_active_consent(self):
 		plugin = self.create()
@@ -175,6 +180,18 @@ class PluginTests(unittest.TestCase):
 				self.assertEqual(plugin.getLocalRoutingTrace()["available"], enabled)
 		plugin._revokeLocalTestSession()
 		self.assertFalse(plugin.getLocalRoutingTrace()["available"])
+
+	def test_message_route_permission_is_separate_and_includes_diagnostics(self):
+		plugin = self.create()
+		self.dialog.recordRouting.GetValue.return_value = False
+		self.dialog.allowMessageRoute.GetValue.return_value = True
+		with mock.patch.object(plugin._routingTrace, "_authorized", return_value=True):
+			plugin._showLocalTestAuthorization()
+			self.dialogs.call_args.kwargs["callback"](1)
+			self.service.start.assert_called_with(
+				allowConnect=False, remote=mock.sentinel.remote, allowMessageRoute=True
+			)
+			self.assertTrue(plugin.getLocalRoutingTrace()["available"])
 
 	def test_failed_or_ended_consent_clears_routing_diagnostics(self):
 		plugin = self.create()
