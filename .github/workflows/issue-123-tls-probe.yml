@@ -24,8 +24,18 @@ jobs:
       - name: Compare concurrent SSL I/O with serialized handshake on localhost
         env:
           LRD_TLS_PROBE_ITERATIONS: "150"
-        run: /usr/bin/python3 tests/integration/ssl_thread_probe.py
+        run: /usr/bin/python3 -X faulthandler tests/integration/ssl_thread_probe.py
+
+  tls-postconnect:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show pinned OS Python and OpenSSL
+        run: |
+          /usr/bin/python3 --version
+          openssl version
       - name: Compare post-connect concurrent TLS app traffic with serialized control
         env:
           LRD_POSTCONNECT_TLS_PROBE_ITERATIONS: "60"
-        run: /usr/bin/python3 tests/integration/ssl_postconnect_probe.py
+        run: /usr/bin/python3 -X faulthandler tests/integration/ssl_postconnect_probe.py
