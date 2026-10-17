@@ -41,14 +41,24 @@ twelve records with independent dropped counts. Both clear when consent ends.
 Version 1 and 2 operations remain unchanged; the outcome read uses version 3.
 An activation/caret attempt or a successful send call does not establish a
 Linux caret movement. Unknown/custom routing remains explicitly unknown.</p>
+<p>Development build 20261014.0.4 adds a separate unchecked permission
+“Allow one simulated routing press on a Linux message (records numeric
+diagnostics)”. After explicit consent, the argument-free
+<code>python linux_rdaccess_test_session.py nvda-route-message</code> command
+attempts to route cell 0 of the current Linux-owned stock temporary message.
+The grant is consumed before the attempt and rechecked at queued execution.
+Status/trace consent alone cannot authorize it, and it cannot fall back to
+document text or arbitrary keys. This is software-routing simulation, not a
+physical-braille acceptance result. This candidate has not been installed.</p>
 <h2>Validation limits</h2>
 <p>Build 20261014.0.3 discards queued native document-routing presses if the
 original Linux snapshot, control activation, connection, braille handler or
 visible buffer changes before execution. Fresh presses retain native NVDA
 input help, capture and script behavior. This correction is automated-tested;
 physical routing and the historical 6-to-9 caret movement remain unverified.
-This review candidate is based on merged main and does not include unmerged
-PR #89's separate one-shot automation. It has not been installed.</p>
+The development .4 candidate preserves these .3 safeguards and adds a separate
+one-shot consent gate. A new live grant is required; no installation or physical
+routing acceptance is claimed by this branch.</p>
 <p>Build 20261014.0.1 adds diagnostics without changing routing policy.
 It is prepared for review and has not been installed or physically tested.
 The user previously installed .6; its fourteen Python files matched disk.
