@@ -234,6 +234,15 @@ uv run --no-project python -m unittest discover -s tests -t .
 
 This command discovers all tests, but the complete suite targets Linux (including X11, Orca, and POSIX file permissions), so it is **not expected to pass on native Windows**. GitHub Actions runs the Linux suite with uv and publishes the results. On Windows, run only the controller tests:\n\n```powershell\nuv run --no-project python -m unittest tests.unit.windows.test_windows_controller\n```\n\nFor Linux CI results, see [Full unittest suite with uv](https://github.com/mtigzoe/linux-rdaccess/actions/workflows/uv-unittest.yml). The workflow retains a downloadable unittest log even when tests fail.
 
+## Isolated TLS relay fault-injection tests (issue #123)
+
+The optional [relay transport stress testing guide](docs/testing/relay-transport-stress.md)
+explains how to run the localhost-only, genuine pinned Orca Remote / NVDA
+Remote relay tests and interpret their results. GitHub Actions clones the
+external test repositories automatically; normal users installing
+linux-rdaccess do **not** need to clone them. Direct pushes to `main` do
+not trigger this particular workflow; use its manual Actions trigger.
+
 ## Python source layout
 
 Production code lives in `linux_rdaccess_core/`: `cli.py`, `connection/`,
