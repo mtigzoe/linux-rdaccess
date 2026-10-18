@@ -1,0 +1,77 @@
+name: Issue 123 relay fault-injection stress
+
+on:
+  pull_request:
+    paths:
+      - 'tests/integration/relay_transport_stress.py'
+      - '.github/workflows/issue-123-relay-fault-stress.yml'
+      - 'linux_rdaccess_core/connection/remote_access.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  LRD_PINNED_ORCA_REMOTE: /tmp/orca-remote-upstream
+  LRD_PINNED_RELAY_FILE: /tmp/lrd-nvda-relay/server.py
+  PYTHONPATH: .
+
+jobs:
+  patched-transport:
+    name: patched transport (Python ${{ matrix.python }})
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['system', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        if: matrix.python != 'system'
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Fetch exact pinned Orca Remote and genuine relay
+        run: |
+          set -euo pipefail
+          git clone -q https://github.com/serrebidev/orca-remote.git /tmp/orca-remote-upstream
+          git -C /tmp/orca-remote-upstream checkout -q d273e82fbc93bf6a6eb473a00e38291d84f1dccb
+          test "$(git -C /tmp/orca-remote-upstream rev-parse HEAD)" = d273e82fbc93bf6a6eb473a00e38291d84f1dccb
+          git clone -q https://github.com/a2hsh/nvda-remote.git /tmp/lrd-nvda-relay
+          git -C /tmp/lrd-nvda-relay checkout -q 78de6ac0cf7fde4081b6dc176a2e0dbb87450e17
+          test "$(git -C /tmp/lrd-nvda-relay rev-parse HEAD)" = 78de6ac0cf7fde4081b6dc176a2e0dbb87450e17
+      - name: Interpreter and OpenSSL
+        run: python3 -c "import ssl, sys; print(sys.version, ssl.OPENSSL_VERSION)"
+      - name: Repeated sessions with close, TCP cut, RST and mid-record cut
+        run: python3 -X faulthandler tests/integration/relay_transport_stress.py sessions --cycles 300
+      - name: Teardown under heavy bidirectional load
+        run: python3 -X faulthandler tests/integration/relay_transport_stress.py teardown --cycles 120
+      - name: Stalled peer while the sender is blocked
+        run: python3 -X faulthandler tests/integration/relay_transport_stress.py halfopen
+      - name: Partial large frame cut across sessions
+        run: python3 -X faulthandler tests/integration/relay_transport_stress.py partial --cycles 60
+      - name: No application frame before join
+        run: python3 -X faulthandler tests/integration/relay_transport_stress.py prejoin --cycles 100
+
+  unpatched-control:
+    name: unpatched control (informational; failures are expected)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch exact pinned Orca Remote and genuine relay
+        run: |
+          set -euo pipefail
+          git clone -q https://github.com/serrebidev/orca-remote.git /tmp/orca-remote-upstream
+          git -C /tmp/orca-remote-upstream checkout -q d273e82fbc93bf6a6eb473a00e38291d84f1dccb
+          git clone -q https://github.com/a2hsh/nvda-remote.git /tmp/lrd-nvda-relay
+          git -C /tmp/lrd-nvda-relay checkout -q 78de6ac0cf7fde4081b6dc176a2e0dbb87450e17
+      - name: Same scenarios against the UNPATCHED pinned transport
+        env:
+          LRD_UNPATCHED: "1"
+        run: |
+          python3 -c "import ssl, sys; print(sys.version, ssl.OPENSSL_VERSION)"
+          # Results are printed for evidence that the scenarios can detect the old
+          # defect class; this job does not gate the patched-transport checks.
+          python3 -X faulthandler tests/integration/relay_transport_stress.py sessions --cycles 80 || true
+          python3 -X faulthandler tests/integration/relay_transport_stress.py teardown --cycles 40 || true
