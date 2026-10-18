@@ -116,6 +116,23 @@ def my_stop(server):
         c._linux_rdaccess_stop_nvda_speech()
         self.assertEqual(c.transport.sent, ['cancel'])
 
+    def test_pending_local_stop_runs_after_reconnect_only_with_current_session(self):
+        c, _, _ = self._patched_controller(inline=False)
+        queue, glib = self._fake_glib()
+        stopped = []
+        with self.orca_speech(), glib:
+            self.install_local_stop(c, stopped)
+            self._key(c, 0xA2, True)
+            self.assertEqual(len(queue), 1)
+            # Old deferred cancellation must not affect the next session.
+            c.transport.connected = False
+            c._linux_rdaccess_sync_state()
+            c.transport.connected = True
+            c._linux_rdaccess_sync_state()
+            queue.pop(0)()
+        self.assertEqual(stopped, [])
+        self.assertFalse(c._lrd_local_stop_pending)
+
     def test_name_only_ctrl_interrupts_nvda_once_per_fresh_press(self):
         for name in ("Control_L", "Control_R"):
             with self.subTest(name=name):
