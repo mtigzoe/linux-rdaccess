@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'tests/integration/relay_transport_stress.py'
+      - 'tests/integration/run_stress_gated.sh'
+      - 'tests/integration/test_relay_stress_shutdown.py'
       - '.github/workflows/issue-123-relay-fault-stress.yml'
       - 'linux_rdaccess_core/connection/remote_access.py'
   workflow_dispatch:
@@ -24,11 +26,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ['system', '3.12']
+        python: ['3.10', '3.12']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        if: matrix.python != 'system'
         with:
           python-version: ${{ matrix.python }}
       - name: Fetch exact pinned Orca Remote and genuine relay
@@ -41,17 +42,23 @@ jobs:
           git -C /tmp/lrd-nvda-relay checkout -q 78de6ac0cf7fde4081b6dc176a2e0dbb87450e17
           test "$(git -C /tmp/lrd-nvda-relay rev-parse HEAD)" = 78de6ac0cf7fde4081b6dc176a2e0dbb87450e17
       - name: Interpreter and OpenSSL
-        run: python3 -c "import ssl, sys; print(sys.version, ssl.OPENSSL_VERSION)"
+        run: |
+          python3 -c "import ssl, sys; print(sys.version, ssl.OPENSSL_VERSION)"
+          python3 -c "import sys; assert '%d.%d' % sys.version_info[:2] == '${{ matrix.python }}', sys.version"
+      - name: Harness shutdown regression tests (no pending tasks, unretrieved exceptions or leaked resources)
+        env:
+          LRD_REQUIRE_PINNED: "1"
+        run: python3 -X faulthandler -m unittest -v tests.integration.test_relay_stress_shutdown
       - name: Repeated sessions with close, TCP cut, RST and mid-record cut
-        run: python3 -X faulthandler tests/integration/relay_transport_stress.py sessions --cycles 300
+        run: bash tests/integration/run_stress_gated.sh sessions --cycles 300
       - name: Teardown under heavy bidirectional load
-        run: python3 -X faulthandler tests/integration/relay_transport_stress.py teardown --cycles 120
+        run: bash tests/integration/run_stress_gated.sh teardown --cycles 120
       - name: Stalled peer while the sender is blocked
-        run: python3 -X faulthandler tests/integration/relay_transport_stress.py halfopen
+        run: bash tests/integration/run_stress_gated.sh halfopen
       - name: Partial large frame cut across sessions
-        run: python3 -X faulthandler tests/integration/relay_transport_stress.py partial --cycles 60
+        run: bash tests/integration/run_stress_gated.sh partial --cycles 60
       - name: No application frame before join
-        run: python3 -X faulthandler tests/integration/relay_transport_stress.py prejoin --cycles 100
+        run: bash tests/integration/run_stress_gated.sh prejoin --cycles 100
 
   unpatched-control:
     name: unpatched control (informational; failures are expected)

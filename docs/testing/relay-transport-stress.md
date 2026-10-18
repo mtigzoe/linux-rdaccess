@@ -54,6 +54,25 @@ Scenarios check repeated join/reconnect and frame order (`sessions`), terminatio
 
 For **informational historical comparison only**, set `LRD_UNPATCHED=1` before running an individual scenario against the unpatched pinned transport. Failures or crashes in that control are not evidence of a defect in the patched production path; do not run the intentionally unsafe control on an active desktop.
 
+## Harness shutdown accounting (issues #137 and #138)
+
+The stress harness owns its asyncio loop thread. `Env.close()` shuts it down like `asyncio.run()`: it stops accepting, closes every proxied and peer transport, lets tasks finish, cancels and **awaits** any survivors, retrieves their exceptions, closes the servers, loop and thread, and returns a report. Every scenario prints that report as `shutdown` in its `RESULT` line and fails if it lists any `problems`, pending tasks, an unclosed loop or a thread that did not end.
+
+Errors on the harness's own asyncio side are classified rather than swallowed:
+
+- **Expected**: `ConnectionError` subclasses (`ConnectionResetError`, `BrokenPipeError`, `ConnectionAbortedError`) are what the injected cut/RST/stall faults cause. They are counted in `shutdown.expected_fault_errors`.
+- **Unexpected**: anything else is listed in `shutdown.problems` and fails the scenario.
+
+The genuine relay and the production transport still log their own fault-injection output (for example `Error client N` with `BrokenPipeError`, `socket.send() raised exception`, `dropped malformed line`). That output is expected and is not shutdown noise.
+
+Regression tests (they need the same pinned checkouts and environment variables; CI sets `LRD_REQUIRE_PINNED=1` so a missing checkout fails instead of skipping):
+
+```bash
+python3 -m unittest -v tests.integration.test_relay_stress_shutdown
+```
+
+The CI scenario steps run through `tests/integration/run_stress_gated.sh`, which also fails when the output contains `Task was destroyed but it is pending`, `exception was never retrieved` or `CancelledError`.
+
 ## Acceptance scope
 
 Passing these simulated/isolated relay scenarios supports issue [#123](https://github.com/mtigzoe/linux-rdaccess/issues/123), but **does not establish live NVDA-origin input, Orca speech, or physical braille acceptance**. Those user-authorized tests remain tracked in [#61](https://github.com/mtigzoe/linux-rdaccess/issues/61). Preserve CI logs and exact interpreter/OpenSSL versions when reporting any failures.
