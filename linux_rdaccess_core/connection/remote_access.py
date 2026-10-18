@@ -2379,7 +2379,8 @@ LEGACY_COMPAT_MARKER_V118 = "# linux-rdaccess NVDA/Orca input compatibility v118
 LEGACY_COMPAT_MARKER_V119 = "# linux-rdaccess NVDA/Orca input compatibility v119"
 LEGACY_COMPAT_MARKER_V120 = "# linux-rdaccess NVDA/Orca input compatibility v120"
 LEGACY_COMPAT_MARKER_V121 = "# linux-rdaccess NVDA/Orca input compatibility v121"
-LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v122"
+LEGACY_COMPAT_MARKER_V122 = "# linux-rdaccess NVDA/Orca input compatibility v122"
+LEGACY_COMPAT_MARKER = "# linux-rdaccess NVDA/Orca input compatibility v123"
 # v1 is a prefix of every later marker, so any older patch is detected by it.
 
 _LEGACY_HELPERS = '''\
@@ -3033,19 +3034,29 @@ _LEGACY_HELPERS = '''\
         if getattr(self, "_lrd_insert_pending", None) is not None:
             self._lrd_insert_used = True
 
-    def _linux_rdaccess_flush_pending_caps(self):
+    def _linux_rdaccess_flush_pending_caps(self, for_capture=False):
         """Forward deferred CapsLock; report whether ordinary input can continue."""
         pending = getattr(self, "_lrd_caps_pending", None)
         if pending is None:
             return True
-        _held, payload = pending
+        held, payload = pending
+        generation = getattr(self, "_lrd_generation", 0)
         self._lrd_caps_pending = None
         self._lrd_caps_used = False
         try:
-            return self._linux_rdaccess_forward_key(**payload) is not False
+            accepted = self._linux_rdaccess_forward_key(**payload) is not False
         except Exception:
             log.error("linux-rdaccess: failed to forward deferred CapsLock")
-            return False
+            accepted = False
+        if (not accepted and for_capture
+                and held in getattr(self, "_lrd_down", set())
+                and generation == getattr(self, "_lrd_generation", 0)
+                and getattr(self, "_lrd_caps_pending", None) is None):
+            # Capture needs the complete physical chord. Retry before its
+            # next key, but never replay a failed chord on modifier release.
+            self._lrd_caps_pending = pending
+            self._lrd_caps_used = True
+        return accepted
 
     def _linux_rdaccess_flush_pending_insert(self):
         """Forward deferred Insert; report whether ordinary input can continue."""
@@ -3430,8 +3441,8 @@ _LEGACY_HELPERS = '''\
                     # A previously translated command can have marked the
                     # still-held modifier as used. Capture nevertheless needs
                     # that modifier before a new physical key reaches Gtk.
-                    self._linux_rdaccess_flush_pending_caps()
-                    if not self._linux_rdaccess_flush_pending_insert():
+                    if (not self._linux_rdaccess_flush_pending_caps(for_capture=True)
+                            or not self._linux_rdaccess_flush_pending_insert()):
                         self._lrd_swapped.add(held)
                         self._lrd_trace_why = "deferred_modifier_rejected"
                         return True
@@ -7176,6 +7187,7 @@ def patch_legacy_orca_remote_controller(path: Path) -> bool:
         (
             marker
             for marker in (
+                LEGACY_COMPAT_MARKER_V122,
                 LEGACY_COMPAT_MARKER_V121,
                 LEGACY_COMPAT_MARKER_V120,
                 LEGACY_COMPAT_MARKER_V119,

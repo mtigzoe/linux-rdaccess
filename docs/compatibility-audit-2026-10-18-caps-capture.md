@@ -1,0 +1,116 @@
+# Issue #57: rejected Caps Lock during shortcut capture
+
+Status: **confirmed defect, fixed and automated-tested**. Issue #57 remains open
+for live Windows NVDA acceptance. No active desktop, NVDA, physical display,
+Cyber service, or issue #79 build was accessed or changed.
+
+## Reproduction and root cause
+
+Baseline: `main` at `0918a976c0751ce9a7109df15fdcf9989708252d`, generated
+controller v122. The regression uses the production controller patcher and
+`_on_remote_key` entry point with fake Orca state and a selective key backend
+failure. It does not infer Windows speech or hardware behavior from mocks.
+
+With Orca shortcut capture active, press Caps Lock then T. Reject only the
+deferred Caps Lock key-down, either with `False` or `OSError`; accept other keys.
+The baseline still delivers T down/up to the editor without Caps Lock. Holding
+Caps Lock across a second captured key also delivers that key unmodified.
+
+The capture branch ignored the result of `_linux_rdaccess_flush_pending_caps`,
+although it checked the equivalent Insert result. The Caps helper also discarded
+the deferred payload before learning whether the backend accepted it. Thus
+checking its result alone would fix the first key but lose the modifier on the
+next key of the same physical hold.
+
+The two new failure/recovery regressions fail on unchanged production on Linux
+and Windows Python 3.10 and 3.12: two test methods, four failing subtests per
+run. The observed Linux baseline delivery includes unmodified `T` down/up;
+the repeat/recovery case also delivers T repeats and unmodified U.
+
+## Change
+
+Capture now checks both modifier results before delivering a command key. A
+rejected chord owns its repeats and release. The Caps helper retains a failed
+capture modifier only while the physical hold and input generation still
+match. It retries before the next captured key, but releasing an unsuccessful
+chord cannot replay a Caps Lock toggle. Capture exit and session reset expire
+the failed capture state appropriately.
+
+The optional retry applies only to shortcut capture. Ordinary typing retains
+the intentional behavior that a rejected Caps Lock toggle does not swallow
+the following application key. Input help, command translation, Insert retry,
+and pass-next retain their existing behavior.
+
+The generated controller advances v122 to v123, with v122 recognized by the
+backup-preserving upgrade path. Root compatibility wrappers are unchanged.
+
+Changed files:
+
+- `linux_rdaccess_core/connection/remote_access.py`: capture result check,
+  capture-specific retry ownership, controller version and upgrade recognition.
+- `tests/unit/accessibility/test_browser_command_context.py`: three regressions
+  covering selective rejection/exception, repeat ownership, successful retry,
+  release without replay, capture exit, handoff, disconnect, and later typing.
+- This evidence report.
+
+## Automated verification
+
+The new regression methods are:
+
+- `DirectCommandInputHelpTests.test_rejected_capture_caps_modifier_never_delivers_unmodified_command`
+- `DirectCommandInputHelpTests.test_failed_capture_caps_modifier_retries_before_following_chord_key`
+- `DirectCommandInputHelpTests.test_failed_capture_caps_retry_expires_at_capture_exit_and_session_changes`
+
+They run from the repository root in
+`tests.unit.accessibility.test_browser_command_context`.
+
+The local Linux environment is disposable WSL Ubuntu, separate from Cyber.
+Installed-source checks use Orca **42.0-1ubuntu2**, GI 3.42.1 and Liblouis 3.20.0.
+This verifies relevant Orca 42.0 source behavior without inspecting or changing
+Cyber's loaded runtime. In particular, installed `input_event.py` passes keys
+through while `capturingKeys` is true, and `orca_gui_prefs.py` enables this flag
+while collecting a physical shortcut. Existing installed-source tests exercise
+`_processKeyCaptured` for Insert and Caps Lock.
+
+Results:
+
+- Baseline Linux Python 3.10 input discovery: 195 tests, zero failures/skips.
+- Fixed Linux Python 3.10 related controller/capture/pass-next/ownership/upgrade
+  and protocol integration selection: 212 tests, zero failures/skips.
+- Full Linux Python 3.10.12 suite on a private Xvfb display: 1,665 tests,
+  zero failures/errors, four skips. Full Linux Python 3.12.15 headless suite:
+  1,647 tests, zero failures/errors, 38 skips (managed Python lacks the distro
+  GI/Liblouis bindings and a display). Counts differ because optional source
+  and native-library tests create different test inventories.
+- The three final Caps regression methods passed separately on both Linux
+  Python versions after adding the last capture-exit/session-boundary test;
+  that test was added after the full-suite processes had loaded their tests.
+- Windows focused failure/recovery/lifecycle and ordinary Caps failure selection:
+  four tests passed. Full controller capture class also passed, with its
+  installed-Linux-source test skipped on Windows (31 tests on Python 3.10.21).
+- Genuine v122 output generated by baseline code upgraded to v123 in a private
+  staging directory: compile/Python 3.10 grammar, original backup preservation,
+  private modes and idempotence passed on Linux Python 3.10 and 3.12.
+  Baseline generated SHA-256:
+  `263994746963e269fa492069328b907cd6c4dbacf4272be862b950426e4ae8f8`.
+- Scoped Ruff (`E9,F63,F7,F82`) and `git diff --check`: passed.
+
+The full native Windows input-discovery baseline is **not a pass**: 195 tests,
+26 failures, 29 errors and three skips before production changes, primarily
+Linux permission/input-trace assumptions. The same input discovery passed in
+Linux. Broad inherited Ruff rules also report existing style/security findings;
+unrelated cleanup is outside this fix.
+
+## Limits and remaining acceptance
+
+Software tests can establish filter decisions, callback generation ownership,
+release bookkeeping, repeat suppression, recovery ordering, protocol framing,
+and installed-source capture contracts. They cannot establish the complete
+Windows NVDA-to-Orca-to-Gtk shortcut-editor interaction.
+
+Live #57 acceptance remains for NVDA+T, NVDA+1, NVDA+F7, Insert+N's documented
+unsupported remote-menu behavior, Insert/Caps desktop and laptop layouts,
+actual lock synchronization, input help/pass-next, real shortcut capture and
+exit, held/repeated/released keys, focus transitions and control handoff.
+Audible Windows speech, braille wording/presentation and physical routing
+remain independent checks. No live acceptance requirement is marked complete.
