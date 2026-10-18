@@ -261,6 +261,43 @@ class DirectCommandInputHelpTests(Harness, unittest.TestCase):
             (0x2D, True), (0x54, True), (0x54, True), (0x54, False), (0x2D, False)])
         self.assertFalse(c._lrd_forwarded)
 
+    def test_capture_caps_failure_does_not_flush_second_pending_insert(self):
+        # When both NVDA modifiers are deferred, a rejected Caps press must
+        # fail closed before Insert or a plain application key can escape.
+        c, _, state, queue = self.environment(learn=False, queued=True)
+        state.capturingKeys = True
+        original = c.local_machine.send_key
+        attempts = []
+        rejected = False
+
+        def send(**kw):
+            nonlocal rejected
+            attempts.append((kw['vk_code'], kw['pressed']))
+            if kw['vk_code'] == 0x14 and kw['pressed'] and not rejected:
+                rejected = True
+                return False
+            return original(**kw)
+
+        c.local_machine.send_key = send
+        self._key(c, 0x14, True)
+        self._key(c, 0x2D, True, extended=True)
+        self._key(c, 0x54, True)
+        self._key(c, 0x54, False)
+        self.assertEqual(attempts, [(0x14, True)])
+        self.assertEqual(self.physical_keys(c), [])
+
+        # A new captured key retries Caps first, then forwards Insert.
+        self._key(c, 0x55, True)
+        self._key(c, 0x55, False)
+        self._key(c, 0x2D, False, extended=True)
+        self._key(c, 0x14, False)
+        self.drain(queue)
+        self.assertEqual(self.physical_keys(c), [
+            (0x14, True), (0x2D, True), (0x55, True),
+            (0x55, False), (0x2D, False), (0x14, False)])
+        self.assertFalse(c._lrd_forwarded)
+        c._linux_rdaccess_script_call.assert_not_called()
+
     def test_rejected_capture_caps_modifier_never_delivers_unmodified_command(self):
         for failure in (False, OSError('private backend failure')):
             with self.subTest(failure=type(failure).__name__):
