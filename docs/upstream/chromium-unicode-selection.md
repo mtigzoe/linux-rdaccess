@@ -1,5 +1,7 @@
 # Chromium Unicode selection candidate
 
+**Latest source-linked regression evidence:** The [October 18 full-suite red/green checkpoint](../compatibility-audit-2026-10-18-issue79-source-red-green.md) independently compiles and links original versus corrected Chromium ATK production code with an identical regression-test object and 1,343 identical tests. The original implementation passed 1,340/1,343; the corrected draft passed 1,343/1,343. This uses pinned Chromium 150, **not** current Chromium main or a completed source-built Electron/VS Code application.
+
 The [later compiled-source checkpoint](../compatibility-audit-2026-10-17-sourcebuilt-checkpoint.md)
 records the actual Chromium `accessibility_unittests` target compiled and run
 on 2026-10-16 at pinned commit `f916f1b7136907af19d96b95b891533d091d932a`.
