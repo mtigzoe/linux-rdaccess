@@ -1,0 +1,146 @@
+ISSUE #61 LIVE ACCEPTANCE RESULTS
+=================================
+
+Procedure: docs/testing/issue61-live-acceptance.md
+Issue: https://github.com/mtigzoe/linux-rdaccess/issues/61
+
+How to fill this in
+-------------------
+- Copy this file for each session. Fill in the SESSION RECORD first.
+- Make one STEP BLOCK per step, using the step IDs from the procedure
+  (for example H1.1, R1.3, M1a.5). Fill in the observed lines only after the
+  step is done. Do not decide the result during the step.
+- Record speech and braille separately. Never substitute local Orca speech,
+  Linux-side checks or braille for Windows NVDA speech.
+- Do not write relay addresses, channel keys, credentials, passwords or private
+  text anywhere in this file.
+- Result values: PASS, FAIL, INCONCLUSIVE, NOT RUN. For race attempts write
+  "no failure observed in N attempts". INCONCLUSIVE if any unplanned input
+  occurred.
+- This record does not close #61, #57, #58, #59 or #72.
+
+
+SESSION RECORD
+--------------
+Date and time started:
+Tester (physical actions):
+Assistant (recorder):
+Repository main commit:
+Procedure file commit or PR:
+
+Windows
+  NVDA version:
+  NVDA keyboard layout:
+  NVDA modifier key setting:
+  Remote Access mode (do not record address or key):
+  Active Linux integration (legacy RDAccess or standalone companion):
+  Companion build, if active:
+
+b.note 80
+  Connection and driver in use:
+  Cell count:
+  Translation table:
+  Tether setting (read only, not changed):
+
+Linux
+  Linux Mint version:
+  XFCE version:
+  Orca version (expected 42.0):
+  Orca process ID at start:
+  Linux controller version and patch status:
+  Fixture page open and focused (yes or no):
+  Caps Lock / Num Lock / Scroll Lock states:
+
+Mechanisms chosen (exact method for each)
+  Handoff keys:
+  Graceful disconnect:
+  Abrupt break:
+  Reconnect:
+  Regaining remote control:
+  Orca restart (command and where run):
+
+Preflight
+  P1 consent and roles confirmed:
+  P6 baseline quiet check (30 seconds), anything observed:
+  P8 recovery plan confirmed:
+
+Cyber #79 build untouched and session not sluggish (yes or no):
+
+
+STEP BLOCK (copy once per step)
+-------------------------------
+Step ID:
+Time:
+Exact keys or action performed:
+Linux application and focus before:
+Remote control state before (active, local, disconnected):
+Orca process ID, if relevant:
+
+Expected speech:
+Observed speech (Windows NVDA):
+Expected braille:
+Observed braille (text read on the b.note, and where on the display):
+Local Orca differences (audible Linux speech, anything else):
+
+Session state after (connected, remote control active, announcements heard):
+Reproducible (times tried, times seen):
+Any unplanned input by anyone (yes or no, details):
+Stuck modifier or recovery needed (details):
+
+RESULT: PASS / FAIL / INCONCLUSIVE / NOT RUN
+Notes:
+Also relevant to (informational only, does not update these issues):
+  #57 / #58 / #59 / #72
+
+
+STEP IDS TO COPY BLOCKS FOR
+---------------------------
+Core run
+  H1.1 H1.2 H1.3 H1.4
+  H2.1 H2.2 H2.3 H2.4
+  R1.1 R1.2 R1.3 R1.4 R1.5 R1.6
+  M1a.1 M1a.2 M1a.3 M1a.4 M1a.5   (Left Shift)
+  M1b.1 M1b.2 M1b.3 M1b.4 M1b.5   (Left Ctrl)
+  M2.1 M2.2 M2.3 M2.4 M2.5 M2.6
+  U1.1 U1.2 U1.3 U1.4 U1.5
+  S1.1 S1.2 S1.3 S1.4 S1.5
+  B0.1 B0.2 B1 B2 B3
+
+Extended run (only after the core run is recorded)
+  R2.1 R2.2 R2.3 R2.4 R2.5 R2.6
+  M1c.1 M1c.2 M1c.3 M1c.4 M1c.5   (Left Alt)
+  M3.1 M3.2 M3.3 M3.4 M3.5        (optional)
+  Q1.n.1 Q1.n.2 Q1.n.3            (up to five attempts, n = 1 to 5)
+  Q2.1 Q2.2 Q2.3
+  M4.1 M4.2 M4.3 M4.4             (needs explicit go-ahead)
+
+Not run by design
+  F1  key injection or release failure: NOT RUN. No safe live method exists.
+
+
+SUMMARY (fill in at the end)
+----------------------------
+Steps recorded:
+PASS:
+FAIL:
+INCONCLUSIVE:
+NOT RUN:
+
+#61 checkbox status (each is: not started, evidence recorded, or blocked)
+  1 Fresh input after reconnect/Orca restart, no stuck modifiers, duplicate
+    activation or replay (R1, R2, M1, M2, M3, M4):
+  2 Stale queued shortcuts and old focus/script/window actions (Q1, Q2):
+  3 No stale braille routing/panning or speech; Windows NVDA is the presenter
+    (S1, B0 to B3):
+  4 Handoff, unexpected disconnect, recovery, injection or release failure
+    (H1, H2, U1, M3; F1 is NOT RUN):
+  5 Exact keys, focus, expected versus observed, session state recorded:
+
+Suspected defects (one line each, with step IDs):
+
+Follow-up actions needed from Miriam:
+
+Items that remain unverified (physical braille, anything NOT RUN):
+
+Closure: Miriam decides. This record is evidence only. Issues #57, #58, #59,
+#61 and #72 stay open until each issue's own acceptance criteria are confirmed.
