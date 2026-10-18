@@ -261,6 +261,130 @@ class DirectCommandInputHelpTests(Harness, unittest.TestCase):
             (0x2D, True), (0x54, True), (0x54, True), (0x54, False), (0x2D, False)])
         self.assertFalse(c._lrd_forwarded)
 
+    def test_rejected_capture_caps_modifier_never_delivers_unmodified_command(self):
+        for failure in (False, OSError('private backend failure')):
+            with self.subTest(failure=type(failure).__name__):
+                c, _, state, queue = self.environment(learn=False, queued=True)
+                state.capturingKeys = True
+                original = c.local_machine.send_key
+                attempts = []
+
+                def send(**kw):
+                    attempts.append((kw['vk_code'], kw['pressed']))
+                    if kw['vk_code'] == 0x14 and kw['pressed']:
+                        if isinstance(failure, Exception):
+                            raise failure
+                        return False
+                    return original(**kw)
+
+                c.local_machine.send_key = send
+                self.gesture(c, self.COMMANDS[2], modifier=0x14)
+                self.drain(queue)
+                self.assertEqual(self.physical_keys(c), [])
+                self.assertEqual(attempts, [(0x14, True)])
+                self.assertFalse(c._lrd_forwarded)
+                c._linux_rdaccess_script_call.assert_not_called()
+
+                # A failed captured chord must not retain suppression after
+                # its physical modifier is released.
+                state.capturingKeys = False
+                c.local_machine.send_key = original
+                self._key(c, 0x54, True)
+                self._key(c, 0x54, False)
+                self.assertEqual(self.physical_keys(c), [
+                    (0x54, True), (0x54, False)])
+
+    def test_failed_capture_caps_modifier_retries_before_following_chord_key(self):
+        for failure in (False, OSError('private backend failure')):
+            with self.subTest(failure=type(failure).__name__):
+                c, _, state, queue = self.environment(learn=False, queued=True)
+                state.capturingKeys = True
+                original = c.local_machine.send_key
+                attempts = []
+                rejected = []
+
+                def send(**kw):
+                    attempts.append((kw['vk_code'], kw['pressed']))
+                    if kw['vk_code'] == 0x14 and kw['pressed'] and not rejected:
+                        rejected.append(True)
+                        if isinstance(failure, Exception):
+                            raise failure
+                        return False
+                    return original(**kw)
+
+                c.local_machine.send_key = send
+                self._key(c, 0x14, True)
+                self._key(c, 0x54, True)
+                self._key(c, 0x54, True)  # The rejected key's repeat stays owned.
+                self._key(c, 0x54, False)
+                self._key(c, 0x55, True)  # Retry Caps before a new captured key.
+                self._key(c, 0x55, False)
+                self._key(c, 0x14, False)
+                self.drain(queue)
+                self.assertEqual(attempts, [
+                    (0x14, True), (0x14, True),
+                    (0x55, True), (0x55, False), (0x14, False)])
+                self.assertEqual(self.physical_keys(c), [
+                    (0x14, True), (0x55, True), (0x55, False), (0x14, False)])
+                self.assertFalse(c._lrd_forwarded)
+                c._linux_rdaccess_script_call.assert_not_called()
+
+    def test_failed_capture_caps_retry_expires_at_capture_exit_and_session_changes(self):
+        for failure in (False, OSError('private backend failure')):
+            for change in ('capture_exit', 'handoff', 'disconnect'):
+                with self.subTest(failure=type(failure).__name__, change=change):
+                    c, _, state, queue = self.environment(learn=False, queued=True)
+                    state.capturingKeys = True
+                    original = c.local_machine.send_key
+                    attempts = []
+                    recovering = False
+
+                    def send(**kw):
+                        attempts.append((kw['vk_code'], kw['pressed']))
+                        if kw['vk_code'] == 0x14 and kw['pressed'] and not recovering:
+                            if isinstance(failure, Exception):
+                                raise failure
+                            return False
+                        return original(**kw)
+
+                    c.local_machine.send_key = send
+                    self._key(c, 0x14, True)
+                    self._key(c, 0x54, True)
+                    self._key(c, 0x54, False)
+                    self.assertEqual(attempts, [(0x14, True)])
+
+                    if change == 'capture_exit':
+                        state.capturingKeys = False
+                    elif change == 'handoff':
+                        c.toggle_control()
+                        c.toggle_control()
+                    else:
+                        c.transport.connected = False
+                        c._linux_rdaccess_sync_state()
+                        c.transport.connected = True
+                        c._linux_rdaccess_sync_state()
+                    recovering = True
+                    if change == 'capture_exit':
+                        # Finishing capture with Caps still held must not
+                        # replay the rejected toggle on its physical release.
+                        self._key(c, 0x14, False)
+                    # A new session's capture must not inherit the old
+                    # modifier retry, even before its late key-up arrives.
+                    self._key(c, 0x54, True)
+                    self._key(c, 0x54, False)
+                    state.capturingKeys = False
+                    if change != 'capture_exit':
+                        self._key(c, 0x14, False)
+                    self._key(c, 0x59, True)
+                    self._key(c, 0x59, False)
+                    self.drain(queue)
+                    expected = [(0x54, True), (0x54, False),
+                                (0x59, True), (0x59, False)]
+                    self.assertEqual(attempts, [(0x14, True)] + expected)
+                    self.assertEqual(self.physical_keys(c), expected)
+                    self.assertFalse(c._lrd_forwarded)
+                    c._linux_rdaccess_script_call.assert_not_called()
+
     def test_capture_ownership_expires_at_handoff_and_disconnect(self):
         for change in ('handoff', 'disconnect'):
             with self.subTest(change=change):
