@@ -91,6 +91,31 @@ def my_stop(server):
         self.assertEqual(stopped, [])
         self.assertFalse(c._lrd_local_stop_pending)
 
+    def test_immediate_nvda_cancel_send_failure_is_isolated_and_recovers(self):
+        c, _, _ = self._patched_controller()
+        original = c.transport.send
+        c.transport.send = mock.Mock(side_effect=OSError('synthetic cancel failure'))
+        # A failing remote cancel must not crash the input receiver.
+        c._linux_rdaccess_stop_nvda_speech()
+        c.transport.send.assert_called_once_with(type='cancel')
+        c.transport.send = original
+        c._linux_rdaccess_stop_nvda_speech()
+        self.assertEqual(c.transport.sent, ['cancel'])
+
+    def test_immediate_nvda_cancel_is_not_sent_outside_slave_session(self):
+        c, _, _ = self._patched_controller()
+        original = c.transport.connection_type
+        c.transport.connected = False
+        c._linux_rdaccess_stop_nvda_speech()
+        self.assertEqual(c.transport.sent, [])
+        c.transport.connected = True
+        c.transport.connection_type = 'master'
+        c._linux_rdaccess_stop_nvda_speech()
+        self.assertEqual(c.transport.sent, [])
+        c.transport.connection_type = original
+        c._linux_rdaccess_stop_nvda_speech()
+        self.assertEqual(c.transport.sent, ['cancel'])
+
     def test_name_only_ctrl_interrupts_nvda_once_per_fresh_press(self):
         for name in ("Control_L", "Control_R"):
             with self.subTest(name=name):
