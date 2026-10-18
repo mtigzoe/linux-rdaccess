@@ -44,6 +44,9 @@ verify speech interruption, panning/routing, ownership of semantic braille,
 and behavior on disconnect/reconnect. Do not close issue #61 based on the
 isolated automation alone.
 
+The step-by-step procedure and plain-text results template are in
+[testing/issue61-live-acceptance.md](testing/issue61-live-acceptance.md).
+
 ## Safe implementation order
 
 First build a test-only extension-loaded readiness signal; then wire the
