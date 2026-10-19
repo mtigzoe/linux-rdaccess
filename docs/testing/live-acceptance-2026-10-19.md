@@ -3,7 +3,7 @@
 Related issues: #57, #59, #61. PR #146 remains draft.
 No acceptance test has run; K57-01 remains UNVERIFIED with zero attempts.
 
-## Authorization and current status
+## Pre-activation authorization and status
 
 Miriam reported activating the five-minute test grant. Descriptor validation
 succeeded, but the restricted execution context received Windows access-denied
@@ -89,18 +89,48 @@ local display :0, X authority, session bus and runtime directory were present;
 X11 responded and the accessibility bus was owned. No environment values
 containing private paths or addresses were retained.
 
-## Next separate approval
+## Approved single Orca restart and recovery
 
-One session-aware Orca restart on Cyber is proposed to load the approved Linux
-files. The existing cli.restart_orca() starts orca --replace in the discovered
-graphical session without rewriting saved connection settings. It has not run.
+Miriam separately answered **"Approve one Orca restart; Windows is local"**.
+The reviewed operation called the existing cli.restart_orca() exactly once,
+using the previously checked graphical-session environment. It did not call
+connect, change saved settings or install the Windows companion.
 
-This can interrupt Linux Remote Access and Linux speech/braille presentation.
-Windows NVDA itself will keep running. Independent SSH and the v121 working-state
-snapshot remain available. Any further restart, connection change, settings
-change or recovery file restoration requires its own approval; no silent retry
-is authorized. Windows companion installation/restart and an accessible Windows
-recovery method remain later approval boundaries.
+At **10:35:55-10:35:58 EDT**, Orca PID 1867 exited and replacement PID
+**114133** recovered. Bounded observation found one stable Orca process and
+one established TCP socket. The four deployed hashes remained correct and
+all 74 protected files retained their contents and metadata. No known build
+process was found in the final preflight. No desktop input, NVDA restart,
+connection command, settings operation or recovery restoration was performed.
+
+An independent read-only check at **10:36:49 EDT**, after the original SSH
+command ended, confirmed PID 114133, parent PID 1, start time 10:35:55, and
+one established TCP socket. The four file hashes, ownership and modes remained
+correct; the disk controller marker remained v123. The private rollback index
+and immutable audit record that this one restart has already been consumed.
+There is no authorization for another restart.
+
+These checks establish process recovery observed through 10:36:49 EDT, not
+authenticated Windows recovery,
+exact loaded Python-byte identity or physical presentation. The new process
+was launched with the selected session environment, but its /proc environment
+does not expose the graphical variables for independent matching. No loaded
+v123 attestation is claimed. Windows companion **20261014.0.4 remains prepared
+and uninstalled**; installed .2 was not changed.
+
+## Remaining verification and separate approvals
+
+A fresh five-minute NVDA test grant is pending for a read-only authenticated
+Windows connection-status check. A promise to grant it is not a ready signal.
+A Linux TCP socket alone does not establish Windows bridge/control/negotiation
+state, speech or physical-braille recovery.
+
+Windows companion .4 installation and one NVDA restart still require separate
+approval and an agreed accessible Windows recovery method. Any further Orca
+restart, connection change, settings change or recovery file restoration
+requires its own approval; no silent retry is authorized. Opening or focusing
+a public unsaved Mousepad target, and any Remote handoff, remain separate
+actions to agree after activation and recovery are verified.
 
 No live acceptance PASS or FAIL was recorded. K57-01 remains UNVERIFIED with
 zero attempts. #57, #59 and #61 remain open; PR #146 stays draft.
