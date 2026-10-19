@@ -895,13 +895,67 @@ physical report. Ask only for current b.note output after THIS known handoff;
 the earlier "Windows content" report belongs to a different checkpoint.
 Historical gesture uncertainties remain separate. P6 remains incomplete.
 
+
+PHYSICAL RESULT FOR ASSISTED-RETURN-01 — 14:09 EDT
+---------------------------------------------------
+Miriam's exact answer about the handoff just performed: "Windows content".
+This is the physical b.note report for the KNOWN assistant gesture at 14:06:24,
+separate from her earlier readiness report with the same wording.
+
+Expected physical behavior: Windows content after return to local control.
+Observed physical category: Windows content, reported by Miriam.
+Assessment: MATCHES EXPECTED for the tactile content category of this return.
+Exact cells/text, transient announcement timing and source implementation
+were not identified. Audible Windows speech remains UNVERIFIED.
+The software state transition and physical content category are now both
+recorded; this does not accept the full H1 case, #57 modifiers, #59 Linux
+semantic presentation/routing, or the remaining #61 requirements.
+No repeated gesture is requested to reconstruct the already recorded return.
+
+At about 14:09:39 EDT protected status again reported active authorization,
+connected bridge/transport, WINDOWS LOCAL control, and semantic braille/
+temporary-message support. The endpoint physical flag remains unverified
+because it does not measure Miriam's hardware observation.
+At 14:09:40 EDT passive Linux readback confirmed the same exact fixture
+URI/hash/id and active editable single-line editor; original value unchanged,
+caret19/selection1, stable active window. Zero observer keys/focus calls.
+
+NEW P6 ATTEMPT PROPOSAL — PENDING SEPARATE APPROVAL
+---------------------------------------------------
+The prior assisted quiet check did not run. Its one return handoff has been
+recorded and that attempt is finished; do not reuse its remaining numerical
+key allowance for another trial.
+
+Proposed fresh bounded attempt:
+  Require a fresh active five-minute grant, connected transport and verified
+  active fixture anchor, without changing Linux focus.
+  Accept either known LOCAL or known REMOTE starting control state and record
+  which was observed. If LOCAL, use the existing Windows NVDA Braille Viewer
+  as the target and send Insert+Alt+Tab ONCE, then verify REMOTE plus anchor.
+  If already REMOTE, skip entry rather than toggling out of the required state.
+  With confirmed REMOTE control and fixture anchor, mark a NEW 30-second quiet
+  interval while Miriam reads the b.note with all keys released.
+  After the interval, recheck status/focus. Return with Insert+Alt+Tab ONCE only
+  from confirmed REMOTE control, including if the quiet test stopped because
+  fixture focus changed. Do not repair Linux focus.
+  Verify Windows LOCAL control before requesting a typed report.
+  Maximum TWO Windows handoff gestures, no retries or other input. Never
+  toggle on an unknown state; no reconnect/restart/settings/install actions.
+  A changed state during the quiet interval is recorded before classification.
+
+This scope accommodates the current verified control state without making an
+unnecessary entry toggle. It needs new explicit key/focus approval and a fresh
+timed grant. Full H1 remains pending preflight. The P6 physical result must
+come from Miriam after the interval; time passage or metadata is not a PASS.
+
 SUMMARY (fill in at the end)
 ----------------------------
 Steps recorded: 1 assistant-driven return handoff with a software control-state
 result; no completed full H1 acceptance trial. Historical handoff and P6 remain
 uncertain. Escape NOT RUN; unplanned user Alt+F4 recorded separately.
-PASS: 1 software control-state return; 1 physical Windows-content readiness
-  category matches expected. No full H1 acceptance PASS.
+PASS: 1 software control-state return; its physical Windows-content category
+  matches expected. Earlier physical readiness also matches expected.
+  No full H1 acceptance PASS.
 FAIL: 0
 INCONCLUSIVE: 0 completed trials
 NOT RUN: Current H1 case blocked by unmet preconditions; other cases unstarted
@@ -923,12 +977,13 @@ Follow-up actions needed from Miriam:
   confirmed trial. Current b.note Windows-content report is recorded. The
   existing fixture anchor was restored and verified at 14:00.
   Approved existing-window restoration succeeded at 14:00. The assisted
-  return handoff at 14:06 has a verified software result; obtain its separate
-  physical b.note report before any next test. New P6 interval did not run.
+  return handoff at 14:06 now has both the software result and Miriam's
+  physical Windows-content category recorded. Fresh P6 proposal awaits new
+  key/focus approval and renewed grant; the prior interval did not run.
 
 Items that remain unverified (physical braille, anything NOT RUN):
   Current state needs rechecking before actions; latest verified Windows state
-  was connected/local at 14:06. Physical Windows-content category is confirmed
+  was connected/local at 14:09. Physical Windows-content category is confirmed
   by Miriam; exact cells, Linux braille/routing, audible speech, all unattempted
   acceptance requirements and earlier prompt execution remain unverified.
   The exact public fixture anchor was independently verified at 14:00.
