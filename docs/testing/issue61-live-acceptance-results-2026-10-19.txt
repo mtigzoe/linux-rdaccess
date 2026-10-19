@@ -48,7 +48,7 @@ Linux
   Orca version (expected 42.0): 42.0-1ubuntu2 package, inspected earlier
   Orca process ID at start: 114133 at 10:58:05 EDT prior check; not re-read in this focus check
   Linux controller version and patch status: v123 disk hashes verified earlier after one approved restart; exact loaded revision unverified
-  Fixture page open and focused (yes or no): Required Single line editor anchor NOT focused; fixture URI/open-tab existence not inspected
+  Fixture page open and focused (yes or no): YES at 11:53:29 EDT after approved setup; exact URI/hash and Single line editor verified
   Caps Lock / Num Lock / Scroll Lock states: Unverified; not changed
 
 Mechanisms chosen (exact method for each)
@@ -143,7 +143,7 @@ The public fixture was not found at four fixed candidate paths. This does not
 establish absence elsewhere. Firefox is already executable at /usr/bin/firefox.
 No Firefox process was launched by these checks.
 
-PREPARED PUBLIC FIXTURE SETUP — NOT EXECUTED
+PREPARED PUBLIC FIXTURE SETUP — INITIAL PROPOSAL
 -------------------------------------------
 Source: tests/fixtures/firefox-acceptance.html at repository commit
 6d24df2179f7484f4a01a66a708afc24dde1173e.
@@ -164,6 +164,53 @@ This changes Linux focus and needs the explicit approval Miriam required.
 It does not authorize handoff, typing, settings changes, installation,
 restart, disconnect/reconnect, automatic retries or additional test gestures.
 P4/H1 remains blocked until required setup and current control are established.
+
+APPROVED FIXTURE SETUP AND INDEPENDENT READBACK
+-----------------------------------------------
+Miriam explicitly answered: "Approve fixture setup only".
+The independently reviewed operation passed a read-only preflight at 11:51:13 EDT:
+correct 5,073-byte source/hash, unused target, existing Firefox, existing local
+XFCE session and required accessibility APIs. There were zero Firefox windows.
+
+At 11:52:02-11:52:03 EDT the approved operation:
+  Created the exact new private temporary directory and approved HTML file.
+  Verified the copied hash and original source bytes; directory0700/file0600.
+  Launched Firefox --new-window with only that exact local file URI, once.
+  Verified one new active Firefox window and one exact-URI document.
+  Uniquely verified the editor's id, tag, name, role and required states.
+  Called its accessibility grab_focus once; provider returned true.
+  Verified the editor focused in the same active window.
+Result: FIXTURE READY. This is setup readiness, not a live acceptance PASS.
+
+No keyboard/typing input, Remote handoff, settings change, companion
+installation, Orca/NVDA restart or disconnect/reconnect was performed.
+The accessibility focus action was the specific UI change Miriam approved.
+No mutation retry or focus/input fallback was used. The private operation audit
+and helper sources were preserved with verified hashes.
+
+At 11:53:29 EDT a separate read-only probe through Desktop Commander and SSH
+reused the existing Focus class and confirmed:
+  Exact fixture SHA-256 matches: yes
+  Exact full document URI matches: yes
+  DOM id single-editor and expected public label match: yes
+  Focus role: entry; editable, single-line, focused and visible
+  Active X window and PID stable during read: yes
+  Public value equals "Single editor alpha": yes, unchanged
+  Caret offset: 0; selection count: 0
+  Keyboard input / focus calls by this independent probe: none / zero
+
+The post-setup NVDA status request returned required_or_expired. Current
+Windows connection/control state is therefore UNVERIFIED; no disconnected
+state is inferred. Miriam has been asked to activate a fresh five-minute
+read-only grant with optional connection/routing boxes unchecked and reply
+ready. No physical handoff has been requested after setup.
+
+Current P4 fixture/anchor: satisfied at the independent readback.
+P6 quiet baseline and remaining H1 preconditions: not completed.
+Current user b.note observation: none provided for a new trial.
+Current audible Windows speech: UNVERIFIED.
+The uncertain historical handoff remains separate; no execution/result is
+reconstructed from fixture readiness or current state.
 
 SUMMARY (fill in at the end)
 ----------------------------
@@ -187,8 +234,9 @@ Suspected defects (one line each, with step IDs): None established
 
 Follow-up actions needed from Miriam:
   Earlier execution uncertainty has been recorded; do not ask Miriam to
-  reconstruct it as a confirmed trial. Obtain explicit public fixture setup
-  approval, then establish current focus/control before any new trial.
+  reconstruct it as a confirmed trial. Fixture setup is complete. A fresh
+  five-minute grant is needed for current Windows control/connection status;
+  recheck Linux focus before offering any prospective new gesture.
 
 Items that remain unverified (physical braille, anything NOT RUN):
   Current fixture URI, tactile output, audible speech, all unattempted acceptance
