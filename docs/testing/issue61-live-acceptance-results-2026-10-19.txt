@@ -1,0 +1,142 @@
+ISSUE #61 LIVE ACCEPTANCE RESULTS
+=================================
+
+Procedure: docs/testing/issue61-live-acceptance.md
+Issue: https://github.com/mtigzoe/linux-rdaccess/issues/61
+
+How to fill this in
+-------------------
+- Copy this file for each session. Fill in the SESSION RECORD first.
+- Make one STEP BLOCK per step, using the step IDs from the procedure
+  (for example H1.1, R1.3, M1a.5). Fill in the observed lines only after the
+  step is done. Do not decide the result during the step.
+- Record speech and braille separately. Never substitute local Orca speech,
+  Linux-side checks or braille for Windows NVDA speech.
+- Do not write relay addresses, channel keys, credentials, passwords or private
+  text anywhere in this file.
+- Result values: PASS, FAIL, INCONCLUSIVE, NOT RUN. For race attempts write
+  "no failure observed in N attempts". INCONCLUSIVE if any unplanned input
+  occurred.
+- This record does not close #61, #57, #58, #59 or #72.
+
+
+SESSION RECORD
+--------------
+Date and time started: 2026-10-19; current read-only Linux observation at 11:31:57 EDT
+Tester (physical actions): Miriam; no assistant desktop input
+Assistant (recorder): Codex
+Repository main commit: 6d24df2179f7484f4a01a66a708afc24dde1173e (latest fetched baseline)
+Procedure file commit or PR: Merged PR #145; main procedure blob af1969d86f1dc74941ec719b50b20629679c6f3d
+
+Windows
+  NVDA version: 2026.2 from prior verified startup/executable evidence; not re-read this preflight
+  NVDA keyboard layout: Saved desktop; active layout unverified
+  NVDA modifier key setting: Insert, reported by Miriam
+  Remote Access mode (do not record address or key): Unverified; current status grant required or expired
+  Active Linux integration (legacy RDAccess or standalone companion): Standalone, supported by earlier current-startup markers; not re-attested this preflight
+  Companion build, if active: 20261014.0.2 installed files verified earlier; exact loaded bytes unverified; .4 uninstalled
+
+b.note 80
+  Connection and driver in use: Unverified
+  Cell count: b.note 80 model reported; runtime cell count unverified
+  Translation table: Unverified
+  Tether setting (read only, not changed): Unverified; not changed
+
+Linux
+  Linux Mint version: 21.3 from prior package/release inspection
+  XFCE version: Unverified
+  Orca version (expected 42.0): 42.0-1ubuntu2 package, inspected earlier
+  Orca process ID at start: 114133 at 10:58:05 EDT prior check; not re-read in this focus check
+  Linux controller version and patch status: v123 disk hashes verified earlier after one approved restart; exact loaded revision unverified
+  Fixture page open and focused (yes or no): Required Single line editor anchor NOT focused; fixture URI/open-tab existence not inspected
+  Caps Lock / Num Lock / Scroll Lock states: Unverified; not changed
+
+Mechanisms chosen (exact method for each)
+  Handoff keys: Insert+Alt+Tab; physical user action only
+  Graceful disconnect: Not authorized for this phase
+  Abrupt break: Not authorized
+  Reconnect: Not authorized
+  Regaining remote control: Intentional physical handoff; current control state must be checked first
+  Orca restart (command and where run): No restart authorized for this phase; earlier single approved restart recorded separately
+
+Preflight
+  P1 consent and roles confirmed: Yes: user authorized read-only checks; Miriam performs gestures, one at a time
+  P6 baseline quiet check (30 seconds), anything observed: NOT RUN; remote-control and fixture-anchor preconditions not established
+  P8 recovery plan confirmed: Not completed for full #61 procedure; no disruption/recovery test authorized
+
+Cyber #79 build untouched and session not sluggish (yes or no): Builds not changed; no current build-completion or user-perceived responsiveness claim
+
+
+READ-ONLY PREFLIGHT AND PENDING PROMPT
+--------------------------------------
+P4: BLOCKED for H1. The required Firefox fixture Single line editor anchor
+was not focused at 11:31:57 EDT. The existing Focus probe found a focused
+push-button on the active same-user window; active window identity stayed
+unchanged during the read. The process-name category was other_application.
+Names were redacted. No document URI, editor text or private title was output.
+This does not establish that the fixture is closed or absent elsewhere.
+
+Windows state: UNVERIFIED. Desktop Commander reported both registered devices
+offline, so it executed no command. The already-authorized local command route
+then queried nvda-status with normal consent enforcement; it returned
+required_or_expired. This is not evidence of a disconnected Remote session.
+No Desktop Commander agent was started or restarted.
+
+Linux AT-SPI observation:
+  Focus found: yes
+  Role: push-button
+  Focused object PID matches active window PID: yes
+  Active window unchanged during read: yes
+  Local-console display, session bus and runtime directory present: yes
+  Required Single line editor anchor focused: no
+  Fixture document URI: not inspected
+  Observer sent input or changed focus: no
+  Caret event observer: not started; required editor is not focused
+
+User physical b.note observation: NOT PROVIDED for this pending handoff.
+Windows audible speech observation: UNVERIFIED; no observation provided.
+These are separate from Linux AT-SPI evidence.
+
+Earlier prompt: Insert+Alt+Tab once, as an adapted H1.3 remote-entry step
+from the previously authenticated Windows-local state. Execution and
+observation are UNCONFIRMED. This is not counted as a completed trial and
+must not be repeated until Miriam confirms whether it occurred and supplies
+any result. No PASS/FAIL is assigned and no zero-attempt claim is made.
+
+Current H1 case: NOT RUN by the assistant while required preconditions are
+unmet. H1.1 requires remote control active with focus in the fixture Single
+line editor; neither current control state nor that focus is established.
+No replacement gesture, local typing, navigation or handoff was requested
+after this preflight.
+
+SUMMARY (fill in at the end)
+----------------------------
+Steps recorded: 0 completed; 1 earlier prompt awaiting execution confirmation
+PASS: 0
+FAIL: 0
+INCONCLUSIVE: 0 completed trials
+NOT RUN: Current H1 case blocked by unmet preconditions; other cases unstarted
+
+#61 checkbox status (each is: not started, evidence recorded, or blocked)
+  1 Fresh input after reconnect/Orca restart, no stuck modifiers, duplicate
+    activation or replay (R1, R2, M1, M2, M3, M4):
+  2 Stale queued shortcuts and old focus/script/window actions (Q1, Q2):
+  3 No stale braille routing/panning or speech; Windows NVDA is the presenter
+    (S1, B0 to B3):
+  4 Handoff, unexpected disconnect, recovery, injection or release failure
+    (H1, H2, U1, M3; F1 is NOT RUN):
+  5 Exact keys, focus, expected versus observed, session state recorded:
+
+Suspected defects (one line each, with step IDs): None established
+
+Follow-up actions needed from Miriam:
+  First confirm whether the earlier handoff was performed and report its result.
+  Required fixture/anchor setup and fresh status consent remain pending; do not
+  request another test gesture until the necessary state is confirmed.
+
+Items that remain unverified (physical braille, anything NOT RUN):
+  Current Remote control state, current fixture URI, tactile output, audible
+  speech, all unattempted acceptance requirements, and earlier prompt execution.
+
+Closure: Miriam decides. This record is evidence only. Issues #57, #58, #59,
+#61 and #72 stay open until each issue's own acceptance criteria are confirmed.
