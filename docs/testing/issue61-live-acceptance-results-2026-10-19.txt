@@ -830,11 +830,78 @@ report the actual tactile output and whether any unplanned input occurred.
 Full H1 acceptance still awaits the remaining P1-P8 preflight requirements.
 This new input/focus scope needs specific approval under Miriam's instruction.
 
+
+ASSISTED QUIET-CHECK APPROVAL; RETURN-ONLY HANDOFF — 14:05-14:06 EDT
+--------------------------------------------------------------------
+Miriam answered: "Approve check; grant renewed".
+The approved scope was at most two Windows handoffs and a quiet interval,
+with a confirmed-remote return to Windows. She was instructed to keep keys
+released and not type until Windows local control was verified.
+
+Preflight around 14:05:48 EDT found active authorization, connected transport/
+bridge and remote_control_active TRUE, rather than the planned local start.
+Semantic braille and temporary-message support were true. No cause of the
+change from the earlier local state is established, and no user gesture is
+reconstructed from it.
+
+At 14:05:46 EDT the passive Linux check confirmed the active fixture anchor,
+exact URI/hash/public id, unchanged known public value, caret19/selection1.
+No keys or focus calls were made by that probe.
+The unique existing NVDA Braille Viewer was revalidated by returned Windows
+metadata; no screenshot or viewer text was captured.
+
+Because the starting control state differed, the ENTRY gesture and NEW P6
+quiet trial were skipped. No 30-second interval ran; do not request a report
+of an interval that did not happen. The expressly approved confirmed-remote
+RETURN was used once to put the shared keyboard back on Windows.
+
+STEP RECORD: ASSISTED-RETURN-01 (limited software observation)
+  Date/time: 2026-10-19 14:06:24 EDT
+  Related issues: #57 / #61; H1.1-like handoff, not a completed H1 case
+  Input source: assistant-driven Windows Computer Use, NOT a physical gesture
+  Windows NVDA: 2026.2 from earlier verified evidence; not re-read here
+  Controller: v123 disk files after earlier approved restart; exact loaded
+    revision unverified
+  Integration: earlier standalone .2 attribution; .4 not installed
+  Display: Miriam's b.note80; physical observation for this step pending
+  Linux application: Firefox public fixture, Single line editor
+  Requested gesture: Insert+Alt+Tab ONCE
+  Expected software behavior: connected remote control TRUE -> FALSE (local),
+    with semantic negotiation retained and no fixture focus/value change
+  Gesture attempt: 1 at 18:06:24.460Z; API returned at 18:06:24.705Z
+  Windows key API activates its approved existing Braille Viewer target.
+    Only this chord was requested; no second chord or retry occurred.
+  Post-action protected status around 14:06:42 EDT:
+    authorization active; bridge attached; transport connected;
+    remote_control_active FALSE; semantic braille and temporary-message true
+  Software assessment: PASS for this observed control-state transition ONLY
+  Windows audible speech: UNVERIFIED
+  Physical b.note text/content after this gesture: PENDING Miriam's report
+  Presentation source / exact rendered braille: UNVERIFIED
+  Unintended Linux key events / stuck-key absence: UNVERIFIED; no input trace
+    or subsequent key probe was used. Stable focus/value does not prove that
+    no key events reached Linux.
+  Reproduction: 1 assistant gesture attempt, 1 observed remote->local change
+  Full H1 / physical keyboard acceptance: NOT ACCEPTED by this software result
+
+At 14:06:48 EDT independent passive Linux readback confirmed the SAME active
+fixture URI/hash/id, editable/focused/showing/single-line entry, unchanged
+public value, caret19/selection1 and stable active X window. Zero probe keys
+or focus calls. No Linux UI action, typing, new windows, settings, install,
+restart, connection command or build operation ran during this step.
+
+Windows LOCAL control was explicitly confirmed before requesting a typed
+physical report. Ask only for current b.note output after THIS known handoff;
+the earlier "Windows content" report belongs to a different checkpoint.
+Historical gesture uncertainties remain separate. P6 remains incomplete.
+
 SUMMARY (fill in at the end)
 ----------------------------
-Steps recorded: 0 confirmed completed planned acceptance trials; historical
-handoff and P6 uncertain. Escape NOT RUN; unplanned user Alt+F4 recorded separately.
-PASS: 0 completed acceptance trials; 1 current readiness report matches expected
+Steps recorded: 1 assistant-driven return handoff with a software control-state
+result; no completed full H1 acceptance trial. Historical handoff and P6 remain
+uncertain. Escape NOT RUN; unplanned user Alt+F4 recorded separately.
+PASS: 1 software control-state return; 1 physical Windows-content readiness
+  category matches expected. No full H1 acceptance PASS.
 FAIL: 0
 INCONCLUSIVE: 0 completed trials
 NOT RUN: Current H1 case blocked by unmet preconditions; other cases unstarted
@@ -855,13 +922,13 @@ Follow-up actions needed from Miriam:
   Earlier execution uncertainty is recorded; do not reconstruct it as a
   confirmed trial. Current b.note Windows-content report is recorded. The
   existing fixture anchor was restored and verified at 14:00.
-  Approved existing-window restoration succeeded at 14:00. Proposed assisted
-  P6 entry/quiet/return awaits separate input approval. Recheck authorization,
-  control and fixture focus before any later gesture.
+  Approved existing-window restoration succeeded at 14:00. The assisted
+  return handoff at 14:06 has a verified software result; obtain its separate
+  physical b.note report before any next test. New P6 interval did not run.
 
 Items that remain unverified (physical braille, anything NOT RUN):
   Current state needs rechecking before actions; latest verified Windows state
-  was connected/local at 14:00. Physical Windows-content category is confirmed
+  was connected/local at 14:06. Physical Windows-content category is confirmed
   by Miriam; exact cells, Linux braille/routing, audible speech, all unattempted
   acceptance requirements and earlier prompt execution remain unverified.
   The exact public fixture anchor was independently verified at 14:00.
