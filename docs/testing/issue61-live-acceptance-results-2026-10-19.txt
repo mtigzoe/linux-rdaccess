@@ -762,6 +762,74 @@ must remain local. Any later gesture is a separate test with its own current
 prechecks and observation. The proposed activation changes Linux focus and
 therefore needs the separate approval Miriam required.
 
+
+APPROVED EXISTING-WINDOW RESTORATION COMPLETED — 14:00 EDT
+-----------------------------------------------------------
+Miriam answered: "Approve restore; grant renewed".
+Pre-action protected NVDA status confirmed active authorization, connected
+transport/bridge, WINDOWS LOCAL control, and semantic/temporary capabilities.
+The reviewed helper hash matched and its exclusive execution guard was absent.
+
+At 14:00:22 EDT the approved operation revalidated the exact existing public
+fixture/window/control and unchanged public text, then:
+  Activated the one existing Firefox window ONCE.
+  Needed ZERO accessibility grab_focus calls: the background editor already
+  had toolkit focus and became the actual active focus after activation.
+  Sent ZERO keys and copied/opened ZERO files/windows.
+  Verified actual active-window Single line editor focus.
+  Verified known public value unchanged; caret 19, selection count 1.
+Result: focus_restored. This is successful fixture setup, not H1 acceptance.
+The selection's extent/cause is not inferred and it was not cleared.
+
+At 14:00:53 EDT a separate passive readback confirmed exact full fixture URI,
+file hash and public editor id; editable/focused/showing/single-line/visible
+entry; unchanged known text; caret 19 and one selection; stable active window.
+It made zero focus calls and sent no keys.
+
+Post-action protected Windows status again confirmed connected transport and
+bridge, WINDOWS LOCAL control, semantic negotiation and temporary-message
+support. No software, settings, companion, connection or build changes ran.
+Physical output after restoration has not yet been reported. The earlier
+"Windows content" physical report remains a separate observation.
+
+The consumed helper and exclusive audit were archived privately with verified
+byte-for-byte copies, then removed from the workspace. Audit SHA-256:
+4b84c5e5f5e1ec0ec787f56579196692590f74d9dbf00959c59a3fabd5b06337
+Tracked checkout files remain unchanged. A full untracked status scan could
+not inspect several existing permission-restricted temporary directories;
+no permission changes or cleanup of those directories was attempted.
+
+PROPOSED ASSISTED P6 ENTRY/QUIET/RETURN — NOT AUTHORIZED OR RUN
+---------------------------------------------------------------
+Purpose: establish a NEW P6 quiet-baseline observation while enabling Miriam
+to report through her same Windows keyboard after a planned return to local.
+The earlier P6 remains "Not done or unsure"; no historical result is replaced.
+
+Concrete bounded proposal:
+  Require active five-minute grant, connected transport, Windows LOCAL control
+  and the verified active fixture Single line editor; check without changing.
+  Use the existing NVDA Braille Viewer as the Windows key target. Its normal
+  input API activates that Windows window. Send Insert+Alt+Tab ONCE.
+  Check status/focus. If connected REMOTE control and the anchor are verified,
+  ask no other input and allow 30 seconds with all keys released while Miriam
+  reads the b.note. No typing, braille commands or other input during interval.
+  After the interval, recheck authorization/control. If REMOTE control is
+  confirmed, send Insert+Alt+Tab ONCE to return Windows LOCAL, including as the
+  approved return if fixture focus changed. Do not change Linux focus.
+  Verify Windows local before requesting a typed observation.
+  If entry is not confirmed, skip the quiet interval and stop; if remote
+  control is confirmed, the one return remains authorized. Never toggle on an
+  unknown state, retry an attempted gesture or reconnect/restart/change settings.
+
+Maximum two Windows handoff gestures, each with its own state observation;
+no other injected key or Linux action. This is an assistant-driven preflight
+observation, not a complete H1 trial or physical keyboard acceptance.
+Linux metadata, Windows status and physical b.note report remain separate.
+The timed interval alone cannot establish physical quiet or PASS; Miriam must
+report the actual tactile output and whether any unplanned input occurred.
+Full H1 acceptance still awaits the remaining P1-P8 preflight requirements.
+This new input/focus scope needs specific approval under Miriam's instruction.
+
 SUMMARY (fill in at the end)
 ----------------------------
 Steps recorded: 0 confirmed completed planned acceptance trials; historical
@@ -786,16 +854,17 @@ Suspected defects (one line each, with step IDs): None established
 Follow-up actions needed from Miriam:
   Earlier execution uncertainty is recorded; do not reconstruct it as a
   confirmed trial. Current b.note Windows-content report is recorded. The
-  existing fixture is available in the background; active focus is terminal.
-  Prepared existing-window restoration awaits specific approval and a fresh
-  timed grant. Recheck control/focus before any later test gesture.
+  existing fixture anchor was restored and verified at 14:00.
+  Approved existing-window restoration succeeded at 14:00. Proposed assisted
+  P6 entry/quiet/return awaits separate input approval. Recheck authorization,
+  control and fixture focus before any later gesture.
 
 Items that remain unverified (physical braille, anything NOT RUN):
   Current state needs rechecking before actions; latest verified Windows state
-  was connected/local at 13:54. Physical Windows-content category is confirmed
+  was connected/local at 14:00. Physical Windows-content category is confirmed
   by Miriam; exact cells, Linux braille/routing, audible speech, all unattempted
   acceptance requirements and earlier prompt execution remain unverified.
-  The exact public fixture is available, but active Linux focus was terminal.
+  The exact public fixture anchor was independently verified at 14:00.
 
 Closure: Miriam decides. This record is evidence only. Issues #57, #58, #59,
 #61 and #72 stay open until each issue's own acceptance criteria are confirmed.
