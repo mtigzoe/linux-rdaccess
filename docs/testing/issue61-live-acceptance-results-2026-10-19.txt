@@ -1010,6 +1010,30 @@ Ask what the b.note showed after THIS entry attempt, without another gesture.
 The earlier successful return and its physical Windows-content report remain
 separate evidence. PR #146 remains draft; all acceptance issues stay open.
 
+
+PHYSICAL REPORT FOR FRESH-P6-01 ENTRY — 14:22 EDT
+--------------------------------------------------
+Miriam answered about the entry attempt: "Windows content".
+This is the physical report for the known assistant entry request at 14:18:22,
+separate from the earlier successful return and its Windows-content report.
+
+Expected for entry: remote control and current Linux fixture content.
+Observed: Windows content, reported by Miriam; protected status had remained
+local on two post-entry checks. The requested remote-entry state/presentation
+was not established. Exact cells/text and transient output timing were not
+provided. Audible Windows speech remains UNVERIFIED.
+
+The automated entry remains INCONCLUSIVE: actual injected-key delivery and
+NVDA recognition have not been independently verified. A normal tool return
+and this content-category report do not identify a production-code defect.
+No further gesture, quiet interval, focus correction or retry is authorized
+by the finished attempt. Do not repeat the old gesture before a new decision.
+
+The assistant will inspect existing input/consent code and prior diagnostic
+references READ-ONLY before proposing further live interaction. No keys,
+focus changes, settings, installs, restarts or connection commands are part
+of that investigation. All three acceptance issues remain open.
+
 SUMMARY (fill in at the end)
 ----------------------------
 Steps recorded: 2 assistant-driven handoff attempts: 1 observed remote->local
@@ -1042,8 +1066,9 @@ Follow-up actions needed from Miriam:
   Approved existing-window restoration succeeded at 14:00. The assisted
   return handoff at 14:06 now has both the software result and Miriam's
   physical Windows-content category recorded. Fresh P6 entry at 14:18 did not
-  establish remote control; record its physical b.note report before deciding
-  further action. Neither fresh quiet interval ran.
+  establish remote control; Miriam's physical Windows-content report is now
+  recorded. Inspect automation/input evidence read-only before any new trial.
+  Neither fresh quiet interval ran.
 
 Items that remain unverified (physical braille, anything NOT RUN):
   Current state needs rechecking before actions; latest verified Windows state
