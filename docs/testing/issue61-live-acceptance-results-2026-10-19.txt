@@ -648,6 +648,46 @@ already local, send no toggle and report that state. Stop on an unavailable
 target, expired grant or unexpected action result; never repeat the gesture
 automatically. Physical output and all acceptance criteria remain unverified.
 
+
+RENEWED GRANT: WINDOWS CONTROL ALREADY LOCAL — 13:50-13:51 EDT
+----------------------------------------------------------------
+Miriam replied "ready" after the timed-grant renewal request.
+At about 13:50:59 EDT, the protected status read reported:
+  Authorization: active
+  Transport connected / bridge attached: true / true
+  remote_control_active: FALSE (Windows local control)
+  Semantic braille negotiated / temporary-message support: true / true
+  Physical braille: unverified
+
+This was the PRE-ACTION state. The intended return-to-Windows state already
+existed, so no handoff gesture was sent. No activate_window or press_key call
+ran. No Windows focus change occurred through the assistant. The specific
+return-only task is satisfied by the observed existing state; its unused
+approval must not be repurposed later to switch back to Linux.
+The cause/time of the change from the earlier remote state is unknown. It is
+not evidence that Miriam performed the pending historical handoff, and it is
+not an assistant-driven or physical H1 PASS.
+
+Fresh Windows metadata confirmed the unique existing NVDA Braille Viewer
+without activation or viewer content/screenshot capture.
+
+Passive Linux read at 13:51:04 EDT:
+  Focused role: terminal, focused/showing/visible
+  Exact fixture document ancestor: false; anchor focus unverified
+  Public fixture disk hash matches: yes
+  Active X window stable: yes
+  Probe keyboard input / focus calls: none / zero
+No terminal contents, private title or command were captured.
+Firefox acceptance remains paused; no focus restoration is authorized.
+
+Next observation request: with keys released, read the current physical
+b.note before typing a reply and distinguish Windows content, Linux content,
+or blank/unclear. Exact nonsensitive text is welcome; no private content is
+required. This is a current readiness observation, not reconstruction of a
+historical transition. Audible speech remains UNVERIFIED.
+No additional gesture, braille key, settings/install/restart or connection
+operation is requested. PR #146 remains draft and acceptance issues stay open.
+
 SUMMARY (fill in at the end)
 ----------------------------
 Steps recorded: 0 confirmed completed planned acceptance trials; historical
