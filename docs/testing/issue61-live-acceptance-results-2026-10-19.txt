@@ -278,6 +278,40 @@ requires specific approval and fresh identity checks; it is not authorized now.
 First obtain the missing P6 observation (or explicit report it was not done)
 before choosing the next step with Miriam.
 
+QUIET-CHECK CLARIFICATION AND RESTORATION PROPOSAL — 12:15-12:16 EDT
+-----------------------------------------------------------------
+Miriam answered the quiet-check question: "Not done or unsure".
+P6 is recorded as UNVERIFIED — completion and physical outcome not confirmed.
+No PASS/FAIL is assigned, and the assistant will not keep asking for a
+reconstruction of this earlier interval. Any later quiet check is a new trial
+after its starting state has been verified.
+
+At 12:15:48 EDT, authenticated Windows status again reported connected transport,
+attached bridge, Windows local control, semantic braille negotiation and
+temporary-message support. Physical braille remained unverified.
+
+At 12:15:49 EDT the passive Linux readback again found menu focus, with no
+matching fixture-document ancestor and no confirmed editor anchor focus.
+The fixture's disk hash still matched. The probe sent no keyboard input and
+made zero focus calls.
+
+At 12:16:27 EDT a separate bounded passive check completed and found one unique
+existing editor with the exact public fixture URI, single-editor id, input tag,
+public label and editable entry/text identity. It was focusable, enabled,
+sensitive, single-line and visible, but not focused/showing. The active X window
+stayed unchanged during the read. No menu action or focus change was made.
+
+Concrete next proposal, NOT EXECUTED: after specific approval, revalidate that
+same existing document/control and perform at most one accessibility grab_focus
+call to its Single line editor, followed only by passive focus verification.
+If absent, ambiguous, changed or unsuccessful, stop without a retry, Escape
+key, typing, another file copy, a new browser window, restart or connection
+change. The earlier initial-setup approval is consumed; this would be a new
+focus change requiring the explicit approval Miriam requested. It does not
+authorize a physical handoff or any acceptance PASS.
+
+H1 remains paused; issues #57, #59 and #61 remain open and PR #146 stays draft.
+
 SUMMARY (fill in at the end)
 ----------------------------
 Steps recorded: 0 confirmed completed; historical handoff execution uncertain;
