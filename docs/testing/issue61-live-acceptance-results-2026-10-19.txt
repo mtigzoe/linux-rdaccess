@@ -486,6 +486,45 @@ Physical b.note observation: not provided for a new trial.
 Audible Windows speech: UNVERIFIED.
 P6 and the historical handoff remain uncertain; all acceptance remains open.
 
+
+FRESH AUTHORIZED CHECK AND SETUP HANDOFF PROMPT — 13:31 EDT
+-----------------------------------------------------------
+Miriam replied "Ready." after the fresh diagnostic grant request.
+This is readiness/authorization context, not a physical test observation.
+
+Protected Windows status at about 13:31 EDT:
+  Transport connected / bridge attached: true / true
+  remote_control_active: TRUE (Linux remote control)
+  Semantic braille negotiated / temporary-message support: true / true
+  Physical braille: unverified
+  Authorization: active
+
+Passive Linux read at 13:31:35 EDT:
+  Exact fixture hash, full URI and single-editor id match: yes
+  Focused role: editable, single-line entry; visible
+  Public value Single editor alpha unchanged: yes
+  Caret offset 0; selection count 0
+  Active X window stable: yes
+  Input sent / focus calls by probe: none / zero
+
+Prospective setup step ID: SETUP-HANDOFF-LOCAL-01
+Related issue/case: #61 H1.1; cross-issue modifier/handoff evidence for #57
+Purpose: return control to Windows so the same keyboard can be used for
+reporting. This is a limited setup observation. Required P1-P8 preflight for
+a complete H1 acceptance run remains incomplete, including a confirmed P6
+quiet baseline, P7 lock states and the full P8 recovery plan.
+
+Physical action to offer: with no other keys held, Miriam presses/releases
+Insert+Alt+Tab ONCE, then waits about three seconds without more input.
+Expected: Windows local-control indication and current Windows content on
+the b.note, per the H1.1 requirement. Report the exact tactile text only after
+local control is indicated; do not type a chat response while still remote.
+Audible speech is UNVERIFIED unless reliable observation is available.
+
+Status at recording: PROMPT PENDING; no execution or physical observation
+received. Do not count a completed trial, PASS or FAIL. No assistant keys,
+focus change, software/settings/install/restart or connection operation ran.
+
 SUMMARY (fill in at the end)
 ----------------------------
 Steps recorded: 0 confirmed completed planned acceptance trials; historical
