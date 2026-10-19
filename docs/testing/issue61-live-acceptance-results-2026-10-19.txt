@@ -32,7 +32,7 @@ Windows
   NVDA version: 2026.2 from prior verified startup/executable evidence; not re-read this preflight
   NVDA keyboard layout: Saved desktop; active layout unverified
   NVDA modifier key setting: Insert, reported by Miriam
-  Remote Access mode (do not record address or key): Unverified; current status grant required or expired
+  Remote Access mode (do not record address or key): Hosting mode unverified; latest authorized status reports connected/local Windows control
   Active Linux integration (legacy RDAccess or standalone companion): Standalone, supported by earlier current-startup markers; not re-attested this preflight
   Companion build, if active: 20261014.0.2 installed files verified earlier; exact loaded bytes unverified; .4 uninstalled
 
@@ -109,9 +109,65 @@ line editor; neither current control state nor that focus is established.
 No replacement gesture, local typing, navigation or handoff was requested
 after this preflight.
 
+LATER RECHECK AND USER UNCERTAINTY
+---------------------------------
+Miriam replied: "I'm not sure. You can remote access. Ready."
+The historical handoff's execution remains UNVERIFIED; no tactile or speech
+result is inferred. This response is recorded before any prospective new trial.
+It is not permission to move focus or an instruction to repeat the gesture.
+
+A fresh protected status request succeeded with active authorization:
+transport connected, bridge attached, remote_control_active false (Windows local),
+semantic braille negotiated and temporary messages supported. Physical braille
+remains unverified. The time of this status read precedes the 11:43 Linux focus
+check; it is point-in-time evidence and does not identify the cause of any
+earlier state transition.
+
+Desktop Commander then reported the Windows laptop online and Cyber offline.
+A read-only Python probe launched through the Windows Desktop Commander agent
+used the existing pinned SSH connection to Cyber. At 11:43:09 EDT:
+  Firefox active: false, from active-window process executable classification
+  AT-SPI focus role: terminal
+  Focused object PID matches active window PID: yes
+  Active X window stable during the read: yes
+  Required Single line editor anchor focused: false
+  Fixture URI: unverified; not inspected on a non-Firefox application
+  Input sent / focus changed by probe: no / no
+
+The later terminal focus differs from the earlier push-button observation.
+No cause is attributed to the uncertain handoff. No editor text or private
+name was output. The first command attempt had a local quoting error before
+SSH execution; the corrected temporary-script invocation supplied this result.
+
+The public fixture was not found at four fixed candidate paths. This does not
+establish absence elsewhere. Firefox is already executable at /usr/bin/firefox.
+No Firefox process was launched by these checks.
+
+PREPARED PUBLIC FIXTURE SETUP — NOT EXECUTED
+-------------------------------------------
+Source: tests/fixtures/firefox-acceptance.html at repository commit
+6d24df2179f7484f4a01a66a708afc24dde1173e.
+Size: 5,073 bytes. SHA-256:
+08a5b3c675cc2145f1a421a29c689cb68dea567c233e9ce3eb81572672136724
+The reviewed fixture is static HTML with local anchor links and no scripts
+or external HTTP resources.
+
+Proposed, only after specific approval:
+  Copy this exact file into a new private temporary directory on Cyber:
+  /tmp/linux-rdaccess-acceptance-20261019T154315Z/tests/fixtures/firefox-acceptance.html
+  Refuse an existing target; verify source/destination hash before opening.
+  Open that local file in a new Firefox window in the existing XFCE session.
+  Focus only the exact document's Single line editor using its accessibility
+  focus interface, with no keyboard injection.
+  Stop and report if document/control identity is not verified.
+This changes Linux focus and needs the explicit approval Miriam required.
+It does not authorize handoff, typing, settings changes, installation,
+restart, disconnect/reconnect, automatic retries or additional test gestures.
+P4/H1 remains blocked until required setup and current control are established.
+
 SUMMARY (fill in at the end)
 ----------------------------
-Steps recorded: 0 completed; 1 earlier prompt awaiting execution confirmation
+Steps recorded: 0 confirmed completed; 1 earlier prompt recorded as uncertain execution
 PASS: 0
 FAIL: 0
 INCONCLUSIVE: 0 completed trials
@@ -130,13 +186,14 @@ NOT RUN: Current H1 case blocked by unmet preconditions; other cases unstarted
 Suspected defects (one line each, with step IDs): None established
 
 Follow-up actions needed from Miriam:
-  First confirm whether the earlier handoff was performed and report its result.
-  Required fixture/anchor setup and fresh status consent remain pending; do not
-  request another test gesture until the necessary state is confirmed.
+  Earlier execution uncertainty has been recorded; do not ask Miriam to
+  reconstruct it as a confirmed trial. Obtain explicit public fixture setup
+  approval, then establish current focus/control before any new trial.
 
 Items that remain unverified (physical braille, anything NOT RUN):
-  Current Remote control state, current fixture URI, tactile output, audible
-  speech, all unattempted acceptance requirements, and earlier prompt execution.
+  Current fixture URI, tactile output, audible speech, all unattempted acceptance
+  requirements and earlier prompt execution. Later point-in-time status below
+  establishes local Windows control only at that read.
 
 Closure: Miriam decides. This record is evidence only. Issues #57, #58, #59,
 #61 and #72 stay open until each issue's own acceptance criteria are confirmed.
