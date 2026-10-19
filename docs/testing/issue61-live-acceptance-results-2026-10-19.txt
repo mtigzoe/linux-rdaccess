@@ -1218,53 +1218,112 @@ is sufficient. Do not request another gesture, reproduce an action, renew
 authorization, restore focus, or begin a new trial to answer this question.
 No live action is being performed while awaiting this observation.
 
+
+MANUAL TIMING CLOSED AS UNKNOWN; TRIAL REMAINS INCONCLUSIVE — 14:41 EDT
+-------------------------------------------------------------------------
+Miriam answered the manual-activity timing clarification: "Not sure".
+The timing remains UNKNOWN. Do not keep asking her to reconstruct this
+historical interval, ask her to repeat it, or infer that the manual actions
+were either inside or outside the measured quiet wait.
+
+The timed P6 observation remains INCONCLUSIVE. Handoff notices are retained as
+reported tactile evidence, while stable Linux field output, uninterrupted
+fixture focus, one input source and attribution of the later local state
+are not established. No quiet-baseline, full H1 or issue acceptance is claimed.
+The three issues were fetched read-only and confirmed OPEN; PR #146 was
+confirmed OPEN/DRAFT. No issue state, checkbox or PR readiness was changed.
+
+NEXT-TRIAL PREPARATION ONLY — 14:45 EDT
+----------------------------------------
+To avoid mixing assistant key injection with Miriam's actions, the next
+proposal uses Miriam as the ONLY keyboard source. A prearranged manual
+entry/read/return sequence would let her return to Windows before typing
+through this same laptop. It requires her agreement to a limited exception
+to separate per-gesture instructions/checks. No new trial has been approved.
+
+A fresh guarded copy of the previously reviewed bounded fixture-restoration
+wrapper was prepared; only its exclusive audit filename differs.
+Helper SHA-256:
+fce9b5883a868666d28eaf6f8f9fd087b01de3388879213a8104a284855f7d0a
+The execution guard is absent; the helper has NOT run in apply mode.
+A private-source read initially failed under the sandbox. Repeating that
+READ/preparation with the ordinary approval-protected elevated route succeeded;
+no Linux/UI action was involved in either request.
+
+Read-only preflight at 14:45:29 EDT verified one exact public fixture editor,
+complete bounded scope, matching file hash/URI/id/tag/name/role, unchanged
+public value, same-user Firefox identity and one unique matching public window.
+That existing Firefox window is inactive. Activation calls=0; focus calls=0;
+keys sent=false. It remains a setup proposal requiring new focus approval.
+
+Concrete optional setup scope: with a fresh timed grant and Windows local
+control, revalidate the same target; activate the EXISTING fixture window at
+most once; focus Single line editor at most once only if needed; verify
+actual focus/value/caret. Stop on failure without retry or fallback.
+No copies, new windows, keys, settings, installs, restarts, connections or
+build changes. This is not permission to repeat the consumed earlier action.
+
 SUMMARY (fill in at the end)
 ----------------------------
-Steps recorded: 3 assistant-driven handoff attempts: 1 observed remote->local
-return; 1 entry without observed remote activation; 1 return with an initially
-remote and later local status of unknown cause. One timed quiet interval ran
-with changed pre/post focus and pending physical/input reports. No full H1
-acceptance trial completed. Historical handoff/old P6 remain uncertain.
-Escape NOT RUN; unplanned user Alt+F4 recorded separately.
-PASS: 1 software control-state return; its physical Windows-content category
-  matches expected. Earlier physical readiness also matches expected.
-  No full H1 acceptance PASS.
-FAIL: 0
-INCONCLUSIVE: 1 automated entry; 1 later return timing/attribution; 1 timed P6
-  interval with changed focus and pending physical/input observations
-NOT RUN: Current H1 case blocked by unmet preconditions; other cases unstarted
+Overall acceptance: INCOMPLETE. Issues #57, #59 and #61 confirmed OPEN.
+PR #146 confirmed OPEN/DRAFT. Miriam has not confirmed acceptance.
 
-#61 checkbox status (each is: not started, evidence recorded, or blocked)
-  1 Fresh input after reconnect/Orca restart, no stuck modifiers, duplicate
-    activation or replay (R1, R2, M1, M2, M3, M4):
-  2 Stale queued shortcuts and old focus/script/window actions (Q1, Q2):
-  3 No stale braille routing/panning or speech; Windows NVDA is the presenter
-    (S1, B0 to B3):
-  4 Handoff, unexpected disconnect, recovery, injection or release failure
-    (H1, H2, U1, M3; F1 is NOT RUN):
-  5 Exact keys, focus, expected versus observed, session state recorded:
+Evidence recorded:
+  ASSISTED-RETURN-01: one observed software remote->local transition, plus
+    Miriam's physical "Windows content" report. Narrow evidence only.
+  FRESH-P6-01 ENTRY: one automated entry request, no observed remote activation;
+    physical "Windows content". INCONCLUSIVE; delivery/recognition unverified.
+  P6-PHYSICAL-COMPARE-01: measured 30.037-second wait, changed pre/post focus,
+    manual activity affirmed and timing "Not sure". INCONCLUSIVE.
+  ASSISTED-RETURN-02: initial remote and later local status; attribution unknown
+    with reported manual activity. INCONCLUSIVE.
+  Physical handoff notices reported verbatim in the history; not proof of
+    Linux focused-field presentation or a complete H1 run.
 
-Suspected defects (one line each, with step IDs): None established
+PASS: narrow software/control and tactile content evidence for the first return;
+  earlier Windows-content readiness also matched expected.
+FAIL: no confirmed production defect established.
+INCONCLUSIVE: automated entry; later return attribution; timed quiet baseline.
+NOT RUN: full H1; the remaining acceptance cases; physical entry comparison
+  was not requested when preflight already found remote control active.
+No audible Windows speech acceptance. No physical Linux routing/panning PASS.
 
-Follow-up actions needed from Miriam:
-  Earlier execution uncertainty is recorded; do not reconstruct it as a
-  confirmed trial. Current b.note Windows-content report is recorded. The
-  existing fixture anchor was restored and verified at 14:00.
-  Approved existing-window restoration succeeded at 14:00. The assisted
-  return handoff at 14:06 now has both the software result and Miriam's
-  physical Windows-content category recorded. Fresh P6 entry at 14:18 did not
-  establish remote control; Miriam's physical Windows-content report is now
-  recorded. A later P6 timed interval ran with changed pre/post Linux focus;
-  physical handoff notices and affirmative manual-activity report are now
-  recorded. Clarify whether actions were during or outside the quiet wait;
-  do not begin a new trial. Latest verified Windows state: local at 14:32.
+#61 checkbox status:
+  1 Fresh input after reconnect/Orca restart; stuck modifiers/duplicates/replay:
+    NOT STARTED as live acceptance. Earlier setup restart is not R2 acceptance.
+  2 Stale queued shortcuts and old focus/script/window actions:
+    NOT STARTED.
+  3 No stale braille routing/panning/speech; Windows NVDA presenter:
+    NOT STARTED for replaced-session acceptance. Status negotiation and tactile
+    handoff notices do not satisfy this criterion.
+  4 Intentional handoff / unexpected disconnect / recovery / injection failure:
+    EVIDENCE RECORDED, INCOMPLETE: narrow handoff observations only. Full H1,
+    H2, U1, M3 unaccepted/unrun. F1 NOT RUN by the merged procedure's design.
+  5 Exact keys, focus, expected/observed output, state and reproducibility:
+    EVIDENCE RECORDED, INCOMPLETE: known steps documented; speech, exact Linux
+    cells and uncertain input/timing remain explicitly unverified.
 
-Items that remain unverified (physical braille, anything NOT RUN):
-  Current state needs rechecking before actions; latest verified Windows state
-  was connected/local at 14:32. Physical Windows-content category is confirmed
-  by Miriam; exact cells, Linux braille/routing, audible speech, all unattempted
-  acceptance requirements and earlier prompt execution remain unverified.
-  The exact public fixture anchor was independently verified at 14:00.
+Other issues:
+  #57: title/elements/input-help/modifier/layout/capture/release acceptance
+    remains incomplete. No NVDA+T title trial completed.
+  #59: physical focused Linux name/role/state/value, caret, routing, panning and
+    presenter attribution remain incomplete. Handoff notices are partial data.
 
-Closure: Miriam decides. This record is evidence only. Issues #57, #58, #59,
-#61 and #72 stay open until each issue's own acceptance criteria are confirmed.
+No production fix is justified by the inconclusive automation outcomes.
+No production code/settings/install/connection changes are proposed here.
+
+Latest verified session facts (historical; recheck before any action):
+  Windows connected/local at 14:32:27 EDT; semantic/temporary support true.
+  Linux active focus was terminal at 14:31:48 EDT.
+  Existing public fixture was available but inactive at 14:45:29 preflight.
+  Disk controller v123 after the earlier approved restart; exact loaded bytes
+    unverified. Standalone .2 installed; .4 uninstalled and not accepted here.
+
+Next decision:
+  Timing clarification is CLOSED as "Not sure"; do not reconstruct or repeat
+  the old trial. A fresh manual-only reporting workflow and any bounded
+  fixture restoration need specific agreement before a new live trial.
+  The prepared restoration helper has not been activated.
+
+A concise issue/evidence overview is in live-acceptance-summary-2026-10-19.md.
+Closure: Miriam decides each issue's acceptance. This record closes no issue.
