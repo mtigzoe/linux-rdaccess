@@ -1106,17 +1106,93 @@ time passage or metadata, and full H1 remains pending the rest of preflight.
 The decision/approval has not been requested as permission for any production
 change, companion install, disconnect, or issue closure.
 
+
+APPROVED COMPARISON: ALREADY REMOTE; TIMED P6 INCONCLUSIVE — 14:29-14:32 EDT
+----------------------------------------------------------------------------
+Miriam answered: "Approve comparison; grant renewed".
+Approved scope: physical entry only if needed, a verified quiet interval, and
+at most one assistant return from confirmed remote control through the existing
+NVDA Braille Viewer with its Windows activation. No Linux focus changes.
+
+Preflight at about 14:29:51 EDT found active authorization, connected transport/
+bridge and REMOTE control already active; semantic/temporary capabilities true.
+The cause/time of the change from earlier local control is unknown.
+No physical entry gesture was requested and no assistant entry was injected.
+Physical-entry comparison: NOT RUN because the required remote state already
+existed. Do not infer that Miriam physically pressed an entry gesture.
+
+Passive Linux read at 14:29:51 EDT confirmed the exact fixture URI/hash/id,
+active editable/focused/showing/single-line editor, unchanged public value,
+caret19/selection1 and stable active X window. No keys/focus calls.
+
+P6-PHYSICAL-COMPARE-01:
+  Quiet start clock bracket: 14:30:12 EDT (18:30:12 UTC)
+  Sleep requested: 30,000ms
+  Tool wait elapsed: 30.037 seconds, completed without interruption
+  End clock bracket: 14:30:51 EDT (18:30:51 UTC)
+  The 39-second clock bracket includes tool/orchestration overhead around the
+  measured 30-second sleep. No UI/input or Linux observer calls ran inside it.
+  Miriam was instructed to keep keys released and read the b.note.
+  Physical output / any unplanned input: PENDING Miriam's report
+  Audible Windows speech: UNVERIFIED
+
+Post-interval protected status around 14:30:51 EDT still showed connected
+transport/bridge, REMOTE control, active authorization and semantic/temporary
+support. Read-only Windows metadata revalidated the existing Braille Viewer.
+
+At 14:30:59 EDT the passive Linux focus check instead found TERMINAL focus,
+not a fixture document ancestor; active X window stable and fixture disk hash
+still matching. No terminal contents were read. The focus change occurred at
+an unknown time BETWEEN the pre/post focus checks, not proven to be inside
+the precise 30-second sleep. Public editor DOM value/caret after the change
+were not inspected. The known fixture-anchor continuity is not established.
+The trial was stopped without focus repair or another quiet interval.
+
+ASSISTED-RETURN-02:
+  Related issues: #57 / #61; assistant Windows input, not a physical gesture
+  NVDA2026.2 / earlier standalone .2 attribution; .4 uninstalled
+  Linux v123 disk revision, exact loaded bytes unverified
+  Confirmed-remote return requested ONCE at
+    18:31:28.918Z-18:31:29.156Z (14:31:28-14:31:29 EDT)
+  Key: Insert+Alt+Tab through existing NVDA Braille Viewer
+  API returned normally; no repeat, retry or other key was sent.
+  First protected post-check around 14:31:48 EDT still reported REMOTE.
+  A final read-only check at 14:32:27 EDT reported WINDOWS LOCAL.
+  Connection/bridge and semantic/temporary support remained true at both.
+  No assistant gesture occurred between those two checks.
+  Cause of the later state change: UNVERIFIED. It may not be attributed to
+    delayed injection or a user gesture without evidence.
+  Assessment: INCONCLUSIVE for gesture recognition/transition timing.
+  Physical b.note after this return: not yet reported.
+  Manual recovery gesture: NOT REQUESTED; latest check was already local.
+
+A passive Linux read at 14:31:48 EDT still found terminal focus and stable
+active window, with matching fixture disk hash; zero observer keys/focus calls.
+Only the ONE approved Windows return was requested in this scope. No keys
+were requested during the quiet interval, no manual entry/recovery was asked,
+and no setting/install/restart/connection/build operation ran.
+
+Current P6 assessment: INCONCLUSIVE. The timed wait occurred, but missing
+physical/input observations and changed focus prevent a quiet-baseline PASS.
+Obtain the interval's physical report and any user input/control actions
+BEFORE any new gesture or trial. Windows LOCAL was confirmed before asking
+for a typed report. Earlier "Windows content" answers belong to other steps.
+PR #146 remains draft and all three acceptance issues stay open.
+
 SUMMARY (fill in at the end)
 ----------------------------
-Steps recorded: 2 assistant-driven handoff attempts: 1 observed remote->local
-return, 1 entry with no observed local->remote change. No completed full H1
-acceptance trial. Historical handoff and old P6 remain uncertain; fresh P6
-intervals NOT RUN. Escape NOT RUN; unplanned user Alt+F4 recorded separately.
+Steps recorded: 3 assistant-driven handoff attempts: 1 observed remote->local
+return; 1 entry without observed remote activation; 1 return with an initially
+remote and later local status of unknown cause. One timed quiet interval ran
+with changed pre/post focus and pending physical/input reports. No full H1
+acceptance trial completed. Historical handoff/old P6 remain uncertain.
+Escape NOT RUN; unplanned user Alt+F4 recorded separately.
 PASS: 1 software control-state return; its physical Windows-content category
   matches expected. Earlier physical readiness also matches expected.
   No full H1 acceptance PASS.
 FAIL: 0
-INCONCLUSIVE: 1 automated entry attempt (delivery/recognition unverified)
+INCONCLUSIVE: 1 automated entry; 1 later return timing/attribution; 1 timed P6
+  interval with changed focus and pending physical/input observations
 NOT RUN: Current H1 case blocked by unmet preconditions; other cases unstarted
 
 #61 checkbox status (each is: not started, evidence recorded, or blocked)
@@ -1139,12 +1215,13 @@ Follow-up actions needed from Miriam:
   return handoff at 14:06 now has both the software result and Miriam's
   physical Windows-content category recorded. Fresh P6 entry at 14:18 did not
   establish remote control; Miriam's physical Windows-content report is now
-  recorded. Inspect automation/input evidence read-only before any new trial.
-  Neither fresh quiet interval ran.
+  recorded. A later P6 timed interval ran with changed pre/post Linux focus;
+  obtain its physical output and any user input/control changes before a new
+  trial. The latest Windows state was connected/local at 14:32.
 
 Items that remain unverified (physical braille, anything NOT RUN):
   Current state needs rechecking before actions; latest verified Windows state
-  was connected/local at 14:19. Physical Windows-content category is confirmed
+  was connected/local at 14:32. Physical Windows-content category is confirmed
   by Miriam; exact cells, Linux braille/routing, audible speech, all unattempted
   acceptance requirements and earlier prompt execution remain unverified.
   The exact public fixture anchor was independently verified at 14:00.
