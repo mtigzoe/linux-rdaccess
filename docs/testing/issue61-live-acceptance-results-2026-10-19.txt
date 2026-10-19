@@ -620,6 +620,34 @@ Do not restore fixture focus, type in the terminal, run commands there, or
 repeat any user gesture automatically. Recheck the active grant and remote
 control before any specifically approved resumed action.
 
+
+RETURN-ONLY APPROVAL; TIMED GRANT EXPIRED — 13:50 EDT
+-----------------------------------------------------
+Miriam answered: "Return to Windows only".
+This explicitly permits the one existing NVDA Braille Viewer activation and
+one Windows Insert+Alt+Tab handoff while leaving Linux focus alone regardless
+of its active application. It does not authorize an acceptance trial or any
+Linux focus/input action. The approval remains valid and unused.
+
+At 13:50 EDT the protected Windows precheck returned required_or_expired.
+Current connection/control therefore remain UNVERIFIED at this read; no
+disconnection is inferred. No key was sent or Windows focus activated.
+The grant was not bypassed. Renewing the five-minute authorization is the
+remaining gate; do not ask Miriam to re-approve the same handoff scope.
+
+Read-only Windows discovery revalidated the unique existing NVDA Braille
+Viewer by its returned metadata, without viewer text/screenshot capture.
+Passive Linux read at 13:50:12 EDT again found terminal focus, stable active
+window and matching fixture disk hash. The probe sent no keys and made zero
+focus calls. No terminal contents were captured.
+
+After a fresh timed grant, recheck it and remote control immediately. If
+connected and remote control is active, perform the already-approved single
+return-only Windows gesture without another approval request. If control is
+already local, send no toggle and report that state. Stop on an unavailable
+target, expired grant or unexpected action result; never repeat the gesture
+automatically. Physical output and all acceptance criteria remain unverified.
+
 SUMMARY (fill in at the end)
 ----------------------------
 Steps recorded: 0 confirmed completed planned acceptance trials; historical
