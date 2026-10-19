@@ -221,3 +221,31 @@ Miriam chose to proceed with the installed companion .2 and forbade .4
 installation. Any eventual observations apply to that installed path and do
 not accept the uninstalled .4 changes. Issues #57, #59 and #61 remain open;
 PR #146 remains draft. No CI checks were polled or awaited.
+
+## Later authorized recheck and prepared fixture setup
+
+Miriam replied **"I'm not sure. You can remote access. Ready."** Her earlier
+handoff execution is now recorded as uncertain, with no inferred tactile,
+speech or test result. This uncertainty does not need to be reconstructed as
+a confirmed trial; any future trial needs its own checked starting state.
+
+A fresh protected status read succeeded with active authorization: connected
+transport, attached bridge, **local Windows control**, semantic braille
+negotiated and temporary messages supported. Physical output remained
+unverified. Desktop Commander reported the Windows laptop online and Cyber
+offline. Its Windows agent successfully ran the read-only Python focus probe
+over the existing pinned SSH route.
+
+At **11:43:09 EDT**, Linux focus was a **terminal**, with matching active PID
+and a stable active window. Firefox was not active and the required fixture
+Single line editor was not focused. No input or focus change was performed;
+the terminal focus is not attributed to the uncertain earlier handoff.
+
+The [dated #61 result record](issue61-live-acceptance-results-2026-10-19.txt)
+contains a concrete public-fixture setup proposal, its exact source hash and
+temporary destination. Firefox is already installed. The 5,073-byte fixture
+from the pinned main is static HTML with no scripts or external HTTP resources.
+Copying it, opening a new Firefox window and focusing its Single line editor
+are **prepared but not authorized or executed**. This focus change needs
+specific approval under Miriam's instructions. No repeated gesture is requested
+while this precondition remains unmet. Issues remain open and PR #146 stays draft.
