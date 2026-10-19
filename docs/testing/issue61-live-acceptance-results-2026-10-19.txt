@@ -948,16 +948,79 @@ unnecessary entry toggle. It needs new explicit key/focus approval and a fresh
 timed grant. Full H1 remains pending preflight. The P6 physical result must
 come from Miriam after the interval; time passage or metadata is not a PASS.
 
+
+FRESH P6 ATTEMPT: ENTRY NOT ESTABLISHED — 14:18-14:19 EDT
+----------------------------------------------------------
+Miriam answered: "Approve fresh check; grant renewed".
+Scope: maximum two Windows handoffs for entry if needed, a new 30-second quiet
+interval, and return only from confirmed remote control. No other input or
+Linux focus change. Miriam was instructed to keep keys released and not type
+until Windows local control was verified.
+
+STEP RECORD: FRESH-P6-01 / ENTRY-01
+  Date: 2026-10-19
+  Related issues: #57 / #61; P6 setup entry, not a complete H1 case
+  Input source: assistant-driven Windows Computer Use, not physical keyboard
+  NVDA/integration/controller attribution: unchanged prior evidence, NVDA2026.2,
+    standalone companion .2 installed; v123 disk revision / loaded bytes
+    unverified. No companion .4 installation or reload.
+  Linux control: Firefox public fixture, Single line editor
+  Expected: local->remote control, with existing connection/fixture preserved
+
+Preflight around 14:18:08 EDT:
+  Active five-minute authorization; bridge/transport connected
+  remote_control_active FALSE (Windows local)
+  Semantic braille / temporary messages true
+  Unique existing NVDA Braille Viewer Windows target verified by metadata
+Passive Linux read at 14:18:07 EDT confirmed exact fixture URI/hash/id, actual
+focused/editable/single-line editor, unchanged known value, caret19/selection1,
+stable active window. No observer keys/focus calls.
+
+At 14:18:22 EDT (18:18:22.270Z-18:18:22.523Z),
+the Windows key API was requested to send Insert+Alt+Tab ONCE through the
+approved existing Braille Viewer target and returned normally. The API
+activates that Windows target. No second chord, retry or Linux action ran.
+
+Protected post-entry status around 14:18:40 EDT still reported:
+  authorization active; connected bridge/transport
+  remote_control_active FALSE (Windows local)
+  semantic braille / temporary messages true
+A final read-only check at about 14:19:12 EDT again reported the same local
+state and preserved connection. Entry was NOT established by either check.
+Normal API return is not proof that NVDA received/recognized the chord.
+
+Passive Linux read at 14:18:41 EDT confirmed the same fixture anchor,
+unchanged public value, caret19/selection1 and stable active window. No
+observer keys/focus calls. No private text or unrelated tree was captured.
+
+Result: INCONCLUSIVE for the automated entry gesture. The requested control
+transition was not observed; actual key delivery/recognition remains
+unverified. No root cause or confirmed NVDA/Orca production defect is claimed.
+Reproduction: ONE entry attempt, no observed local->remote transition.
+Physical b.note after this attempt: PENDING Miriam's report.
+Audible Windows speech: UNVERIFIED.
+Unintended/stuck key delivery: UNVERIFIED.
+
+P6 quiet interval: NOT RUN, because remote-control precondition was unmet.
+Return handoff: NOT RUN, because Windows local control was already confirmed;
+another toggle could have entered remote control rather than returning.
+The trial is STOPPED, with no automatic retry or reuse of remaining allowance.
+No 30-second physical report should be requested for this attempt.
+Ask what the b.note showed after THIS entry attempt, without another gesture.
+The earlier successful return and its physical Windows-content report remain
+separate evidence. PR #146 remains draft; all acceptance issues stay open.
+
 SUMMARY (fill in at the end)
 ----------------------------
-Steps recorded: 1 assistant-driven return handoff with a software control-state
-result; no completed full H1 acceptance trial. Historical handoff and P6 remain
-uncertain. Escape NOT RUN; unplanned user Alt+F4 recorded separately.
+Steps recorded: 2 assistant-driven handoff attempts: 1 observed remote->local
+return, 1 entry with no observed local->remote change. No completed full H1
+acceptance trial. Historical handoff and old P6 remain uncertain; fresh P6
+intervals NOT RUN. Escape NOT RUN; unplanned user Alt+F4 recorded separately.
 PASS: 1 software control-state return; its physical Windows-content category
   matches expected. Earlier physical readiness also matches expected.
   No full H1 acceptance PASS.
 FAIL: 0
-INCONCLUSIVE: 0 completed trials
+INCONCLUSIVE: 1 automated entry attempt (delivery/recognition unverified)
 NOT RUN: Current H1 case blocked by unmet preconditions; other cases unstarted
 
 #61 checkbox status (each is: not started, evidence recorded, or blocked)
@@ -978,12 +1041,13 @@ Follow-up actions needed from Miriam:
   existing fixture anchor was restored and verified at 14:00.
   Approved existing-window restoration succeeded at 14:00. The assisted
   return handoff at 14:06 now has both the software result and Miriam's
-  physical Windows-content category recorded. Fresh P6 proposal awaits new
-  key/focus approval and renewed grant; the prior interval did not run.
+  physical Windows-content category recorded. Fresh P6 entry at 14:18 did not
+  establish remote control; record its physical b.note report before deciding
+  further action. Neither fresh quiet interval ran.
 
 Items that remain unverified (physical braille, anything NOT RUN):
   Current state needs rechecking before actions; latest verified Windows state
-  was connected/local at 14:09. Physical Windows-content category is confirmed
+  was connected/local at 14:19. Physical Windows-content category is confirmed
   by Miriam; exact cells, Linux braille/routing, audible speech, all unattempted
   acceptance requirements and earlier prompt execution remain unverified.
   The exact public fixture anchor was independently verified at 14:00.
