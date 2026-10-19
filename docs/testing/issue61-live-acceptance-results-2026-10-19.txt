@@ -212,6 +212,34 @@ Current audible Windows speech: UNVERIFIED.
 The uncertain historical handoff remains separate; no execution/result is
 reconstructed from fixture readiness or current state.
 
+FRESH PRE-GESTURE CHECK — 11:56 EDT
+-----------------------------------
+Miriam replied ready after the requested fresh read-only grant.
+Authenticated Windows status at about 11:56:32 EDT reported:
+  Transport connected and bridge attached: true
+  remote_control_active: TRUE (Linux remote control currently active)
+  Semantic braille negotiated / temporary-message support: true / true
+  Physical braille: unverified
+
+This establishes current state only. It does not identify when or why control
+changed from the earlier local Windows state and does not establish execution
+or outcome of the uncertain historical handoff.
+
+Independent passive Linux readback at 11:56:33 EDT:
+  Exact fixture hash, full document URI and single-editor id: match
+  Focus: editable, focused, single-line entry; visible
+  Public value remains Single editor alpha: yes
+  Caret offset 0; selection count 0
+  Active X window and PID stable: yes
+  Keyboard input / focus calls by probe: none / zero
+The earlier SHOWING flag was not present in this state list. No cause or
+physical presentation consequence is inferred from that difference.
+
+Next observation is P6: 30 seconds with no keyboard, mouse or b.note key
+input, then Miriam reports b.note changes and separately observable Windows
+speech. No handoff gesture is offered before that observation is received.
+P6 is pending; no PASS/FAIL is inferred from connection/focus checks.
+
 SUMMARY (fill in at the end)
 ----------------------------
 Steps recorded: 0 confirmed completed; 1 earlier prompt recorded as uncertain execution
