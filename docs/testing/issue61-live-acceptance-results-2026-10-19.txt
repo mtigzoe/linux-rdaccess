@@ -1179,6 +1179,45 @@ BEFORE any new gesture or trial. Windows LOCAL was confirmed before asking
 for a typed report. Earlier "Windows content" answers belong to other steps.
 PR #146 remains draft and all three acceptance issues stay open.
 
+
+PHYSICAL HANDOFF NOTICES; MANUAL ACTIVITY REPORTED — 14:38 EDT
+---------------------------------------------------------------
+Miriam's exact reply to the quiet-interval observation question:
+"When I pressed insert + alt + tab to swithc to Linux Mint, I can tell that my brialle display shows me that I'm on Linux. It says, \"Remote computer rontorl.\" When I retrun to Windows, my brialle display says, \"contorl local computer.\""
+
+Quoted tactile notices are preserved exactly, without spelling correction:
+  Linux-entry report: "Remote computer rontorl."
+  Windows-local report: "contorl local computer."
+
+These are reported PHYSICAL b.note handoff-status notices. The narrative
+reports a manual Insert+Alt+Tab entry and a return to Windows, but exact
+counts/timestamps and correlation to a specific recorded gesture remain
+unconfirmed. The reply does not give the fixture editor's text or establish
+unchanged output during the complete timed quiet interval. Presentation
+implementation/source was not newly traced. Audible speech stays UNVERIFIED.
+
+To the question about keys, app switches or manual Insert+Alt+Tab between
+quiet start and the later confirmation of Windows local control, Miriam
+selected: "Yes — describe what and when".
+This affirms manual activity in the period asked about; its precise actions
+and timing relative to the 30-second wait have not yet been described.
+
+Classification remains INCONCLUSIVE:
+  P6: timed wait occurred, pre/post focus differed, physical quiet/stable
+    fixture output not established; manual activity timing pending.
+  ASSISTED-RETURN-02: later local state cannot be credited solely to the
+    assistant gesture when intervening manual activity is reported.
+  H1: tactile status-notice evidence recorded; no full case acceptance.
+  #59: no Linux field/semantic presentation, routing or panning PASS inferred.
+No prior result is retroactively attributed to these untimed handoffs.
+No production defect or fix is established. Issues remain open and PR draft.
+
+Next clarification only: did the manual handoffs/other actions occur DURING
+the quiet wait, or only BEFORE/AFTER it? Approximate timing or "not sure"
+is sufficient. Do not request another gesture, reproduce an action, renew
+authorization, restore focus, or begin a new trial to answer this question.
+No live action is being performed while awaiting this observation.
+
 SUMMARY (fill in at the end)
 ----------------------------
 Steps recorded: 3 assistant-driven handoff attempts: 1 observed remote->local
@@ -1216,8 +1255,9 @@ Follow-up actions needed from Miriam:
   physical Windows-content category recorded. Fresh P6 entry at 14:18 did not
   establish remote control; Miriam's physical Windows-content report is now
   recorded. A later P6 timed interval ran with changed pre/post Linux focus;
-  obtain its physical output and any user input/control changes before a new
-  trial. The latest Windows state was connected/local at 14:32.
+  physical handoff notices and affirmative manual-activity report are now
+  recorded. Clarify whether actions were during or outside the quiet wait;
+  do not begin a new trial. Latest verified Windows state: local at 14:32.
 
 Items that remain unverified (physical braille, anything NOT RUN):
   Current state needs rechecking before actions; latest verified Windows state
