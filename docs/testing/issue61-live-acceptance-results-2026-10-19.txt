@@ -728,6 +728,40 @@ The assistant is preparing a bounded existing-window activation plus editor
 focus proposal. No new Linux UI change is approved or executed. Windows
 local control allows the same-keyboard reporting method at this checkpoint.
 
+
+PREPARED EXISTING-FIREFOX RESTORATION — 13:57 EDT
+-------------------------------------------------
+The previously reviewed one-shot restoration wrapper and existing Focus/
+availability diagnostics were reused with a bounded existing-window activation
+step. This adds no production code and no new test framework.
+
+Read-only preflight at 13:57:01 EDT verified:
+  Complete bounded scope and exactly one matching public editor
+  Exact fixture URI, public id/tag/name/role and unchanged known value
+  Expected fixture file hash and same-user Firefox process
+  Exactly one visible Firefox X window with the known public fixture title,
+  matching the editor's process and public frame identity
+  Target window currently inactive; active X window stable
+  Keyboard input / activation calls / focus calls: none / zero / zero
+The preflight result was preflight_only. Post-action focus is not claimed.
+The local exclusive execution guard is absent; no restoration has run.
+
+Concrete proposal awaiting separate Linux-focus approval:
+  Require fresh five-minute authorization and Windows LOCAL control.
+  Revalidate all target/session/file/value predicates immediately.
+  Activate that exact EXISTING public Firefox window at most once.
+  If needed, make at most one accessibility focus call to Single line editor.
+  Verify actual active-window focus, exact document/control, unchanged public
+  value and caret/selection through the existing Focus probe.
+  Stop on ambiguity, timeout or failed verification, without retry/fallback.
+
+No keys, typing, new windows, file copies, settings change, installation,
+restart, disconnect/reconnect or build operation is included. This is fixture
+setup only; no remote-entry or H1 gesture is approved by it. Windows control
+must remain local. Any later gesture is a separate test with its own current
+prechecks and observation. The proposed activation changes Linux focus and
+therefore needs the separate approval Miriam required.
+
 SUMMARY (fill in at the end)
 ----------------------------
 Steps recorded: 0 confirmed completed planned acceptance trials; historical
@@ -750,16 +784,18 @@ NOT RUN: Current H1 case blocked by unmet preconditions; other cases unstarted
 Suspected defects (one line each, with step IDs): None established
 
 Follow-up actions needed from Miriam:
-  Earlier execution uncertainty has been recorded; do not ask Miriam to
-  reconstruct it as a confirmed trial. Fixture setup is complete. A fresh
-  five-minute grant is needed for current Windows control/connection status;
-  recheck Linux focus before offering any prospective new gesture.
+  Earlier execution uncertainty is recorded; do not reconstruct it as a
+  confirmed trial. Current b.note Windows-content report is recorded. The
+  existing fixture is available in the background; active focus is terminal.
+  Prepared existing-window restoration awaits specific approval and a fresh
+  timed grant. Recheck control/focus before any later test gesture.
 
 Items that remain unverified (physical braille, anything NOT RUN):
-  Current Windows connection/control pending a fresh authorized read, physical
-  tactile output, audible speech, all unattempted acceptance requirements and
-  earlier prompt execution. The exact public fixture URI and Linux focus were
-  verified at the latest passive read; this does not establish physical output.
+  Current state needs rechecking before actions; latest verified Windows state
+  was connected/local at 13:54. Physical Windows-content category is confirmed
+  by Miriam; exact cells, Linux braille/routing, audible speech, all unattempted
+  acceptance requirements and earlier prompt execution remain unverified.
+  The exact public fixture is available, but active Linux focus was terminal.
 
 Closure: Miriam decides. This record is evidence only. Issues #57, #58, #59,
 #61 and #72 stay open until each issue's own acceptance criteria are confirmed.
