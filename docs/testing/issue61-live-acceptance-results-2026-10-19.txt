@@ -240,9 +240,48 @@ input, then Miriam reports b.note changes and separately observable Windows
 speech. No handoff gesture is offered before that observation is received.
 P6 is pending; no PASS/FAIL is inferred from connection/focus checks.
 
+LATER READY RECHECK — 12:05-12:08 EDT
+-------------------------------------
+Miriam replied "Ready." without a P6 completion or physical observation.
+P6 therefore remains UNVERIFIED: the interval's execution and b.note outcome
+are unconfirmed. Ready is not recorded as quiet, unchanged braille or PASS.
+
+At 12:05:57 EDT authenticated Windows status reported:
+  Connected transport and attached bridge: true
+  remote_control_active: false (Windows local control)
+  Semantic braille and temporary-message support: true
+  Physical braille: unverified
+
+Independent Linux readback at 12:05:57 EDT:
+  Existing fixture file hash matches: yes
+  Focus role: menu; active/focused/showing/visible
+  No exact fixture document ancestor for that focused object
+  Fixture editor anchor focus: unverified
+  Active X window stable during read: yes
+  Keyboard input / focus calls by probe: none / zero
+No cause of the state/focus changes is inferred. No particular gesture or
+software defect is established by these findings.
+
+At 12:08:23 EDT a separate passive availability check found exactly one editor
+matching the existing full fixture URI, public id, input tag, name, role and
+editable state. Traversal completed within bounds. Its states included
+editable/single-line/enabled/sensitive/focusable/visible, but not focused or
+showing. Two visible X windows matched the Firefox class; this count can include
+a menu/popup and is not a claim that another browser window was opened.
+The active X window stayed unchanged during the read. No UI action was used.
+
+H1 is paused: current control is local and required editor focus is not
+established. No new handoff, focus restoration, Escape key, typing, relaunch,
+restart or connection operation was performed or requested. The earlier
+one-shot setup focus approval has been used. A later restoration, if needed,
+requires specific approval and fresh identity checks; it is not authorized now.
+First obtain the missing P6 observation (or explicit report it was not done)
+before choosing the next step with Miriam.
+
 SUMMARY (fill in at the end)
 ----------------------------
-Steps recorded: 0 confirmed completed; 1 earlier prompt recorded as uncertain execution
+Steps recorded: 0 confirmed completed; historical handoff execution uncertain;
+P6 execution and physical outcome unconfirmed
 PASS: 0
 FAIL: 0
 INCONCLUSIVE: 0 completed trials
