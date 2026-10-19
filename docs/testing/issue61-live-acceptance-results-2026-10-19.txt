@@ -361,10 +361,55 @@ before deciding whether P4/P6 and the handoff case can proceed.
 P6 remains UNVERIFIED ("Not done or unsure"). The historical handoff remains
 uncertain. H1 and the other acceptance requirements remain incomplete.
 
+USER-REPORTED ALT+F4; ESCAPE NOT PERFORMED — 13:07-13:08 EDT
+------------------------------------------------------------
+When asked whether Escape had been pressed, Miriam replied:
+"No. I pressed alt + f4 to close a program on Linux Mint. I think the esc key is working."
+
+Planned Escape setup step: NOT RUN; Miriam explicitly confirmed no Escape.
+Her belief that Escape works is retained as context, not test evidence.
+Alt+F4: confirmed user-reported, unplanned action outside this setup step.
+The closed program/window is unidentified. No before/after correlation proves
+which application closed. No Escape, handoff or general keyboard PASS/FAIL
+is inferred from this action. Acceptance remains paused after the deviation.
+
+At about 13:07 EDT, authenticated status reported connected transport, attached
+bridge, Linux remote control active, semantic negotiation and temporary-message
+support. Physical braille remained unverified.
+
+At 13:07:07 EDT a passive focus read found a push-button rather than the fixture
+editor. No exact fixture-document ancestor was found for that focused object.
+The active X window was stable and the public fixture disk hash matched.
+
+At 13:08:33 EDT a bounded passive check reported:
+  Active application category: Firefox; same-user process
+  Visible X windows matching Firefox class: 1
+  Accessibility scope complete within the probe's bounds: yes
+  Matching existing public fixture editors: 0
+  Active X window stable during the read: yes
+This establishes only that the known fixture editor was unavailable within the
+inspected scope. It does not prove all Firefox instances/tabs were closed, or
+identify what Alt+F4 closed. No private title, document text or URI was output.
+No assistant keys, focus calls, file copies, launch, restart or connection
+operation occurred during these checks.
+
+Proposed next setup, NOT AUTHORIZED OR EXECUTED:
+  Verify the existing private public HTML file still matches the pinned hash.
+  Open that existing local file in ONE new Firefox window; do not copy it again.
+  Verify the exact new document/editor identity and focus only Single line
+  editor using at most one accessibility focus call, then verify passively.
+  Stop on ambiguity or failure, with no keys, retries, new copies, additional
+  windows, settings changes, installation, restart or connection change.
+This needs specific approval because it opens a window and changes focus.
+No handoff is included. Any later gesture needs fresh control/focus checks.
+
+The earlier historical handoff and P6 remain uncertain/unverified. Issues #57,
+#59 and #61 stay open and PR #146 stays draft; no physical acceptance is claimed.
+
 SUMMARY (fill in at the end)
 ----------------------------
-Steps recorded: 0 confirmed completed; historical handoff execution uncertain;
-P6 execution and physical outcome unconfirmed
+Steps recorded: 0 confirmed completed planned acceptance trials; historical
+handoff and P6 uncertain. Escape NOT RUN; unplanned user Alt+F4 recorded separately.
 PASS: 0
 FAIL: 0
 INCONCLUSIVE: 0 completed trials
