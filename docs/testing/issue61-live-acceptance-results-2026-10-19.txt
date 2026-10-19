@@ -525,6 +525,55 @@ Status at recording: PROMPT PENDING; no execution or physical observation
 received. Do not count a completed trial, PASS or FAIL. No assistant keys,
 focus change, software/settings/install/restart or connection operation ran.
 
+
+REQUEST FOR ASSISTANT-DRIVEN TESTING — 13:38-13:39 EDT
+------------------------------------------------------
+Miriam asked: "Can you remote access, so that you can test for me? Ready."
+No physical execution or tactile output was reported for SETUP-HANDOFF-LOCAL-01.
+That pending gesture remains UNCONFIRMED. The current status below cannot
+establish whether it occurred or identify any intervening input.
+
+At about 13:38 EDT, protected Windows status with active authorization:
+  Connected transport / attached bridge: true / true
+  remote_control_active: TRUE (Linux remote control)
+  Semantic braille negotiation / temporary-message support: true / true
+  Physical braille: unverified
+
+At 13:39:01 EDT, passive Linux Desktop Commander/SSH read:
+  Fixture disk hash and exact document URI match: yes
+  Focused object: editable, MULTI-LINE entry, showing and visible
+  Expected single-editor id match: NO
+  Required Single line editor anchor: false
+  Active X window stable: yes
+  Keyboard input sent / focus calls: none / zero
+No editable text, private title or unrelated tree was captured/output.
+This differs from the earlier anchor focus. No cause or defect is assigned.
+The H1 acceptance run is paused; there was no automatic focus correction.
+
+Read-only Windows automation capability discovery found the existing NVDA
+Speech Viewer and NVDA Braille Viewer windows. The documented Computer Use
+API imported successfully and bound the unique existing Braille Viewer by
+returned window metadata. No window activation, screenshot, viewer text read,
+key injection, launch, settings change or software/connection operation ran.
+
+Concrete proposal awaiting specific approval:
+  Recheck active five-minute authorization, connected transport and Linux
+  remote control; stop if any prerequisite differs.
+  Activate only the existing Windows NVDA Braille Viewer as the key target,
+  then send Insert+Alt+Tab ONCE through the Windows input path.
+  Read the connection/control result afterward; do not retry the gesture.
+  Stop on any unexpected result, without extra keys, focus correction,
+  reconnect, restart, settings, installation or Linux UI action.
+This returns the shared keyboard toward Windows local control and does not
+request a Remote Access disconnect. Activation changes Windows focus, so
+Miriam's separate-approval rule applies to that focus change and injection.
+This is an assistant-driven setup/software check, not a completed physical
+H1 trial. Full P1-P8 preflight and physical b.note evidence remain incomplete.
+Physical hardware output still requires Miriam's observation; speech remains
+UNVERIFIED without reliable Windows-side observation.
+
+No test PASS/FAIL is inferred. PR #146 remains draft and issues stay open.
+
 SUMMARY (fill in at the end)
 ----------------------------
 Steps recorded: 0 confirmed completed planned acceptance trials; historical
