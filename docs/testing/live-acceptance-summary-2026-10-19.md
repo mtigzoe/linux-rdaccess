@@ -33,10 +33,16 @@ Latest verified Windows state was connected/local at **14:32:27 EDT**. Linux foc
 
 No confirmed production defect follows from the inconclusive input attempts. No production fix, restart, setting change, installation, disconnection, or build change is proposed.
 
-## Next trial
+## Assisted testing preference and next step
 
-The old timing question is closed as **“Not sure”**; it will not be reconstructed or repeated. A fresh trial needs one keyboard input source and a clear way to return to Windows before typing a report on the same laptop.
+Miriam asked whether the agent can perform the tests remotely to reduce her keyboard work. This question did **not** approve the proposed manual entry/read/return sequence. That trial and the prepared bounded fixture restoration have **not run**. No further key, focus, connection, setting, installation or restart action was authorized by this question.
 
-A manual entry/read/return sequence is prepared as an option, with no assistant key injection. It requires Miriam's agreement to the prearranged sequence and its before/after observations. A bounded restoration of the existing verified fixture is also prepared but has **not run**; it needs separate Linux-focus authorization.
+Use existing Desktop Commander, SSH and Python diagnostics for read-only observations, software checks, comparison and recording. Do not add a second remote-control application or use Linux injection as Windows NVDA acceptance evidence. Further agent-driven gestures or fixture focus changes still require an explicit bounded scope; earlier one-shot approvals are exhausted.
+
+A source inspection of [NVDA 2026.2's Remote Access menu](https://github.com/nvaccess/nvda/blob/release-2026.2/source/_remoteClient/menu.py) found no control-handoff menu command. It therefore supplies no verified menu alternative to the inconclusive injected shortcut. This is a source finding, not a fresh check of the installed application's live state or a diagnosed input defect.
+
+The agent can reduce manual work, but software logs and Braille Viewer cannot establish physical b.note cells, routing or panning. Keep hardware observations, real keyboard coverage and Windows speech evidence separate from software checks. Do not claim all three issues can be accepted unattended.
+
+The old timing question is closed as **“Not sure”**; it will not be reconstructed or repeated. No new gesture or quiet interval was performed for this update. Any future live trial needs fresh connection/focus checks, one agreed input source, and a reliable return to Windows before Miriam types on the same laptop.
 
 Keep the issues open and PR #146 draft until their respective requirements and documentation review are confirmed.
