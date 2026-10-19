@@ -688,11 +688,51 @@ historical transition. Audible speech remains UNVERIFIED.
 No additional gesture, braille key, settings/install/restart or connection
 operation is requested. PR #146 remains draft and acceptance issues stay open.
 
+
+PHYSICAL WINDOWS-CONTENT REPORT AND LINUX READS — 13:54 EDT
+------------------------------------------------------------
+Readiness observation ID: CURRENT-BRAILLE-READINESS-01
+Related issues: #59 / #61; no transition-case completion claimed
+Physical action requested: read current b.note without any handoff/braille key.
+Expected: current Windows content while control is local.
+
+Miriam's exact physical b.note report: "Windows content"
+Observed layer: physical display content category, reported by Miriam.
+Assessment: MATCHES EXPECTED for this current readiness observation only.
+Exact cells/text and presentation implementation/source: not identified by
+this category report. Audible Windows speech: UNVERIFIED.
+This is the first confirmed physical category report in this session record.
+It does not establish execution or outcome of any earlier pending gesture,
+does not accept H1, and is not a Linux semantic-braille or routing PASS.
+
+Protected Windows status around 13:54:09 EDT:
+  Authorization active; connected transport and attached bridge
+  remote_control_active FALSE (Windows local)
+  Semantic braille and temporary-message support true
+  Endpoint physical_braille field remains unverified: it does not measure the
+  hardware and does not replace Miriam's separate physical report above.
+
+Passive availability read at 13:54:10 EDT found one exact public fixture
+Single line editor within a complete bounded scope; two Firefox-class visible
+X windows. Its toolkit states included focused/showing/single-line/editable.
+Availability alone is not proof that its window owns active keyboard focus.
+
+A separate active-focus read at 13:54:53 EDT still found TERMINAL focus,
+without the fixture document ancestor. Active X window was stable; the public
+fixture disk hash matched. This differentiates a background toolkit focused
+state from actual active-window keyboard focus. No cause is assigned.
+All probes sent zero keys and made zero focus calls; no private contents read.
+
+Current H1 acceptance status: paused; required active fixture anchor absent.
+The assistant is preparing a bounded existing-window activation plus editor
+focus proposal. No new Linux UI change is approved or executed. Windows
+local control allows the same-keyboard reporting method at this checkpoint.
+
 SUMMARY (fill in at the end)
 ----------------------------
 Steps recorded: 0 confirmed completed planned acceptance trials; historical
 handoff and P6 uncertain. Escape NOT RUN; unplanned user Alt+F4 recorded separately.
-PASS: 0
+PASS: 0 completed acceptance trials; 1 current readiness report matches expected
 FAIL: 0
 INCONCLUSIVE: 0 completed trials
 NOT RUN: Current H1 case blocked by unmet preconditions; other cases unstarted
