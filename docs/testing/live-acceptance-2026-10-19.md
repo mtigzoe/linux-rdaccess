@@ -1,7 +1,9 @@
 # Readiness recheck: 2026-10-19
 
 Related issues: #57, #59, #61. PR #146 remains draft.
-No acceptance test has run; K57-01 remains UNVERIFIED with zero attempts.
+No completed physical acceptance result is recorded. K57-01 title remains
+UNVERIFIED with zero attempts; the separately prompted handoff now awaits
+execution/observation confirmation, as recorded below.
 
 ## Pre-activation authorization and status
 
@@ -180,3 +182,42 @@ separate actions to agree after activation and recovery are verified.
 
 No live acceptance PASS or FAIL was recorded. K57-01 remains UNVERIFIED with
 zero attempts. #57, #59 and #61 remain open; PR #146 stays draft.
+
+## Handoff preflight using the merged #61 procedure
+
+Miriam authorized read-only connection and focus checks before each user-operated
+gesture, with no assistant input or focus changes. The session now reuses the
+merged procedure's [filled results template](issue61-live-acceptance-results-2026-10-19.txt).
+Its Linux AT-SPI observations, Windows status and physical b.note observations
+are recorded separately.
+
+Desktop Commander reported both registered devices offline and executed no
+remote command. Its agents were not started or restarted. The existing local
+command channel queried nvda-status with normal consent enforcement and received
+**required_or_expired**. Current Remote connection/control state is therefore
+**UNVERIFIED**, not disconnected. Earlier successful status remains historical
+point-in-time evidence.
+
+At **11:31:57 EDT**, pinned SSH ran the existing Focus probe in the selected
+local-console session. AT-SPI found a focused **push-button**, matching the
+active same-user window PID; the active window remained unchanged during the
+read. The process-name classification was other_application. Names were
+redacted; no editor text or document URI was output.
+
+**P4 / H1 preflight is BLOCKED:** the required Firefox fixture's Single line
+editor anchor is not focused. This does not establish whether the fixture is
+open elsewhere. H1.1 also requires remote control active, which the expired
+grant cannot currently establish. No focus movement, fixture launch, event
+monitor, new handoff, key injection, restart, settings write or connection
+operation was performed.
+
+An earlier prompt requested Insert+Alt+Tab once, adapted to H1.3 remote entry
+from the then-verified local Windows state. Its physical execution and output
+are unconfirmed. Miriam has been asked for that result before any repeat; no
+PASS/FAIL or zero-attempt claim is assigned to this pending prompt. No tactile
+observation or audible speech result is inferred from AT-SPI.
+
+Miriam chose to proceed with the installed companion .2 and forbade .4
+installation. Any eventual observations apply to that installed path and do
+not accept the uninstalled .4 changes. Issues #57, #59 and #61 remain open;
+PR #146 remains draft. No CI checks were polled or awaited.
