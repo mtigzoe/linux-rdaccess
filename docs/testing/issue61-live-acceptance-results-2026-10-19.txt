@@ -1034,6 +1034,78 @@ references READ-ONLY before proposing further live interaction. No keys,
 focus changes, settings, installs, restarts or connection commands are part
 of that investigation. All three acceptance issues remain open.
 
+
+READ-ONLY INPUT REVIEW — 14:22-14:26 EDT
+------------------------------------------
+No further keys, focus activation, settings, installs, restarts or connection
+commands were performed during this investigation.
+
+A targeted read of ONLY the saved default NVDA keyboard preferences found:
+  handleInjectedKeys = True
+  NVDAModifierKeys = 7
+  keyboardLayout = desktop
+These are SAVED values, not runtime/profile/unsaved-state attestation.
+No setting was changed and no unrelated configuration values were output.
+The initial standard INI parser could not parse NVDA's ConfigObj format;
+the corrected read extracted only the three allowlisted keyboard keys.
+
+The repository status implementation localTestStatus.py maps connected
+remote_control_active to the client's boolean sendingKeys; it does not infer
+control merely from an established socket. Loaded implementation bytes were
+not newly attested in this review.
+
+Primary NVDA 2026.2 source references:
+https://github.com/nvaccess/nvda/blob/release-2026.2/source/_remoteClient/client.py
+https://github.com/nvaccess/nvda/blob/release-2026.2/source/keyboardHandler.py
+The Remote client registers a raw-key decider. When local it permits ordinary
+processing; when sending remote keys it can handle local scripts through its
+own path. The ordinary keyboard handler also has injected-key gates.
+Inference: success of the remote->local automated return does not establish
+that the local->remote automated entry used an equivalent input path.
+This does NOT identify which gate/path was active in this attempt or establish
+a root cause. Saved injected-key permission is not runtime evidence.
+
+The supported Windows key API documents an X-keysym chord request but provides
+no attestation here that NVDA recognized the chord. No custom input injector,
+helper protocol, changed setting or diagnostic hook was introduced.
+The earlier 2026-10-05 scripted trial was reviewed as historical evidence only;
+its documented concurrent manual input prevents using it as isolated proof
+that this automation path currently works.
+
+FRESH-P6-01 remains INCONCLUSIVE with a physical Windows-content report.
+No production change or regression fix is justified by the present evidence.
+Next useful distinction: a controlled PHYSICAL entry rather than another
+unverified automated-entry retry.
+
+PREPARED PHYSICAL-ENTRY COMPARISON / P6 — AWAITING DECISION
+-----------------------------------------------------------
+Proposed scope after Miriam explicitly resumes from the inconclusive result:
+  Fresh five-minute grant; read-only connection/control and fixture preflight.
+  If Windows LOCAL, instruct Miriam to press/release Insert+Alt+Tab ONCE.
+  No assistant entry injection. Confirm the resulting control state and exact
+  fixture anchor before continuing. Record whether the physical key was
+  actually performed from Miriam's later report, not just from a state change.
+  If already known REMOTE, do not ask an entry gesture; record that physical
+  comparison was not run and use the verified state for a new P6 baseline.
+  With REMOTE plus anchor verified, mark 30 seconds while Miriam reads the
+  b.note with keys released; no tool input during this quiet interval.
+  End the observation, then use at most ONE explicitly approved assistant
+  Insert+Alt+Tab return through the existing NVDA Braille Viewer, with its
+  Windows activation, only if status confirms REMOTE.
+  Verify Windows LOCAL before requesting a typed report of actual gesture
+  execution and the Linux interval's physical output/changes.
+  If entry is not established or state is unknown, stop without extra input.
+  If focus changes, stop the observation; the confirmed-remote return remains
+  within the proposed approval. No Linux focus correction or other keys.
+  Recovery mechanism remains Miriam's normal physical handoff; no automatic
+  input retry, reconnect, restart or setting change is included.
+
+This is one proposed physical entry gesture with separately scoped assisted
+return for same-keyboard reporting. P6 physical quiet is not inferred from
+time passage or metadata, and full H1 remains pending the rest of preflight.
+The decision/approval has not been requested as permission for any production
+change, companion install, disconnect, or issue closure.
+
 SUMMARY (fill in at the end)
 ----------------------------
 Steps recorded: 2 assistant-driven handoff attempts: 1 observed remote->local
