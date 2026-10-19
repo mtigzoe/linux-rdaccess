@@ -312,6 +312,55 @@ authorize a physical handoff or any acceptance PASS.
 
 H1 remains paused; issues #57, #59 and #61 remain open and PR #146 stays draft.
 
+APPROVED SINGLE FOCUS RESTORATION — 12:55-12:56 EDT
+----------------------------------------------------
+Miriam approved: "Approve one focus restoration", then requested continued
+work on #57, #59 and #61.
+
+The first execution request did not run: automatic approval review could not
+complete because of an account usage limit. It explicitly reported no action
+executed and did not classify the action as unsafe. At 12:55 EDT, after the
+stated retry time, the original reviewed helper remained present and its
+exclusive execution guard did not exist. The same approval-protected Desktop
+Commander route was used again; no alternative route bypassed the review.
+
+A fresh passive preflight at 12:55:25 EDT verified one unique existing public
+editor, complete bounded scope, exact URI/hash/id/tag/name/role, unchanged
+Single editor alpha value, and the active Firefox identity. No focus call ran
+during that preflight.
+
+At 12:55:35-12:55:39 EDT the approved operation:
+  Revalidated the same public target and active window/PID.
+  Performed exactly ONE accessibility grab_focus call.
+  Received provider return true.
+  Could NOT verify the editor focused afterward.
+  Reported focus_unverified_stop and made no retry or fallback action.
+The provider return is not treated as proof of actual focus or acceptance.
+The exclusive local guard and immutable private audit record the consumed
+one-call approval; helper/audit copies were archived with matching hashes.
+
+A separate passive check at 12:56:02 EDT still found a focused menu, with
+no fixture document ancestor. The active X window was stable and the fixture
+file hash still matched. It made zero focus calls and sent no keys.
+
+A subsequent fresh authenticated NVDA read reported connected transport,
+attached bridge, Linux remote control ACTIVE, semantic negotiation and
+temporary-message support. Physical braille remains unverified. This is current
+state evidence only and does not reconstruct the uncertain earlier handoff.
+
+All assistant UI actions are stopped. No keys, copies, extra windows, settings
+changes, restarts or connection operations were performed by the restoration.
+No confirmed NVDA compatibility defect or live acceptance PASS follows.
+
+Next human setup-recovery action to offer: press/release Escape once to dismiss
+the Linux menu, then report exact b.note output. This is a user-operated setup
+action, not an automated retry or an H1 PASS. No key has yet been confirmed.
+Do not combine it with a handoff or navigation. Recheck focus/state afterward
+before deciding whether P4/P6 and the handoff case can proceed.
+
+P6 remains UNVERIFIED ("Not done or unsure"). The historical handoff remains
+uncertain. H1 and the other acceptance requirements remain incomplete.
+
 SUMMARY (fill in at the end)
 ----------------------------
 Steps recorded: 0 confirmed completed; historical handoff execution uncertain;
