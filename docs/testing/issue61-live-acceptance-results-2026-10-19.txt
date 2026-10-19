@@ -445,12 +445,46 @@ temporary messages supported. Physical output remains unverified.
 No test gesture or new quiet interval has been requested after reopening.
 The assistant asked whether Miriam replies through the same Windows keyboard
 or another device, to establish a usable reporting method while Linux control
-is active. That answer and initial physical b.note observation remain pending.
+is active. That answer and initial physical b.note observation were pending at that time.
 
 The old P6 remains "Not done or unsure"; Escape remains NOT RUN and the
 historical handoff remains uncertain. Alt+F4 stays a separate unplanned
 user-reported action. No earlier action or physical output is reconstructed
 from these successful setup checks. PR #146 stays draft and issues stay open.
+
+
+SAME-KEYBOARD REPORTING AND PASSIVE RECHECK — 13:27 EDT
+-------------------------------------------------------
+Miriam answered the reporting-method question:
+"Same Windows laptop and keyboard".
+
+This identifies the shared input device; it does not establish that any chat
+keystroke reached Linux or explain earlier state/focus changes. Before another
+trial, establish a reporting method that keeps chat typing outside remote
+control. Do not ask Miriam to type an observation while known remote control
+is active. No new physical gesture is requested in this check.
+
+At 13:27:30 EDT a passive Desktop Commander/SSH readback confirmed:
+  Exact fixture file hash, full document URI and single-editor id match: yes
+  Focus: editable, focused, single-line entry; visible
+  Known public value unchanged: yes
+  Caret offset: 0; selection count: 0
+  Active X window stable during read: yes
+  Keyboard input / focus calls: none / zero
+The SHOWING flag was absent from this state list. No physical presentation
+consequence or defect is inferred from that flag alone.
+
+The protected Windows nvda-status read returned required_or_expired.
+Current connection/control/semantic negotiation are therefore UNVERIFIED at
+this check; this is not evidence of disconnection. No alternative route was
+used to bypass the grant. A fresh five-minute read-only authorization is
+needed, with optional connection/routing boxes unchecked, before the next
+current-state check. No handoff, key injection, focus change, launch, settings
+change, installation, restart or connection operation occurred.
+
+Physical b.note observation: not provided for a new trial.
+Audible Windows speech: UNVERIFIED.
+P6 and the historical handoff remain uncertain; all acceptance remains open.
 
 SUMMARY (fill in at the end)
 ----------------------------
@@ -480,9 +514,10 @@ Follow-up actions needed from Miriam:
   recheck Linux focus before offering any prospective new gesture.
 
 Items that remain unverified (physical braille, anything NOT RUN):
-  Current fixture URI, tactile output, audible speech, all unattempted acceptance
-  requirements and earlier prompt execution. Later point-in-time status below
-  establishes local Windows control only at that read.
+  Current Windows connection/control pending a fresh authorized read, physical
+  tactile output, audible speech, all unattempted acceptance requirements and
+  earlier prompt execution. The exact public fixture URI and Linux focus were
+  verified at the latest passive read; this does not establish physical output.
 
 Closure: Miriam decides. This record is evidence only. Issues #57, #58, #59,
 #61 and #72 stay open until each issue's own acceptance criteria are confirmed.
