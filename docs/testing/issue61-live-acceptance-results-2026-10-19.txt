@@ -406,6 +406,52 @@ No handoff is included. Any later gesture needs fresh control/focus checks.
 The earlier historical handoff and P6 remain uncertain/unverified. Issues #57,
 #59 and #61 stay open and PR #146 stays draft; no physical acceptance is claimed.
 
+APPROVED FIXTURE REOPENING — 13:12-13:14 EDT
+-------------------------------------------
+Miriam explicitly answered: "Approve fixture reopening".
+This authorized one new Firefox window for the existing verified local public
+file, and at most one accessibility focus call to its verified Single line
+editor. No file copy, key injection, typing, settings, installation, restart
+or connection operation was authorized.
+
+A passive preflight at 13:12:41 EDT verified the existing 5,073-byte file/hash,
+private ownership/modes, selected local graphical session and required APIs.
+One visible Firefox X window was present.
+
+At 13:13:29-13:13:30 EDT, the guarded reopening:
+  Opened the existing exact local file URI in ONE new Firefox window.
+  Verified the new active window, Firefox process and unique exact document.
+  Verified editor ancestry, public id/tag/name/role and editable single-line
+  focusable identity. SHOWING was observed separately rather than treated as
+  the editor's identity, allowing focus to bring an off-screen field into view.
+  Made exactly ONE accessibility focus call; provider returned true.
+  Verified actual Focus-probe target, expected document/control and window.
+  Confirmed known public value unchanged, SHOWING true, caret0/selection0.
+  Copied zero files and sent no keyboard input.
+Result: fixture_ready. This is setup readiness only, not an acceptance PASS.
+
+At 13:14:25 EDT, a separate passive Desktop Commander/SSH readback confirmed:
+  Fixture SHA-256, full document URI and single-editor id match: yes
+  Focused role/state: editable entry, focused, showing, single-line, visible
+  Public text remains Single editor alpha: yes
+  Caret offset: 0; selection count: 0
+  Active window and PID stable: yes
+  Keyboard input / focus calls by independent probe: none / zero
+
+A fresh authenticated Windows read after reopening reported connected transport,
+attached bridge, Linux remote control ACTIVE, semantic braille negotiated and
+temporary messages supported. Physical output remains unverified.
+
+No test gesture or new quiet interval has been requested after reopening.
+The assistant asked whether Miriam replies through the same Windows keyboard
+or another device, to establish a usable reporting method while Linux control
+is active. That answer and initial physical b.note observation remain pending.
+
+The old P6 remains "Not done or unsure"; Escape remains NOT RUN and the
+historical handoff remains uncertain. Alt+F4 stays a separate unplanned
+user-reported action. No earlier action or physical output is reconstructed
+from these successful setup checks. PR #146 stays draft and issues stay open.
+
 SUMMARY (fill in at the end)
 ----------------------------
 Steps recorded: 0 confirmed completed planned acceptance trials; historical
