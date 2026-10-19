@@ -574,6 +574,52 @@ UNVERIFIED without reliable Windows-side observation.
 
 No test PASS/FAIL is inferred. PR #146 remains draft and issues stay open.
 
+
+APPROVED WINDOWS HANDOFF: STOPPED IN PREFLIGHT — 13:43 EDT
+----------------------------------------------------------
+Miriam answered: "Approve one Windows handoff".
+The specific approval covered the existing Windows NVDA Braille Viewer
+activation and one Insert+Alt+Tab gesture, with prechecks and no retries.
+No gesture was sent and no Windows focus activation occurred.
+
+Protected Windows precheck at about 13:43 EDT:
+  Five-minute authorization: active
+  Transport connected / bridge attached: true / true
+  remote_control_active: TRUE
+  Semantic braille / temporary-message support: true / true
+  Physical braille: unverified
+
+Passive Linux check at 13:43:56 EDT:
+  Public fixture file hash matches: yes
+  Focused role: TERMINAL, showing and visible
+  Exact fixture document URI for focused object: false
+  Anchor focus: unverified
+  Active X window stable during read: yes
+  Probe keys / focus calls: none / zero
+The terminal focus is an unexpected change from the earlier fixture multiline
+entry. No terminal text, private title or command was captured. No cause is
+attributed to Miriam, the pending historical gesture or a software defect.
+
+Fresh Windows list_windows returned one exact existing NVDA Braille Viewer.
+Binding its returned window object succeeded without activation. A requested
+content-free get_window_state was rejected with:
+"get_window_state must request include_text, include_screenshot, or both".
+The failed read request sent no input. No screenshot or viewer contents were
+captured; activate_window and press_key were never called. No automatic
+retry, fallback input or alternative injection route was used.
+
+The operation stopped before mutation under the unexpected-focus stop rule.
+The one approved handoff remains unexecuted. This supplies no H1 gesture
+result, no physical observation and no acceptance PASS/FAIL. Earlier
+SETUP-HANDOFF-LOCAL-01 execution remains separately unconfirmed.
+
+Further action awaits Miriam's decision after this changed-state report.
+A return-only Windows handoff can be considered separately from acceptance;
+it must explicitly allow leaving the observed Linux terminal focus alone.
+Do not restore fixture focus, type in the terminal, run commands there, or
+repeat any user gesture automatically. Recheck the active grant and remote
+control before any specifically approved resumed action.
+
 SUMMARY (fill in at the end)
 ----------------------------
 Steps recorded: 0 confirmed completed planned acceptance trials; historical
