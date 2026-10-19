@@ -318,6 +318,40 @@ and Miriam's readiness are missing. K57-01 has not run. A latest-main update
 would need a reviewed file-specific rollback plan and separate permission for
 each accessibility interruption; resource availability alone is insufficient.
 
+## Authorized snapshot and upgrade preparation follow-up
+
+Miriam said **"Ready"** and authorized a fresh read-only status check, complete
+private rollback snapshots, upgrade preparation and observation for a safe
+Mousepad target. Installation, activation, keyboard input, settings changes,
+restarts and disconnection remain prohibited without separate approval.
+
+The status-only check ultimately succeeded: connected transport, bridge
+attached, semantic braille negotiated, temporary-message support true, and
+**remote_control_active false** (Windows local control). An earlier attempt
+required authorization; a later metadata-only load accepted the existing grant.
+No authorization was bypassed or renewed. Physical braille and exact loaded
+module versions remain unverified. This result is point-in-time and does not
+extend the five-minute grant.
+
+Fresh bounded process/scope/cgroup checks found no active known issue #79
+build. Available RAM was 11,924 MiB, swap unused and CPU about 99% idle. Build
+completion is still unknown. Four existing X windows and zero Mousepad apps
+were observed; no editor content was read and no safe Mousepad target was found.
+
+Complete saved-state rollback archives and a four-file Linux candidate are
+prepared and verified. Native local Linux Python 3.10 rehearsal restored 97
+files with exact hashes/modes/ownership/timestamps, applied the candidate and
+rolled back successfully. Windows saved-profile restore hashes and a captured
+companion .2 rollback package were verified; live ACL replay was not performed.
+The .4 archive is reproducible and matches exact main source blobs. No active
+software or Cyber files were changed.
+
+[Prepared upgrade, dependency versions, snapshot verification and exact approval
+boundaries](live-acceptance-upgrade-2026-10-18.md) are recorded separately for
+review. This supersedes preliminary update assumptions, not historical physical
+observations. PR #146 stays draft. K57-01 is still unattempted and awaits approved
+activation/recovery verification and a safe target.
+
 ## Session tally and validation
 
 PASS: 0. FAIL: 0. BLOCKED attempted cases: 0. UNVERIFIED recorded case: 1
