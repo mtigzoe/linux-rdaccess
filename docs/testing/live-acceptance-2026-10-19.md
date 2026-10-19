@@ -249,3 +249,30 @@ Copying it, opening a new Firefox window and focusing its Single line editor
 are **prepared but not authorized or executed**. This focus change needs
 specific approval under Miriam's instructions. No repeated gesture is requested
 while this precondition remains unmet. Issues remain open and PR #146 stays draft.
+
+## Approved public Firefox fixture setup
+
+Miriam separately answered **"Approve fixture setup only"**. The reviewed
+operation passed its read-only preflight, then completed at **11:52:02-11:52:03
+EDT** through the Windows Desktop Commander agent and pinned SSH route.
+It copied the exact approved 5,073-byte public fixture to the proposed private
+temporary directory, verified its hash, opened one new Firefox window and
+focused only the uniquely verified Single line editor using one accessibility
+focus call. Exact full document URI, DOM id, public label, role and states
+were checked before the action. Provider success and actual focus were checked
+separately. No keyboard input or mutation retry was used.
+
+An independent passive readback at **11:53:29 EDT** confirmed the fixture hash,
+full URI, editor identity and focused entry state, with stable active window/PID.
+The public value remained Single editor alpha; caret offset was 0 with zero
+selections. This satisfies fixture setup only and supplies no physical braille,
+audible speech or handoff PASS. The private operation audit and helper sources
+were archived with verified hashes; temporary workspace files were removed.
+
+No settings, companion installation, Orca/NVDA restart or Remote connection
+operation was performed. The post-setup status request reported authorization
+required/expired, leaving current control/connection unverified. Fresh read-only
+consent was requested; no handoff gesture was offered. The
+[separate #61 results record](issue61-live-acceptance-results-2026-10-19.txt)
+keeps this setup and Linux evidence distinct from Miriam's still-uncertain
+earlier handoff. PR #146 remains draft and issues #57, #59 and #61 remain open.
