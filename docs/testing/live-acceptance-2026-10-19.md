@@ -118,19 +118,65 @@ does not expose the graphical variables for independent matching. No loaded
 v123 attestation is claimed. Windows companion **20261014.0.4 remains prepared
 and uninstalled**; installed .2 was not changed.
 
+## Fresh read-only Windows status and integration attribution
+
+After Miriam replied **"Ready"** and explicitly authorized the status check,
+the protected, authenticated nvda-status request succeeded with the existing
+five-minute grant. No consent was altered or renewed. It reported:
+
+| Field | Observed value |
+| --- | --- |
+| Result / transport_connected | connected / true |
+| bridge_attached | true |
+| remote_control_active | false: local Windows keyboard control |
+| semantic_braille_negotiated | true |
+| temporary_message_supported | true |
+| physical_braille | unverified |
+
+This confirms the Windows connection/control/negotiation state at the time of
+the read. It does not confirm tactile receipt, audible speech, routing, input
+delivery or any live acceptance test.
+
+A bounded, read-only filter of the current NVDA startup log returned only fixed
+integration markers and their metadata. The single startup entry was 10:09:05,
+consistent with the current NVDA process start at 10:09:04 EDT. It contained:
+- 10:09:30.881: **Initialized Linux Remote Access Companion**, logged by the
+  standalone linuxRdAccess plugin.
+- 10:11:03.520: **Attached NVDA-native linux-rdaccess braille presentation**,
+  logged by that same plugin.
+- Zero occurrences of the fixed legacy-conflict warning.
+
+Together with the successful authenticated bridge status, this supports the
+**standalone companion** as the active integration. Legacy RDAccess is installed
+(version 20261012.0.5), but was not identified as the owner of this Linux bridge.
+Current standalone manifest remains **20261014.0.2**; its 16 Python modules and
+manifest exactly match the verified captured .2 rollback package. Neither .4
+installation nor an NVDA restart was performed. Startup evidence and disk
+equality do not attest exact bytes loaded in NVDA.
+
+At **10:58:05 EDT**, an independent SSH read checked the Linux files and
+process without importing controller code. All four hashes matched the deployed
+v123 manifest. One Orca process remained: PID 114133, parent PID 1, with one
+established TCP socket. This corroborates continuity after the approved restart.
+
+Source review found that v123 exists only as a controller comment/patch marker,
+not an exposed runtime build identifier. Neither the controller callbacks nor
+the authenticated Windows status schema provides a Linux-controller-version
+query. Therefore **v123 is verified on disk, with a completed restart afterward;
+the exact active loaded controller revision remains unverified**. Protocol
+version 1 is not controller version v123. No injection, debugger attachment,
+new diagnostic deployment or other invasive attestation was attempted.
+
 ## Remaining verification and separate approvals
 
-A fresh five-minute NVDA test grant is pending for a read-only authenticated
-Windows connection-status check. A promise to grant it is not a ready signal.
-A Linux TCP socket alone does not establish Windows bridge/control/negotiation
-state, speech or physical-braille recovery.
+No live acceptance test began during these read-only checks. Windows companion
+.4 remains uninstalled. Its installation and one NVDA restart still require
+separate approval and an agreed accessible Windows recovery method.
 
-Windows companion .4 installation and one NVDA restart still require separate
-approval and an agreed accessible Windows recovery method. Any further Orca
-restart, connection change, settings change or recovery file restoration
-requires its own approval; no silent retry is authorized. Opening or focusing
-a public unsaved Mousepad target, and any Remote handoff, remain separate
-actions to agree after activation and recovery are verified.
+Any further Orca restart, connection change, settings change or recovery file
+restoration requires its own approval; no silent retry is authorized. Opening
+or focusing a public unsaved Mousepad target, and any Remote handoff, remain
+separate actions to agree after activation and recovery are verified.
 
 No live acceptance PASS or FAIL was recorded. K57-01 remains UNVERIFIED with
 zero attempts. #57, #59 and #61 remain open; PR #146 stays draft.
