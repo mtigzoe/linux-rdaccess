@@ -24,6 +24,17 @@ Follow [Python compatibility wrappers and repository layout](PYTHON_WRAPPERS.md)
 
 Verify actual speech and braille presentation on the Windows NVDA side, including accessible names, roles, states, focus/caret synchronization, speech cancellation, braille panning and routing. Distinguish forwarding Orca-generated text/events from genuine NVDA-style semantic presentation. Add automated regressions where possible and separately document live NVDA and physical braille acceptance. Do not claim end-to-end success based only on mocked, loopback, or Xvfb tests.
 
+## Evidence-based accessibility acceptance
+
+Automate as much of the verification as practical, but distinguish **software-observed events** from **human-confirmed speech and tactile output**. The detailed requirements and status labels are in [NVDA on Linux behavior contract](NVDA_LINUX_BEHAVIOR.md).
+
+- **Automated:** exercise keyboard translations, focus/caret changes, accessible roles/names, transport, speech event requests, braille buffers, and stale-session defenses. A passing test proves only the behavior and observation point it actually tested.
+- **Live, instrumented:** where authorized, use actual Windows NVDA and Linux Orca/AT-SPI with timestamped, correlated observations. Speech Viewer or speech hooks show emitted speech data, not necessarily audible speech quality. Braille buffers and simulated routing/panning do not prove physical display behavior.
+- **Human acceptance:** require selected real-world checks of audible output (including cancellation, timing and usability) and physical braille (tactile cells, routing buttons, panning) for initial end-to-end release acceptance and for changes impacting those behaviors. Do not demand a full manual matrix for every unrelated code change.
+- **Explicit outcomes:** record PASS, FAIL, BLOCKED, NOT_RUN, or NEEDS_HUMAN_VERIFICATION per test and per layer. If a claim requires physical or audible confirmation and none occurred, **never report PASS** for that claim. Keep automated successes separately identified.
+- **Evidence:** record application/version, NVDA/companion/Orca/bridge versions, display model when applicable, command/input path, expected and observed behavior, relevant timestamps/logs, and limitations. Protect private text and credentials.
+- **Defect attribution:** compare the app with native Orca, inspect AT-SPI, then investigate mapping, transport and Windows companion. An Orca failure alone does not prove an application defect; label the cause undetermined until demonstrated.
+
 ## Live Linux Mint testing with xa11y
 
 For live testing on the active XFCE session, follow [xa11y and AT-SPI live-testing guidance](XA11Y_LIVE_TESTING.md). Use xa11y for Linux accessibility-tree observation and targeted actions, but require separate Windows NVDA Remote input, speech, and braille evidence for end-to-end compatibility claims. Preserve the active desktop and remote connection; do not substitute AT-SPI actions for real NVDA keyboard gestures.
