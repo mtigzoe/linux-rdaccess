@@ -69,6 +69,29 @@ limited historical live observations and remaining physical checks. Both issues
 remain **NOT READY** for closure after PR #86; merged code and successful CI do
 not complete their live acceptance.
 
+## Acceptance tiers and evidence rules
+
+**Acceptance is claim-specific.** A successful protocol or mock test must not be interpreted as proof that Windows NVDA spoke audibly or that a physical braille display rendered the expected cells.
+
+| Tier | Examples of acceptable evidence | What it does not prove |
+| --- | --- | --- |
+| Automated component | Unit/integration results for key mapping, AT-SPI events, focus/caret, speech requests, braille buffers, transport, routing/panning event handling | Actual audible output, physical pins/buttons, subjective usability |
+| Live instrumented end-to-end | Real Windows NVDA Remote gestures and observed Windows NVDA/Orca events correlated by time, app, session, and focus identity | That speech sounded right or physical braille felt/read correctly |
+| Human acceptance | Tester observes audible speech, cancellation, responsiveness, and/or tactile braille, routing and panning on an identified device | Behavior in every app or version not tested |
+
+Use **PASS**, **FAIL**, **BLOCKED**, **NOT_RUN**, or **NEEDS_HUMAN_VERIFICATION** as test outcomes. These complement (not replace) the implementation/evidence labels below. Do not mark an end-to-end claim PASS when required audible or physical observations were absent. A live event log can pass as an event-log check while corresponding physical-output acceptance remains NEEDS_HUMAN_VERIFICATION.
+
+For each result capture: tested layer and claim; Windows NVDA, add-on, Linux, Orca, bridge and app versions; physical display model if used; session/input path; exact gestures and steps; expected and observed focus, speech and braille; timestamped evidence if available; tester/device confirmation; limitations. Redact secret keys and private application content.
+
+### Minimum targeted human scenarios
+
+1. **Speech:** confirm actual audible focus/control feedback, rapid-navigation interruption/cancel, and representative latency and comprehensibility. Captured speech text alone is not audible verification.
+2. **Braille:** read actual displayed text/roles and temporary messages; press physical routing and panning controls, confirm caret/focus result and responsiveness. Simulated button events or NVDA braille buffers are not tactile verification.
+3. **Applications and transitions:** representative native controls (e.g. Thunar/Settings), browser browse/focus and table navigation, editing in Mousepad/VS Code, and disconnect/reconnect or control handoff.
+4. **Regression scope:** perform human acceptance for the initial release and changes that materially affect speech, braille, or navigation. Use risk-based focused retests rather than repeating every manual case for unrelated changes.
+
+To triage failures, first compare native Orca behavior and AT-SPI exposure with remote behavior, then inspect NVDA gesture mapping, bridge/transport, and Windows companion observations. A failure in native Orca does not uniquely identify the app as the cause: Orca, AT-SPI, the application, or their interaction may be responsible. Record **undetermined** until evidence isolates the defect. Compare functional outcomes with Windows NVDA, not necessarily verbatim phrasing.
+
 ## Suggested manual acceptance matrix
 
 For each app/gesture record: NVDA action; expected announcement/braille; observed speech and braille; actual focus/caret; pass/fail; Windows NVDA and Remote Access versions; Linux distro, Orca and bridge versions; device (if any); reproducible steps.
