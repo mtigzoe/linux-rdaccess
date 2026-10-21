@@ -1,5 +1,7 @@
 # linux-rdaccess
 
+> **Project status — Development paused (October 2026).** Active development is paused while the maintainer focuses on contributing to Linux screen-reader accessibility projects. This repository remains public for research and reference. Existing issues and pull requests are preserved; the project is experimental and not currently maintained. Automated test results do not establish live NVDA speech or physical braille acceptance, and some features remain incomplete. Do not depend on this repository for production accessibility or security. Development may resume in the future.
+
 Experimental Linux accessibility bridge for Windows screen readers.
 
 The Linux-specific Windows NVDA companion is developed in
@@ -1033,7 +1035,7 @@ Use the public NVDA Remote relay:
 
 Use another relay or a locally hosted NVDA Remote server:
 
-    python3 remote_access.py configure --host 192.168.1.81 --port 6837
+    python3 remote_access.py configure --host <relay-host> --port 6837
 
 Then apply the new settings to legacy Orca Remote:
 
@@ -1152,8 +1154,8 @@ On Linux:
 
 When developing or testing the xrdp backend on Windows, the repositories are normally kept as sibling folders, for example:
 
-    C:\Users\Miriam\Personal_Coding\rdp\rdAccess
-    C:\Users\Miriam\Personal_Coding\rdp\nvda
+    C:\path\to\rdAccess
+    C:\path\to\nvda
 
 They have different purposes:
 
