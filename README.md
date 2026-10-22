@@ -4,6 +4,38 @@
 
 Experimental Linux accessibility bridge for Windows screen readers.
 
+## Linux Mint 22.3 accessibility baseline (October 22, 2026)
+
+The maintainer's **Cyber** Linux desktop was upgraded to **Linux Mint 22.3
+Zena** on October 22, 2026. The following versions were verified after the
+reboot; they describe that machine, **not** minimum project requirements:
+
+| Component | Installed version / state |
+| --- | --- |
+| Linux Mint | 22.3 Zena (Ubuntu 24.04 Noble base) |
+| Desktop session | MATE on X11 |
+| Orca | **46.1** (`orca` package `46.1-1ubuntu1`) |
+| AT-SPI | **2.52.0** (`libatspi2.0-0t64` package `2.52.0-1build1`) |
+| Kernel | 6.8.0-147-generic |
+
+**Planned work (not yet installed or validated):** upgrade Orca and AT-SPI on
+Linux Mint 22.3, then retest `linux-rdaccess`. Orca **51.2** is a research
+candidate, not the installed version or an established compatible configuration.
+Because newer Orca releases may require a newer AT-SPI stack than Mint 22.3
+provides, evaluate dependency compatibility, rollback, and isolated testing
+before replacing system accessibility libraries. Preserve a working screen
+reader and alternate SSH access. Do not treat successful package installation
+or automated tests as acceptance of Windows NVDA speech, keyboard control, or
+physical braille; those require live verification.
+
+To recheck the installed versions on Linux Mint:
+
+```bash
+cat /etc/linuxmint/info
+orca --version
+dpkg-query -W orca libatspi2.0-0t64
+```
+
 The Linux-specific Windows NVDA companion is developed in
 [`nvda-addon/`](nvda-addon/README.md), alongside the Linux bridge and AI testing
 launcher. It builds a separate development add-on; see its build, migration and
