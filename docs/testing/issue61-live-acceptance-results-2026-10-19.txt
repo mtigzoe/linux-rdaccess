@@ -1,0 +1,1329 @@
+ISSUE #61 LIVE ACCEPTANCE RESULTS
+=================================
+
+Procedure: docs/testing/issue61-live-acceptance.md
+Issue: https://github.com/mtigzoe/linux-rdaccess/issues/61
+
+How to fill this in
+-------------------
+- Copy this file for each session. Fill in the SESSION RECORD first.
+- Make one STEP BLOCK per step, using the step IDs from the procedure
+  (for example H1.1, R1.3, M1a.5). Fill in the observed lines only after the
+  step is done. Do not decide the result during the step.
+- Record speech and braille separately. Never substitute local Orca speech,
+  Linux-side checks or braille for Windows NVDA speech.
+- Do not write relay addresses, channel keys, credentials, passwords or private
+  text anywhere in this file.
+- Result values: PASS, FAIL, INCONCLUSIVE, NOT RUN. For race attempts write
+  "no failure observed in N attempts". INCONCLUSIVE if any unplanned input
+  occurred.
+- This record does not close #61, #57, #58, #59 or #72.
+
+
+SESSION RECORD
+--------------
+Date and time started: 2026-10-19; current read-only Linux observation at 11:31:57 EDT
+Tester (physical actions): Miriam; no assistant desktop input
+Assistant (recorder): Codex
+Repository main commit: 6d24df2179f7484f4a01a66a708afc24dde1173e (latest fetched baseline)
+Procedure file commit or PR: Merged PR #145; main procedure blob af1969d86f1dc74941ec719b50b20629679c6f3d
+
+Windows
+  NVDA version: 2026.2 from prior verified startup/executable evidence; not re-read this preflight
+  NVDA keyboard layout: Saved desktop; active layout unverified
+  NVDA modifier key setting: Insert, reported by Miriam
+  Remote Access mode (do not record address or key): Hosting mode unverified; latest authorized status reports connected/local Windows control
+  Active Linux integration (legacy RDAccess or standalone companion): Standalone, supported by earlier current-startup markers; not re-attested this preflight
+  Companion build, if active: 20261014.0.2 installed files verified earlier; exact loaded bytes unverified; .4 uninstalled
+
+b.note 80
+  Connection and driver in use: Unverified
+  Cell count: b.note 80 model reported; runtime cell count unverified
+  Translation table: Unverified
+  Tether setting (read only, not changed): Unverified; not changed
+
+Linux
+  Linux Mint version: 21.3 from prior package/release inspection
+  XFCE version: Unverified
+  Orca version (expected 42.0): 42.0-1ubuntu2 package, inspected earlier
+  Orca process ID at start: 114133 at 10:58:05 EDT prior check; not re-read in this focus check
+  Linux controller version and patch status: v123 disk hashes verified earlier after one approved restart; exact loaded revision unverified
+  Fixture page open and focused (yes or no): YES at 11:53:29 EDT after approved setup; exact URI/hash and Single line editor verified
+  Caps Lock / Num Lock / Scroll Lock states: Unverified; not changed
+
+Mechanisms chosen (exact method for each)
+  Handoff keys: Insert+Alt+Tab; physical user action only
+  Graceful disconnect: Not authorized for this phase
+  Abrupt break: Not authorized
+  Reconnect: Not authorized
+  Regaining remote control: Intentional physical handoff; current control state must be checked first
+  Orca restart (command and where run): No restart authorized for this phase; earlier single approved restart recorded separately
+
+Preflight
+  P1 consent and roles confirmed: Yes: user authorized read-only checks; Miriam performs gestures, one at a time
+  P6 baseline quiet check (30 seconds), anything observed: NOT RUN; remote-control and fixture-anchor preconditions not established
+  P8 recovery plan confirmed: Not completed for full #61 procedure; no disruption/recovery test authorized
+
+Cyber #79 build untouched and session not sluggish (yes or no): Builds not changed; no current build-completion or user-perceived responsiveness claim
+
+
+READ-ONLY PREFLIGHT AND PENDING PROMPT
+--------------------------------------
+P4: BLOCKED for H1. The required Firefox fixture Single line editor anchor
+was not focused at 11:31:57 EDT. The existing Focus probe found a focused
+push-button on the active same-user window; active window identity stayed
+unchanged during the read. The process-name category was other_application.
+Names were redacted. No document URI, editor text or private title was output.
+This does not establish that the fixture is closed or absent elsewhere.
+
+Windows state: UNVERIFIED. Desktop Commander reported both registered devices
+offline, so it executed no command. The already-authorized local command route
+then queried nvda-status with normal consent enforcement; it returned
+required_or_expired. This is not evidence of a disconnected Remote session.
+No Desktop Commander agent was started or restarted.
+
+Linux AT-SPI observation:
+  Focus found: yes
+  Role: push-button
+  Focused object PID matches active window PID: yes
+  Active window unchanged during read: yes
+  Local-console display, session bus and runtime directory present: yes
+  Required Single line editor anchor focused: no
+  Fixture document URI: not inspected
+  Observer sent input or changed focus: no
+  Caret event observer: not started; required editor is not focused
+
+User physical b.note observation: NOT PROVIDED for this pending handoff.
+Windows audible speech observation: UNVERIFIED; no observation provided.
+These are separate from Linux AT-SPI evidence.
+
+Earlier prompt: Insert+Alt+Tab once, as an adapted H1.3 remote-entry step
+from the previously authenticated Windows-local state. Execution and
+observation are UNCONFIRMED. This is not counted as a completed trial and
+must not be repeated until Miriam confirms whether it occurred and supplies
+any result. No PASS/FAIL is assigned and no zero-attempt claim is made.
+
+Current H1 case: NOT RUN by the assistant while required preconditions are
+unmet. H1.1 requires remote control active with focus in the fixture Single
+line editor; neither current control state nor that focus is established.
+No replacement gesture, local typing, navigation or handoff was requested
+after this preflight.
+
+LATER RECHECK AND USER UNCERTAINTY
+---------------------------------
+Miriam replied: "I'm not sure. You can remote access. Ready."
+The historical handoff's execution remains UNVERIFIED; no tactile or speech
+result is inferred. This response is recorded before any prospective new trial.
+It is not permission to move focus or an instruction to repeat the gesture.
+
+A fresh protected status request succeeded with active authorization:
+transport connected, bridge attached, remote_control_active false (Windows local),
+semantic braille negotiated and temporary messages supported. Physical braille
+remains unverified. The time of this status read precedes the 11:43 Linux focus
+check; it is point-in-time evidence and does not identify the cause of any
+earlier state transition.
+
+Desktop Commander then reported the Windows laptop online and Cyber offline.
+A read-only Python probe launched through the Windows Desktop Commander agent
+used the existing pinned SSH connection to Cyber. At 11:43:09 EDT:
+  Firefox active: false, from active-window process executable classification
+  AT-SPI focus role: terminal
+  Focused object PID matches active window PID: yes
+  Active X window stable during the read: yes
+  Required Single line editor anchor focused: false
+  Fixture URI: unverified; not inspected on a non-Firefox application
+  Input sent / focus changed by probe: no / no
+
+The later terminal focus differs from the earlier push-button observation.
+No cause is attributed to the uncertain handoff. No editor text or private
+name was output. The first command attempt had a local quoting error before
+SSH execution; the corrected temporary-script invocation supplied this result.
+
+The public fixture was not found at four fixed candidate paths. This does not
+establish absence elsewhere. Firefox is already executable at /usr/bin/firefox.
+No Firefox process was launched by these checks.
+
+PREPARED PUBLIC FIXTURE SETUP — INITIAL PROPOSAL
+-------------------------------------------
+Source: tests/fixtures/firefox-acceptance.html at repository commit
+6d24df2179f7484f4a01a66a708afc24dde1173e.
+Size: 5,073 bytes. SHA-256:
+08a5b3c675cc2145f1a421a29c689cb68dea567c233e9ce3eb81572672136724
+The reviewed fixture is static HTML with local anchor links and no scripts
+or external HTTP resources.
+
+Proposed, only after specific approval:
+  Copy this exact file into a new private temporary directory on Cyber:
+  /tmp/linux-rdaccess-acceptance-20261019T154315Z/tests/fixtures/firefox-acceptance.html
+  Refuse an existing target; verify source/destination hash before opening.
+  Open that local file in a new Firefox window in the existing XFCE session.
+  Focus only the exact document's Single line editor using its accessibility
+  focus interface, with no keyboard injection.
+  Stop and report if document/control identity is not verified.
+This changes Linux focus and needs the explicit approval Miriam required.
+It does not authorize handoff, typing, settings changes, installation,
+restart, disconnect/reconnect, automatic retries or additional test gestures.
+P4/H1 remains blocked until required setup and current control are established.
+
+APPROVED FIXTURE SETUP AND INDEPENDENT READBACK
+-----------------------------------------------
+Miriam explicitly answered: "Approve fixture setup only".
+The independently reviewed operation passed a read-only preflight at 11:51:13 EDT:
+correct 5,073-byte source/hash, unused target, existing Firefox, existing local
+XFCE session and required accessibility APIs. There were zero Firefox windows.
+
+At 11:52:02-11:52:03 EDT the approved operation:
+  Created the exact new private temporary directory and approved HTML file.
+  Verified the copied hash and original source bytes; directory0700/file0600.
+  Launched Firefox --new-window with only that exact local file URI, once.
+  Verified one new active Firefox window and one exact-URI document.
+  Uniquely verified the editor's id, tag, name, role and required states.
+  Called its accessibility grab_focus once; provider returned true.
+  Verified the editor focused in the same active window.
+Result: FIXTURE READY. This is setup readiness, not a live acceptance PASS.
+
+No keyboard/typing input, Remote handoff, settings change, companion
+installation, Orca/NVDA restart or disconnect/reconnect was performed.
+The accessibility focus action was the specific UI change Miriam approved.
+No mutation retry or focus/input fallback was used. The private operation audit
+and helper sources were preserved with verified hashes.
+
+At 11:53:29 EDT a separate read-only probe through Desktop Commander and SSH
+reused the existing Focus class and confirmed:
+  Exact fixture SHA-256 matches: yes
+  Exact full document URI matches: yes
+  DOM id single-editor and expected public label match: yes
+  Focus role: entry; editable, single-line, focused and visible
+  Active X window and PID stable during read: yes
+  Public value equals "Single editor alpha": yes, unchanged
+  Caret offset: 0; selection count: 0
+  Keyboard input / focus calls by this independent probe: none / zero
+
+The post-setup NVDA status request returned required_or_expired. Current
+Windows connection/control state is therefore UNVERIFIED; no disconnected
+state is inferred. Miriam has been asked to activate a fresh five-minute
+read-only grant with optional connection/routing boxes unchecked and reply
+ready. No physical handoff has been requested after setup.
+
+Current P4 fixture/anchor: satisfied at the independent readback.
+P6 quiet baseline and remaining H1 preconditions: not completed.
+Current user b.note observation: none provided for a new trial.
+Current audible Windows speech: UNVERIFIED.
+The uncertain historical handoff remains separate; no execution/result is
+reconstructed from fixture readiness or current state.
+
+FRESH PRE-GESTURE CHECK — 11:56 EDT
+-----------------------------------
+Miriam replied ready after the requested fresh read-only grant.
+Authenticated Windows status at about 11:56:32 EDT reported:
+  Transport connected and bridge attached: true
+  remote_control_active: TRUE (Linux remote control currently active)
+  Semantic braille negotiated / temporary-message support: true / true
+  Physical braille: unverified
+
+This establishes current state only. It does not identify when or why control
+changed from the earlier local Windows state and does not establish execution
+or outcome of the uncertain historical handoff.
+
+Independent passive Linux readback at 11:56:33 EDT:
+  Exact fixture hash, full document URI and single-editor id: match
+  Focus: editable, focused, single-line entry; visible
+  Public value remains Single editor alpha: yes
+  Caret offset 0; selection count 0
+  Active X window and PID stable: yes
+  Keyboard input / focus calls by probe: none / zero
+The earlier SHOWING flag was not present in this state list. No cause or
+physical presentation consequence is inferred from that difference.
+
+Next observation is P6: 30 seconds with no keyboard, mouse or b.note key
+input, then Miriam reports b.note changes and separately observable Windows
+speech. No handoff gesture is offered before that observation is received.
+P6 is pending; no PASS/FAIL is inferred from connection/focus checks.
+
+LATER READY RECHECK — 12:05-12:08 EDT
+-------------------------------------
+Miriam replied "Ready." without a P6 completion or physical observation.
+P6 therefore remains UNVERIFIED: the interval's execution and b.note outcome
+are unconfirmed. Ready is not recorded as quiet, unchanged braille or PASS.
+
+At 12:05:57 EDT authenticated Windows status reported:
+  Connected transport and attached bridge: true
+  remote_control_active: false (Windows local control)
+  Semantic braille and temporary-message support: true
+  Physical braille: unverified
+
+Independent Linux readback at 12:05:57 EDT:
+  Existing fixture file hash matches: yes
+  Focus role: menu; active/focused/showing/visible
+  No exact fixture document ancestor for that focused object
+  Fixture editor anchor focus: unverified
+  Active X window stable during read: yes
+  Keyboard input / focus calls by probe: none / zero
+No cause of the state/focus changes is inferred. No particular gesture or
+software defect is established by these findings.
+
+At 12:08:23 EDT a separate passive availability check found exactly one editor
+matching the existing full fixture URI, public id, input tag, name, role and
+editable state. Traversal completed within bounds. Its states included
+editable/single-line/enabled/sensitive/focusable/visible, but not focused or
+showing. Two visible X windows matched the Firefox class; this count can include
+a menu/popup and is not a claim that another browser window was opened.
+The active X window stayed unchanged during the read. No UI action was used.
+
+H1 is paused: current control is local and required editor focus is not
+established. No new handoff, focus restoration, Escape key, typing, relaunch,
+restart or connection operation was performed or requested. The earlier
+one-shot setup focus approval has been used. A later restoration, if needed,
+requires specific approval and fresh identity checks; it is not authorized now.
+First obtain the missing P6 observation (or explicit report it was not done)
+before choosing the next step with Miriam.
+
+QUIET-CHECK CLARIFICATION AND RESTORATION PROPOSAL — 12:15-12:16 EDT
+-----------------------------------------------------------------
+Miriam answered the quiet-check question: "Not done or unsure".
+P6 is recorded as UNVERIFIED — completion and physical outcome not confirmed.
+No PASS/FAIL is assigned, and the assistant will not keep asking for a
+reconstruction of this earlier interval. Any later quiet check is a new trial
+after its starting state has been verified.
+
+At 12:15:48 EDT, authenticated Windows status again reported connected transport,
+attached bridge, Windows local control, semantic braille negotiation and
+temporary-message support. Physical braille remained unverified.
+
+At 12:15:49 EDT the passive Linux readback again found menu focus, with no
+matching fixture-document ancestor and no confirmed editor anchor focus.
+The fixture's disk hash still matched. The probe sent no keyboard input and
+made zero focus calls.
+
+At 12:16:27 EDT a separate bounded passive check completed and found one unique
+existing editor with the exact public fixture URI, single-editor id, input tag,
+public label and editable entry/text identity. It was focusable, enabled,
+sensitive, single-line and visible, but not focused/showing. The active X window
+stayed unchanged during the read. No menu action or focus change was made.
+
+Concrete next proposal, NOT EXECUTED: after specific approval, revalidate that
+same existing document/control and perform at most one accessibility grab_focus
+call to its Single line editor, followed only by passive focus verification.
+If absent, ambiguous, changed or unsuccessful, stop without a retry, Escape
+key, typing, another file copy, a new browser window, restart or connection
+change. The earlier initial-setup approval is consumed; this would be a new
+focus change requiring the explicit approval Miriam requested. It does not
+authorize a physical handoff or any acceptance PASS.
+
+H1 remains paused; issues #57, #59 and #61 remain open and PR #146 stays draft.
+
+APPROVED SINGLE FOCUS RESTORATION — 12:55-12:56 EDT
+----------------------------------------------------
+Miriam approved: "Approve one focus restoration", then requested continued
+work on #57, #59 and #61.
+
+The first execution request did not run: automatic approval review could not
+complete because of an account usage limit. It explicitly reported no action
+executed and did not classify the action as unsafe. At 12:55 EDT, after the
+stated retry time, the original reviewed helper remained present and its
+exclusive execution guard did not exist. The same approval-protected Desktop
+Commander route was used again; no alternative route bypassed the review.
+
+A fresh passive preflight at 12:55:25 EDT verified one unique existing public
+editor, complete bounded scope, exact URI/hash/id/tag/name/role, unchanged
+Single editor alpha value, and the active Firefox identity. No focus call ran
+during that preflight.
+
+At 12:55:35-12:55:39 EDT the approved operation:
+  Revalidated the same public target and active window/PID.
+  Performed exactly ONE accessibility grab_focus call.
+  Received provider return true.
+  Could NOT verify the editor focused afterward.
+  Reported focus_unverified_stop and made no retry or fallback action.
+The provider return is not treated as proof of actual focus or acceptance.
+The exclusive local guard and immutable private audit record the consumed
+one-call approval; helper/audit copies were archived with matching hashes.
+
+A separate passive check at 12:56:02 EDT still found a focused menu, with
+no fixture document ancestor. The active X window was stable and the fixture
+file hash still matched. It made zero focus calls and sent no keys.
+
+A subsequent fresh authenticated NVDA read reported connected transport,
+attached bridge, Linux remote control ACTIVE, semantic negotiation and
+temporary-message support. Physical braille remains unverified. This is current
+state evidence only and does not reconstruct the uncertain earlier handoff.
+
+All assistant UI actions are stopped. No keys, copies, extra windows, settings
+changes, restarts or connection operations were performed by the restoration.
+No confirmed NVDA compatibility defect or live acceptance PASS follows.
+
+Next human setup-recovery action to offer: press/release Escape once to dismiss
+the Linux menu, then report exact b.note output. This is a user-operated setup
+action, not an automated retry or an H1 PASS. No key has yet been confirmed.
+Do not combine it with a handoff or navigation. Recheck focus/state afterward
+before deciding whether P4/P6 and the handoff case can proceed.
+
+P6 remains UNVERIFIED ("Not done or unsure"). The historical handoff remains
+uncertain. H1 and the other acceptance requirements remain incomplete.
+
+USER-REPORTED ALT+F4; ESCAPE NOT PERFORMED — 13:07-13:08 EDT
+------------------------------------------------------------
+When asked whether Escape had been pressed, Miriam replied:
+"No. I pressed alt + f4 to close a program on Linux Mint. I think the esc key is working."
+
+Planned Escape setup step: NOT RUN; Miriam explicitly confirmed no Escape.
+Her belief that Escape works is retained as context, not test evidence.
+Alt+F4: confirmed user-reported, unplanned action outside this setup step.
+The closed program/window is unidentified. No before/after correlation proves
+which application closed. No Escape, handoff or general keyboard PASS/FAIL
+is inferred from this action. Acceptance remains paused after the deviation.
+
+At about 13:07 EDT, authenticated status reported connected transport, attached
+bridge, Linux remote control active, semantic negotiation and temporary-message
+support. Physical braille remained unverified.
+
+At 13:07:07 EDT a passive focus read found a push-button rather than the fixture
+editor. No exact fixture-document ancestor was found for that focused object.
+The active X window was stable and the public fixture disk hash matched.
+
+At 13:08:33 EDT a bounded passive check reported:
+  Active application category: Firefox; same-user process
+  Visible X windows matching Firefox class: 1
+  Accessibility scope complete within the probe's bounds: yes
+  Matching existing public fixture editors: 0
+  Active X window stable during the read: yes
+This establishes only that the known fixture editor was unavailable within the
+inspected scope. It does not prove all Firefox instances/tabs were closed, or
+identify what Alt+F4 closed. No private title, document text or URI was output.
+No assistant keys, focus calls, file copies, launch, restart or connection
+operation occurred during these checks.
+
+Proposed next setup, NOT AUTHORIZED OR EXECUTED:
+  Verify the existing private public HTML file still matches the pinned hash.
+  Open that existing local file in ONE new Firefox window; do not copy it again.
+  Verify the exact new document/editor identity and focus only Single line
+  editor using at most one accessibility focus call, then verify passively.
+  Stop on ambiguity or failure, with no keys, retries, new copies, additional
+  windows, settings changes, installation, restart or connection change.
+This needs specific approval because it opens a window and changes focus.
+No handoff is included. Any later gesture needs fresh control/focus checks.
+
+The earlier historical handoff and P6 remain uncertain/unverified. Issues #57,
+#59 and #61 stay open and PR #146 stays draft; no physical acceptance is claimed.
+
+APPROVED FIXTURE REOPENING — 13:12-13:14 EDT
+-------------------------------------------
+Miriam explicitly answered: "Approve fixture reopening".
+This authorized one new Firefox window for the existing verified local public
+file, and at most one accessibility focus call to its verified Single line
+editor. No file copy, key injection, typing, settings, installation, restart
+or connection operation was authorized.
+
+A passive preflight at 13:12:41 EDT verified the existing 5,073-byte file/hash,
+private ownership/modes, selected local graphical session and required APIs.
+One visible Firefox X window was present.
+
+At 13:13:29-13:13:30 EDT, the guarded reopening:
+  Opened the existing exact local file URI in ONE new Firefox window.
+  Verified the new active window, Firefox process and unique exact document.
+  Verified editor ancestry, public id/tag/name/role and editable single-line
+  focusable identity. SHOWING was observed separately rather than treated as
+  the editor's identity, allowing focus to bring an off-screen field into view.
+  Made exactly ONE accessibility focus call; provider returned true.
+  Verified actual Focus-probe target, expected document/control and window.
+  Confirmed known public value unchanged, SHOWING true, caret0/selection0.
+  Copied zero files and sent no keyboard input.
+Result: fixture_ready. This is setup readiness only, not an acceptance PASS.
+
+At 13:14:25 EDT, a separate passive Desktop Commander/SSH readback confirmed:
+  Fixture SHA-256, full document URI and single-editor id match: yes
+  Focused role/state: editable entry, focused, showing, single-line, visible
+  Public text remains Single editor alpha: yes
+  Caret offset: 0; selection count: 0
+  Active window and PID stable: yes
+  Keyboard input / focus calls by independent probe: none / zero
+
+A fresh authenticated Windows read after reopening reported connected transport,
+attached bridge, Linux remote control ACTIVE, semantic braille negotiated and
+temporary messages supported. Physical output remains unverified.
+
+No test gesture or new quiet interval has been requested after reopening.
+The assistant asked whether Miriam replies through the same Windows keyboard
+or another device, to establish a usable reporting method while Linux control
+is active. That answer and initial physical b.note observation were pending at that time.
+
+The old P6 remains "Not done or unsure"; Escape remains NOT RUN and the
+historical handoff remains uncertain. Alt+F4 stays a separate unplanned
+user-reported action. No earlier action or physical output is reconstructed
+from these successful setup checks. PR #146 stays draft and issues stay open.
+
+
+SAME-KEYBOARD REPORTING AND PASSIVE RECHECK — 13:27 EDT
+-------------------------------------------------------
+Miriam answered the reporting-method question:
+"Same Windows laptop and keyboard".
+
+This identifies the shared input device; it does not establish that any chat
+keystroke reached Linux or explain earlier state/focus changes. Before another
+trial, establish a reporting method that keeps chat typing outside remote
+control. Do not ask Miriam to type an observation while known remote control
+is active. No new physical gesture is requested in this check.
+
+At 13:27:30 EDT a passive Desktop Commander/SSH readback confirmed:
+  Exact fixture file hash, full document URI and single-editor id match: yes
+  Focus: editable, focused, single-line entry; visible
+  Known public value unchanged: yes
+  Caret offset: 0; selection count: 0
+  Active X window stable during read: yes
+  Keyboard input / focus calls: none / zero
+The SHOWING flag was absent from this state list. No physical presentation
+consequence or defect is inferred from that flag alone.
+
+The protected Windows nvda-status read returned required_or_expired.
+Current connection/control/semantic negotiation are therefore UNVERIFIED at
+this check; this is not evidence of disconnection. No alternative route was
+used to bypass the grant. A fresh five-minute read-only authorization is
+needed, with optional connection/routing boxes unchecked, before the next
+current-state check. No handoff, key injection, focus change, launch, settings
+change, installation, restart or connection operation occurred.
+
+Physical b.note observation: not provided for a new trial.
+Audible Windows speech: UNVERIFIED.
+P6 and the historical handoff remain uncertain; all acceptance remains open.
+
+
+FRESH AUTHORIZED CHECK AND SETUP HANDOFF PROMPT — 13:31 EDT
+-----------------------------------------------------------
+Miriam replied "Ready." after the fresh diagnostic grant request.
+This is readiness/authorization context, not a physical test observation.
+
+Protected Windows status at about 13:31 EDT:
+  Transport connected / bridge attached: true / true
+  remote_control_active: TRUE (Linux remote control)
+  Semantic braille negotiated / temporary-message support: true / true
+  Physical braille: unverified
+  Authorization: active
+
+Passive Linux read at 13:31:35 EDT:
+  Exact fixture hash, full URI and single-editor id match: yes
+  Focused role: editable, single-line entry; visible
+  Public value Single editor alpha unchanged: yes
+  Caret offset 0; selection count 0
+  Active X window stable: yes
+  Input sent / focus calls by probe: none / zero
+
+Prospective setup step ID: SETUP-HANDOFF-LOCAL-01
+Related issue/case: #61 H1.1; cross-issue modifier/handoff evidence for #57
+Purpose: return control to Windows so the same keyboard can be used for
+reporting. This is a limited setup observation. Required P1-P8 preflight for
+a complete H1 acceptance run remains incomplete, including a confirmed P6
+quiet baseline, P7 lock states and the full P8 recovery plan.
+
+Physical action to offer: with no other keys held, Miriam presses/releases
+Insert+Alt+Tab ONCE, then waits about three seconds without more input.
+Expected: Windows local-control indication and current Windows content on
+the b.note, per the H1.1 requirement. Report the exact tactile text only after
+local control is indicated; do not type a chat response while still remote.
+Audible speech is UNVERIFIED unless reliable observation is available.
+
+Status at recording: PROMPT PENDING; no execution or physical observation
+received. Do not count a completed trial, PASS or FAIL. No assistant keys,
+focus change, software/settings/install/restart or connection operation ran.
+
+
+REQUEST FOR ASSISTANT-DRIVEN TESTING — 13:38-13:39 EDT
+------------------------------------------------------
+Miriam asked: "Can you remote access, so that you can test for me? Ready."
+No physical execution or tactile output was reported for SETUP-HANDOFF-LOCAL-01.
+That pending gesture remains UNCONFIRMED. The current status below cannot
+establish whether it occurred or identify any intervening input.
+
+At about 13:38 EDT, protected Windows status with active authorization:
+  Connected transport / attached bridge: true / true
+  remote_control_active: TRUE (Linux remote control)
+  Semantic braille negotiation / temporary-message support: true / true
+  Physical braille: unverified
+
+At 13:39:01 EDT, passive Linux Desktop Commander/SSH read:
+  Fixture disk hash and exact document URI match: yes
+  Focused object: editable, MULTI-LINE entry, showing and visible
+  Expected single-editor id match: NO
+  Required Single line editor anchor: false
+  Active X window stable: yes
+  Keyboard input sent / focus calls: none / zero
+No editable text, private title or unrelated tree was captured/output.
+This differs from the earlier anchor focus. No cause or defect is assigned.
+The H1 acceptance run is paused; there was no automatic focus correction.
+
+Read-only Windows automation capability discovery found the existing NVDA
+Speech Viewer and NVDA Braille Viewer windows. The documented Computer Use
+API imported successfully and bound the unique existing Braille Viewer by
+returned window metadata. No window activation, screenshot, viewer text read,
+key injection, launch, settings change or software/connection operation ran.
+
+Concrete proposal awaiting specific approval:
+  Recheck active five-minute authorization, connected transport and Linux
+  remote control; stop if any prerequisite differs.
+  Activate only the existing Windows NVDA Braille Viewer as the key target,
+  then send Insert+Alt+Tab ONCE through the Windows input path.
+  Read the connection/control result afterward; do not retry the gesture.
+  Stop on any unexpected result, without extra keys, focus correction,
+  reconnect, restart, settings, installation or Linux UI action.
+This returns the shared keyboard toward Windows local control and does not
+request a Remote Access disconnect. Activation changes Windows focus, so
+Miriam's separate-approval rule applies to that focus change and injection.
+This is an assistant-driven setup/software check, not a completed physical
+H1 trial. Full P1-P8 preflight and physical b.note evidence remain incomplete.
+Physical hardware output still requires Miriam's observation; speech remains
+UNVERIFIED without reliable Windows-side observation.
+
+No test PASS/FAIL is inferred. PR #146 remains draft and issues stay open.
+
+
+APPROVED WINDOWS HANDOFF: STOPPED IN PREFLIGHT — 13:43 EDT
+----------------------------------------------------------
+Miriam answered: "Approve one Windows handoff".
+The specific approval covered the existing Windows NVDA Braille Viewer
+activation and one Insert+Alt+Tab gesture, with prechecks and no retries.
+No gesture was sent and no Windows focus activation occurred.
+
+Protected Windows precheck at about 13:43 EDT:
+  Five-minute authorization: active
+  Transport connected / bridge attached: true / true
+  remote_control_active: TRUE
+  Semantic braille / temporary-message support: true / true
+  Physical braille: unverified
+
+Passive Linux check at 13:43:56 EDT:
+  Public fixture file hash matches: yes
+  Focused role: TERMINAL, showing and visible
+  Exact fixture document URI for focused object: false
+  Anchor focus: unverified
+  Active X window stable during read: yes
+  Probe keys / focus calls: none / zero
+The terminal focus is an unexpected change from the earlier fixture multiline
+entry. No terminal text, private title or command was captured. No cause is
+attributed to Miriam, the pending historical gesture or a software defect.
+
+Fresh Windows list_windows returned one exact existing NVDA Braille Viewer.
+Binding its returned window object succeeded without activation. A requested
+content-free get_window_state was rejected with:
+"get_window_state must request include_text, include_screenshot, or both".
+The failed read request sent no input. No screenshot or viewer contents were
+captured; activate_window and press_key were never called. No automatic
+retry, fallback input or alternative injection route was used.
+
+The operation stopped before mutation under the unexpected-focus stop rule.
+The one approved handoff remains unexecuted. This supplies no H1 gesture
+result, no physical observation and no acceptance PASS/FAIL. Earlier
+SETUP-HANDOFF-LOCAL-01 execution remains separately unconfirmed.
+
+Further action awaits Miriam's decision after this changed-state report.
+A return-only Windows handoff can be considered separately from acceptance;
+it must explicitly allow leaving the observed Linux terminal focus alone.
+Do not restore fixture focus, type in the terminal, run commands there, or
+repeat any user gesture automatically. Recheck the active grant and remote
+control before any specifically approved resumed action.
+
+
+RETURN-ONLY APPROVAL; TIMED GRANT EXPIRED — 13:50 EDT
+-----------------------------------------------------
+Miriam answered: "Return to Windows only".
+This explicitly permits the one existing NVDA Braille Viewer activation and
+one Windows Insert+Alt+Tab handoff while leaving Linux focus alone regardless
+of its active application. It does not authorize an acceptance trial or any
+Linux focus/input action. The approval remains valid and unused.
+
+At 13:50 EDT the protected Windows precheck returned required_or_expired.
+Current connection/control therefore remain UNVERIFIED at this read; no
+disconnection is inferred. No key was sent or Windows focus activated.
+The grant was not bypassed. Renewing the five-minute authorization is the
+remaining gate; do not ask Miriam to re-approve the same handoff scope.
+
+Read-only Windows discovery revalidated the unique existing NVDA Braille
+Viewer by its returned metadata, without viewer text/screenshot capture.
+Passive Linux read at 13:50:12 EDT again found terminal focus, stable active
+window and matching fixture disk hash. The probe sent no keys and made zero
+focus calls. No terminal contents were captured.
+
+After a fresh timed grant, recheck it and remote control immediately. If
+connected and remote control is active, perform the already-approved single
+return-only Windows gesture without another approval request. If control is
+already local, send no toggle and report that state. Stop on an unavailable
+target, expired grant or unexpected action result; never repeat the gesture
+automatically. Physical output and all acceptance criteria remain unverified.
+
+
+RENEWED GRANT: WINDOWS CONTROL ALREADY LOCAL — 13:50-13:51 EDT
+----------------------------------------------------------------
+Miriam replied "ready" after the timed-grant renewal request.
+At about 13:50:59 EDT, the protected status read reported:
+  Authorization: active
+  Transport connected / bridge attached: true / true
+  remote_control_active: FALSE (Windows local control)
+  Semantic braille negotiated / temporary-message support: true / true
+  Physical braille: unverified
+
+This was the PRE-ACTION state. The intended return-to-Windows state already
+existed, so no handoff gesture was sent. No activate_window or press_key call
+ran. No Windows focus change occurred through the assistant. The specific
+return-only task is satisfied by the observed existing state; its unused
+approval must not be repurposed later to switch back to Linux.
+The cause/time of the change from the earlier remote state is unknown. It is
+not evidence that Miriam performed the pending historical handoff, and it is
+not an assistant-driven or physical H1 PASS.
+
+Fresh Windows metadata confirmed the unique existing NVDA Braille Viewer
+without activation or viewer content/screenshot capture.
+
+Passive Linux read at 13:51:04 EDT:
+  Focused role: terminal, focused/showing/visible
+  Exact fixture document ancestor: false; anchor focus unverified
+  Public fixture disk hash matches: yes
+  Active X window stable: yes
+  Probe keyboard input / focus calls: none / zero
+No terminal contents, private title or command were captured.
+Firefox acceptance remains paused; no focus restoration is authorized.
+
+Next observation request: with keys released, read the current physical
+b.note before typing a reply and distinguish Windows content, Linux content,
+or blank/unclear. Exact nonsensitive text is welcome; no private content is
+required. This is a current readiness observation, not reconstruction of a
+historical transition. Audible speech remains UNVERIFIED.
+No additional gesture, braille key, settings/install/restart or connection
+operation is requested. PR #146 remains draft and acceptance issues stay open.
+
+
+PHYSICAL WINDOWS-CONTENT REPORT AND LINUX READS — 13:54 EDT
+------------------------------------------------------------
+Readiness observation ID: CURRENT-BRAILLE-READINESS-01
+Related issues: #59 / #61; no transition-case completion claimed
+Physical action requested: read current b.note without any handoff/braille key.
+Expected: current Windows content while control is local.
+
+Miriam's exact physical b.note report: "Windows content"
+Observed layer: physical display content category, reported by Miriam.
+Assessment: MATCHES EXPECTED for this current readiness observation only.
+Exact cells/text and presentation implementation/source: not identified by
+this category report. Audible Windows speech: UNVERIFIED.
+This is the first confirmed physical category report in this session record.
+It does not establish execution or outcome of any earlier pending gesture,
+does not accept H1, and is not a Linux semantic-braille or routing PASS.
+
+Protected Windows status around 13:54:09 EDT:
+  Authorization active; connected transport and attached bridge
+  remote_control_active FALSE (Windows local)
+  Semantic braille and temporary-message support true
+  Endpoint physical_braille field remains unverified: it does not measure the
+  hardware and does not replace Miriam's separate physical report above.
+
+Passive availability read at 13:54:10 EDT found one exact public fixture
+Single line editor within a complete bounded scope; two Firefox-class visible
+X windows. Its toolkit states included focused/showing/single-line/editable.
+Availability alone is not proof that its window owns active keyboard focus.
+
+A separate active-focus read at 13:54:53 EDT still found TERMINAL focus,
+without the fixture document ancestor. Active X window was stable; the public
+fixture disk hash matched. This differentiates a background toolkit focused
+state from actual active-window keyboard focus. No cause is assigned.
+All probes sent zero keys and made zero focus calls; no private contents read.
+
+Current H1 acceptance status: paused; required active fixture anchor absent.
+The assistant is preparing a bounded existing-window activation plus editor
+focus proposal. No new Linux UI change is approved or executed. Windows
+local control allows the same-keyboard reporting method at this checkpoint.
+
+
+PREPARED EXISTING-FIREFOX RESTORATION — 13:57 EDT
+-------------------------------------------------
+The previously reviewed one-shot restoration wrapper and existing Focus/
+availability diagnostics were reused with a bounded existing-window activation
+step. This adds no production code and no new test framework.
+
+Read-only preflight at 13:57:01 EDT verified:
+  Complete bounded scope and exactly one matching public editor
+  Exact fixture URI, public id/tag/name/role and unchanged known value
+  Expected fixture file hash and same-user Firefox process
+  Exactly one visible Firefox X window with the known public fixture title,
+  matching the editor's process and public frame identity
+  Target window currently inactive; active X window stable
+  Keyboard input / activation calls / focus calls: none / zero / zero
+The preflight result was preflight_only. Post-action focus is not claimed.
+The local exclusive execution guard is absent; no restoration has run.
+
+Concrete proposal awaiting separate Linux-focus approval:
+  Require fresh five-minute authorization and Windows LOCAL control.
+  Revalidate all target/session/file/value predicates immediately.
+  Activate that exact EXISTING public Firefox window at most once.
+  If needed, make at most one accessibility focus call to Single line editor.
+  Verify actual active-window focus, exact document/control, unchanged public
+  value and caret/selection through the existing Focus probe.
+  Stop on ambiguity, timeout or failed verification, without retry/fallback.
+
+No keys, typing, new windows, file copies, settings change, installation,
+restart, disconnect/reconnect or build operation is included. This is fixture
+setup only; no remote-entry or H1 gesture is approved by it. Windows control
+must remain local. Any later gesture is a separate test with its own current
+prechecks and observation. The proposed activation changes Linux focus and
+therefore needs the separate approval Miriam required.
+
+
+APPROVED EXISTING-WINDOW RESTORATION COMPLETED — 14:00 EDT
+-----------------------------------------------------------
+Miriam answered: "Approve restore; grant renewed".
+Pre-action protected NVDA status confirmed active authorization, connected
+transport/bridge, WINDOWS LOCAL control, and semantic/temporary capabilities.
+The reviewed helper hash matched and its exclusive execution guard was absent.
+
+At 14:00:22 EDT the approved operation revalidated the exact existing public
+fixture/window/control and unchanged public text, then:
+  Activated the one existing Firefox window ONCE.
+  Needed ZERO accessibility grab_focus calls: the background editor already
+  had toolkit focus and became the actual active focus after activation.
+  Sent ZERO keys and copied/opened ZERO files/windows.
+  Verified actual active-window Single line editor focus.
+  Verified known public value unchanged; caret 19, selection count 1.
+Result: focus_restored. This is successful fixture setup, not H1 acceptance.
+The selection's extent/cause is not inferred and it was not cleared.
+
+At 14:00:53 EDT a separate passive readback confirmed exact full fixture URI,
+file hash and public editor id; editable/focused/showing/single-line/visible
+entry; unchanged known text; caret 19 and one selection; stable active window.
+It made zero focus calls and sent no keys.
+
+Post-action protected Windows status again confirmed connected transport and
+bridge, WINDOWS LOCAL control, semantic negotiation and temporary-message
+support. No software, settings, companion, connection or build changes ran.
+Physical output after restoration has not yet been reported. The earlier
+"Windows content" physical report remains a separate observation.
+
+The consumed helper and exclusive audit were archived privately with verified
+byte-for-byte copies, then removed from the workspace. Audit SHA-256:
+4b84c5e5f5e1ec0ec787f56579196692590f74d9dbf00959c59a3fabd5b06337
+Tracked checkout files remain unchanged. A full untracked status scan could
+not inspect several existing permission-restricted temporary directories;
+no permission changes or cleanup of those directories was attempted.
+
+PROPOSED ASSISTED P6 ENTRY/QUIET/RETURN — NOT AUTHORIZED OR RUN
+---------------------------------------------------------------
+Purpose: establish a NEW P6 quiet-baseline observation while enabling Miriam
+to report through her same Windows keyboard after a planned return to local.
+The earlier P6 remains "Not done or unsure"; no historical result is replaced.
+
+Concrete bounded proposal:
+  Require active five-minute grant, connected transport, Windows LOCAL control
+  and the verified active fixture Single line editor; check without changing.
+  Use the existing NVDA Braille Viewer as the Windows key target. Its normal
+  input API activates that Windows window. Send Insert+Alt+Tab ONCE.
+  Check status/focus. If connected REMOTE control and the anchor are verified,
+  ask no other input and allow 30 seconds with all keys released while Miriam
+  reads the b.note. No typing, braille commands or other input during interval.
+  After the interval, recheck authorization/control. If REMOTE control is
+  confirmed, send Insert+Alt+Tab ONCE to return Windows LOCAL, including as the
+  approved return if fixture focus changed. Do not change Linux focus.
+  Verify Windows local before requesting a typed observation.
+  If entry is not confirmed, skip the quiet interval and stop; if remote
+  control is confirmed, the one return remains authorized. Never toggle on an
+  unknown state, retry an attempted gesture or reconnect/restart/change settings.
+
+Maximum two Windows handoff gestures, each with its own state observation;
+no other injected key or Linux action. This is an assistant-driven preflight
+observation, not a complete H1 trial or physical keyboard acceptance.
+Linux metadata, Windows status and physical b.note report remain separate.
+The timed interval alone cannot establish physical quiet or PASS; Miriam must
+report the actual tactile output and whether any unplanned input occurred.
+Full H1 acceptance still awaits the remaining P1-P8 preflight requirements.
+This new input/focus scope needs specific approval under Miriam's instruction.
+
+
+ASSISTED QUIET-CHECK APPROVAL; RETURN-ONLY HANDOFF — 14:05-14:06 EDT
+--------------------------------------------------------------------
+Miriam answered: "Approve check; grant renewed".
+The approved scope was at most two Windows handoffs and a quiet interval,
+with a confirmed-remote return to Windows. She was instructed to keep keys
+released and not type until Windows local control was verified.
+
+Preflight around 14:05:48 EDT found active authorization, connected transport/
+bridge and remote_control_active TRUE, rather than the planned local start.
+Semantic braille and temporary-message support were true. No cause of the
+change from the earlier local state is established, and no user gesture is
+reconstructed from it.
+
+At 14:05:46 EDT the passive Linux check confirmed the active fixture anchor,
+exact URI/hash/public id, unchanged known public value, caret19/selection1.
+No keys or focus calls were made by that probe.
+The unique existing NVDA Braille Viewer was revalidated by returned Windows
+metadata; no screenshot or viewer text was captured.
+
+Because the starting control state differed, the ENTRY gesture and NEW P6
+quiet trial were skipped. No 30-second interval ran; do not request a report
+of an interval that did not happen. The expressly approved confirmed-remote
+RETURN was used once to put the shared keyboard back on Windows.
+
+STEP RECORD: ASSISTED-RETURN-01 (limited software observation)
+  Date/time: 2026-10-19 14:06:24 EDT
+  Related issues: #57 / #61; H1.1-like handoff, not a completed H1 case
+  Input source: assistant-driven Windows Computer Use, NOT a physical gesture
+  Windows NVDA: 2026.2 from earlier verified evidence; not re-read here
+  Controller: v123 disk files after earlier approved restart; exact loaded
+    revision unverified
+  Integration: earlier standalone .2 attribution; .4 not installed
+  Display: Miriam's b.note80; physical observation for this step pending
+  Linux application: Firefox public fixture, Single line editor
+  Requested gesture: Insert+Alt+Tab ONCE
+  Expected software behavior: connected remote control TRUE -> FALSE (local),
+    with semantic negotiation retained and no fixture focus/value change
+  Gesture attempt: 1 at 18:06:24.460Z; API returned at 18:06:24.705Z
+  Windows key API activates its approved existing Braille Viewer target.
+    Only this chord was requested; no second chord or retry occurred.
+  Post-action protected status around 14:06:42 EDT:
+    authorization active; bridge attached; transport connected;
+    remote_control_active FALSE; semantic braille and temporary-message true
+  Software assessment: PASS for this observed control-state transition ONLY
+  Windows audible speech: UNVERIFIED
+  Physical b.note text/content after this gesture: PENDING Miriam's report
+  Presentation source / exact rendered braille: UNVERIFIED
+  Unintended Linux key events / stuck-key absence: UNVERIFIED; no input trace
+    or subsequent key probe was used. Stable focus/value does not prove that
+    no key events reached Linux.
+  Reproduction: 1 assistant gesture attempt, 1 observed remote->local change
+  Full H1 / physical keyboard acceptance: NOT ACCEPTED by this software result
+
+At 14:06:48 EDT independent passive Linux readback confirmed the SAME active
+fixture URI/hash/id, editable/focused/showing/single-line entry, unchanged
+public value, caret19/selection1 and stable active X window. Zero probe keys
+or focus calls. No Linux UI action, typing, new windows, settings, install,
+restart, connection command or build operation ran during this step.
+
+Windows LOCAL control was explicitly confirmed before requesting a typed
+physical report. Ask only for current b.note output after THIS known handoff;
+the earlier "Windows content" report belongs to a different checkpoint.
+Historical gesture uncertainties remain separate. P6 remains incomplete.
+
+
+PHYSICAL RESULT FOR ASSISTED-RETURN-01 — 14:09 EDT
+---------------------------------------------------
+Miriam's exact answer about the handoff just performed: "Windows content".
+This is the physical b.note report for the KNOWN assistant gesture at 14:06:24,
+separate from her earlier readiness report with the same wording.
+
+Expected physical behavior: Windows content after return to local control.
+Observed physical category: Windows content, reported by Miriam.
+Assessment: MATCHES EXPECTED for the tactile content category of this return.
+Exact cells/text, transient announcement timing and source implementation
+were not identified. Audible Windows speech remains UNVERIFIED.
+The software state transition and physical content category are now both
+recorded; this does not accept the full H1 case, #57 modifiers, #59 Linux
+semantic presentation/routing, or the remaining #61 requirements.
+No repeated gesture is requested to reconstruct the already recorded return.
+
+At about 14:09:39 EDT protected status again reported active authorization,
+connected bridge/transport, WINDOWS LOCAL control, and semantic braille/
+temporary-message support. The endpoint physical flag remains unverified
+because it does not measure Miriam's hardware observation.
+At 14:09:40 EDT passive Linux readback confirmed the same exact fixture
+URI/hash/id and active editable single-line editor; original value unchanged,
+caret19/selection1, stable active window. Zero observer keys/focus calls.
+
+NEW P6 ATTEMPT PROPOSAL — PENDING SEPARATE APPROVAL
+---------------------------------------------------
+The prior assisted quiet check did not run. Its one return handoff has been
+recorded and that attempt is finished; do not reuse its remaining numerical
+key allowance for another trial.
+
+Proposed fresh bounded attempt:
+  Require a fresh active five-minute grant, connected transport and verified
+  active fixture anchor, without changing Linux focus.
+  Accept either known LOCAL or known REMOTE starting control state and record
+  which was observed. If LOCAL, use the existing Windows NVDA Braille Viewer
+  as the target and send Insert+Alt+Tab ONCE, then verify REMOTE plus anchor.
+  If already REMOTE, skip entry rather than toggling out of the required state.
+  With confirmed REMOTE control and fixture anchor, mark a NEW 30-second quiet
+  interval while Miriam reads the b.note with all keys released.
+  After the interval, recheck status/focus. Return with Insert+Alt+Tab ONCE only
+  from confirmed REMOTE control, including if the quiet test stopped because
+  fixture focus changed. Do not repair Linux focus.
+  Verify Windows LOCAL control before requesting a typed report.
+  Maximum TWO Windows handoff gestures, no retries or other input. Never
+  toggle on an unknown state; no reconnect/restart/settings/install actions.
+  A changed state during the quiet interval is recorded before classification.
+
+This scope accommodates the current verified control state without making an
+unnecessary entry toggle. It needs new explicit key/focus approval and a fresh
+timed grant. Full H1 remains pending preflight. The P6 physical result must
+come from Miriam after the interval; time passage or metadata is not a PASS.
+
+
+FRESH P6 ATTEMPT: ENTRY NOT ESTABLISHED — 14:18-14:19 EDT
+----------------------------------------------------------
+Miriam answered: "Approve fresh check; grant renewed".
+Scope: maximum two Windows handoffs for entry if needed, a new 30-second quiet
+interval, and return only from confirmed remote control. No other input or
+Linux focus change. Miriam was instructed to keep keys released and not type
+until Windows local control was verified.
+
+STEP RECORD: FRESH-P6-01 / ENTRY-01
+  Date: 2026-10-19
+  Related issues: #57 / #61; P6 setup entry, not a complete H1 case
+  Input source: assistant-driven Windows Computer Use, not physical keyboard
+  NVDA/integration/controller attribution: unchanged prior evidence, NVDA2026.2,
+    standalone companion .2 installed; v123 disk revision / loaded bytes
+    unverified. No companion .4 installation or reload.
+  Linux control: Firefox public fixture, Single line editor
+  Expected: local->remote control, with existing connection/fixture preserved
+
+Preflight around 14:18:08 EDT:
+  Active five-minute authorization; bridge/transport connected
+  remote_control_active FALSE (Windows local)
+  Semantic braille / temporary messages true
+  Unique existing NVDA Braille Viewer Windows target verified by metadata
+Passive Linux read at 14:18:07 EDT confirmed exact fixture URI/hash/id, actual
+focused/editable/single-line editor, unchanged known value, caret19/selection1,
+stable active window. No observer keys/focus calls.
+
+At 14:18:22 EDT (18:18:22.270Z-18:18:22.523Z),
+the Windows key API was requested to send Insert+Alt+Tab ONCE through the
+approved existing Braille Viewer target and returned normally. The API
+activates that Windows target. No second chord, retry or Linux action ran.
+
+Protected post-entry status around 14:18:40 EDT still reported:
+  authorization active; connected bridge/transport
+  remote_control_active FALSE (Windows local)
+  semantic braille / temporary messages true
+A final read-only check at about 14:19:12 EDT again reported the same local
+state and preserved connection. Entry was NOT established by either check.
+Normal API return is not proof that NVDA received/recognized the chord.
+
+Passive Linux read at 14:18:41 EDT confirmed the same fixture anchor,
+unchanged public value, caret19/selection1 and stable active window. No
+observer keys/focus calls. No private text or unrelated tree was captured.
+
+Result: INCONCLUSIVE for the automated entry gesture. The requested control
+transition was not observed; actual key delivery/recognition remains
+unverified. No root cause or confirmed NVDA/Orca production defect is claimed.
+Reproduction: ONE entry attempt, no observed local->remote transition.
+Physical b.note after this attempt: PENDING Miriam's report.
+Audible Windows speech: UNVERIFIED.
+Unintended/stuck key delivery: UNVERIFIED.
+
+P6 quiet interval: NOT RUN, because remote-control precondition was unmet.
+Return handoff: NOT RUN, because Windows local control was already confirmed;
+another toggle could have entered remote control rather than returning.
+The trial is STOPPED, with no automatic retry or reuse of remaining allowance.
+No 30-second physical report should be requested for this attempt.
+Ask what the b.note showed after THIS entry attempt, without another gesture.
+The earlier successful return and its physical Windows-content report remain
+separate evidence. PR #146 remains draft; all acceptance issues stay open.
+
+
+PHYSICAL REPORT FOR FRESH-P6-01 ENTRY — 14:22 EDT
+--------------------------------------------------
+Miriam answered about the entry attempt: "Windows content".
+This is the physical report for the known assistant entry request at 14:18:22,
+separate from the earlier successful return and its Windows-content report.
+
+Expected for entry: remote control and current Linux fixture content.
+Observed: Windows content, reported by Miriam; protected status had remained
+local on two post-entry checks. The requested remote-entry state/presentation
+was not established. Exact cells/text and transient output timing were not
+provided. Audible Windows speech remains UNVERIFIED.
+
+The automated entry remains INCONCLUSIVE: actual injected-key delivery and
+NVDA recognition have not been independently verified. A normal tool return
+and this content-category report do not identify a production-code defect.
+No further gesture, quiet interval, focus correction or retry is authorized
+by the finished attempt. Do not repeat the old gesture before a new decision.
+
+The assistant will inspect existing input/consent code and prior diagnostic
+references READ-ONLY before proposing further live interaction. No keys,
+focus changes, settings, installs, restarts or connection commands are part
+of that investigation. All three acceptance issues remain open.
+
+
+READ-ONLY INPUT REVIEW — 14:22-14:26 EDT
+------------------------------------------
+No further keys, focus activation, settings, installs, restarts or connection
+commands were performed during this investigation.
+
+A targeted read of ONLY the saved default NVDA keyboard preferences found:
+  handleInjectedKeys = True
+  NVDAModifierKeys = 7
+  keyboardLayout = desktop
+These are SAVED values, not runtime/profile/unsaved-state attestation.
+No setting was changed and no unrelated configuration values were output.
+The initial standard INI parser could not parse NVDA's ConfigObj format;
+the corrected read extracted only the three allowlisted keyboard keys.
+
+The repository status implementation localTestStatus.py maps connected
+remote_control_active to the client's boolean sendingKeys; it does not infer
+control merely from an established socket. Loaded implementation bytes were
+not newly attested in this review.
+
+Primary NVDA 2026.2 source references:
+https://github.com/nvaccess/nvda/blob/release-2026.2/source/_remoteClient/client.py
+https://github.com/nvaccess/nvda/blob/release-2026.2/source/keyboardHandler.py
+The Remote client registers a raw-key decider. When local it permits ordinary
+processing; when sending remote keys it can handle local scripts through its
+own path. The ordinary keyboard handler also has injected-key gates.
+Inference: success of the remote->local automated return does not establish
+that the local->remote automated entry used an equivalent input path.
+This does NOT identify which gate/path was active in this attempt or establish
+a root cause. Saved injected-key permission is not runtime evidence.
+
+The supported Windows key API documents an X-keysym chord request but provides
+no attestation here that NVDA recognized the chord. No custom input injector,
+helper protocol, changed setting or diagnostic hook was introduced.
+The earlier 2026-10-05 scripted trial was reviewed as historical evidence only;
+its documented concurrent manual input prevents using it as isolated proof
+that this automation path currently works.
+
+FRESH-P6-01 remains INCONCLUSIVE with a physical Windows-content report.
+No production change or regression fix is justified by the present evidence.
+Next useful distinction: a controlled PHYSICAL entry rather than another
+unverified automated-entry retry.
+
+PREPARED PHYSICAL-ENTRY COMPARISON / P6 — AWAITING DECISION
+-----------------------------------------------------------
+Proposed scope after Miriam explicitly resumes from the inconclusive result:
+  Fresh five-minute grant; read-only connection/control and fixture preflight.
+  If Windows LOCAL, instruct Miriam to press/release Insert+Alt+Tab ONCE.
+  No assistant entry injection. Confirm the resulting control state and exact
+  fixture anchor before continuing. Record whether the physical key was
+  actually performed from Miriam's later report, not just from a state change.
+  If already known REMOTE, do not ask an entry gesture; record that physical
+  comparison was not run and use the verified state for a new P6 baseline.
+  With REMOTE plus anchor verified, mark 30 seconds while Miriam reads the
+  b.note with keys released; no tool input during this quiet interval.
+  End the observation, then use at most ONE explicitly approved assistant
+  Insert+Alt+Tab return through the existing NVDA Braille Viewer, with its
+  Windows activation, only if status confirms REMOTE.
+  Verify Windows LOCAL before requesting a typed report of actual gesture
+  execution and the Linux interval's physical output/changes.
+  If entry is not established or state is unknown, stop without extra input.
+  If focus changes, stop the observation; the confirmed-remote return remains
+  within the proposed approval. No Linux focus correction or other keys.
+  Recovery mechanism remains Miriam's normal physical handoff; no automatic
+  input retry, reconnect, restart or setting change is included.
+
+This is one proposed physical entry gesture with separately scoped assisted
+return for same-keyboard reporting. P6 physical quiet is not inferred from
+time passage or metadata, and full H1 remains pending the rest of preflight.
+The decision/approval has not been requested as permission for any production
+change, companion install, disconnect, or issue closure.
+
+
+APPROVED COMPARISON: ALREADY REMOTE; TIMED P6 INCONCLUSIVE — 14:29-14:32 EDT
+----------------------------------------------------------------------------
+Miriam answered: "Approve comparison; grant renewed".
+Approved scope: physical entry only if needed, a verified quiet interval, and
+at most one assistant return from confirmed remote control through the existing
+NVDA Braille Viewer with its Windows activation. No Linux focus changes.
+
+Preflight at about 14:29:51 EDT found active authorization, connected transport/
+bridge and REMOTE control already active; semantic/temporary capabilities true.
+The cause/time of the change from earlier local control is unknown.
+No physical entry gesture was requested and no assistant entry was injected.
+Physical-entry comparison: NOT RUN because the required remote state already
+existed. Do not infer that Miriam physically pressed an entry gesture.
+
+Passive Linux read at 14:29:51 EDT confirmed the exact fixture URI/hash/id,
+active editable/focused/showing/single-line editor, unchanged public value,
+caret19/selection1 and stable active X window. No keys/focus calls.
+
+P6-PHYSICAL-COMPARE-01:
+  Quiet start clock bracket: 14:30:12 EDT (18:30:12 UTC)
+  Sleep requested: 30,000ms
+  Tool wait elapsed: 30.037 seconds, completed without interruption
+  End clock bracket: 14:30:51 EDT (18:30:51 UTC)
+  The 39-second clock bracket includes tool/orchestration overhead around the
+  measured 30-second sleep. No UI/input or Linux observer calls ran inside it.
+  Miriam was instructed to keep keys released and read the b.note.
+  Physical output / any unplanned input: PENDING Miriam's report
+  Audible Windows speech: UNVERIFIED
+
+Post-interval protected status around 14:30:51 EDT still showed connected
+transport/bridge, REMOTE control, active authorization and semantic/temporary
+support. Read-only Windows metadata revalidated the existing Braille Viewer.
+
+At 14:30:59 EDT the passive Linux focus check instead found TERMINAL focus,
+not a fixture document ancestor; active X window stable and fixture disk hash
+still matching. No terminal contents were read. The focus change occurred at
+an unknown time BETWEEN the pre/post focus checks, not proven to be inside
+the precise 30-second sleep. Public editor DOM value/caret after the change
+were not inspected. The known fixture-anchor continuity is not established.
+The trial was stopped without focus repair or another quiet interval.
+
+ASSISTED-RETURN-02:
+  Related issues: #57 / #61; assistant Windows input, not a physical gesture
+  NVDA2026.2 / earlier standalone .2 attribution; .4 uninstalled
+  Linux v123 disk revision, exact loaded bytes unverified
+  Confirmed-remote return requested ONCE at
+    18:31:28.918Z-18:31:29.156Z (14:31:28-14:31:29 EDT)
+  Key: Insert+Alt+Tab through existing NVDA Braille Viewer
+  API returned normally; no repeat, retry or other key was sent.
+  First protected post-check around 14:31:48 EDT still reported REMOTE.
+  A final read-only check at 14:32:27 EDT reported WINDOWS LOCAL.
+  Connection/bridge and semantic/temporary support remained true at both.
+  No assistant gesture occurred between those two checks.
+  Cause of the later state change: UNVERIFIED. It may not be attributed to
+    delayed injection or a user gesture without evidence.
+  Assessment: INCONCLUSIVE for gesture recognition/transition timing.
+  Physical b.note after this return: not yet reported.
+  Manual recovery gesture: NOT REQUESTED; latest check was already local.
+
+A passive Linux read at 14:31:48 EDT still found terminal focus and stable
+active window, with matching fixture disk hash; zero observer keys/focus calls.
+Only the ONE approved Windows return was requested in this scope. No keys
+were requested during the quiet interval, no manual entry/recovery was asked,
+and no setting/install/restart/connection/build operation ran.
+
+Current P6 assessment: INCONCLUSIVE. The timed wait occurred, but missing
+physical/input observations and changed focus prevent a quiet-baseline PASS.
+Obtain the interval's physical report and any user input/control actions
+BEFORE any new gesture or trial. Windows LOCAL was confirmed before asking
+for a typed report. Earlier "Windows content" answers belong to other steps.
+PR #146 remains draft and all three acceptance issues stay open.
+
+
+PHYSICAL HANDOFF NOTICES; MANUAL ACTIVITY REPORTED — 14:38 EDT
+---------------------------------------------------------------
+Miriam's exact reply to the quiet-interval observation question:
+"When I pressed insert + alt + tab to swithc to Linux Mint, I can tell that my brialle display shows me that I'm on Linux. It says, \"Remote computer rontorl.\" When I retrun to Windows, my brialle display says, \"contorl local computer.\""
+
+Quoted tactile notices are preserved exactly, without spelling correction:
+  Linux-entry report: "Remote computer rontorl."
+  Windows-local report: "contorl local computer."
+
+These are reported PHYSICAL b.note handoff-status notices. The narrative
+reports a manual Insert+Alt+Tab entry and a return to Windows, but exact
+counts/timestamps and correlation to a specific recorded gesture remain
+unconfirmed. The reply does not give the fixture editor's text or establish
+unchanged output during the complete timed quiet interval. Presentation
+implementation/source was not newly traced. Audible speech stays UNVERIFIED.
+
+To the question about keys, app switches or manual Insert+Alt+Tab between
+quiet start and the later confirmation of Windows local control, Miriam
+selected: "Yes — describe what and when".
+This affirms manual activity in the period asked about; its precise actions
+and timing relative to the 30-second wait have not yet been described.
+
+Classification remains INCONCLUSIVE:
+  P6: timed wait occurred, pre/post focus differed, physical quiet/stable
+    fixture output not established; manual activity timing pending.
+  ASSISTED-RETURN-02: later local state cannot be credited solely to the
+    assistant gesture when intervening manual activity is reported.
+  H1: tactile status-notice evidence recorded; no full case acceptance.
+  #59: no Linux field/semantic presentation, routing or panning PASS inferred.
+No prior result is retroactively attributed to these untimed handoffs.
+No production defect or fix is established. Issues remain open and PR draft.
+
+Next clarification only: did the manual handoffs/other actions occur DURING
+the quiet wait, or only BEFORE/AFTER it? Approximate timing or "not sure"
+is sufficient. Do not request another gesture, reproduce an action, renew
+authorization, restore focus, or begin a new trial to answer this question.
+No live action is being performed while awaiting this observation.
+
+
+MANUAL TIMING CLOSED AS UNKNOWN; TRIAL REMAINS INCONCLUSIVE — 14:41 EDT
+-------------------------------------------------------------------------
+Miriam answered the manual-activity timing clarification: "Not sure".
+The timing remains UNKNOWN. Do not keep asking her to reconstruct this
+historical interval, ask her to repeat it, or infer that the manual actions
+were either inside or outside the measured quiet wait.
+
+The timed P6 observation remains INCONCLUSIVE. Handoff notices are retained as
+reported tactile evidence, while stable Linux field output, uninterrupted
+fixture focus, one input source and attribution of the later local state
+are not established. No quiet-baseline, full H1 or issue acceptance is claimed.
+The three issues were fetched read-only and confirmed OPEN; PR #146 was
+confirmed OPEN/DRAFT. No issue state, checkbox or PR readiness was changed.
+
+NEXT-TRIAL PREPARATION ONLY — 14:45 EDT
+----------------------------------------
+To avoid mixing assistant key injection with Miriam's actions, the next
+proposal uses Miriam as the ONLY keyboard source. A prearranged manual
+entry/read/return sequence would let her return to Windows before typing
+through this same laptop. It requires her agreement to a limited exception
+to separate per-gesture instructions/checks. No new trial has been approved.
+
+A fresh guarded copy of the previously reviewed bounded fixture-restoration
+wrapper was prepared; only its exclusive audit filename differs.
+Helper SHA-256:
+fce9b5883a868666d28eaf6f8f9fd087b01de3388879213a8104a284855f7d0a
+The execution guard is absent; the helper has NOT run in apply mode.
+A private-source read initially failed under the sandbox. Repeating that
+READ/preparation with the ordinary approval-protected elevated route succeeded;
+no Linux/UI action was involved in either request.
+
+Read-only preflight at 14:45:29 EDT verified one exact public fixture editor,
+complete bounded scope, matching file hash/URI/id/tag/name/role, unchanged
+public value, same-user Firefox identity and one unique matching public window.
+That existing Firefox window is inactive. Activation calls=0; focus calls=0;
+keys sent=false. It remains a setup proposal requiring new focus approval.
+
+Concrete optional setup scope: with a fresh timed grant and Windows local
+control, revalidate the same target; activate the EXISTING fixture window at
+most once; focus Single line editor at most once only if needed; verify
+actual focus/value/caret. Stop on failure without retry or fallback.
+No copies, new windows, keys, settings, installs, restarts, connections or
+build changes. This is not permission to repeat the consumed earlier action.
+
+SUMMARY (fill in at the end)
+----------------------------
+Overall acceptance: INCOMPLETE. Issues #57, #59 and #61 confirmed OPEN.
+PR #146 confirmed OPEN/DRAFT. Miriam has not confirmed acceptance.
+
+Evidence recorded:
+  ASSISTED-RETURN-01: one observed software remote->local transition, plus
+    Miriam's physical "Windows content" report. Narrow evidence only.
+  FRESH-P6-01 ENTRY: one automated entry request, no observed remote activation;
+    physical "Windows content". INCONCLUSIVE; delivery/recognition unverified.
+  P6-PHYSICAL-COMPARE-01: measured 30.037-second wait, changed pre/post focus,
+    manual activity affirmed and timing "Not sure". INCONCLUSIVE.
+  ASSISTED-RETURN-02: initial remote and later local status; attribution unknown
+    with reported manual activity. INCONCLUSIVE.
+  Physical handoff notices reported verbatim in the history; not proof of
+    Linux focused-field presentation or a complete H1 run.
+
+PASS: narrow software/control and tactile content evidence for the first return;
+  earlier Windows-content readiness also matched expected.
+FAIL: no confirmed production defect established.
+INCONCLUSIVE: automated entry; later return attribution; timed quiet baseline.
+NOT RUN: full H1; the remaining acceptance cases; physical entry comparison
+  was not requested when preflight already found remote control active.
+No audible Windows speech acceptance. No physical Linux routing/panning PASS.
+
+#61 checkbox status:
+  1 Fresh input after reconnect/Orca restart; stuck modifiers/duplicates/replay:
+    NOT STARTED as live acceptance. Earlier setup restart is not R2 acceptance.
+  2 Stale queued shortcuts and old focus/script/window actions:
+    NOT STARTED.
+  3 No stale braille routing/panning/speech; Windows NVDA presenter:
+    NOT STARTED for replaced-session acceptance. Status negotiation and tactile
+    handoff notices do not satisfy this criterion.
+  4 Intentional handoff / unexpected disconnect / recovery / injection failure:
+    EVIDENCE RECORDED, INCOMPLETE: narrow handoff observations only. Full H1,
+    H2, U1, M3 unaccepted/unrun. F1 NOT RUN by the merged procedure's design.
+  5 Exact keys, focus, expected/observed output, state and reproducibility:
+    EVIDENCE RECORDED, INCOMPLETE: known steps documented; speech, exact Linux
+    cells and uncertain input/timing remain explicitly unverified.
+
+Other issues:
+  #57: title/elements/input-help/modifier/layout/capture/release acceptance
+    remains incomplete. No NVDA+T title trial completed.
+  #59: physical focused Linux name/role/state/value, caret, routing, panning and
+    presenter attribution remain incomplete. Handoff notices are partial data.
+
+No production fix is justified by the inconclusive automation outcomes.
+No production code/settings/install/connection changes are proposed here.
+
+Latest verified session facts (historical; recheck before any action):
+  Windows connected/local at 14:32:27 EDT; semantic/temporary support true.
+  Linux active focus was terminal at 14:31:48 EDT.
+  Existing public fixture was available but inactive at 14:45:29 preflight.
+  Disk controller v123 after the earlier approved restart; exact loaded bytes
+    unverified. Standalone .2 installed; .4 uninstalled and not accepted here.
+
+Next decision:
+  Timing clarification is CLOSED as "Not sure"; do not reconstruct or repeat
+  the old trial. A fresh manual-only reporting workflow and any bounded
+  fixture restoration need specific agreement before a new live trial.
+  The prepared restoration helper has not been activated.
+
+A concise issue/evidence overview is in live-acceptance-summary-2026-10-19.md.
+Closure: Miriam decides each issue's acceptance. This record closes no issue.
